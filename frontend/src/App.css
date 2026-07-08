@@ -1,34 +1,59 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  --font-ui: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.App {
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: var(--font-ui);
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.font-mono-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
-.App-link {
-    color: #61dafb;
+/* Timeframe pill hover */
+.tf-pill {
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+.tf-pill:hover {
+  transform: translateY(-1px);
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* Sidebar checkbox rows */
+.expiry-row {
+  transition: background-color 120ms ease;
+}
+.expiry-row:hover {
+  background: #f1f5f9;
+}
+
+/* Bar chart custom recharts styling */
+.recharts-cartesian-axis-tick-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Pulse dot */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Alert flash */
+@keyframes flash-border {
+  0% { box-shadow: 0 0 0 0 rgba(220,38,38,0.55); }
+  100% { box-shadow: 0 0 0 12px rgba(220,38,38,0); }
+}
+.alert-flash {
+  animation: flash-border 900ms ease-out 2;
 }
