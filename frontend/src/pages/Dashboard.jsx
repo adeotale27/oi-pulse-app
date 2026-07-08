@@ -42,8 +42,8 @@ export default function Dashboard() {
     try {
       const s = await fetchStatus();
       setStatus(s);
-    } catch (_e) {
-      /* network hiccup - ignore */
+    } catch (e) {
+      console.error("loadStatus failed", e);
     }
   }, []);
 
@@ -56,7 +56,7 @@ export default function Dashboard() {
       setCurrent(data.current);
       setPrevious(data.previous);
     } catch (e) {
-      /* silent */
+      console.error("loadOI failed", e);
     }
   }, [activeIndex, timeframe, selectedExpiry]);
 
@@ -69,7 +69,7 @@ export default function Dashboard() {
       setExpiries(list);
       // reset selected expiry when switching index
       setSelectedExpiry(list[0] || null);
-    }).catch(() => {});
+    }).catch((e) => console.error("loadExpiries failed", e));
     return () => { cancelled = true; };
   }, [activeIndex]);
 
@@ -77,7 +77,9 @@ export default function Dashboard() {
     setSelectedExpiry(exp);
     try {
       await api.post(`/expiries/${activeIndex}`, { expiry: exp });
-    } catch {}
+    } catch (e) {
+      console.error("setExpiry failed", e);
+    }
   };
 
   // Poll alerts
@@ -102,8 +104,8 @@ export default function Dashboard() {
           setTimeout(() => setFlash(false), 1800);
         }
       }
-    } catch (_e) {
-      /* silent */
+    } catch (e) {
+      console.error("loadAlerts failed", e);
     }
   }, [alarm, push]);
 

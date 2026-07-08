@@ -1,0 +1,32 @@
+{
+  "summary": "Backend regression + fix verification for NSE OI Tracker (iteration 3 fixes). Tested 20 endpoints covering status/config/oi/expiries/settings/mode/change/history/alerts/tracker toggle/credentials. 20/20 passing. MockService random walk verified after polling interval.",
+  "tested_scope": ["backend", "integration"],
+  "passed": [
+    "GET /api/status running=true, mode=mock",
+    "GET /api/config includes NIFTY, SENSEX, BANKNIFTY",
+    "GET /api/oi/NIFTY snapshot has all fields (index,timestamp,price,atm,expiry,expiries,pcr,vix,strikes) and strike sub-fields",
+    "GET /api/oi/SENSEX valid",
+    "GET /api/oi/BANKNIFTY valid (on-demand query even if not in enabled_indices)",
+    "GET /api/expiries/NIFTY returns 4 DISTINCT expiries (prior bug fixed)",
+    "GET /api/oi/NIFTY?expiry=X returns matching expiry AND different OI values than nearest (multi-expiry working)",
+    "POST /api/expiries/NIFTY {expiry} returns ok=true, selected=<expiry>",
+    "GET /api/settings returns threshold_pct/cooldown_seconds/compare_minutes/enabled_indices",
+    "POST /api/settings persists threshold_pct=20",
+    "POST /api/settings {enabled_indices:['UNKNOWN']} -> 400",
+    "POST /api/mode kite w/o creds -> 400",
+    "POST /api/mode mock -> 200 ok=true",
+    "GET /api/oi/NIFTY/change?minutes=15 returns {index,current,previous,minutes}",
+    "GET /api/history/NIFTY?minutes=60 returns non-empty list",
+    "GET /api/alerts returns {alerts:[...]}",
+    "DELETE /api/alerts clears list",
+    "POST /api/tracker/stop then /api/tracker/start toggles running state",
+    "MockService random walk: after 17s (past 15s poll interval), timestamp and price both changed (23787.74 -> 23798.97). No crash from KiteService init/ltp path.",
+    "POST /api/credentials with invalid api_key/access_token returns 400 (not 500) - ltp defensive init fix does not affect this error path"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "not tested (skipped per request)"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "MockService update only visible after tracker's ~15s poll cycle; two calls within 2s return cached snapshot (expected behavior, not a bug). Verified with 17s wait."
+}

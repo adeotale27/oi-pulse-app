@@ -99,6 +99,7 @@ class KiteService:
             return None
 
         cfg = INDEX_CONFIG[index_name]
+        ltp: float = 0.0
         try:
             q = self.kite.quote(cfg["quote_symbol"])
             ltp = q[cfg["quote_symbol"]]["last_price"]

@@ -38,11 +38,11 @@ export default function AlertsPanel({ alerts, onClear }) {
           {alerts.length === 0 ? (
             <div className="text-xs text-slate-400 text-center py-6">No alerts yet.</div>
           ) : (
-            alerts.map((a, i) => {
+            alerts.map((a) => {
               const bullish = a.direction?.toLowerCase().includes("bullish");
               return (
                 <div
-                  key={i}
+                  key={a.created_at + a.index}
                   data-testid="alert-item"
                   className={`border rounded-sm p-2 ${
                     bullish ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"

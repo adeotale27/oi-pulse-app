@@ -52,8 +52,8 @@ export function useNotify() {
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       try {
         new Notification(title, { body, silent: false });
-      } catch (_e) {
-        // notification API failure is non-fatal
+      } catch (e) {
+        console.error("Notification failed", e);
       }
     }
   }, []);
