@@ -11,6 +11,13 @@ from datetime import datetime, timezone, timedelta
 
 from oi_tracker import OITracker, INDICES
 from oi_service import INDEX_CONFIG
+from cryptography.fernet import Fernet
+import base64, hashlib
+
+def _fernet():
+    seed = os.environ.get('MONGO_URL', 'seed') + os.environ.get('DB_NAME', 'db')
+    key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode()).digest())
+    return Fernet(key)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -49,6 +56,11 @@ class ExpiryIn(BaseModel):
 class GenerateTokenIn(BaseModel):
     api_key: str
     api_secret: str
+    request_token: str
+    remember: Optional[bool] = True
+
+
+class RefreshTokenIn(BaseModel):
     request_token: str
 
 
@@ -89,7 +101,54 @@ async def generate_session(payload: GenerateTokenIn):
         await tracker.set_credentials(payload.api_key, access_token)
     except Exception as e:
         raise HTTPException(400, str(e))
-    return {"ok": True, "mode": tracker.mode, "access_token": access_token, "user_id": data.get("user_id")}
+    if payload.remember:
+        enc = _fernet().encrypt(payload.api_secret.encode()).decode()
+        await db.credentials.update_one(
+            {"_id": "kite"},
+            {"$set": {"api_secret_enc": enc}},
+            upsert=True,
+        )
+    return {"ok": True, "mode": tracker.mode, "access_token": access_token, "user_id": data.get("user_id"), "remembered": bool(payload.remember)}
+
+
+@api_router.get("/kite/vault")
+async def vault_status():
+    doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key": 1, "api_secret_enc": 1})
+    return {
+        "has_api_key": bool(doc and doc.get("api_key")),
+        "has_api_secret": bool(doc and doc.get("api_secret_enc")),
+        "api_key_hint": (doc.get("api_key")[:4] + "***") if (doc and doc.get("api_key")) else None,
+    }
+
+
+@api_router.post("/kite/refresh")
+async def kite_refresh(payload: RefreshTokenIn):
+    """One-click daily refresh: uses stored api_key + encrypted api_secret + given request_token."""
+    doc = await db.credentials.find_one({"_id": "kite"})
+    if not doc or not doc.get("api_key") or not doc.get("api_secret_enc"):
+        raise HTTPException(400, "No stored api_key/api_secret — use Generate flow first with 'remember' enabled.")
+    try:
+        api_secret = _fernet().decrypt(doc["api_secret_enc"].encode()).decode()
+    except Exception as e:
+        raise HTTPException(400, f"Vault decrypt failed: {e}")
+    try:
+        from kiteconnect import KiteConnect
+        kc = KiteConnect(api_key=doc["api_key"])
+        data = kc.generate_session(payload.request_token, api_secret=api_secret)
+        access_token = data.get("access_token")
+    except Exception as e:
+        raise HTTPException(400, f"{type(e).__name__}: {e}")
+    try:
+        await tracker.set_credentials(doc["api_key"], access_token)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "mode": tracker.mode, "user_id": data.get("user_id")}
+
+
+@api_router.delete("/kite/vault")
+async def clear_vault():
+    await db.credentials.update_one({"_id": "kite"}, {"$unset": {"api_secret_enc": ""}})
+    return {"ok": True}
 
 
 @api_router.get("/credentials/status")
