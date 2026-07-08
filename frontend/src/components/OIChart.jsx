@@ -74,10 +74,12 @@ export default function OIChart({ current, previous, mode, atm }) {
             iconType="square"
             wrapperStyle={{ fontSize: 12, paddingTop: 8, fontFamily: "Outfit" }}
             payload={[
-              { value: "Put OI (current)", type: "square", color: PUT_GREEN, id: "pe" },
-              { value: "Put OI (prev)", type: "square", color: "transparent", id: "pep" },
-              { value: "Call OI (current)", type: "square", color: CALL_RED, id: "ce" },
-              { value: "Call OI (prev)", type: "square", color: "transparent", id: "cep" },
+              { value: "Put OI", type: "square", color: PUT_GREEN, id: "pe" },
+              { value: "Increase", type: "square", color: "#86EFAC", id: "peinc" },
+              { value: "Decrease", type: "square", color: "#DCFCE7", id: "pedec" },
+              { value: "Call OI", type: "square", color: CALL_RED, id: "ce" },
+              { value: "Increase", type: "square", color: "#FCA5A5", id: "ceinc" },
+              { value: "Decrease", type: "square", color: "#FEE2E2", id: "cedec" },
             ]}
           />
           {atm && (

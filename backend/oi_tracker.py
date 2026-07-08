@@ -81,12 +81,21 @@ class OITracker:
         return False
 
     async def set_credentials(self, api_key: str, access_token: str):
+        # Surface the actual Kite error to the user for easier debugging.
         try:
             svc = KiteService(api_key, access_token)
-            # smoke test
-            svc.kite.profile()
         except Exception as e:
-            raise RuntimeError(f"Invalid Kite credentials: {e}")
+            raise RuntimeError(f"Kite SDK init failed: {type(e).__name__}: {e}")
+        try:
+            profile = svc.kite.profile()
+            logger.info(f"Kite profile loaded for user: {profile.get('user_id')}")
+        except Exception as e:
+            # Common causes: expired access_token (daily), wrong api_key, wrong secret used to compute token
+            hint = ""
+            msg = str(e).lower()
+            if "token" in msg or "api_key" in msg or "signature" in msg:
+                hint = " (Tip: access_token expires every trading day around 6 AM IST — regenerate via the Kite login flow.)"
+            raise RuntimeError(f"{type(e).__name__}: {e}{hint}")
         await self.db.credentials.update_one(
             {"_id": "kite"},
             {"$set": {"api_key": api_key, "access_token": access_token,

@@ -8,6 +8,7 @@ import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
 import SettingsModal from "@/components/SettingsModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
+import SentimentBar from "@/components/SentimentBar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, api } from "@/lib/api";
 import { downloadOICsv } from "@/lib/csv";
@@ -245,7 +246,34 @@ export default function Dashboard() {
 
             <div className="grid grid-cols-12 gap-4">
               <div className={`col-span-12 lg:col-span-9 space-y-4 ${flash ? "alert-flash" : ""}`}>
-                <div className="bg-white border border-slate-200 rounded-md p-4">
+                {changeSummary && (
+                  <SentimentBar
+                    ceDelta={changeSummary.ce}
+                    peDelta={changeSummary.pe}
+                    timeframeMin={timeframe}
+                  />
+                )}
+                <div
+                  className="bg-white border border-slate-200 rounded-md p-4 transition-colors duration-500"
+                  style={
+                    changeSummary
+                      ? {
+                          backgroundColor:
+                            changeSummary.pe - changeSummary.ce >= 0
+                              ? `rgba(22,163,74,${Math.min(
+                                  0.08,
+                                  (Math.abs(changeSummary.pe - changeSummary.ce) /
+                                    (Math.abs(changeSummary.ce) + Math.abs(changeSummary.pe) || 1)) * 0.12
+                                )})`
+                              : `rgba(220,38,38,${Math.min(
+                                  0.08,
+                                  (Math.abs(changeSummary.pe - changeSummary.ce) /
+                                    (Math.abs(changeSummary.ce) + Math.abs(changeSummary.pe) || 1)) * 0.12
+                                )})`,
+                        }
+                      : undefined
+                  }
+                >
                   <TabsContent value="oi-change" className="mt-0">
                     <div className="flex items-center justify-between mb-2">
                       <div>

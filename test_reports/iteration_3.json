@@ -1,0 +1,24 @@
+{
+  "summary": "Backend-only iteration 4 testing. Verified credentials error-message bug fix and all regression endpoints. 12/12 passed.",
+  "tested_scope": ["backend"],
+  "passed": [
+    "POST /api/credentials with fake token returns 400 with 'TokenException' and IST 6 AM hint",
+    "POST /api/credentials called 3x consecutively; backend stays healthy (no 500, /api/status still 200)",
+    "GET /api/status -> running=true, mode='mock'",
+    "GET /api/oi/NIFTY -> 200 with valid snapshot (price, atm, strikes, pcr, vix)",
+    "GET /api/oi/BANKNIFTY -> 200 valid snapshot",
+    "GET /api/oi/SENSEX -> 200 valid snapshot",
+    "GET /api/oi/NIFTY/change?minutes=15 -> {current, previous}",
+    "GET /api/expiries/NIFTY -> 4 distinct expiries + selected",
+    "GET /api/settings -> threshold_pct, cooldown_seconds, compare_minutes, enabled_indices present",
+    "POST /api/settings persists new values and restore works",
+    "GET /api/alerts returns alerts array with expected fields",
+    "POST /api/tracker/stop then /start toggles running state correctly"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "skipped"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Kite integration is MOCKED (mode='mock'). Error string sample: 'TokenException: Incorrect `api_key` or `access_token`. (Tip: access_token expires every trading day around 6 AM IST — regenerate via the Kite login flow.)'"
+}

@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RotateCcw, TrendingUp, TrendingDown } from "lucide-react";
 
-const STRIKE_COUNTS = [5, 10, 15, 20, 25];
+const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
 
 export default function Sidebar({
   indices,
