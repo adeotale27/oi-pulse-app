@@ -1,0 +1,34 @@
+{
+  "summary": "Backend-only smoke tests for iteration 5 (new POST /api/kite/generate-session + regressions). New endpoint handles fake creds and missing fields gracefully; all regression endpoints pass. Note: outbound Kite calls from sandbox get upstream 502, so error class surfaced is DataException (not TokenException) — still a KiteConnect exception, non-crashing 400.",
+  "tested_scope": ["backend", "integration"],
+  "passed": [
+    "POST /api/kite/generate-session with fake api_key/secret/request_token -> HTTP 400 with 'DataException: ...' in detail; backend did not crash",
+    "POST /api/kite/generate-session missing api_secret+request_token -> HTTP 422 (Pydantic validation)",
+    "POST /api/credentials with fake token -> HTTP 400 with 'DataException: ...' in detail (regression, non-crashing)",
+    "GET /api/status -> 200, running=true, mode='mock', has_kite_credentials=false, poll_interval_seconds=15",
+    "GET /api/oi/NIFTY -> 200, includes index, timestamp, price, atm, expiry, expiries, pcr, vix; 31 strikes",
+    "GET /api/oi/SENSEX -> 200",
+    "GET /api/oi/BANKNIFTY -> 200",
+    "GET /api/oi/NIFTY/change?minutes=15 -> 200 with keys {index, current, previous, minutes}",
+    "GET /api/expiries/NIFTY -> 4 distinct expiries (2026-07-09..2026-07-30) + selected",
+    "GET /api/settings -> 200 (threshold_pct, cooldown_seconds, compare_minutes, enabled_indices)",
+    "POST /api/settings -> 200, persists changes (verified round-trip)",
+    "GET /api/alerts -> 200",
+    "POST /api/tracker/stop -> running:false; POST /api/tracker/start -> running:true",
+    "After 3 consecutive failed generate-session + 3 failed credentials calls, /api/status still 200 and tracker.running=true"
+  ],
+  "failed": [
+    {
+      "area": "backend/kite-error-mapping",
+      "issue": "IST hint (TokenException + 6AM IST tip) is not surfaced in sandbox because outbound kite.trade calls receive HTTP 502 from the upstream proxy, so kiteconnect raises DataException instead of TokenException. Backend logic is fine; only TokenException branch appends the IST hint. In real prod (with network egress) the hint should fire — cannot verify here.",
+      "evidence": "detail = 'DataException: Unknown Content-Type (text/html) with response: (b\\'<html>...502 Bad Gateway...</html>\\')'",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "No code change required for first finish. Optional: consider extending IST-hint hint branch in oi_tracker.set_credentials to also cover generate-session upstream failures (currently only TokenException triggers the hint)."
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

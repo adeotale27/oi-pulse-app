@@ -46,6 +46,12 @@ class ExpiryIn(BaseModel):
     expiry: Optional[str] = None
 
 
+class GenerateTokenIn(BaseModel):
+    api_key: str
+    api_secret: str
+    request_token: str
+
+
 # ------------------- Routes -------------------
 @api_router.get("/")
 async def root():
@@ -64,6 +70,26 @@ async def set_credentials(payload: CredentialsIn):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "mode": tracker.mode}
+
+
+@api_router.post("/kite/generate-session")
+async def generate_session(payload: GenerateTokenIn):
+    """Exchange api_key + api_secret + request_token for a fresh access_token
+    using KiteConnect.generate_session(), save it, and switch to LIVE mode."""
+    try:
+        from kiteconnect import KiteConnect
+        kc = KiteConnect(api_key=payload.api_key)
+        data = kc.generate_session(payload.request_token, api_secret=payload.api_secret)
+        access_token = data.get("access_token")
+        if not access_token:
+            raise RuntimeError("No access_token returned by Kite")
+    except Exception as e:
+        raise HTTPException(400, f"{type(e).__name__}: {e}")
+    try:
+        await tracker.set_credentials(payload.api_key, access_token)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "mode": tracker.mode, "access_token": access_token, "user_id": data.get("user_id")}
 
 
 @api_router.get("/credentials/status")

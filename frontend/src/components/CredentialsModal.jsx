@@ -10,6 +10,9 @@ import { KeyRound, ExternalLink } from "lucide-react";
 export default function CredentialsModal({ open, onOpenChange, onSaved }) {
   const [apiKey, setApiKey] = useState("");
   const [token, setToken] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [requestToken, setRequestToken] = useState("");
+  const [genMode, setGenMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
 
@@ -19,6 +22,29 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
   }, [open]);
 
   const submit = async () => {
+    if (genMode) {
+      if (!apiKey || !apiSecret || !requestToken) {
+        toast.error("Enter API key, API secret and request token");
+        return;
+      }
+      setSaving(true);
+      try {
+        const { api } = await import("@/lib/api");
+        const r = await api.post("/kite/generate-session", {
+          api_key: apiKey.trim(),
+          api_secret: apiSecret.trim(),
+          request_token: requestToken.trim(),
+        });
+        toast.success(`LIVE mode active. Kite user: ${r.data.user_id}`);
+        onSaved?.();
+        onOpenChange(false);
+      } catch (e) {
+        toast.error(e?.response?.data?.detail || "Token generation failed");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (!apiKey || !token) {
       toast.error("Enter both API key and Access token");
       return;
@@ -61,6 +87,22 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 pt-2">
+          <div className="flex gap-1 border-b border-slate-200 pb-2">
+            <button
+              data-testid="tab-paste-token"
+              onClick={() => setGenMode(false)}
+              className={`text-xs px-3 py-1 rounded-sm ${!genMode ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+            >
+              I have access_token
+            </button>
+            <button
+              data-testid="tab-generate-token"
+              onClick={() => setGenMode(true)}
+              className={`text-xs px-3 py-1 rounded-sm ${genMode ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+            >
+              Generate from request_token
+            </button>
+          </div>
           <div>
             <Label className="text-xs uppercase tracking-wider text-slate-500">API Key</Label>
             <Input
@@ -71,16 +113,50 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
               className="font-mono-data"
             />
           </div>
-          <div>
-            <Label className="text-xs uppercase tracking-wider text-slate-500">Access Token</Label>
-            <Input
-              data-testid="input-access-token"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="daily access_token from login flow"
-              className="font-mono-data"
-            />
-          </div>
+          {!genMode ? (
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">Access Token</Label>
+              <Input
+                data-testid="input-access-token"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="daily access_token"
+                className="font-mono-data"
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-slate-500">API Secret</Label>
+                <Input
+                  data-testid="input-api-secret"
+                  type="password"
+                  value={apiSecret}
+                  onChange={(e) => setApiSecret(e.target.value)}
+                  placeholder="from your Kite Connect app"
+                  className="font-mono-data"
+                />
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-slate-500">Request Token</Label>
+                <Input
+                  data-testid="input-request-token"
+                  value={requestToken}
+                  onChange={(e) => setRequestToken(e.target.value)}
+                  placeholder="from the ?request_token=… URL after login"
+                  className="font-mono-data"
+                />
+              </div>
+              <a
+                href={`https://kite.zerodha.com/connect/login?api_key=${apiKey || "YOUR_KEY"}&v=3`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
+              >
+                1) Click here to login and get request_token <ExternalLink className="w-3 h-3" />
+              </a>
+            </>
+          )}
           {status?.configured && (
             <div className="text-xs text-slate-500 font-mono-data">
               Current key: {status.api_key_hint} · updated {status.updated_at?.slice(0, 19).replace("T", " ")}

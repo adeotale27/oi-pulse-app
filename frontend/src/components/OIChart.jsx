@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 
 const PUT_GREEN = "#16A34A";
@@ -23,14 +23,20 @@ export default function OIChart({ current, previous, mode, atm }) {
     (previous?.strikes || []).forEach((s) => prevMap.set(s.strike, s));
     return current.strikes.map((s) => {
       const p = prevMap.get(s.strike) || {};
+      const peNow = s.pe_oi, peP = p.pe_oi ?? s.pe_oi;
+      const ceNow = s.ce_oi, ceP = p.ce_oi ?? s.ce_oi;
       return {
         strike: s.strike,
-        pe_now: s.pe_oi,
-        pe_prev: p.pe_oi ?? s.pe_oi,
-        ce_now: s.ce_oi,
-        ce_prev: p.ce_oi ?? s.ce_oi,
-        pe_delta: s.pe_oi - (p.pe_oi ?? s.pe_oi),
-        ce_delta: s.ce_oi - (p.ce_oi ?? s.ce_oi),
+        pe_now: peNow, pe_prev: peP,
+        ce_now: ceNow, ce_prev: ceP,
+        pe_base: Math.min(peNow, peP),
+        pe_inc: Math.max(0, peNow - peP),   // striped on top => OI increased
+        pe_dec: Math.max(0, peP - peNow),   // hollow on top => writers exited
+        ce_base: Math.min(ceNow, ceP),
+        ce_inc: Math.max(0, ceNow - ceP),
+        ce_dec: Math.max(0, ceP - ceNow),
+        pe_delta: peNow - peP,
+        ce_delta: ceNow - ceP,
       };
     });
   }, [current, previous]);
@@ -47,6 +53,16 @@ export default function OIChart({ current, previous, mode, atm }) {
     <div className="w-full h-[440px]" data-testid="oi-chart">
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 20 }} barCategoryGap="18%">
+          <defs>
+            <pattern id="pe-inc-pat" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+              <rect width="6" height="6" fill="#86EFAC" />
+              <line x1="0" y1="0" x2="0" y2="6" stroke="#16A34A" strokeWidth="2" />
+            </pattern>
+            <pattern id="ce-inc-pat" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+              <rect width="6" height="6" fill="#FCA5A5" />
+              <line x1="0" y1="0" x2="0" y2="6" stroke="#DC2626" strokeWidth="2" />
+            </pattern>
+          </defs>
           <CartesianGrid stroke="#E2E8F0" vertical={false} />
           <XAxis
             dataKey="strike"
@@ -96,20 +112,14 @@ export default function OIChart({ current, previous, mode, atm }) {
               }}
             />
           )}
-          {/* Previous OI as outlined bars */}
-          <Bar dataKey="pe_prev" name="Put OI (prev)" fill="transparent" stroke={PUT_GREEN} strokeWidth={1.2} />
-          {/* Current PE OI */}
-          <Bar dataKey="pe_now" name="Put OI (current)" fill={PUT_GREEN} radius={[2, 2, 0, 0]}>
-            {data.map((d, i) => (
-              <Cell key={`pe-${i}`} fill={d.pe_delta >= 0 ? PUT_GREEN : "#86EFAC"} />
-            ))}
-          </Bar>
-          <Bar dataKey="ce_prev" name="Call OI (prev)" fill="transparent" stroke={CALL_RED} strokeWidth={1.2} />
-          <Bar dataKey="ce_now" name="Call OI (current)" fill={CALL_RED} radius={[2, 2, 0, 0]}>
-            {data.map((d, i) => (
-              <Cell key={`ce-${i}`} fill={d.ce_delta >= 0 ? CALL_RED : "#FCA5A5"} />
-            ))}
-          </Bar>
+          {/* PUT stack: base (previous OI, solid), inc (striped on top), dec (hollow on top) */}
+          <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} />
+          <Bar dataKey="pe_inc" stackId="pe" name="Put Increase" fill="url(#pe-inc-pat)" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="pe_dec" stackId="pe" name="Put Decrease" fill="transparent" stroke={PUT_GREEN} strokeWidth={1.4} radius={[2, 2, 0, 0]} />
+          {/* CALL stack */}
+          <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} />
+          <Bar dataKey="ce_inc" stackId="ce" name="Call Increase" fill="url(#ce-inc-pat)" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="ce_dec" stackId="ce" name="Call Decrease" fill="transparent" stroke={CALL_RED} strokeWidth={1.4} radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
