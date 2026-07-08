@@ -1,0 +1,91 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "typography": {
+    "headings": {
+      "fontFamily": "Outfit",
+      "weights": ["400", "500", "600", "700"],
+      "usage": "Use for all UI text, labels, headers, and tabs."
+    },
+    "data": {
+      "fontFamily": "JetBrains Mono",
+      "weights": ["400", "500", "600"],
+      "usage": "MANDATORY for all numerical data, tabular data, axis labels, timeframes, and strike prices to ensure vertical alignment."
+    }
+  },
+  "colors": {
+    "background": {
+      "app": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "sidebar": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#64748B",
+      "muted": "#94A3B8"
+    },
+    "border": {
+      "default": "#E2E8F0",
+      "strong": "#CBD5E1"
+    },
+    "data": {
+      "put_oi": {
+        "solid": "#16A34A",
+        "outline": "#16A34A"
+      },
+      "call_oi": {
+        "solid": "#DC2626",
+        "outline": "#DC2626"
+      },
+      "vix": "#F59E0B",
+      "pcr": "#3B82F6"
+    },
+    "accent": {
+      "primary": "#0F172A",
+      "hover": "#334155"
+    }
+  },
+  "layout": {
+    "general": "High-density data layout. Minimalist, strict grid, avoiding rounded aesthetics where possible. Optimize for scanability.",
+    "sidebar": "Fixed width (e.g., w-72 or w-80). Contains index switcher, expiries checklist, strike range slider, and quick filters.",
+    "main_content": "Fluid width, dense grid. Use Tailwind CSS grid-cols-12 for complex layouts. Header occupies full width of main content.",
+    "spacing": "Tight padding (p-3 to p-4 for cards). Gap-4 for grids.",
+    "radius": "Minimal. Use rounded-sm (2px) or rounded-md (6px) maximum. Avoid fully rounded pill shapes except for status indicators."
+  },
+  "components": {
+    "cards": "bg-white border border-slate-200 shadow-sm rounded-md",
+    "tabs": "Use Shadcn Tabs. Customize to look like underlined segments rather than pill buttons for a professional feel.",
+    "buttons": "Square or slightly rounded (rounded-sm). Primary buttons use bg-slate-900 text-white. Secondary buttons use bg-white border border-slate-300 text-slate-700.",
+    "timeframe_pills": "Small, dense toggles. text-xs JetBrains Mono. Selected state: bg-slate-900 text-white. Unselected: bg-slate-100 text-slate-600.",
+    "alerts": "Use Sonner for toast notifications. High contrast. Red background with white text for OI reversal spikes. Must include sound integration.",
+    "chart": {
+      "type": "Grouped Bar Chart (Recharts)",
+      "configuration": "X-axis: Strike Price. Y-axis: OI Volume. Legend at top right.",
+      "visuals": "Current Call OI: Solid Red (#DC2626). Previous Call OI: Transparent fill, Red Stroke. Current Put OI: Solid Green (#16A34A). Previous Put OI: Transparent fill, Green Stroke."
+    }
+  },
+  "icons": {
+    "library": "lucide-react",
+    "usage": "Use 16px or smaller icons. Keep stroke width consistent at 1.5. Use sparingly, prioritize text labels."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.pexels.com/photos/4252663/pexels-photo-4252663.jpeg",
+      "category": "logo_abstract",
+      "description": "Minimalist geometric abstract design to be used as a small brand mark in the sidebar header."
+    }
+  ],
+  "accessibility_and_testing": {
+    "contrast": "Ensure all text passes WCAG AA. JetBrains Mono data must be high contrast against white.",
+    "data_testid": "MANDATORY. Add descriptive data-testid to all interactive elements (e.g., data-testid='tab-oi-change', data-testid='btn-refresh')."
+  },
+  "instructions_to_main_agent": [
+    "Implement the layout using a strict left sidebar and right main content area.",
+    "Sidebar must include NIFTY/SENSEX toggle, Intraday/Custom range, Expiries checklist, and 'Strikes above and below ATM' buttons.",
+    "The header must display Index name, current price, % change, ATM strike, PCR, and INDIAVIX densely.",
+    "Main chart must be implemented using Recharts, properly mapping the solid vs outlined bars to distinguish current vs previous OI data.",
+    "Implement the OI Auto-refresh logic (every 15s) and display the 'Last Refreshed' timestamp clearly at the bottom.",
+    "Alert logic should trigger a highly visible toast and sound when an 'OI reversal spike' occurs.",
+    "Setup an API credentials modal for Zerodha KiteConnect (API Key + Access Token) accessible via sidebar or header."
+  ]
+}
