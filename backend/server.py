@@ -35,6 +35,17 @@ class ModeIn(BaseModel):
     mode: str  # "kite" | "mock"
 
 
+class SettingsIn(BaseModel):
+    threshold_pct: Optional[float] = None
+    cooldown_seconds: Optional[int] = None
+    compare_minutes: Optional[int] = None
+    enabled_indices: Optional[List[str]] = None
+
+
+class ExpiryIn(BaseModel):
+    expiry: Optional[str] = None
+
+
 # ------------------- Routes -------------------
 @api_router.get("/")
 async def root():
@@ -87,17 +98,19 @@ async def tracker_stop():
 
 
 @api_router.get("/oi/{index_name}")
-async def get_current_oi(index_name: str):
+async def get_current_oi(index_name: str, expiry: Optional[str] = None):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
+    if expiry:
+        tracker.set_expiry(idx, expiry)
     snap = tracker.last_snapshot.get(idx)
-    if not snap:
-        # fetch one on-demand
+    # if expiry mismatch or no snap, fetch on-demand
+    if not snap or (expiry and snap.get("expiry") != expiry):
         try:
             import asyncio
             svc = tracker._get_service()
-            snap = await asyncio.to_thread(svc.get_snapshot, idx)
+            snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
             if snap:
                 snap["mode"] = tracker.mode
                 tracker.last_snapshot[idx] = snap
@@ -108,18 +121,52 @@ async def get_current_oi(index_name: str):
     return snap
 
 
+@api_router.get("/expiries/{index_name}")
+async def get_expiries(index_name: str):
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(404, "Unknown index")
+    return {"index": idx, "expiries": tracker.list_expiries(idx), "selected": tracker.selected_expiry.get(idx)}
+
+
+@api_router.post("/expiries/{index_name}")
+async def set_expiry(index_name: str, payload: ExpiryIn):
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(404, "Unknown index")
+    tracker.set_expiry(idx, payload.expiry)
+    return {"ok": True, "index": idx, "selected": tracker.selected_expiry.get(idx)}
+
+
+@api_router.get("/settings")
+async def get_settings():
+    return tracker.settings
+
+
+@api_router.post("/settings")
+async def update_settings(payload: SettingsIn):
+    patch = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if "enabled_indices" in patch:
+        for i in patch["enabled_indices"]:
+            if i not in INDEX_CONFIG:
+                raise HTTPException(400, f"Unknown index: {i}")
+    return await tracker.save_settings(patch)
+
+
 @api_router.get("/oi/{index_name}/change")
-async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)):
+async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440), expiry: Optional[str] = None):
     """Return current snapshot plus 'previous' snapshot from N minutes ago for diffing."""
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
+    if expiry:
+        tracker.set_expiry(idx, expiry)
     current = tracker.last_snapshot.get(idx)
-    if not current:
+    if not current or (expiry and current.get("expiry") != expiry):
         try:
             import asyncio
             svc = tracker._get_service()
-            current = await asyncio.to_thread(svc.get_snapshot, idx)
+            current = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
             if current:
                 current["mode"] = tracker.mode
                 tracker.last_snapshot[idx] = current
@@ -129,8 +176,11 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         raise HTTPException(503, "No current data")
 
     target = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    query = {"index": idx, "created_at": {"$lte": target.isoformat()}}
+    if expiry:
+        query["expiry"] = expiry
     prev_doc = await db.oi_snapshots.find_one(
-        {"index": idx, "created_at": {"$lte": target.isoformat()}},
+        query,
         sort=[("created_at", -1)],
         projection={"_id": 0},
     )
@@ -191,6 +241,7 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def _startup():
     await tracker.load_credentials()
+    await tracker.load_settings()
     await tracker.start()
     logger.info(f"OI Tracker started in {tracker.mode} mode")
 

@@ -12,7 +12,14 @@ from oi_service import KiteService, MockService, INDEX_CONFIG
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SECONDS = 15
-INDICES = ["NIFTY", "SENSEX"]
+INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
+
+DEFAULT_SETTINGS = {
+    "threshold_pct": 15.0,      # % OI change to trigger alert
+    "cooldown_seconds": 120,    # per-index alert cooldown
+    "compare_minutes": 3,       # compare with snapshot from N minutes ago
+    "enabled_indices": ["NIFTY", "SENSEX"],  # which indices to poll (BANKNIFTY optional)
+}
 
 
 class OITracker:
@@ -26,6 +33,33 @@ class OITracker:
         self.last_error: Optional[str] = None
         self.last_snapshot: Dict[str, Dict[str, Any]] = {}
         self.last_updated_at: Optional[str] = None
+        self.settings: Dict[str, Any] = dict(DEFAULT_SETTINGS)
+        self.selected_expiry: Dict[str, Optional[str]] = {i: None for i in INDICES}
+
+    async def load_settings(self):
+        doc = await self.db.settings.find_one({"_id": "alerts"})
+        if doc:
+            self.settings.update({k: v for k, v in doc.items() if k != "_id"})
+
+    async def save_settings(self, patch: Dict[str, Any]):
+        allowed = {"threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices"}
+        clean = {k: v for k, v in patch.items() if k in allowed}
+        self.settings.update(clean)
+        await self.db.settings.update_one(
+            {"_id": "alerts"}, {"$set": clean}, upsert=True
+        )
+        return self.settings
+
+    def list_expiries(self, index_name: str):
+        svc = self._get_service()
+        try:
+            return svc.list_expiries(index_name)
+        except Exception as e:
+            logger.error(f"list_expiries failed: {e}")
+            return []
+
+    def set_expiry(self, index_name: str, expiry: Optional[str]):
+        self.selected_expiry[index_name] = expiry
 
     async def load_credentials(self):
         """Load saved kite credentials from DB and initialize KiteService if present."""
@@ -103,9 +137,13 @@ class OITracker:
 
     async def _poll_once(self):
         svc = self._get_service()
-        for idx in INDICES:
+        enabled = self.settings.get("enabled_indices", INDICES)
+        for idx in enabled:
+            if idx not in INDICES:
+                continue
             try:
-                snap = await asyncio.to_thread(svc.get_snapshot, idx)
+                exp = self.selected_expiry.get(idx)
+                snap = await asyncio.to_thread(svc.get_snapshot, idx, exp)
             except Exception as e:
                 logger.error(f"snapshot failed for {idx}: {e}")
                 self.last_error = str(e)
@@ -116,7 +154,7 @@ class OITracker:
             self.last_snapshot[idx] = snap
             # store
             await self.db.oi_snapshots.insert_one({**snap, "created_at": datetime.now(timezone.utc).isoformat()})
-            # keep only last 4 hours
+            # keep only last 6 hours
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
             await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
             # evaluate alerts
@@ -124,8 +162,10 @@ class OITracker:
         self.last_updated_at = datetime.now(timezone.utc).isoformat()
 
     async def _evaluate_alerts(self, index_name: str, current: Dict[str, Any]):
-        """Compare current OI vs snapshot ~3 minutes ago and detect reversal spikes."""
-        cutoff_min = 3
+        """Compare current OI vs snapshot ~N minutes ago and detect reversal spikes."""
+        cutoff_min = int(self.settings.get("compare_minutes", 3))
+        threshold_pct = float(self.settings.get("threshold_pct", 15.0))
+        cooldown = int(self.settings.get("cooldown_seconds", 120))
         target = datetime.now(timezone.utc) - timedelta(minutes=cutoff_min)
         cursor = self.db.oi_snapshots.find(
             {"index": index_name, "created_at": {"$lte": target.isoformat()}},
@@ -147,7 +187,7 @@ class OITracker:
             ce_pct = (ce_change / p["ce_oi"] * 100) if p["ce_oi"] else 0
             pe_pct = (pe_change / p["pe_oi"] * 100) if p["pe_oi"] else 0
             # thresholds
-            if abs(ce_pct) >= 15 or abs(pe_pct) >= 15:
+            if abs(ce_pct) >= threshold_pct or abs(pe_pct) >= threshold_pct:
                 spike_strikes.append({
                     "strike": s["strike"],
                     "ce_pct": round(ce_pct, 2),
@@ -166,7 +206,7 @@ class OITracker:
         if recent:
             try:
                 last_ts = datetime.fromisoformat(recent["created_at"])
-                if (datetime.now(timezone.utc) - last_ts).total_seconds() < 120:
+                if (datetime.now(timezone.utc) - last_ts).total_seconds() < cooldown:
                     return
             except Exception:
                 pass

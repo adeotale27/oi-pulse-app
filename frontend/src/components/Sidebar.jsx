@@ -1,4 +1,3 @@
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,17 +15,20 @@ export default function Sidebar({
   strikeRange,
   onChangeStrikeRange,
   onReset,
+  expiries,
+  selectedExpiry,
+  onChangeExpiry,
 }) {
   const price = current?.price ?? 0;
   return (
     <aside
       data-testid="sidebar"
-      className="w-72 shrink-0 bg-white border-r border-slate-200 h-full flex flex-col"
+      className="w-72 shrink-0 bg-white border-r border-slate-200 h-full flex flex-col overflow-y-auto"
     >
       {/* Index search / switcher */}
       <div className="p-4 border-b border-slate-200">
         <Label className="text-[10px] uppercase tracking-widest text-slate-500">Index</Label>
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
           {indices.map((idx) => {
             const active = idx === activeIndex;
             return (
@@ -34,13 +36,13 @@ export default function Sidebar({
                 key={idx}
                 data-testid={`btn-index-${idx}`}
                 onClick={() => onChangeIndex(idx)}
-                className={`text-sm font-medium rounded-sm py-2 border ${
+                className={`text-xs font-medium rounded-sm py-2 border ${
                   active
                     ? "bg-slate-900 text-white border-slate-900"
                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                 }`}
               >
-                {idx}
+                {idx === "BANKNIFTY" ? "BANK" : idx}
               </button>
             );
           })}
@@ -65,17 +67,32 @@ export default function Sidebar({
 
       {/* Expiry */}
       <div className="p-4 border-b border-slate-200">
-        <Label className="text-[10px] uppercase tracking-widest text-slate-500">Expiry Included</Label>
-        <div className="mt-2 space-y-1.5">
-          <div className="expiry-row flex items-center gap-2 py-1 px-2 rounded-sm">
-            <Checkbox id="exp-nearest" checked disabled data-testid="exp-nearest" />
-            <label htmlFor="exp-nearest" className="text-sm text-slate-700 font-mono-data">
-              {current?.expiry || "—"} <span className="text-xs text-slate-400">(nearest)</span>
-            </label>
-          </div>
-          <p className="text-[11px] text-slate-400 italic pl-1">
-            Multi-expiry support coming soon.
-          </p>
+        <Label className="text-[10px] uppercase tracking-widest text-slate-500">Expiries Included</Label>
+        <div className="mt-2 space-y-1">
+          {(expiries || []).map((exp, i) => {
+            const active = selectedExpiry ? selectedExpiry === exp : i === 0;
+            return (
+              <button
+                key={exp + i}
+                data-testid={`expiry-${exp}`}
+                onClick={() => onChangeExpiry?.(exp)}
+                className={`w-full expiry-row flex items-center gap-2 py-1.5 px-2 rounded-sm text-left ${
+                  active ? "bg-slate-900 text-white" : "text-slate-700"
+                }`}
+              >
+                <span className={`w-3 h-3 rounded-sm border ${active ? "bg-white border-white" : "border-slate-400"}`} />
+                <span className="text-sm font-mono-data">{exp}</span>
+                {i === 0 && (
+                  <span className={`text-[9px] uppercase ml-auto ${active ? "text-white/70" : "text-slate-400"}`}>
+                    nearest
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {(!expiries || expiries.length === 0) && (
+            <p className="text-[11px] text-slate-400 italic pl-1">Loading expiries…</p>
+          )}
         </div>
       </div>
 

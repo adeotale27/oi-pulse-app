@@ -28,6 +28,13 @@ Web app that fetches NSE Open Interest data for NIFTY and SENSEX every 15 second
 - Demo mode enabled by default so the app is fully functional out of the box
 - Strike table view + Open Interest tab (absolute) + Alerts tab
 
+## Iteration 2 (2026-02-07) - P1 features
+- BANKNIFTY added as third index (NIFTY / SENSEX / BANK toggle in sidebar)
+- Multi-expiry: `/api/expiries/{index}` + `POST /api/expiries/{index}` + `?expiry=` query param on `/api/oi` and `/api/oi/change`. Sidebar shows the 4 nearest weekly expiries; user picks one and the chart / table update in place.
+- Downloadable CSV of the current OI snapshot (with prev + change columns) via header button
+- Configurable alert thresholds: `GET/POST /api/settings` with `threshold_pct`, `compare_minutes`, `cooldown_seconds`, `enabled_indices`. Settings modal in header (gear icon) with sliders + checklist.
+- Replay change timeline scrubber: uses `/api/history` to load last 3 hours of snapshots; slider + play/pause auto-plays through OI evolution and uses the scrubbed frame as the "previous" bar overlay.
+
 ## Backlog (P1)
 - Multi-expiry checklist (currently only nearest expiry)
 - Add BANKNIFTY index toggle

@@ -6,12 +6,15 @@ import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
+import SettingsModal from "@/components/SettingsModal";
+import ReplayScrubber from "@/components/ReplayScrubber";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus } from "@/lib/api";
+import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, api } from "@/lib/api";
+import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
 
-const INDICES = ["NIFTY", "SENSEX"];
+const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 const POLL_MS = 15000;
 
 export default function Dashboard() {
@@ -24,8 +27,12 @@ export default function Dashboard() {
   const [strikesAround, setStrikesAround] = useState(10);
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
   const [credsOpen, setCredsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [flash, setFlash] = useState(false);
+  const [expiries, setExpiries] = useState([]);
+  const [selectedExpiry, setSelectedExpiry] = useState(null);
+  const [replayFrame, setReplayFrame] = useState(null);
 
   const lastAlertIdRef = useRef(null);
   const { alarm, push, requestPermission } = useNotify();
@@ -43,13 +50,35 @@ export default function Dashboard() {
   // Poll OI + previous for the active index
   const loadOI = useCallback(async () => {
     try {
-      const data = await fetchOIChange(activeIndex, timeframe);
+      const params = { minutes: timeframe };
+      if (selectedExpiry) params.expiry = selectedExpiry;
+      const { data } = await api.get(`/oi/${activeIndex}/change`, { params });
       setCurrent(data.current);
       setPrevious(data.previous);
     } catch (e) {
-      // silent
+      /* silent */
     }
-  }, [activeIndex, timeframe]);
+  }, [activeIndex, timeframe, selectedExpiry]);
+
+  // Load expiries for the active index
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/expiries/${activeIndex}`).then((r) => {
+      if (cancelled) return;
+      const list = r.data.expiries || [];
+      setExpiries(list);
+      // reset selected expiry when switching index
+      setSelectedExpiry(list[0] || null);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeIndex]);
+
+  const handleChangeExpiry = async (exp) => {
+    setSelectedExpiry(exp);
+    try {
+      await api.post(`/expiries/${activeIndex}`, { expiry: exp });
+    } catch {}
+  };
 
   // Poll alerts
   const loadAlerts = useCallback(async () => {
@@ -168,6 +197,8 @@ export default function Dashboard() {
         status={status}
         current={current}
         onOpenCreds={() => setCredsOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
         notifEnabled={notifEnabled}
         onToggleNotif={handleToggleNotif}
       />
@@ -183,6 +214,9 @@ export default function Dashboard() {
           strikeRange={strikeRange}
           onChangeStrikeRange={setStrikeRange}
           onReset={handleReset}
+          expiries={expiries}
+          selectedExpiry={selectedExpiry}
+          onChangeExpiry={handleChangeExpiry}
         />
 
         <main className="flex-1 overflow-auto p-5">
@@ -223,12 +257,17 @@ export default function Dashboard() {
                     </div>
                     <OIChart
                       current={filteredCurrent}
-                      previous={previous}
+                      previous={replayFrame || previous}
                       atm={current?.atm}
                       mode={status?.mode}
                     />
-                    <div className="mt-3 pt-3 border-t border-slate-100">
+                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-3">
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
+                      <ReplayScrubber
+                        index={activeIndex}
+                        minutes={180}
+                        onReplayFrame={setReplayFrame}
+                      />
                     </div>
                     {changeSummary && (
                       <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-4 text-xs font-mono-data">
@@ -303,6 +342,12 @@ export default function Dashboard() {
       <CredentialsModal
         open={credsOpen}
         onOpenChange={setCredsOpen}
+        onSaved={loadStatus}
+      />
+
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
         onSaved={loadStatus}
       />
     </div>

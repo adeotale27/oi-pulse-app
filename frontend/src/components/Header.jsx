@@ -1,4 +1,4 @@
-import { Activity, KeyRound, Bell, BellOff } from "lucide-react";
+import { Activity, KeyRound, Bell, BellOff, Settings2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -6,6 +6,8 @@ export default function Header({
   status,
   current,
   onOpenCreds,
+  onOpenSettings,
+  onDownloadCsv,
   notifEnabled,
   onToggleNotif,
 }) {
@@ -64,6 +66,26 @@ export default function Header({
           title={notifEnabled ? "Notifications on" : "Enable notifications"}
         >
           {notifEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+        </Button>
+        <Button
+          data-testid="btn-download-csv"
+          variant="outline"
+          size="sm"
+          className="rounded-sm"
+          onClick={onDownloadCsv}
+          title="Download current OI as CSV"
+        >
+          <Download className="w-4 h-4" />
+        </Button>
+        <Button
+          data-testid="btn-open-settings"
+          variant="outline"
+          size="sm"
+          className="rounded-sm"
+          onClick={onOpenSettings}
+          title="Alert settings"
+        >
+          <Settings2 className="w-4 h-4" />
         </Button>
         <Button
           data-testid="btn-open-credentials"

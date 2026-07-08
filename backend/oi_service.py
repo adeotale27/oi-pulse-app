@@ -29,6 +29,13 @@ INDEX_CONFIG = {
         "segment": "BFO-OPT",
         "strikes_around_atm": 15,
     },
+    "BANKNIFTY": {
+        "quote_symbol": "NSE:NIFTY BANK",
+        "name": "BANKNIFTY",
+        "step": 100,
+        "segment": "NFO-OPT",
+        "strikes_around_atm": 15,
+    },
 }
 
 
@@ -69,7 +76,22 @@ class KiteService:
                 self.token_to_symbol[token] = sym
         self._loaded = True
 
-    def get_snapshot(self, index_name: str) -> Optional[Dict[str, Any]]:
+    def list_expiries(self, index_name: str):
+        try:
+            self._load_instruments()
+        except Exception as e:
+            logger.error(f"list_expiries load failed: {e}")
+            return []
+        import pandas as pd
+        cfg = INDEX_CONFIG[index_name]
+        opt_df = self.instruments_df[
+            (self.instruments_df["name"] == cfg["name"])
+            & (self.instruments_df["segment"] == cfg["segment"])
+        ]
+        expiries = sorted({str(pd.to_datetime(x).date()) for x in opt_df["expiry"].unique()})
+        return expiries
+
+    def get_snapshot(self, index_name: str, expiry: Optional[str] = None) -> Optional[Dict[str, Any]]:
         try:
             self._load_instruments()
         except Exception as e:
@@ -95,8 +117,15 @@ class KiteService:
             & (self.instruments_df["segment"] == cfg["segment"])
         ].copy()
         opt_df["expiry"] = pd.to_datetime(opt_df["expiry"])
-        nearest_expiry = opt_df["expiry"].min()
-        expiry_opt = opt_df[opt_df["expiry"] == nearest_expiry]
+        available = sorted(opt_df["expiry"].unique())
+        if expiry:
+            selected = pd.to_datetime(expiry)
+            if selected not in available:
+                selected = available[0]
+        else:
+            selected = available[0]
+        expiry_opt = opt_df[opt_df["expiry"] == selected]
+        all_expiries = [str(pd.Timestamp(x).date()) for x in available]
 
         ce_syms, pe_syms = {}, {}
         for st in strikes:
@@ -158,7 +187,8 @@ class KiteService:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "price": float(ltp),
             "atm": int(atm),
-            "expiry": str(nearest_expiry.date()),
+            "expiry": str(pd.Timestamp(selected).date()),
+            "expiries": all_expiries,
             "pcr": pcr,
             "vix": vix,
             "strikes": strikes_data,
@@ -174,8 +204,16 @@ class MockService:
     def __init__(self):
         self._state: Dict[str, Dict[str, Any]] = {}
         # base prices
-        self._base_price = {"NIFTY": 23800.0, "SENSEX": 78500.0}
-        for idx in ("NIFTY", "SENSEX"):
+        self._base_price = {"NIFTY": 23800.0, "SENSEX": 78500.0, "BANKNIFTY": 51200.0}
+        # generate 4 synthetic weekly expiries
+        from datetime import date
+        today = date.today()
+        # weekly Thursday for NFO, Tuesday for BFO — but we just use 7-day rolls
+        self._expiries = [
+            (today + timedelta(days=(((3 - today.weekday()) % 7) or 7) + 7 * k)).isoformat()
+            for k in range(4)
+        ]
+        for idx in ("NIFTY", "SENSEX", "BANKNIFTY"):
             self._init_index(idx)
 
     def _init_index(self, index_name: str):
@@ -185,53 +223,64 @@ class MockService:
         atm = round(base / step) * step
         n = cfg["strikes_around_atm"]
         strikes = [atm + i * step for i in range(-n, n + 1)]
-        # Seed OI with a realistic bell curve around ATM
-        strike_map = {}
-        for st in strikes:
-            distance = abs(st - atm) / step
-            base_oi = max(500_000, int(9_000_000 * (0.9 ** distance)))
-            # CE higher above ATM (call writers), PE higher below ATM (put writers)
-            ce_bias = 1.4 if st > atm else 0.9
-            pe_bias = 1.4 if st < atm else 0.9
-            strike_map[st] = {
-                "ce_oi": int(base_oi * ce_bias * random.uniform(0.85, 1.15)),
-                "pe_oi": int(base_oi * pe_bias * random.uniform(0.85, 1.15)),
-                "ce_ltp": max(0.5, (atm - st) if st < atm else random.uniform(5, 60)),
-                "pe_ltp": max(0.5, (st - atm) if st > atm else random.uniform(5, 60)),
-            }
+        # Seed OI per expiry - farther expiries have less OI
+        by_expiry = {}
+        for ei, exp in enumerate(self._expiries):
+            multiplier = [1.0, 0.55, 0.28, 0.15][ei]
+            strike_map = {}
+            for st in strikes:
+                distance = abs(st - atm) / step
+                base_oi = max(500_000, int(9_000_000 * (0.9 ** distance) * multiplier))
+                ce_bias = 1.4 if st > atm else 0.9
+                pe_bias = 1.4 if st < atm else 0.9
+                strike_map[st] = {
+                    "ce_oi": int(base_oi * ce_bias * random.uniform(0.85, 1.15)),
+                    "pe_oi": int(base_oi * pe_bias * random.uniform(0.85, 1.15)),
+                    "ce_ltp": max(0.5, (atm - st) if st < atm else random.uniform(5, 60)),
+                    "pe_ltp": max(0.5, (st - atm) if st > atm else random.uniform(5, 60)),
+                }
+            by_expiry[exp] = strike_map
         self._state[index_name] = {
             "price": base,
             "atm": atm,
-            "strikes": strike_map,
+            "expiries": by_expiry,
         }
 
-    def get_snapshot(self, index_name: str) -> Dict[str, Any]:
+    def list_expiries(self, index_name: str):
+        return list(self._expiries)
+
+    def get_snapshot(self, index_name: str, expiry: Optional[str] = None) -> Dict[str, Any]:
         cfg = INDEX_CONFIG[index_name]
         state = self._state[index_name]
+        exp = expiry or self._expiries[0]
+        if exp not in state["expiries"]:
+            # If unknown, fall back to nearest
+            exp = self._expiries[0]
+        strike_map = state["expiries"][exp]
 
-        # random walk price
+        # random walk price (shared across expiries)
         drift = random.uniform(-0.0005, 0.0005)
         state["price"] = state["price"] * (1 + drift)
         step = cfg["step"]
         new_atm = round(state["price"] / step) * step
         state["atm"] = new_atm
 
-        # ensure strikes exist around new atm
+        # ensure strikes exist around new atm for THIS expiry
         n = cfg["strikes_around_atm"]
         needed = [new_atm + i * step for i in range(-n, n + 1)]
         for st in needed:
-            if st not in state["strikes"]:
+            if st not in strike_map:
                 distance = abs(st - new_atm) / step
                 base_oi = max(500_000, int(9_000_000 * (0.9 ** distance)))
-                state["strikes"][st] = {
+                strike_map[st] = {
                     "ce_oi": int(base_oi * random.uniform(0.85, 1.15)),
                     "pe_oi": int(base_oi * random.uniform(0.85, 1.15)),
                     "ce_ltp": random.uniform(5, 60),
                     "pe_ltp": random.uniform(5, 60),
                 }
 
-        # update OI with small random walk; occasional 'spike' to trigger alerts
-        for st, d in state["strikes"].items():
+        # update OI with small random walk; occasional 'spike' for alerts
+        for st, d in strike_map.items():
             spike_ce = random.random() < 0.008
             spike_pe = random.random() < 0.008
             ce_pct = random.uniform(-0.02, 0.02) + (random.choice([-0.2, 0.25]) if spike_ce else 0)
@@ -241,13 +290,12 @@ class MockService:
             d["ce_ltp"] = max(0.5, d["ce_ltp"] * random.uniform(0.98, 1.02))
             d["pe_ltp"] = max(0.5, d["pe_ltp"] * random.uniform(0.98, 1.02))
 
-        # build response
         strikes_list = sorted(needed)
         strikes_data = []
         total_ce = 0
         total_pe = 0
         for st in strikes_list:
-            d = state["strikes"][st]
+            d = strike_map[st]
             total_ce += d["ce_oi"]
             total_pe += d["pe_oi"]
             strikes_data.append({
@@ -261,16 +309,15 @@ class MockService:
             })
 
         pcr = round(total_pe / total_ce, 2) if total_ce else 0.0
-        # random VIX
         vix = round(random.uniform(12.0, 18.0), 2)
-        expiry = (datetime.now() + timedelta(days=(3 - datetime.now().weekday()) % 7 or 7)).date()
 
         return {
             "index": index_name,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "price": round(state["price"], 2),
             "atm": int(new_atm),
-            "expiry": str(expiry),
+            "expiry": exp,
+            "expiries": self._expiries,
             "pcr": pcr,
             "vix": vix,
             "strikes": strikes_data,
