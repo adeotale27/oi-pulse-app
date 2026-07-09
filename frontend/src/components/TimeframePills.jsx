@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 
 const TIMEFRAMES = [
+  { key: 1, label: "Last 1 min" },
+  { key: 3, label: "Last 3 mins" },
   { key: 5, label: "Last 5 mins" },
   { key: 10, label: "Last 10 mins" },
   { key: 15, label: "Last 15 mins" },

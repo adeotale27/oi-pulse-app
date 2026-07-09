@@ -68,7 +68,11 @@ export default function Sidebar({
       {/* Expiry */}
       <div className="p-4 border-b border-slate-200">
         <Label className="text-[10px] uppercase tracking-widest text-slate-500">Expiries Included</Label>
-        <div className="mt-2 space-y-1">
+        <div
+          className="mt-2 space-y-1 pr-1 overflow-y-auto sidebar-expiries"
+          style={{ maxHeight: "168px" }}
+          data-testid="expiries-list"
+        >
           {(expiries || []).map((exp, i) => {
             const active = selectedExpiry ? selectedExpiry === exp : i === 0;
             return (

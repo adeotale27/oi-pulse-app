@@ -20,7 +20,7 @@ import { useNotify } from "@/hooks/useNotify";
 import { Play, HelpCircle } from "lucide-react";
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
-const POLL_MS = 15000;
+const POLL_MS = 30000;
 
 function formatDayLabel(iso) {
   const d = iso ? new Date(iso) : new Date();
@@ -142,20 +142,28 @@ export default function Dashboard() {
     };
   }, [loadOI, loadStatus, loadAlerts]);
 
-  // Reset strike range when index changes
+  // When index changes, immediately clear current/previous & strike range so
+  // filters from the previous index don't hide the new index's strikes.
   const prevIndexRef = useRef(activeIndex);
   useEffect(() => {
-    if (current && current.strikes?.length && prevIndexRef.current !== activeIndex) {
-      const min = current.strikes[0].strike;
-      const max = current.strikes[current.strikes.length - 1].strike;
-      setStrikeRange({ min, max });
+    if (prevIndexRef.current !== activeIndex) {
+      setCurrent(null);
+      setPrevious(null);
+      setStrikeRange({ min: null, max: null });
       prevIndexRef.current = activeIndex;
-    } else if (current && current.strikes?.length && strikeRange.min == null) {
-      const min = current.strikes[0].strike;
-      const max = current.strikes[current.strikes.length - 1].strike;
+    }
+  }, [activeIndex]);
+
+  // Once fresh snapshot arrives, initialise strike range to the full span of
+  // that snapshot (only if user hasn't already set a range).
+  useEffect(() => {
+    if (current && current.strikes?.length && (strikeRange.min == null || strikeRange.max == null)) {
+      const sorted = [...current.strikes].sort((a, b) => a.strike - b.strike);
+      const min = sorted[0].strike;
+      const max = sorted[sorted.length - 1].strike;
       setStrikeRange({ min, max });
     }
-  }, [activeIndex, current, strikeRange.min]);
+  }, [current, strikeRange.min, strikeRange.max]);
 
   // Filter strikes based on user selection
   const filteredCurrent = useMemo(() => {
@@ -204,14 +212,23 @@ export default function Dashboard() {
     if (!filteredCurrent || !previous) return null;
     const prevMap = new Map();
     (previous.strikes || []).forEach((s) => prevMap.set(s.strike, s));
-    let ce = 0, pe = 0;
+    let ce = 0, pe = 0, baseCE = 0, basePE = 0;
     for (const s of filteredCurrent.strikes) {
       const p = prevMap.get(s.strike);
       if (!p) continue;
       ce += s.ce_oi - p.ce_oi;
       pe += s.pe_oi - p.pe_oi;
+      baseCE += p.ce_oi || 0;
+      basePE += p.pe_oi || 0;
     }
-    return { ce, pe, prevAt: previous?.timestamp };
+    // "intensity" is the imbalance between put & call changes, relative to
+    // the base OI (0..1). Higher when one side moves a lot vs the other.
+    const denom = (baseCE + basePE) || 1;
+    const rawIntensity = Math.abs(pe - ce) / denom;
+    // Scale so a 1% relative net change already shows some tint, and a 5%+
+    // net change lights up strongly.
+    const intensity = Math.min(1, rawIntensity * 20);
+    return { ce, pe, prevAt: previous?.timestamp, intensity, bullish: pe - ce >= 0 };
   }, [filteredCurrent, previous]);
 
   return (
@@ -274,22 +291,17 @@ export default function Dashboard() {
                   />
                 )}
                 <div
-                  className="bg-white border border-slate-200 rounded-md p-4 transition-colors duration-500"
+                  className="bg-white border border-slate-200 rounded-md p-4 transition-colors duration-700"
+                  data-testid="oi-change-card"
                   style={
                     changeSummary
                       ? {
-                          backgroundColor:
-                            changeSummary.pe - changeSummary.ce >= 0
-                              ? `rgba(22,163,74,${Math.min(
-                                  0.08,
-                                  (Math.abs(changeSummary.pe - changeSummary.ce) /
-                                    (Math.abs(changeSummary.ce) + Math.abs(changeSummary.pe) || 1)) * 0.12
-                                )})`
-                              : `rgba(220,38,38,${Math.min(
-                                  0.08,
-                                  (Math.abs(changeSummary.pe - changeSummary.ce) /
-                                    (Math.abs(changeSummary.ce) + Math.abs(changeSummary.pe) || 1)) * 0.12
-                                )})`,
+                          backgroundColor: changeSummary.bullish
+                            ? `rgba(22,163,74,${(changeSummary.intensity * 0.35).toFixed(3)})`
+                            : `rgba(220,38,38,${(changeSummary.intensity * 0.35).toFixed(3)})`,
+                          boxShadow: changeSummary.intensity > 0.5
+                            ? `0 0 0 2px ${changeSummary.bullish ? "rgba(22,163,74,0.35)" : "rgba(220,38,38,0.35)"} inset`
+                            : undefined,
                         }
                       : undefined
                   }
