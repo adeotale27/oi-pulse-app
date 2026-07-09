@@ -240,19 +240,46 @@ agent_communication:
          tint changes with data.
       Auth: none. Demo mode is default; Live Kite is optional. All existing tabs (Open Interest,
       Strike Table, Alerts) should still work.
-    -agent: "testing"
+    -agent: "main"
     -message: |
-      All 5 follow-up tasks PASSED:
-      1) SENSEX/BANK switch now renders chart; strike range auto-updates (SENSEX 75500-78500,
-         BANK 55700-58700).
-      2) "Last 1 min" (tf-1) and "Last 3 mins" (tf-3) pills present, active-state works,
-         requests fire with minutes=1 and minutes=3.
-      3) Expiries container has maxHeight=168px + overflow-y auto; verified with 18 items.
-      4) /api/oi/{index}/change polls every 30s exactly, and immediately on timeframe change.
-      5) Card oi-change-card carries inline rgba backgroundColor (green when bullish,
-         red when bearish); tint scales with imbalance.
-      Sanity: title, "How to read this?" popover, and bottom summary panel all correct.
-      No action items for main agent.
+      Second bug-fix round. Please verify these five new/fixed behaviors:
+
+      A) "Full Day" pill now == minutes since 9:15 AM IST (market open) — not a
+         fixed 375. Test by clicking "Full Day" (data-testid="tf-full") and checking
+         Network tab: the request `/api/oi/{index}/change?minutes=X` should have
+         X ≈ (current IST clock in minutes from 9:15). Do not test the exact minute;
+         just confirm X > 60 during regular market hours and reasonable.
+
+      B) OI change values use adaptive units — small values like +300 now render
+         as "+0.3K" instead of "+0.00L". Confirm the strings in `[data-testid="summary-ce-change"]`
+         and `[data-testid="summary-pe-change"]` end with one of K, L or Cr (not always L)
+         and never display "+0.00L" for non-zero deltas.
+
+      C) A "OI last pulled at HH:MM:SS in last <timeframe>: PE +XL · CE +YL" line
+         appears under the black "Change on <Day>" pill (data-testid="last-pull-change").
+         The values should refresh on each 30s pull. Also a green pulsing dot with
+         "Pulled HH:MM:SS" (data-testid="last-pulled") appears next to the "Show OI"
+         switch in the chart card header.
+
+      D) Frontend alert engine: when the aggregate |PE-CE| change relative to the
+         base OI in the currently viewed timeframe is >= 35% intensity (very
+         imbalanced), a Sonner toast should fire with title
+         "<INDEX>: Bullish/Bearish pressure ... in last <timeframe>". Testing note:
+         this requires actual live data with a big imbalance, which the demo mock
+         may not always produce. Verify PROGRAMMATICALLY by evaluating window.
+         `document.querySelector('[data-testid="oi-change-card"]').style.backgroundColor`
+         to confirm the card tints react to the changeSummary; and by intercepting
+         Sonner: check `document.querySelectorAll('[data-sonner-toast]')` occasionally.
+         If no toast during the test window, just verify the code path exists
+         (search Dashboard.jsx for "ALERT_INTENSITY" and confirm useEffect wiring).
+
+      E) Backend alerts panel still populates on the right (data-testid absent —
+         `/api/alerts` returns >= 1 alert now during live SENSEX / NIFTY runs, and
+         the panel shows them). Just confirm the right-side "Alerts" section is
+         non-empty after ~1-2 minutes of runtime OR the backend `/api/alerts`
+         endpoint returns > 0 items.
+
+      Do NOT modify env, do NOT touch backend. Auth: none.
     -agent: "testing"
     -message: |
       TESTING COMPLETE - ALL 5 TASKS VERIFIED SUCCESSFULLY
@@ -290,3 +317,49 @@ agent_communication:
          - All tabs (OI Change, Open Interest, Strike Table, Alerts) accessible ✓
       
       No critical issues found. All requested features are working as expected.
+    -agent: "testing"
+    -message: |
+      SECOND ROUND TESTING COMPLETE - ALL 5 ITEMS (A-E) VERIFIED SUCCESSFULLY
+      
+      Comprehensive verification performed on https://data-refresh-v2.preview.emergentagent.com
+      
+      ✅ ITEM A: Full Day pill dynamic minutes calculation
+         - Clicked Full Day pill (data-testid="tf-full")
+         - Network request captured: /api/oi/NIFTY/change?minutes=99
+         - Minutes value: 99 (valid, >= 60, <= 1440, NOT the old hardcoded 375)
+         - Confirms dynamic calculation based on minutes since 9:15 AM IST is working
+      
+      ✅ ITEM B: Adaptive units in change summary
+         - Initial values: CE "—", PE "—" (em-dash, matches pattern)
+         - After switching to "Last 1 min": CE "+6.49L", PE "+20.1K"
+         - Both use adaptive units (L for lakhs, K for thousands)
+         - No forbidden "+0.00L" or "-0.00L" values found
+         - Pattern validation: Both match regex ^[+-]?\d+(\.\d+)?(K|L|Cr)?$|^—$
+      
+      ✅ ITEM C: Last-pull indicators
+         - [data-testid="last-pull-change"]: Contains "OI last pulled at 5:23:10 AM", "in last 1 min", "PE +20.1K", "CE +6.49L" ✓
+         - [data-testid="last-pulled"]: Shows "Pulled 5:23:10 AM" with green pulsing dot ✓
+         - [data-testid="footer-refresh"]: Shows "OI last pulled — 5:23:10 AM" ✓
+         - All three indicators present and updating correctly
+      
+      ✅ ITEM D: Frontend alert engine wiring
+         - ALERT_INTENSITY constant found in /static/js/bundle.js (code path compiled) ✓
+         - Card background color: rgba(22, 163, 74, 0.19) - green tint for bullish sentiment ✓
+         - Card boxShadow: rgba(22, 163, 74, 0.35) 0px 0px 0px 2px inset - strong intensity ring ✓
+         - Sonner toast observed: "NIFTY: Bullish pressure (Put OI building) in last 15 mins" ✓
+         - Toast description: "PE -21.14L CE -60.59L" ✓
+         - All three aspects verified: code exists, styling works, toasts fire
+      
+      ✅ ITEM E: Alerts panel populated
+         - Alerts panel heading "Alerts" found in right sidebar ✓
+         - 2 alert cards present in panel (SENSEX bearish pressure alerts) ✓
+         - Panel is populated and displaying alerts correctly
+      
+      ✅ Additional observations:
+         - Sentiment bar showing "+48%" bullish pressure
+         - Card tint changes dynamically: red for bearish, green for bullish
+         - Intensity-based styling working (stronger tint + inset ring for high intensity)
+         - 30-second polling confirmed (multiple requests observed)
+         - All timeframe pills functional (1 min, 3 mins, 5 mins, etc.)
+      
+      No critical issues found. All 5 items (A-E) are working as specified.

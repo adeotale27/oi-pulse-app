@@ -21,19 +21,64 @@ import { Play, HelpCircle } from "lucide-react";
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 const POLL_MS = 30000;
+// Threshold on aggregate |PE - CE| change relative to base OI that triggers a
+// frontend-side alert on each data-pull for the currently viewed timeframe.
+const ALERT_INTENSITY = 0.35;
+const ALERT_COOLDOWN_MS = 60000;
 
 function formatDayLabel(iso) {
   const d = iso ? new Date(iso) : new Date();
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
 
-function formatClock(iso) {
+function formatClock(iso, withSeconds = false) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return new Date(iso).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      ...(withSeconds ? { second: "2-digit" } : {}),
+    });
   } catch {
     return "";
   }
+}
+
+// Format an absolute OI delta with adaptive units so tiny changes don't collapse to "+0.00L".
+function formatDelta(v) {
+  if (v == null || Number.isNaN(v)) return "—";
+  const abs = Math.abs(v);
+  const sign = v > 0 ? "+" : v < 0 ? "-" : "";
+  if (abs >= 1e7) return `${sign}${(abs / 1e7).toFixed(2)}Cr`;
+  if (abs >= 1e5) return `${sign}${(abs / 1e5).toFixed(2)}L`;
+  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(1)}K`;
+  return `${sign}${Math.round(abs)}`;
+}
+
+// Minutes elapsed since today's NSE market open (9:15 AM IST). If the current
+// wall-clock time is before market open, we fall back to yesterday's open so
+// the request always resolves to a valid earlier timestamp.
+function minutesSinceMarketOpenIST() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "numeric", minute: "numeric", second: "numeric", hour12: false,
+  }).formatToParts(now);
+  const h = parseInt(parts.find((p) => p.type === "hour").value, 10);
+  const m = parseInt(parts.find((p) => p.type === "minute").value, 10);
+  const s = parseInt(parts.find((p) => p.type === "second").value, 10);
+  const nowMin = h * 60 + m + s / 60;
+  const openMin = 9 * 60 + 15; // 9:15 AM IST
+  const diff = nowMin - openMin;
+  if (diff > 0) return Math.ceil(diff);
+  // Before market open today: use previous day's open (~24h earlier).
+  return Math.ceil(24 * 60 + diff);
+}
+
+// Turn a timeframe pill key into a concrete "minutes" value the API accepts.
+function resolveMinutes(tf) {
+  if (tf === "full") return Math.min(1440, minutesSinceMarketOpenIST());
+  return Number(tf) || 15;
 }
 
 export default function Dashboard() {
@@ -54,8 +99,11 @@ export default function Dashboard() {
   const [replayFrame, setReplayFrame] = useState(null);
   const [showOI, setShowOI] = useState(true);
   const [replayOpen, setReplayOpen] = useState(false);
+  const [lastPulledAt, setLastPulledAt] = useState(null);
+  const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
 
   const lastAlertIdRef = useRef(null);
+  const lastLocalAlertRef = useRef(0);
   const { alarm, push, requestPermission } = useNotify();
 
   // Poll status
@@ -71,11 +119,12 @@ export default function Dashboard() {
   // Poll OI + previous for the active index
   const loadOI = useCallback(async () => {
     try {
-      const params = { minutes: timeframe };
+      const params = { minutes: resolveMinutes(timeframe) };
       if (selectedExpiry) params.expiry = selectedExpiry;
       const { data } = await api.get(`/oi/${activeIndex}/change`, { params });
       setCurrent(data.current);
       setPrevious(data.previous);
+      setLastPulledAt(new Date().toISOString());
     } catch (e) {
       console.error("loadOI failed", e);
     }
@@ -221,15 +270,47 @@ export default function Dashboard() {
       baseCE += p.ce_oi || 0;
       basePE += p.pe_oi || 0;
     }
-    // "intensity" is the imbalance between put & call changes, relative to
-    // the base OI (0..1). Higher when one side moves a lot vs the other.
     const denom = (baseCE + basePE) || 1;
     const rawIntensity = Math.abs(pe - ce) / denom;
-    // Scale so a 1% relative net change already shows some tint, and a 5%+
-    // net change lights up strongly.
     const intensity = Math.min(1, rawIntensity * 20);
     return { ce, pe, prevAt: previous?.timestamp, intensity, bullish: pe - ce >= 0 };
   }, [filteredCurrent, previous]);
+
+  // Frontend-side alert engine: fires a toast + browser notification whenever
+  // the aggregated CE / PE change for the CURRENT timeframe crosses a strong
+  // intensity threshold. Cooldown prevents repeated alerts on every 30s pull
+  // while the same condition persists.
+  const tfLabelMap = {
+    1: "1 min", 3: "3 mins", 5: "5 mins", 10: "10 mins", 15: "15 mins",
+    30: "30 mins", 60: "1 Hr", 120: "2 Hrs", 180: "3 Hrs", full: "Full Day",
+  };
+  const timeframeLabel = tfLabelMap[timeframe] || `${timeframe} min`;
+
+  useEffect(() => {
+    if (!changeSummary || !lastPulledAt) return;
+    // Update "last pull change" every time new data arrives so the UI can show
+    // both when data was pulled and the OI change seen at that pull.
+    setLastPullChange({ ce: changeSummary.ce, pe: changeSummary.pe, at: lastPulledAt, timeframeLabel });
+    // Fire local alert if intensity crosses threshold and cooldown has elapsed.
+    const now = Date.now();
+    if (
+      changeSummary.intensity >= ALERT_INTENSITY &&
+      now - lastLocalAlertRef.current > ALERT_COOLDOWN_MS
+    ) {
+      lastLocalAlertRef.current = now;
+      const dir = changeSummary.bullish
+        ? "Bullish pressure (Put OI building)"
+        : "Bearish pressure (Call OI building)";
+      const msg = `${activeIndex}: ${dir} in last ${timeframeLabel}`;
+      const desc = `PE ${formatDelta(changeSummary.pe)} · CE ${formatDelta(changeSummary.ce)}`;
+      if (changeSummary.bullish) toast.success(msg, { description: desc, duration: 6000 });
+      else toast.error(msg, { description: desc, duration: 6000 });
+      try { alarm(); } catch {}
+      try { push(`OI Change · ${activeIndex}`, msg); } catch {}
+      setFlash(true);
+      setTimeout(() => setFlash(false), 1800);
+    }
+  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -351,6 +432,12 @@ export default function Dashboard() {
                         </button>
                       </div>
                       <div className="flex items-center gap-2">
+                        {lastPulledAt && (
+                          <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-slate-500 font-mono-data mr-2" data-testid="last-pulled">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Pulled {formatClock(lastPulledAt, true)}
+                          </span>
+                        )}
                         <Switch
                           data-testid="switch-show-oi"
                           checked={showOI}
@@ -391,26 +478,37 @@ export default function Dashboard() {
                     </div>
                     {(
                       <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-[auto_1fr_1fr] gap-6 items-start text-xs" data-testid="change-summary">
-                        <div>
+                        <div className="space-y-2">
                           <div className="inline-flex items-center px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium" data-testid="change-summary-title">
                             Change on {formatDayLabel(current?.timestamp)}
                           </div>
+                          {lastPullChange && (
+                            <div className="text-[10px] text-slate-500 font-mono-data leading-tight" data-testid="last-pull-change">
+                              OI last pulled at{" "}
+                              <span className="text-slate-900">{formatClock(lastPullChange.at, true)}</span>
+                              <br />
+                              in last {lastPullChange.timeframeLabel}:{" "}
+                              <span className={lastPullChange.pe >= 0 ? "text-emerald-600" : "text-rose-600"}>
+                                PE {formatDelta(lastPullChange.pe)}
+                              </span>
+                              {" · "}
+                              <span className={lastPullChange.ce >= 0 ? "text-rose-600" : "text-emerald-600"}>
+                                CE {formatDelta(lastPullChange.ce)}
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <div className="space-y-1.5 font-mono-data">
                           <div className="flex items-center gap-3">
                             <span className="text-slate-500 w-24">Call OI change:</span>
                             <span className={changeSummary && changeSummary.ce >= 0 ? "text-rose-600 font-semibold" : "text-emerald-600 font-semibold"} data-testid="summary-ce-change">
-                              {changeSummary
-                                ? `${changeSummary.ce >= 0 ? "+" : ""}${(changeSummary.ce / 1e5).toFixed(2)}L`
-                                : "—"}
+                              {changeSummary ? formatDelta(changeSummary.ce) : "—"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-slate-500 w-24">Put OI change:</span>
                             <span className={changeSummary && changeSummary.pe >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold"} data-testid="summary-pe-change">
-                              {changeSummary
-                                ? `${changeSummary.pe >= 0 ? "+" : ""}${(changeSummary.pe / 1e5).toFixed(2)}L`
-                                : "—"}
+                              {changeSummary ? formatDelta(changeSummary.pe) : "—"}
                             </span>
                           </div>
                         </div>
@@ -466,15 +564,17 @@ export default function Dashboard() {
 
                 <div className="bg-white border border-slate-200 rounded-md p-3 text-xs text-slate-600 flex items-center justify-between">
                   <div data-testid="footer-refresh">
-                    OI last refreshed —{" "}
+                    OI last pulled —{" "}
                     <span className="font-mono-data text-slate-900">
-                      {status?.last_updated_at
-                        ? new Date(status.last_updated_at).toLocaleTimeString()
-                        : "—"}
+                      {lastPulledAt
+                        ? formatClock(lastPulledAt, true)
+                        : status?.last_updated_at
+                          ? new Date(status.last_updated_at).toLocaleTimeString()
+                          : "—"}
                     </span>
                   </div>
                   <div className="text-slate-500">
-                    Auto-refresh every {status?.poll_interval_seconds ?? 15}s ·{" "}
+                    Auto-refresh every 30s ·{" "}
                     <span className="font-mono-data">
                       {status?.mode === "kite" ? "Live Zerodha feed" : "Demo simulator"}
                     </span>

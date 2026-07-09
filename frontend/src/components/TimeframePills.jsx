@@ -10,7 +10,7 @@ const TIMEFRAMES = [
   { key: 60, label: "Last 1 Hr" },
   { key: 120, label: "Last 2 Hrs" },
   { key: 180, label: "Last 3 Hrs" },
-  { key: 375, label: "Full Day" },
+  { key: "full", label: "Full Day" },
 ];
 
 export default function TimeframePills({ value, onChange }) {
