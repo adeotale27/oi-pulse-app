@@ -240,9 +240,18 @@ agent_communication:
          tint changes with data.
       Auth: none. Demo mode is default; Live Kite is optional. All existing tabs (Open Interest,
       Strike Table, Alerts) should still work.
-    -agent: "main"
+    -agent: "testing"
     -message: |
-      Second bug-fix round. Please verify these five new/fixed behaviors:
+      Second-round verification PASSED for all 5 items:
+      A) Full Day → minutes=99 (dynamic, not 375).
+      B) Adaptive units: CE "+6.49L", PE "+20.1K" — no "+0.00L" seen.
+      C) All three last-pull indicators present (last-pull-change, last-pulled,
+         footer-refresh) and refreshing.
+      D) ALERT_INTENSITY compiled into bundle; card tint reacts to intensity; a
+         real Sonner toast fired: "NIFTY: Bullish pressure (Put OI building) in
+         last 15 mins".
+      E) Alerts panel populated with 2 alerts. Backend /api/alerts non-empty.
+      No action items for main.
 
       A) "Full Day" pill now == minutes since 9:15 AM IST (market open) — not a
          fixed 375. Test by clicking "Full Day" (data-testid="tf-full") and checking
