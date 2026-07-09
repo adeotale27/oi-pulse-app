@@ -242,6 +242,19 @@ agent_communication:
       Strike Table, Alerts) should still work.
     -agent: "testing"
     -message: |
+      All 5 follow-up tasks PASSED:
+      1) SENSEX/BANK switch now renders chart; strike range auto-updates (SENSEX 75500-78500,
+         BANK 55700-58700).
+      2) "Last 1 min" (tf-1) and "Last 3 mins" (tf-3) pills present, active-state works,
+         requests fire with minutes=1 and minutes=3.
+      3) Expiries container has maxHeight=168px + overflow-y auto; verified with 18 items.
+      4) /api/oi/{index}/change polls every 30s exactly, and immediately on timeframe change.
+      5) Card oi-change-card carries inline rgba backgroundColor (green when bullish,
+         red when bearish); tint scales with imbalance.
+      Sanity: title, "How to read this?" popover, and bottom summary panel all correct.
+      No action items for main agent.
+    -agent: "testing"
+    -message: |
       TESTING COMPLETE - ALL 5 TASKS VERIFIED SUCCESSFULLY
       
       Comprehensive UI testing performed on https://data-refresh-v2.preview.emergentagent.com
