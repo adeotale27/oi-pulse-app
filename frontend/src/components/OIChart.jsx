@@ -15,7 +15,16 @@ function formatOI(v) {
   return v.toLocaleString();
 }
 
-export default function OIChart({ current, previous, mode, atm }) {
+function formatTime(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
+
+export default function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime }) {
   // Build merged strike -> { pe_now, pe_prev, ce_now, ce_prev }
   const data = useMemo(() => {
     if (!current) return [];
@@ -49,6 +58,9 @@ export default function OIChart({ current, previous, mode, atm }) {
     );
   }
 
+  const ct = currentTime || current?.timestamp;
+  const pt = prevTime || previous?.timestamp;
+
   return (
     <div className="w-full h-[440px]" data-testid="oi-chart">
       <ResponsiveContainer>
@@ -80,23 +92,21 @@ export default function OIChart({ current, previous, mode, atm }) {
             tickLine={false}
             tickFormatter={formatOI}
             width={64}
+            label={{
+              value: "Call / Put OI",
+              angle: -90,
+              position: "insideLeft",
+              style: { fill: "#64748B", fontSize: 11, textAnchor: "middle" },
+              offset: 10,
+            }}
           />
           <Tooltip
-            cursor={{ fill: "rgba(148,163,184,0.1)" }}
-            content={<CustomTooltip mode={mode} atm={atm} />}
+            cursor={{ fill: "rgba(148,163,184,0.12)" }}
+            content={<CustomTooltip mode={mode} atm={atm} currentTime={ct} prevTime={pt} />}
           />
           <Legend
             verticalAlign="bottom"
-            iconType="square"
-            wrapperStyle={{ fontSize: 12, paddingTop: 8, fontFamily: "Outfit" }}
-            payload={[
-              { value: "Put OI", type: "square", color: PUT_GREEN, id: "pe" },
-              { value: "Increase", type: "square", color: "#86EFAC", id: "peinc" },
-              { value: "Decrease", type: "square", color: "#DCFCE7", id: "pedec" },
-              { value: "Call OI", type: "square", color: CALL_RED, id: "ce" },
-              { value: "Increase", type: "square", color: "#FCA5A5", id: "ceinc" },
-              { value: "Decrease", type: "square", color: "#FEE2E2", id: "cedec" },
-            ]}
+            content={<CustomLegend showOI={showOI} />}
           />
           {atm && (
             <ReferenceLine
@@ -113,11 +123,11 @@ export default function OIChart({ current, previous, mode, atm }) {
             />
           )}
           {/* PUT stack: base (previous OI, solid), inc (striped on top), dec (hollow on top) */}
-          <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} />
+          {showOI && <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} />}
           <Bar dataKey="pe_inc" stackId="pe" name="Put Increase" fill="url(#pe-inc-pat)" radius={[2, 2, 0, 0]} />
           <Bar dataKey="pe_dec" stackId="pe" name="Put Decrease" fill="transparent" stroke={PUT_GREEN} strokeWidth={1.4} radius={[2, 2, 0, 0]} />
           {/* CALL stack */}
-          <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} />
+          {showOI && <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} />}
           <Bar dataKey="ce_inc" stackId="ce" name="Call Increase" fill="url(#ce-inc-pat)" radius={[2, 2, 0, 0]} />
           <Bar dataKey="ce_dec" stackId="ce" name="Call Decrease" fill="transparent" stroke={CALL_RED} strokeWidth={1.4} radius={[2, 2, 0, 0]} />
         </BarChart>
@@ -126,36 +136,90 @@ export default function OIChart({ current, previous, mode, atm }) {
   );
 }
 
-function CustomTooltip({ active, payload, label, atm }) {
+function CustomTooltip({ active, payload, label, atm, currentTime, prevTime }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
-  const peDeltaPct = d.pe_prev ? ((d.pe_delta / d.pe_prev) * 100).toFixed(2) : "0.00";
-  const ceDeltaPct = d.ce_prev ? ((d.ce_delta / d.ce_prev) * 100).toFixed(2) : "0.00";
   const isAtm = atm === d.strike;
+  const ctLbl = formatTime(currentTime);
+  const ptLbl = formatTime(prevTime);
   return (
-    <div className="bg-white border border-slate-200 rounded-sm shadow-lg px-3 py-2 text-xs">
-      <div className="font-semibold text-slate-800 font-mono-data mb-1.5">
+    <div className="bg-white border border-slate-200 rounded-md shadow-xl px-4 py-3 text-xs min-w-[240px]" data-testid="oi-tooltip">
+      <div className="font-semibold text-slate-900 mb-2 text-sm">
         Strike {label} {isAtm && <span className="text-[10px] text-amber-600 ml-1">ATM</span>}
       </div>
-      <div className="space-y-1 font-mono-data">
-        <Row color="#16A34A" label="Put OI" now={d.pe_now} delta={d.pe_delta} pct={peDeltaPct} />
-        <Row color="#DC2626" label="Call OI" now={d.ce_now} delta={d.ce_delta} pct={ceDeltaPct} />
+      <div className="space-y-1.5 font-mono-data">
+        <TipRow color={PUT_GREEN} label={`Put OI at ${ptLbl}`} value={formatOI(d.pe_prev)} />
+        <TipRow color={PUT_GREEN} label="Put OI chg" value={`${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`} deltaPositive={d.pe_delta >= 0} isDelta />
+        <TipRow color={PUT_GREEN} label={`Put OI at ${ctLbl}`} value={formatOI(d.pe_now)} muted />
+        <div className="h-px bg-slate-100 my-1" />
+        <TipRow color={CALL_RED} label={`Call OI at ${ptLbl}`} value={formatOI(d.ce_prev)} />
+        <TipRow color={CALL_RED} label="Call OI chg" value={`${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`} deltaPositive={d.ce_delta >= 0} isDelta />
+        <TipRow color={CALL_RED} label={`Call OI at ${ctLbl}`} value={formatOI(d.ce_now)} muted />
       </div>
     </div>
   );
 }
 
-function Row({ color, label, now, delta, pct }) {
-  const up = delta >= 0;
+function TipRow({ color, label, value, muted, isDelta, deltaPositive }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-2 h-2 rounded-sm" style={{ background: color }} />
-      <span className="text-slate-500 w-14">{label}</span>
-      <span className="text-slate-900">{formatOI(now)}</span>
-      <span className={up ? "text-emerald-600" : "text-rose-600"}>
-        {up ? "▲" : "▼"} {formatOI(Math.abs(delta))} ({pct}%)
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+        <span className={muted ? "text-slate-500" : "text-slate-700"}>{label}</span>
+      </div>
+      <span
+        className={
+          isDelta
+            ? deltaPositive
+              ? "text-emerald-600 font-semibold"
+              : "text-rose-600 font-semibold"
+            : "text-slate-900 font-medium"
+        }
+      >
+        {value}
       </span>
     </div>
+  );
+}
+
+function CustomLegend({ showOI }) {
+  const items = [
+    ...(showOI ? [{ label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> }] : []),
+    { label: "Increase", swatch: <SwatchStripe color={PUT_GREEN} light="#86EFAC" /> },
+    { label: "Decrease", swatch: <SwatchOutline color={PUT_GREEN} /> },
+    ...(showOI ? [{ label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> }] : []),
+    { label: "Increase", swatch: <SwatchStripe color={CALL_RED} light="#FCA5A5" /> },
+    { label: "Decrease", swatch: <SwatchOutline color={CALL_RED} /> },
+  ];
+  return (
+    <div className="flex items-center justify-center gap-x-5 gap-y-2 flex-wrap pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
+      {items.map((it, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          {it.swatch}
+          <span>{it.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SwatchStripe({ color, light }) {
+  return (
+    <span
+      className="w-3 h-3 inline-block rounded-sm"
+      style={{
+        backgroundImage: `repeating-linear-gradient(45deg, ${color} 0 2px, ${light} 2px 4px)`,
+      }}
+    />
+  );
+}
+
+function SwatchOutline({ color }) {
+  return (
+    <span
+      className="w-3 h-3 inline-block rounded-sm"
+      style={{ background: "transparent", border: `1.5px solid ${color}` }}
+    />
   );
 }
