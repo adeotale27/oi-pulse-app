@@ -164,7 +164,9 @@ export default function Dashboard() {
         lastAlertIdRef.current = list[0].created_at;
         if (!isFirstLoad) {
           const a = list[0];
-          toast.error(a.message, {
+          const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
+          const toastFn = isBullish ? toast.success : toast.error;
+          toastFn(a.message, {
             description: `Price ${a.price?.toFixed?.(2)} · ATM ${a.atm}`,
             duration: 8000,
           });
@@ -285,6 +287,89 @@ export default function Dashboard() {
     30: "30 mins", 60: "1 Hr", 120: "2 Hrs", 180: "3 Hrs", full: "Full Day",
   };
   const timeframeLabel = tfLabelMap[timeframe] || `${timeframe} min`;
+
+  // Human-readable start-of-window label used for the mini time slider.
+  const windowStartLabel = useMemo(() => {
+    if (timeframe === "full") return "9:15 AM";
+    if (previous?.timestamp) return formatClock(previous.timestamp);
+    if (current?.timestamp) {
+      const d = new Date(new Date(current.timestamp).getTime() - Number(timeframe) * 60000);
+      return formatClock(d.toISOString());
+    }
+    return "—";
+  }, [timeframe, previous, current]);
+
+  // ---------- Trader intelligence panel ----------
+  // Max Pain = strike with minimum aggregate option value at expiry
+  // (Σ_all-strikes max(0, spot-K) * CE_OI + max(0, K-spot) * PE_OI).
+  const marketIntel = useMemo(() => {
+    if (!filteredCurrent?.strikes?.length) return null;
+    const strikes = filteredCurrent.strikes;
+    const spot = filteredCurrent.price || filteredCurrent.atm;
+
+    // Max Pain
+    let maxPainStrike = null;
+    let minPain = Infinity;
+    for (const s of strikes) {
+      let pain = 0;
+      for (const t of strikes) {
+        pain += Math.max(0, s.strike - t.strike) * (t.ce_oi || 0);
+        pain += Math.max(0, t.strike - s.strike) * (t.pe_oi || 0);
+      }
+      if (pain < minPain) { minPain = pain; maxPainStrike = s.strike; }
+    }
+
+    // Support & resistance = strikes with highest OI (writers = smart money)
+    const byCE = [...strikes].sort((a, b) => (b.ce_oi || 0) - (a.ce_oi || 0));
+    const byPE = [...strikes].sort((a, b) => (b.pe_oi || 0) - (a.pe_oi || 0));
+    const resistance = byCE[0]?.strike;
+    const support = byPE[0]?.strike;
+
+    // PCR (Put/Call Ratio) on total OI in filtered window
+    let totCE = 0, totPE = 0;
+    strikes.forEach((s) => { totCE += s.ce_oi || 0; totPE += s.pe_oi || 0; });
+    const pcr = totCE > 0 ? totPE / totCE : 0;
+
+    // ATM-band buildup classification (uses previous snapshot deltas + price change)
+    const prevMap = new Map();
+    (previous?.strikes || []).forEach((s) => prevMap.set(s.strike, s));
+    const priceDeltaPct = previous?.price && spot
+      ? ((spot - previous.price) / previous.price) * 100
+      : 0;
+
+    let atmPeDelta = 0, atmCeDelta = 0;
+    const atm = filteredCurrent.atm;
+    for (const s of strikes) {
+      if (Math.abs(s.strike - atm) <= (atm * 0.005)) {
+        const p = prevMap.get(s.strike);
+        if (p) { atmPeDelta += s.pe_oi - p.pe_oi; atmCeDelta += s.ce_oi - p.ce_oi; }
+      }
+    }
+
+    // Overall verdict blends OI-change intensity (from changeSummary), PCR level
+    // and short-term price movement into a single -100..+100 score.
+    let oiScore = 0;
+    if (changeSummary) {
+      const norm = changeSummary.pe - changeSummary.ce;
+      const base = Math.max(1, totCE + totPE);
+      oiScore = Math.max(-1, Math.min(1, (norm / base) * 25));
+    }
+    const pcrScore = Math.max(-1, Math.min(1, (pcr - 1) / 1)); // >1 bullish
+    const priceScore = Math.max(-1, Math.min(1, priceDeltaPct / 0.4));
+    const blended = (oiScore * 0.5 + pcrScore * 0.2 + priceScore * 0.3);
+    const score = Math.round(blended * 100);
+
+    let label = "Neutral", tone = "slate";
+    if (score >= 60) { label = "Strong Bullish"; tone = "emerald"; }
+    else if (score >= 25) { label = "Bullish"; tone = "emerald"; }
+    else if (score <= -60) { label = "Strong Bearish"; tone = "rose"; }
+    else if (score <= -25) { label = "Bearish"; tone = "rose"; }
+
+    return {
+      maxPain: maxPainStrike, support, resistance, pcr, pcrScore,
+      atmPeDelta, atmCeDelta, priceDeltaPct, score, label, tone,
+    };
+  }, [filteredCurrent, previous, changeSummary]);
 
   useEffect(() => {
     if (!changeSummary || !lastPulledAt) return;
@@ -457,15 +542,54 @@ export default function Dashboard() {
                       currentTime={current?.timestamp}
                       prevTime={(replayFrame || previous)?.timestamp}
                     />
+                    {marketIntel && (
+                      <div
+                        className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px] font-mono-data"
+                        data-testid="market-intel"
+                      >
+                        <div
+                          className={`col-span-2 md:col-span-1 flex items-center gap-2 rounded-md px-3 py-2 border ${
+                            marketIntel.tone === "emerald"
+                              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                              : marketIntel.tone === "rose"
+                                ? "bg-rose-50 border-rose-200 text-rose-800"
+                                : "bg-slate-50 border-slate-200 text-slate-700"
+                          }`}
+                          data-testid="market-verdict"
+                        >
+                          <span className="uppercase tracking-widest text-[9px] opacity-70">Bias</span>
+                          <span className="text-sm font-semibold" data-testid="market-verdict-label">{marketIntel.label}</span>
+                          <span className={`ml-auto text-[10px] tabular-nums ${marketIntel.score >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                            {marketIntel.score >= 0 ? "+" : ""}{marketIntel.score}
+                          </span>
+                        </div>
+                        <IntelCell label="PCR" value={marketIntel.pcr.toFixed(2)}
+                          hint={marketIntel.pcr >= 1.05 ? "Bullish (≥1.05)" : marketIntel.pcr <= 0.95 ? "Bearish (≤0.95)" : "Neutral"}
+                          tone={marketIntel.pcr >= 1.05 ? "emerald" : marketIntel.pcr <= 0.95 ? "rose" : "slate"} />
+                        <IntelCell label="Max Pain" value={marketIntel.maxPain?.toLocaleString()}
+                          hint={
+                            current?.price && marketIntel.maxPain
+                              ? current.price > marketIntel.maxPain
+                                ? `Spot ${((current.price - marketIntel.maxPain) / marketIntel.maxPain * 100).toFixed(2)}% above`
+                                : `Spot ${((marketIntel.maxPain - current.price) / marketIntel.maxPain * 100).toFixed(2)}% below`
+                              : ""
+                          }
+                          tone={current?.price > marketIntel.maxPain ? "emerald" : "rose"} />
+                        <IntelCell label="Support" value={marketIntel.support?.toLocaleString()}
+                          hint="Highest Put OI" tone="emerald" />
+                        <IntelCell label="Resistance" value={marketIntel.resistance?.toLocaleString()}
+                          hint="Highest Call OI" tone="rose" />
+                      </div>
+                    )}
                     <div className="mt-3 pt-3 border-t border-slate-100 space-y-3">
                       <div className="flex items-center justify-between text-xs font-mono-data text-slate-600">
-                        <span>{formatClock((replayFrame || previous)?.timestamp) || "—"}</span>
+                        <span data-testid="window-start-label">{windowStartLabel}</span>
                         <span className="flex-1 mx-3 h-1.5 rounded-full bg-slate-100 relative">
                           <span className="absolute inset-y-0 left-0 rounded-full bg-sky-500" style={{ width: "100%" }} />
                           <span className="absolute -top-1 left-0 w-3.5 h-3.5 rounded-full bg-sky-500 border-2 border-white shadow" />
                           <span className="absolute -top-1 right-0 w-3.5 h-3.5 rounded-full bg-sky-500 border-2 border-white shadow" />
                         </span>
-                        <span>{formatClock(current?.timestamp) || "—"}</span>
+                        <span data-testid="window-end-label">{formatClock(current?.timestamp) || formatClock(lastPulledAt) || "—"}</span>
                       </div>
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                       {replayOpen && (
@@ -601,6 +725,25 @@ export default function Dashboard() {
         onOpenChange={setSettingsOpen}
         onSaved={loadStatus}
       />
+    </div>
+  );
+}
+
+function IntelCell({ label, value, hint, tone = "slate" }) {
+  const toneClass =
+    tone === "emerald"
+      ? "text-emerald-700"
+      : tone === "rose"
+        ? "text-rose-700"
+        : "text-slate-700";
+  return (
+    <div
+      className="rounded-md border border-slate-200 bg-white px-3 py-2 flex flex-col leading-tight"
+      data-testid={`intel-${label.toLowerCase().replace(/\s+/g, "-")}`}
+    >
+      <span className="uppercase tracking-widest text-[9px] text-slate-400">{label}</span>
+      <span className={`text-sm font-semibold ${toneClass}`}>{value ?? "—"}</span>
+      {hint ? <span className="text-[10px] text-slate-500 truncate">{hint}</span> : null}
     </div>
   );
 }
