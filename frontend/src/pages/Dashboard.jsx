@@ -12,6 +12,7 @@ import SentimentBar from "@/components/SentimentBar";
 import HugeShiftModal from "@/components/HugeShiftModal";
 import ActivityFeed from "@/components/ActivityFeed";
 import HolidaysTab from "@/components/HolidaysTab";
+import BuildupTable from "@/components/BuildupTable";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -612,6 +613,7 @@ export default function Dashboard() {
                   { v: "oi-change", l: "OI Change" },
                   { v: "open-interest", l: "Open Interest" },
                   { v: "strike-table", l: "Strike Table" },
+                  { v: "buildup", l: "Build-up" },
                   { v: "alerts", l: "Alerts" },
                   { v: "activity", l: "Activity" },
                   { v: "holidays", l: "Holidays" },
@@ -867,6 +869,19 @@ export default function Dashboard() {
                       lotSize={oiSettings.lotSize?.[activeIndex] || 1}
                       expiry={selectedExpiry}
                       vixNow={current?.vix || status?.vix}
+                    />
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <TimeframePills value={timeframe} onChange={setTimeframe} />
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="buildup" className="mt-0">
+                    <div className="text-sm font-semibold mb-2">{activeIndex} Long / Short Build-up</div>
+                    <BuildupTable
+                      current={filteredCurrent}
+                      previous={previous}
+                      atm={current?.atm}
+                      timeframeLabel={timeframeLabel}
                     />
                     <div className="mt-3 pt-3 border-t border-slate-100">
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
