@@ -13,6 +13,7 @@ import HugeShiftModal from "@/components/HugeShiftModal";
 import ActivityFeed from "@/components/ActivityFeed";
 import HolidaysTab from "@/components/HolidaysTab";
 import BuildupTable from "@/components/BuildupTable";
+import PositionsPanel from "@/components/PositionsPanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -587,6 +588,7 @@ export default function Dashboard() {
         notifEnabled={notifEnabled}
         onToggleNotif={handleToggleNotif}
         onOpenHolidays={() => setActiveTab("holidays")}
+        onOpenEvents={() => setActiveTab("holidays")}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -605,7 +607,7 @@ export default function Dashboard() {
           onChangeExpiry={handleChangeExpiry}
         />
 
-        <main className="flex-1 overflow-auto p-5">
+        <main className="flex-1 overflow-auto p-5 pt-16 md:pt-20">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center justify-between mb-4">
               <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 rounded-none w-full justify-start">
@@ -614,9 +616,10 @@ export default function Dashboard() {
                   { v: "open-interest", l: "Open Interest" },
                   { v: "strike-table", l: "Strike Table" },
                   { v: "buildup", l: "Build-up" },
+                  { v: "positions", l: "Positions" },
                   { v: "alerts", l: "Alerts" },
                   { v: "activity", l: "Activity" },
-                  { v: "holidays", l: "Holidays" },
+                  { v: "holidays", l: "Events" },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.v}
@@ -886,6 +889,28 @@ export default function Dashboard() {
                     <div className="mt-3 pt-3 border-t border-slate-100">
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                     </div>
+                  </TabsContent>
+
+                  <TabsContent value="positions" className="mt-0">
+                    <div className="text-sm font-semibold mb-2">My Kite Positions</div>
+                    <PositionsPanel
+                      isKiteMode={status?.mode === "kite"}
+                      current={current}
+                      vix={current?.vix || status?.vix}
+                      oiSettings={oiSettings}
+                      activeIndex={activeIndex}
+                      expiry={selectedExpiry}
+                      onAdjustmentAlert={(payload) => {
+                        pushActivity({
+                          type: "huge-shift",
+                          index: activeIndex,
+                          strike: payload.strike,
+                          side: payload.side,
+                          at: new Date().toISOString(),
+                          message: `⚠️ ${payload.tradingsymbol}: spot ${payload.spot?.toFixed?.(2)} · ${payload.coveredPct}% band covered — consider adjustment`,
+                        });
+                      }}
+                    />
                   </TabsContent>
 
                   <TabsContent value="alerts" className="mt-0">

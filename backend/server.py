@@ -308,6 +308,75 @@ async def get_config():
     return {"indices": INDEX_CONFIG, "poll_interval_seconds": 15}
 
 
+# ------------------- Zerodha positions -------------------
+@api_router.get("/positions")
+async def get_positions():
+    """Fetch open F&O positions from the user's Kite account (net + day).
+    Only available in kite mode. Returns a normalised list with parsed
+    strike / side / expiry for options so the frontend can overlay them."""
+    if tracker.mode != "kite" or not tracker.kite_service:
+        return {"mode": tracker.mode, "positions": [], "error": "Not in Kite mode. Connect Kite API first."}
+    try:
+        import asyncio, re
+        kite = tracker.kite_service.kite
+        raw = await asyncio.to_thread(kite.positions)
+        net = raw.get("net", []) if isinstance(raw, dict) else raw
+    except Exception as e:
+        return {"mode": tracker.mode, "positions": [], "error": f"Kite error: {type(e).__name__}: {e}"}
+
+    # Parse tradingsymbol like  NIFTY26JUL2426800CE  -> {index, expiry, strike, side}
+    # Supported patterns (NSE/BSE weekly & monthly):
+    #   <IDX><YY><MMM><DD><STRIKE><CE|PE>   e.g. NIFTY26JUL2426800CE
+    #   <IDX><YY><M><DD><STRIKE><CE|PE>     weekly single-digit month e.g. NIFTY26J1424800CE (rare)
+    #   <IDX><YY><MMM><STRIKE><CE|PE>       monthly  e.g. NIFTY26JUL24800CE
+    OPT_RE = re.compile(
+        r"^(?P<idx>NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX|BANKEX)"
+        r"(?P<yy>\d{2})"
+        r"(?P<mm>[A-Z]{3}|\d{1,2}|[A-Z]\d{1,2})"
+        r"(?P<strike>\d{3,7})"
+        r"(?P<side>CE|PE)$"
+    )
+    out = []
+    for p in net:
+        if int(p.get("quantity", 0)) == 0:
+            continue  # skip closed positions with 0 net qty
+        ts = p.get("tradingsymbol", "")
+        m = OPT_RE.match(ts)
+        parsed = {}
+        if m:
+            parsed = {
+                "index": m.group("idx"),
+                "strike": int(m.group("strike")),
+                "side": m.group("side"),
+                "expiry_code": m.group("mm"),
+                "expiry_yy": m.group("yy"),
+            }
+        out.append({
+            "tradingsymbol": ts,
+            "exchange": p.get("exchange"),
+            "product": p.get("product"),
+            "quantity": int(p.get("quantity", 0)),
+            "average_price": float(p.get("average_price", 0) or 0),
+            "last_price": float(p.get("last_price", 0) or 0),
+            "pnl": float(p.get("pnl", 0) or 0),
+            "unrealised": float(p.get("unrealised", 0) or 0),
+            "buy_quantity": int(p.get("buy_quantity", 0)),
+            "sell_quantity": int(p.get("sell_quantity", 0)),
+            "buy_price": float(p.get("buy_price", 0) or 0),
+            "sell_price": float(p.get("sell_price", 0) or 0),
+            **parsed,
+        })
+    # Fresh spot for each index in the positions
+    idx_spot = {}
+    for pos in out:
+        idx = pos.get("index")
+        if idx and idx in INDEX_CONFIG and idx not in idx_spot:
+            snap = tracker.last_snapshot.get(idx)
+            if snap:
+                idx_spot[idx] = {"price": snap.get("price"), "atm": snap.get("atm")}
+    return {"mode": tracker.mode, "positions": out, "spot": idx_spot}
+
+
 # ------------------- Lifecycle -------------------
 app.include_router(api_router)
 

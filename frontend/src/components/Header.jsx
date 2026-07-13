@@ -2,6 +2,7 @@ import { Activity, KeyRound, Bell, BellOff, Settings2, Download } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import HolidayBadge from "@/components/HolidayBadge";
+import MarketEventsBadge from "@/components/MarketEventsBadge";
 
 export default function Header({
   status,
@@ -12,6 +13,7 @@ export default function Header({
   notifEnabled,
   onToggleNotif,
   onOpenHolidays,
+  onOpenEvents,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -100,8 +102,13 @@ export default function Header({
           Kite API
         </Button>
       </div>
-    <div className="hidden md:block absolute right-6 top-full mt-1 w-60 z-30">
-      <HolidayBadge onClick={onOpenHolidays} />
+    <div className="hidden md:flex absolute right-6 top-full mt-1 z-30 gap-2 items-stretch">
+      <div className="w-60">
+        <HolidayBadge onClick={onOpenHolidays} />
+      </div>
+      <div className="w-72">
+        <MarketEventsBadge onClick={onOpenEvents} />
+      </div>
     </div>
     </header>
   );
