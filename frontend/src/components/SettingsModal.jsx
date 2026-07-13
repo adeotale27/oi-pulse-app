@@ -8,16 +8,19 @@ import { Slider } from "@/components/ui/slider";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Settings2 } from "lucide-react";
+import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 
 const ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 
-export default function SettingsModal({ open, onOpenChange, onSaved }) {
+export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSaved }) {
   const [settings, setSettings] = useState(null);
+  const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     api.get("/settings").then((r) => setSettings(r.data));
+    setLocal(loadOISettings());
   }, [open]);
 
   if (!settings) return null;
@@ -29,12 +32,17 @@ export default function SettingsModal({ open, onOpenChange, onSaved }) {
     setSettings({ ...settings, enabled_indices: Array.from(cur) });
   };
 
+  const setLocalField = (k, v) => setLocal((prev) => ({ ...prev, [k]: v }));
+  const setLot = (idx, v) => setLocal((prev) => ({ ...prev, lotSize: { ...prev.lotSize, [idx]: v } }));
+
   const submit = async () => {
     setSaving(true);
     try {
       await api.post("/settings", settings);
+      saveOISettings(local);
       toast.success("Alert settings saved");
       onSaved?.(settings);
+      onLocalSaved?.(local);
       onOpenChange(false);
     } catch (e) {
       toast.error("Failed to save settings");
@@ -43,98 +51,255 @@ export default function SettingsModal({ open, onOpenChange, onSaved }) {
     }
   };
 
+  const resetLocal = () => {
+    setLocal({ ...DEFAULT_OI_SETTINGS });
+    toast.info("Frontend thresholds reset to defaults (not yet saved)");
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="settings-modal" className="max-w-md">
+      <DialogContent data-testid="settings-modal" className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="w-4 h-4" />
             Alert Settings
           </DialogTitle>
           <DialogDescription>
-            Configure when OI reversal alerts should trigger.
+            Configure reversal alerts, huge-shift popup, velocity badges, gamma wall and institutional detector.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-5 pt-2">
-          <div>
-            <div className="flex justify-between mb-1">
-              <Label className="text-xs uppercase tracking-wider text-slate-500">
-                OI change threshold
-              </Label>
-              <span className="text-xs font-mono-data font-semibold">
-                {settings.threshold_pct}%
-              </span>
-            </div>
-            <Slider
-              data-testid="slider-threshold"
-              min={5}
-              max={50}
-              step={1}
-              value={[settings.threshold_pct]}
-              onValueChange={(v) => setSettings({ ...settings, threshold_pct: v[0] })}
-            />
-          </div>
 
-          <div>
-            <div className="flex justify-between mb-1">
-              <Label className="text-xs uppercase tracking-wider text-slate-500">
-                Compare with snapshot from
-              </Label>
-              <span className="text-xs font-mono-data font-semibold">
-                {settings.compare_minutes} min ago
-              </span>
+        <div className="space-y-6 pt-2">
+          {/* ------------- Backend reversal engine ------------- */}
+          <section className="space-y-4">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+              Server-side OI reversal engine
             </div>
-            <Slider
-              data-testid="slider-compare"
+            <div>
+              <div className="flex justify-between mb-1">
+                <Label className="text-xs uppercase tracking-wider text-slate-500">
+                  OI change threshold
+                </Label>
+                <span className="text-xs font-mono-data font-semibold">
+                  {settings.threshold_pct}%
+                </span>
+              </div>
+              <Slider
+                data-testid="slider-threshold"
+                min={5}
+                max={50}
+                step={1}
+                value={[settings.threshold_pct]}
+                onValueChange={(v) => setSettings({ ...settings, threshold_pct: v[0] })}
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-1">
+                <Label className="text-xs uppercase tracking-wider text-slate-500">
+                  Compare with snapshot from
+                </Label>
+                <span className="text-xs font-mono-data font-semibold">
+                  {settings.compare_minutes} min ago
+                </span>
+              </div>
+              <Slider
+                data-testid="slider-compare"
+                min={1}
+                max={30}
+                step={1}
+                value={[settings.compare_minutes]}
+                onValueChange={(v) => setSettings({ ...settings, compare_minutes: v[0] })}
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-1">
+                <Label className="text-xs uppercase tracking-wider text-slate-500">
+                  Alert cooldown
+                </Label>
+                <span className="text-xs font-mono-data font-semibold">
+                  {settings.cooldown_seconds}s
+                </span>
+              </div>
+              <Slider
+                data-testid="slider-cooldown"
+                min={30}
+                max={600}
+                step={30}
+                value={[settings.cooldown_seconds]}
+                onValueChange={(v) => setSettings({ ...settings, cooldown_seconds: v[0] })}
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">
+                Tracked indices
+              </Label>
+              <div className="space-y-1.5">
+                {ALL_INDICES.map((idx) => (
+                  <label
+                    key={idx}
+                    className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Checkbox
+                      data-testid={`enabled-${idx}`}
+                      checked={settings.enabled_indices?.includes(idx)}
+                      onCheckedChange={() => toggleIndex(idx)}
+                    />
+                    <span className="text-sm font-medium">{idx}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ------------- Huge OI shift popup ------------- */}
+          <section className="space-y-3 pt-2 border-t border-slate-200">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+              Huge OI shift popup (ATM ± 1 strikes)
+            </div>
+            <NumberField
+              label="Threshold (per side, aggregate |ΔOI|)"
+              hint="Sum of CE or PE ΔOI across ATM, ATM+step and ATM-step. In OI contracts."
+              value={local.hugeShiftAbs}
+              onChange={(v) => setLocalField("hugeShiftAbs", v)}
+              testId="huge-shift-abs"
+              min={100000}
+              step={100000}
+              suffix={local.hugeShiftAbs >= 1e7 ? `${(local.hugeShiftAbs / 1e7).toFixed(2)} Cr` : `${(local.hugeShiftAbs / 1e5).toFixed(2)} L`}
+            />
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">
+                Windows monitored
+              </Label>
+              <div className="flex gap-2 flex-wrap">
+                {[1, 3, 5, 10, 15].map((w) => {
+                  const checked = local.hugeShiftWindows.includes(w);
+                  return (
+                    <label key={w} className="inline-flex items-center gap-1 text-xs cursor-pointer">
+                      <Checkbox
+                        data-testid={`huge-shift-window-${w}`}
+                        checked={checked}
+                        onCheckedChange={(ck) => {
+                          const set = new Set(local.hugeShiftWindows);
+                          if (ck) set.add(w); else set.delete(w);
+                          setLocalField("hugeShiftWindows", Array.from(set).sort((a, b) => a - b));
+                        }}
+                      />
+                      {w}m
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* ------------- Gamma wall ------------- */}
+          <section className="space-y-3 pt-2 border-t border-slate-200">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+              Gamma wall detection
+            </div>
+            <NumberField
+              label="Min single-strike ΔOI"
+              hint="Absolute OI added on either side of a single strike within the window below."
+              value={local.gammaWallAbs}
+              onChange={(v) => setLocalField("gammaWallAbs", v)}
+              testId="gamma-wall-abs"
+              min={10000}
+              step={10000}
+              suffix={local.gammaWallAbs >= 1e5 ? `${(local.gammaWallAbs / 1e5).toFixed(2)} L` : `${(local.gammaWallAbs / 1e3).toFixed(1)} K`}
+            />
+            <NumberField
+              label="Window (minutes)"
+              hint="If active timeframe ≥ window, threshold applies as-is. Smaller timeframes scale proportionally."
+              value={local.gammaWallMinutes}
+              onChange={(v) => setLocalField("gammaWallMinutes", v)}
+              testId="gamma-wall-min"
               min={1}
-              max={30}
               step={1}
-              value={[settings.compare_minutes]}
-              onValueChange={(v) => setSettings({ ...settings, compare_minutes: v[0] })}
             />
-          </div>
+          </section>
 
-          <div>
-            <div className="flex justify-between mb-1">
-              <Label className="text-xs uppercase tracking-wider text-slate-500">
-                Alert cooldown
+          {/* ------------- Velocity badges ------------- */}
+          <section className="space-y-3 pt-2 border-t border-slate-200">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+              OI velocity badges (per strike)
+            </div>
+            <NumberField
+              label="🔥 Fast build-up ≥"
+              hint="OI change per minute (absolute)"
+              value={local.velocityFastMin}
+              onChange={(v) => setLocalField("velocityFastMin", v)}
+              testId="vel-fast"
+              min={1000}
+              step={1000}
+            />
+            <NumberField
+              label="🟢 Medium ≥"
+              value={local.velocityMediumMin}
+              onChange={(v) => setLocalField("velocityMediumMin", v)}
+              testId="vel-med"
+              min={100}
+              step={100}
+            />
+          </section>
+
+          {/* ------------- Institutional detector ------------- */}
+          <section className="space-y-3 pt-2 border-t border-slate-200">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+              🏦 Institutional activity detector
+            </div>
+            <NumberField
+              label="Min OI"
+              value={local.instOiMin}
+              onChange={(v) => setLocalField("instOiMin", v)}
+              testId="inst-oi-min"
+              min={1000}
+              step={1000}
+            />
+            <NumberField
+              label="Min premium (₹ Cr) — LTP × OI × lot"
+              value={local.instPremiumCr}
+              onChange={(v) => setLocalField("instPremiumCr", v)}
+              testId="inst-prem-cr"
+              min={1}
+              step={1}
+              suffix="Cr"
+            />
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">
+                Lot sizes
               </Label>
-              <span className="text-xs font-mono-data font-semibold">
-                {settings.cooldown_seconds}s
-              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {ALL_INDICES.map((idx) => (
+                  <div key={idx} className="flex flex-col">
+                    <span className="text-[10px] text-slate-500 mb-0.5">{idx}</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={local.lotSize?.[idx] ?? ""}
+                      onChange={(e) => setLot(idx, Number(e.target.value) || 0)}
+                      className="h-8 text-xs"
+                      data-testid={`lot-${idx}`}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
-            <Slider
-              data-testid="slider-cooldown"
-              min={30}
-              max={600}
-              step={30}
-              value={[settings.cooldown_seconds]}
-              onValueChange={(v) => setSettings({ ...settings, cooldown_seconds: v[0] })}
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">
-              Tracked indices
-            </Label>
-            <div className="space-y-1.5">
-              {ALL_INDICES.map((idx) => (
-                <label
-                  key={idx}
-                  className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
-                >
-                  <Checkbox
-                    data-testid={`enabled-${idx}`}
-                    checked={settings.enabled_indices?.includes(idx)}
-                    onCheckedChange={() => toggleIndex(idx)}
-                  />
-                  <span className="text-sm font-medium">{idx}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          </section>
         </div>
-        <div className="flex justify-end pt-2">
+
+        <div className="flex justify-between items-center pt-3 border-t border-slate-200">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={resetLocal}
+            className="text-xs text-slate-500 hover:text-slate-800"
+            data-testid="btn-reset-local"
+          >
+            Reset thresholds
+          </Button>
           <Button
             data-testid="btn-save-settings"
             onClick={submit}
@@ -146,5 +311,28 @@ export default function SettingsModal({ open, onOpenChange, onSaved }) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function NumberField({ label, hint, value, onChange, testId, min, step, suffix }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-0.5">
+        <Label className="text-xs text-slate-700">{label}</Label>
+        {suffix && (
+          <span className="text-[10px] text-slate-500 font-mono-data">{suffix}</span>
+        )}
+      </div>
+      <Input
+        data-testid={testId}
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        className="h-8 text-xs font-mono-data"
+      />
+      {hint && <div className="text-[10px] text-slate-400 mt-0.5">{hint}</div>}
+    </div>
   );
 }

@@ -9,6 +9,7 @@ import CredentialsModal from "@/components/CredentialsModal";
 import SettingsModal from "@/components/SettingsModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import SentimentBar from "@/components/SentimentBar";
+import HugeShiftModal from "@/components/HugeShiftModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,8 @@ import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, api } from "@/lib
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
+import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
+import { loadOISettings } from "@/lib/oiSettings";
 import { Play, HelpCircle } from "lucide-react";
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
@@ -101,10 +104,14 @@ export default function Dashboard() {
   const [replayOpen, setReplayOpen] = useState(false);
   const [lastPulledAt, setLastPulledAt] = useState(null);
   const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
+  const [pulsePull, setPulsePull] = useState(false); // green flash on each fresh pull
+  const [oiSettings, setOiSettings] = useState(loadOISettings());
+  const [hugeShift, setHugeShift] = useState(null);   // currently shown modal
+  const hugeShiftQueueRef = useRef([]);                // queued shifts if multiple fire back-to-back
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
-  const { alarm, push, requestPermission } = useNotify();
+  const { alarm, siren, push, requestPermission } = useNotify();
 
   // Poll status
   const loadStatus = useCallback(async () => {
@@ -125,6 +132,10 @@ export default function Dashboard() {
       setCurrent(data.current);
       setPrevious(data.previous);
       setLastPulledAt(new Date().toISOString());
+      // Visual "just pulled" pulse on the chart card so users can see the
+      // bars refresh at each 30-second cycle.
+      setPulsePull(true);
+      setTimeout(() => setPulsePull(false), 900);
     } catch (e) {
       console.error("loadOI failed", e);
     }
@@ -164,22 +175,26 @@ export default function Dashboard() {
         lastAlertIdRef.current = list[0].created_at;
         if (!isFirstLoad) {
           const a = list[0];
-          const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
-          const toastFn = isBullish ? toast.success : toast.error;
-          toastFn(a.message, {
-            description: `Price ${a.price?.toFixed?.(2)} · ATM ${a.atm}`,
-            duration: 8000,
-          });
-          alarm();
-          push(`OI Reversal · ${a.index}`, a.direction);
-          setFlash(true);
-          setTimeout(() => setFlash(false), 1800);
+          // Only surface a toast / sound if the alert is for the currently
+          // active index — user asked to suppress cross-index noise.
+          if (a.index === activeIndex) {
+            const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
+            const toastFn = isBullish ? toast.success : toast.error;
+            toastFn(a.message, {
+              description: `Price ${a.price?.toFixed?.(2)} · ATM ${a.atm}`,
+              duration: 8000,
+            });
+            alarm();
+            push(`OI Reversal · ${a.index}`, a.direction);
+            setFlash(true);
+            setTimeout(() => setFlash(false), 1800);
+          }
         }
       }
     } catch (e) {
       console.error("loadAlerts failed", e);
     }
-  }, [alarm, push]);
+  }, [alarm, push, activeIndex]);
 
   useEffect(() => {
     loadStatus();
@@ -390,12 +405,55 @@ export default function Dashboard() {
       const desc = `PE ${formatDelta(changeSummary.pe)} · CE ${formatDelta(changeSummary.ce)}`;
       if (changeSummary.bullish) toast.success(msg, { description: desc, duration: 6000 });
       else toast.error(msg, { description: desc, duration: 6000 });
-      try { alarm(); } catch {}
-      try { push(`OI Change · ${activeIndex}`, msg); } catch {}
+      try { alarm(); } catch (_) { /* noop */ }
+      try { push(`OI Change · ${activeIndex}`, msg); } catch (_) { /* noop */ }
       setFlash(true);
       setTimeout(() => setFlash(false), 1800);
     }
   }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push]);
+
+  // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
+  const handleHugeShift = useCallback((shift) => {
+    // Silence shifts for indices other than the currently viewed one.
+    if (shift.index !== activeIndex) return;
+    // If a modal is already showing, queue this one; user must acknowledge
+    // each in turn so nothing gets missed.
+    if (hugeShift) {
+      hugeShiftQueueRef.current.push(shift);
+      return;
+    }
+    setHugeShift(shift);
+    try { siren(); } catch (_) { /* noop */ }
+    try {
+      push(
+        `HUGE OI SHIFT · ${shift.index}`,
+        `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
+      );
+    } catch (_) { /* noop */ }
+  }, [activeIndex, hugeShift, siren, push]);
+
+  const dismissHugeShift = useCallback(() => {
+    setHugeShift(null);
+    // Small delay so the dialog exit animation completes before the next one.
+    setTimeout(() => {
+      const next = hugeShiftQueueRef.current.shift();
+      if (next) {
+        setHugeShift(next);
+        try { siren(); } catch (_) { /* noop */ }
+      }
+    }, 250);
+  }, [siren]);
+
+  useHugeShiftMonitor({
+    index: activeIndex,
+    expiry: selectedExpiry,
+    windows: oiSettings.hugeShiftWindows,
+    thresholdAbs: oiSettings.hugeShiftAbs,
+    pollMs: POLL_MS,
+    cooldownMs: 120000,
+    onShift: handleHugeShift,
+    enabled: true,
+  });
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -457,7 +515,9 @@ export default function Dashboard() {
                   />
                 )}
                 <div
-                  className="bg-white border border-slate-200 rounded-md p-4 transition-colors duration-700"
+                  className={`bg-white border rounded-md p-4 transition-all duration-700 ${
+                    pulsePull ? "ring-2 ring-sky-300 border-sky-300" : "border-slate-200"
+                  }`}
                   data-testid="oi-change-card"
                   style={
                     changeSummary
@@ -534,6 +594,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <OIChart
+                      key={`${activeIndex}-${current?.timestamp || 'x'}`}
                       current={filteredCurrent}
                       previous={replayFrame || previous}
                       atm={current?.atm}
@@ -601,13 +662,13 @@ export default function Dashboard() {
                       )}
                     </div>
                     {(
-                      <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-[auto_1fr_1fr] gap-6 items-start text-xs" data-testid="change-summary">
+                      <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-[auto_1fr_1fr] gap-6 items-start text-base" data-testid="change-summary">
                         <div className="space-y-2">
-                          <div className="inline-flex items-center px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium" data-testid="change-summary-title">
+                          <div className="inline-flex items-center px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm font-medium" data-testid="change-summary-title">
                             Change on {formatDayLabel(current?.timestamp)}
                           </div>
                           {lastPullChange && (
-                            <div className="text-[10px] text-slate-500 font-mono-data leading-tight" data-testid="last-pull-change">
+                            <div className="text-xs text-slate-500 font-mono-data leading-tight" data-testid="last-pull-change">
                               OI last pulled at{" "}
                               <span className="text-slate-900">{formatClock(lastPullChange.at, true)}</span>
                               <br />
@@ -622,36 +683,36 @@ export default function Dashboard() {
                             </div>
                           )}
                         </div>
-                        <div className="space-y-1.5 font-mono-data">
+                        <div className="space-y-2 font-mono-data">
                           <div className="flex items-center gap-3">
-                            <span className="text-slate-500 w-24">Call OI change:</span>
-                            <span className={changeSummary && changeSummary.ce >= 0 ? "text-rose-600 font-semibold" : "text-emerald-600 font-semibold"} data-testid="summary-ce-change">
+                            <span className="text-slate-500 w-32 text-sm">Call OI change:</span>
+                            <span className={`text-2xl leading-none ${changeSummary && changeSummary.ce >= 0 ? "text-rose-600 font-bold" : "text-emerald-600 font-bold"}`} data-testid="summary-ce-change">
                               {changeSummary ? formatDelta(changeSummary.ce) : "—"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-slate-500 w-24">Put OI change:</span>
-                            <span className={changeSummary && changeSummary.pe >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold"} data-testid="summary-pe-change">
+                            <span className="text-slate-500 w-32 text-sm">Put OI change:</span>
+                            <span className={`text-2xl leading-none ${changeSummary && changeSummary.pe >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}`} data-testid="summary-pe-change">
                               {changeSummary ? formatDelta(changeSummary.pe) : "—"}
                             </span>
                           </div>
                         </div>
-                        <div className="space-y-1.5 font-mono-data">
+                        <div className="space-y-2 font-mono-data">
                           <div className="flex items-center gap-3">
-                            <span className="text-slate-500 w-40">
+                            <span className="text-slate-500 w-44 text-sm">
                               {activeIndex} at {formatClock((replayFrame || previous)?.timestamp) || "—"}:
                             </span>
-                            <span className="text-slate-900" data-testid="summary-price-prev">
+                            <span className="text-slate-900 text-lg font-semibold" data-testid="summary-price-prev">
                               {(replayFrame || previous)?.price
                                 ? (replayFrame || previous).price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                 : "—"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-slate-500 w-40">
+                            <span className="text-slate-500 w-44 text-sm">
                               {activeIndex} at {formatClock(current?.timestamp) || "—"}:
                             </span>
-                            <span className="text-slate-900" data-testid="summary-price-now">
+                            <span className="text-slate-900 text-lg font-semibold" data-testid="summary-price-now">
                               {current?.price
                                 ? current.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                 : "—"}
@@ -674,7 +735,14 @@ export default function Dashboard() {
 
                   <TabsContent value="strike-table" className="mt-0">
                     <div className="text-sm font-semibold mb-2">{activeIndex} Strike-wise OI Table</div>
-                    <StrikeTable current={filteredCurrent} previous={previous} atm={current?.atm} />
+                    <StrikeTable
+                      current={filteredCurrent}
+                      previous={previous}
+                      atm={current?.atm}
+                      timeframeMin={resolveMinutes(timeframe)}
+                      oiSettings={oiSettings}
+                      lotSize={oiSettings.lotSize?.[activeIndex] || 1}
+                    />
                     <div className="mt-3 pt-3 border-t border-slate-100">
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                     </div>
@@ -682,7 +750,7 @@ export default function Dashboard() {
 
                   <TabsContent value="alerts" className="mt-0">
                     <div className="text-sm font-semibold mb-2">All Alerts</div>
-                    <AlertsPanel alerts={alerts} onClear={handleClearAlerts} />
+                    <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} />
                   </TabsContent>
                 </div>
 
@@ -707,7 +775,7 @@ export default function Dashboard() {
               </div>
 
               <div className="col-span-12 lg:col-span-3">
-                <AlertsPanel alerts={alerts} onClear={handleClearAlerts} />
+                <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} />
               </div>
             </div>
           </Tabs>
@@ -724,7 +792,10 @@ export default function Dashboard() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onSaved={loadStatus}
+        onLocalSaved={setOiSettings}
       />
+
+      <HugeShiftModal shift={hugeShift} onClose={dismissHugeShift} />
     </div>
   );
 }

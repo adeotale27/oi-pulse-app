@@ -103,18 +103,19 @@
 #====================================================================================================
 
 user_problem_statement: |
-  Redesign the OI Change dashboard to match a reference image (title, "How to read this?" popover,
-  Replay Change link, Show OI toggle, richer tooltip, timeframe pills like "Last 5 mins", bottom
-  summary with Call OI change / Put OI change / Index-at-time prices). Then fix these follow-up
-  issues reported by user:
-    1) Chart is blank when switching to SENSEX (strike range not reset).
-    2) Add "Last 1 min" and "Last 3 mins" pills.
-    3) Expiries list must show max 4 rows visible with vertical scroll (Kite Live returns many).
-    4) Strike range should auto-update when switching NIFTY / SENSEX / BANK.
-    5) Card background should tint green when Put OI increases dominate, red when Call OI dominate,
-       intensity proportional to how large the change is (very large -> strongly coloured).
-    6) When user changes timeframe, immediately fetch data for that window; then keep polling every
-       30 seconds regardless of timeframe.
+  New iteration (July 2026):
+  1) When new data is pulled every 30s, the bar graph must visibly refresh (pulse ring).
+  2) Enlarge fonts in the bottom "Call OI change / Put OI change / Index-price" summary.
+  3) Alerts must be scoped to the currently open index (NIFTY/SENSEX/BANK). Suppress toast
+     for other indices; AlertsPanel filters by activeIndex with a toggle to show ALL.
+  4) HUGE OI shift popup — blocking modal + distinct siren when |sum ΔOI| across
+     ATM & ATM±1 exceeds 1 Cr (default) in 1/3/5 min windows. User acknowledges to close.
+  5) OI Velocity badge per strike in Strike Table (🔥 Fast / 🟢 Medium / ⚪ Slow) based on
+     ΔOI ÷ minutes.
+  6) Gamma Wall detection per strike (≥ 2 lakh single-strike OI build within 3 min, configurable).
+  7) Institutional Activity detector per strike (OI > 50k AND Volume > avg AND premium ≥ ₹10Cr,
+     using lot sizes NIFTY=65, SENSEX=20, BANKNIFTY=30, all configurable).
+  All thresholds configurable in Settings modal (frontend-local, persisted in localStorage).
 
 backend:
   - task: "OI change API - /api/oi/{index}/change with minutes param"

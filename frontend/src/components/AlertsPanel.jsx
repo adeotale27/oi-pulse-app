@@ -1,4 +1,5 @@
-import { Bell, X, TrendingUp, TrendingDown } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Bell, X, TrendingUp, TrendingDown, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -10,35 +11,66 @@ function formatTime(iso) {
   }
 }
 
-export default function AlertsPanel({ alerts, onClear }) {
+export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: showAllProp }) {
+  const [localShowAll, setLocalShowAll] = useState(false);
+  // If parent passes an activeIndex, filter to that index by default; the user
+  // can flip a small toggle to view alerts for other indices too.
+  const filterEnabled = !!activeIndex && !localShowAll && !showAllProp;
+  const filtered = useMemo(() => {
+    if (!filterEnabled) return alerts;
+    return alerts.filter((a) => a.index === activeIndex);
+  }, [alerts, filterEnabled, activeIndex]);
+
   return (
     <div className="bg-white border border-slate-200 rounded-md h-full flex flex-col" data-testid="alerts-panel">
       <div className="p-3 border-b border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-slate-600" />
           <span className="text-sm font-semibold">Alerts</span>
-          {alerts.length > 0 && (
+          {filtered.length > 0 && (
             <span className="text-[10px] font-mono-data bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-sm">
-              {alerts.length}
+              {filtered.length}
+            </span>
+          )}
+          {activeIndex && (
+            <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm">
+              {filterEnabled ? activeIndex : "ALL"}
             </span>
           )}
         </div>
-        <Button
-          data-testid="btn-clear-alerts"
-          size="sm"
-          variant="ghost"
-          className="h-6 text-xs"
-          onClick={onClear}
-        >
-          <X className="w-3 h-3 mr-1" /> Clear
-        </Button>
+        <div className="flex items-center gap-1">
+          {activeIndex && (
+            <Button
+              data-testid="btn-toggle-alerts-scope"
+              size="sm"
+              variant="ghost"
+              className="h-6 text-[11px] px-2"
+              onClick={() => setLocalShowAll((v) => !v)}
+              title={filterEnabled ? "Show all indices" : `Show only ${activeIndex}`}
+            >
+              <Filter className="w-3 h-3 mr-1" />
+              {filterEnabled ? "All" : activeIndex}
+            </Button>
+          )}
+          <Button
+            data-testid="btn-clear-alerts"
+            size="sm"
+            variant="ghost"
+            className="h-6 text-xs"
+            onClick={onClear}
+          >
+            <X className="w-3 h-3 mr-1" /> Clear
+          </Button>
+        </div>
       </div>
       <ScrollArea className="flex-1 max-h-[420px]">
         <div className="p-2 space-y-2">
-          {alerts.length === 0 ? (
-            <div className="text-xs text-slate-400 text-center py-6">No alerts yet.</div>
+          {filtered.length === 0 ? (
+            <div className="text-xs text-slate-400 text-center py-6">
+              {filterEnabled ? `No alerts for ${activeIndex} yet.` : "No alerts yet."}
+            </div>
           ) : (
-            alerts.map((a) => {
+            filtered.map((a) => {
               const bullish = a.direction?.toLowerCase().includes("bullish");
               return (
                 <div
