@@ -1,6 +1,7 @@
 import { Activity, KeyRound, Bell, BellOff, Settings2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import HolidayBadge from "@/components/HolidayBadge";
 
 export default function Header({
   status,
@@ -10,6 +11,7 @@ export default function Header({
   onDownloadCsv,
   notifEnabled,
   onToggleNotif,
+  onOpenHolidays,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -23,7 +25,7 @@ export default function Header({
   return (
     <header
       data-testid="dashboard-header"
-      className="w-full bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between"
+      className="w-full bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between relative"
     >
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
@@ -98,6 +100,9 @@ export default function Header({
           Kite API
         </Button>
       </div>
+    <div className="hidden md:block absolute right-6 top-full mt-1 w-60 z-30">
+      <HolidayBadge onClick={onOpenHolidays} />
+    </div>
     </header>
   );
 }

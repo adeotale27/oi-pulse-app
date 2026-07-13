@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { classifyVelocity } from "@/lib/oiSettings";
+import { strikeAnalytics, yearsToExpiry, classifyIvRank } from "@/lib/blackScholes";
 
 function formatOI(v) {
   if (v == null) return "—";
@@ -10,7 +11,7 @@ function formatOI(v) {
   return v.toLocaleString();
 }
 
-export default function StrikeTable({ current, previous, atm, timeframeMin, oiSettings, lotSize }) {
+export default function StrikeTable({ current, previous, atm, timeframeMin, oiSettings, lotSize, expiry, vixNow }) {
   const rows = useMemo(() => {
     if (!current) return [];
     const prevMap = new Map();
@@ -24,6 +25,9 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
       vCount += 2;
     });
     const avgVolume = vCount > 0 ? vSum / vCount : 0;
+
+    const T = yearsToExpiry(expiry);
+    const S = current.price || current.atm;
 
     return current.strikes.map((s) => {
       const p = prevMap.get(s.strike) || {};
@@ -60,6 +64,12 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
         (s.pe_volume || 0) > avgVolume &&
         pe_prem >= premCr * 1e7;
 
+      // Black-Scholes analytics
+      const a = strikeAnalytics({
+        S, K: s.strike, T, r: 0.065,
+        ceLtp: s.ce_ltp, peLtp: s.pe_ltp, vixNow,
+      });
+
       return {
         strike: s.strike,
         ce_oi: s.ce_oi,
@@ -78,18 +88,56 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
         pe_gamma_wall,
         ce_inst,
         pe_inst,
+        ce_iv: a.ce_iv,
+        pe_iv: a.pe_iv,
+        ce_delta_g: a.ce_delta,
+        pe_delta_g: a.pe_delta,
+        ce_theta: a.ce_theta,
+        pe_theta: a.pe_theta,
+        ivRank: a.ivRank,
       };
     });
-  }, [current, previous, timeframeMin, oiSettings, lotSize]);
+  }, [current, previous, timeframeMin, oiSettings, lotSize, expiry, vixNow]);
 
   if (!current) return null;
 
+  // ATM row's IV rank is the summary shown at the top of the table.
+  const atmRow = rows.find((r) => r.strike === atm) || rows[Math.floor(rows.length / 2)];
+  const rankInfo = atmRow ? classifyIvRank(atmRow.ivRank) : { label: "—", tone: "slate" };
+
   return (
+    <div className="space-y-2" data-testid="strike-table-wrap">
+      {atmRow && atmRow.ivRank != null && (
+        <div
+          className={`rounded-md border px-3 py-2 flex items-center gap-4 text-xs ${
+            rankInfo.tone === "rose"
+              ? "bg-rose-50 border-rose-200 text-rose-800"
+              : rankInfo.tone === "emerald"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-slate-50 border-slate-200 text-slate-700"
+          }`}
+          data-testid="iv-rank-summary"
+        >
+          <div>
+            <span className="uppercase tracking-widest text-[9px] opacity-70">ATM IV Rank</span>
+            <div className="text-lg font-semibold font-mono-data">{atmRow.ivRank}<span className="text-xs opacity-70">/100</span></div>
+          </div>
+          <div className="flex-1">
+            <div className="text-sm font-semibold">{rankInfo.label}</div>
+            <div className="text-[10px] opacity-70">
+              ATM CE IV {atmRow.ce_iv?.toFixed?.(1) ?? "—"}% · ATM PE IV {atmRow.pe_iv?.toFixed?.(1) ?? "—"}% · India VIX {vixNow?.toFixed?.(2) ?? "—"}
+            </div>
+          </div>
+        </div>
+      )}
     <div className="overflow-auto" data-testid="strike-table">
       <table className="w-full text-xs font-mono-data">
         <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
           <tr>
             <th className="text-left px-2 py-2">Call Signals</th>
+            <th className="text-right px-2 py-2">Call Δ</th>
+            <th className="text-right px-2 py-2">Call Θ</th>
+            <th className="text-right px-2 py-2">Call IV</th>
             <th className="text-right px-3 py-2">Call Δ%</th>
             <th className="text-right px-3 py-2">Call OI</th>
             <th className="text-right px-3 py-2">Call LTP</th>
@@ -97,6 +145,9 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
             <th className="text-right px-3 py-2">Put LTP</th>
             <th className="text-right px-3 py-2">Put OI</th>
             <th className="text-right px-3 py-2">Put Δ%</th>
+            <th className="text-right px-2 py-2">Put IV</th>
+            <th className="text-right px-2 py-2">Put Θ</th>
+            <th className="text-right px-2 py-2">Put Δ</th>
             <th className="text-left px-2 py-2">Put Signals</th>
           </tr>
         </thead>
@@ -119,6 +170,15 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
                     side="CE"
                   />
                 </td>
+                <td className="text-right px-2 py-1.5 text-slate-700">
+                  {r.ce_delta_g != null ? r.ce_delta_g.toFixed(2) : "—"}
+                </td>
+                <td className="text-right px-2 py-1.5 text-slate-700">
+                  {r.ce_theta != null ? r.ce_theta.toFixed(2) : "—"}
+                </td>
+                <td className="text-right px-2 py-1.5 text-slate-700">
+                  {r.ce_iv != null ? r.ce_iv.toFixed(1) + "%" : "—"}
+                </td>
                 <td className={`text-right px-3 py-1.5 ${r.ce_pct >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
                   {r.ce_pct >= 0 ? "+" : ""}{r.ce_pct.toFixed(2)}%
                 </td>
@@ -131,6 +191,15 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
                 <td className="text-right px-3 py-1.5 text-slate-800">{formatOI(r.pe_oi)}</td>
                 <td className={`text-right px-3 py-1.5 ${r.pe_pct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                   {r.pe_pct >= 0 ? "+" : ""}{r.pe_pct.toFixed(2)}%
+                </td>
+                <td className="text-right px-2 py-1.5 text-slate-700">
+                  {r.pe_iv != null ? r.pe_iv.toFixed(1) + "%" : "—"}
+                </td>
+                <td className="text-right px-2 py-1.5 text-slate-700">
+                  {r.pe_theta != null ? r.pe_theta.toFixed(2) : "—"}
+                </td>
+                <td className="text-right px-2 py-1.5 text-slate-700">
+                  {r.pe_delta_g != null ? r.pe_delta_g.toFixed(2) : "—"}
                 </td>
                 <td className="px-2 py-1.5 text-left">
                   <SignalBadges
@@ -146,6 +215,7 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
           })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

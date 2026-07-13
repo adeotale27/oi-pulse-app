@@ -10,6 +10,8 @@ import SettingsModal from "@/components/SettingsModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import SentimentBar from "@/components/SentimentBar";
 import HugeShiftModal from "@/components/HugeShiftModal";
+import ActivityFeed from "@/components/ActivityFeed";
+import HolidaysTab from "@/components/HolidaysTab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -108,6 +110,10 @@ export default function Dashboard() {
   const [oiSettings, setOiSettings] = useState(loadOISettings());
   const [hugeShift, setHugeShift] = useState(null);   // currently shown modal
   const hugeShiftQueueRef = useRef([]);                // queued shifts if multiple fire back-to-back
+  const [activity, setActivity] = useState([]);       // unusual activity feed events
+  const [activityFilter, setActivityFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState("oi-change");
+  const seenActivityRef = useRef(new Set());          // dedupe key set per session
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -413,9 +419,28 @@ export default function Dashboard() {
   }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push]);
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
+  const pushActivity = useCallback((ev) => {
+    // Dedupe: same (type,index,strike,side,window,bucket-of-minute) inside a run.
+    const bucket = Math.floor(Date.now() / (60 * 1000)); // 1-minute bucket
+    const key = `${ev.type}|${ev.index}|${ev.strike || ""}|${ev.side || ""}|${ev.window || ""}|${bucket}`;
+    if (seenActivityRef.current.has(key)) return;
+    seenActivityRef.current.add(key);
+    setActivity((prev) => [{ ...ev, id: `${key}:${Date.now()}` }, ...prev].slice(0, 200));
+  }, []);
+
   const handleHugeShift = useCallback((shift) => {
     // Silence shifts for indices other than the currently viewed one.
     if (shift.index !== activeIndex) return;
+    // Also log to activity feed
+    pushActivity({
+      type: "huge-shift",
+      index: shift.index,
+      side: shift.side,
+      window: shift.window,
+      value: shift.value,
+      at: shift.at,
+      message: `${shift.side} OI ${shift.value > 0 ? "build" : "unwind"} across ATM ± 1 in ${shift.window} min`,
+    });
     // If a modal is already showing, queue this one; user must acknowledge
     // each in turn so nothing gets missed.
     if (hugeShift) {
@@ -430,7 +455,7 @@ export default function Dashboard() {
         `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
       );
     } catch (_) { /* noop */ }
-  }, [activeIndex, hugeShift, siren, push]);
+  }, [activeIndex, hugeShift, siren, push, pushActivity]);
 
   const dismissHugeShift = useCallback(() => {
     setHugeShift(null);
@@ -455,6 +480,101 @@ export default function Dashboard() {
     enabled: true,
   });
 
+  // -------- Per-strike activity detector (gamma wall / institution / fast velocity) --------
+  useEffect(() => {
+    if (!filteredCurrent?.strikes?.length || !previous?.strikes?.length) return;
+    const prevMap = new Map();
+    previous.strikes.forEach((s) => prevMap.set(s.strike, s));
+    const minutes = Math.max(1, resolveMinutes(timeframe));
+    const gwWindow = oiSettings.gammaWallMinutes || 3;
+    const gwThresh = oiSettings.gammaWallAbs || 200_000;
+    const gwScale = minutes >= gwWindow ? 1 : minutes / gwWindow;
+    const gwEffective = gwThresh * gwScale;
+
+    const lot = oiSettings.lotSize?.[activeIndex] || 1;
+    const oiMin = oiSettings.instOiMin || 50_000;
+    const premCr = oiSettings.instPremiumCr || 10;
+    // Average volume for institutional check
+    let vSum = 0, vCount = 0;
+    filteredCurrent.strikes.forEach((s) => { vSum += (s.ce_volume || 0) + (s.pe_volume || 0); vCount += 2; });
+    const avgVolume = vCount > 0 ? vSum / vCount : 0;
+
+    const atmVal = filteredCurrent.atm;
+    for (const s of filteredCurrent.strikes) {
+      // Only care about strikes near ATM (± 5 steps) to reduce noise
+      if (Math.abs(s.strike - atmVal) > (filteredCurrent.strikes[1]?.strike - filteredCurrent.strikes[0]?.strike || 50) * 5) continue;
+      const p = prevMap.get(s.strike);
+      if (!p) continue;
+      const ceDelta = s.ce_oi - p.ce_oi;
+      const peDelta = s.pe_oi - p.pe_oi;
+
+      // Gamma wall — CE side
+      if (ceDelta >= gwEffective) {
+        pushActivity({
+          type: "gamma-wall", index: activeIndex, strike: s.strike, side: "CE",
+          value: ceDelta, window: minutes, at: new Date().toISOString(),
+          message: `Gamma wall building at ${s.strike} CE (+${(ceDelta / 1e5).toFixed(2)}L)`,
+        });
+      }
+      if (peDelta >= gwEffective) {
+        pushActivity({
+          type: "gamma-wall", index: activeIndex, strike: s.strike, side: "PE",
+          value: peDelta, window: minutes, at: new Date().toISOString(),
+          message: `Gamma wall building at ${s.strike} PE (+${(peDelta / 1e5).toFixed(2)}L)`,
+        });
+      }
+
+      // Velocity — fast build only
+      const ceVel = ceDelta / minutes;
+      const peVel = peDelta / minutes;
+      if (Math.abs(ceVel) >= (oiSettings.velocityFastMin || 50_000)) {
+        pushActivity({
+          type: "velocity", index: activeIndex, strike: s.strike, side: "CE",
+          value: ceDelta, window: minutes, at: new Date().toISOString(),
+          message: `🔥 Fast CE OI ${ceDelta > 0 ? "build" : "unwind"} at ${s.strike} (${Math.round(ceVel / 1000)}K/min)`,
+        });
+      }
+      if (Math.abs(peVel) >= (oiSettings.velocityFastMin || 50_000)) {
+        pushActivity({
+          type: "velocity", index: activeIndex, strike: s.strike, side: "PE",
+          value: peDelta, window: minutes, at: new Date().toISOString(),
+          message: `🔥 Fast PE OI ${peDelta > 0 ? "build" : "unwind"} at ${s.strike} (${Math.round(peVel / 1000)}K/min)`,
+        });
+      }
+
+      // Institution
+      const cePrem = (s.ce_ltp || 0) * (s.ce_oi || 0) * lot;
+      const pePrem = (s.pe_ltp || 0) * (s.pe_oi || 0) * lot;
+      if ((s.ce_oi || 0) > oiMin && (s.ce_volume || 0) > avgVolume && cePrem >= premCr * 1e7) {
+        pushActivity({
+          type: "institution", index: activeIndex, strike: s.strike, side: "CE",
+          value: null, at: new Date().toISOString(),
+          message: `🏦 Institutional footprint on ${s.strike} CE (₹${(cePrem / 1e7).toFixed(1)}Cr premium)`,
+        });
+      }
+      if ((s.pe_oi || 0) > oiMin && (s.pe_volume || 0) > avgVolume && pePrem >= premCr * 1e7) {
+        pushActivity({
+          type: "institution", index: activeIndex, strike: s.strike, side: "PE",
+          value: null, at: new Date().toISOString(),
+          message: `🏦 Institutional footprint on ${s.strike} PE (₹${(pePrem / 1e7).toFixed(1)}Cr premium)`,
+        });
+      }
+    }
+  }, [filteredCurrent, previous, timeframe, activeIndex, oiSettings, pushActivity]);
+
+  // Also log backend reversal alerts for the active index into the activity feed.
+  useEffect(() => {
+    if (!alerts.length) return;
+    const a = alerts[0];
+    if (a.index !== activeIndex) return;
+    const bullish = a.direction?.toLowerCase().includes("bullish");
+    pushActivity({
+      type: bullish ? "reversal-bullish" : "reversal-bearish",
+      index: a.index, at: a.created_at,
+      message: a.direction || a.message || "OI reversal",
+    });
+  }, [alerts, activeIndex, pushActivity]);
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <Header
@@ -465,6 +585,7 @@ export default function Dashboard() {
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
         notifEnabled={notifEnabled}
         onToggleNotif={handleToggleNotif}
+        onOpenHolidays={() => setActiveTab("holidays")}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -484,7 +605,7 @@ export default function Dashboard() {
         />
 
         <main className="flex-1 overflow-auto p-5">
-          <Tabs defaultValue="oi-change" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center justify-between mb-4">
               <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 rounded-none w-full justify-start">
                 {[
@@ -492,6 +613,8 @@ export default function Dashboard() {
                   { v: "open-interest", l: "Open Interest" },
                   { v: "strike-table", l: "Strike Table" },
                   { v: "alerts", l: "Alerts" },
+                  { v: "activity", l: "Activity" },
+                  { v: "holidays", l: "Holidays" },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.v}
@@ -742,6 +865,8 @@ export default function Dashboard() {
                       timeframeMin={resolveMinutes(timeframe)}
                       oiSettings={oiSettings}
                       lotSize={oiSettings.lotSize?.[activeIndex] || 1}
+                      expiry={selectedExpiry}
+                      vixNow={current?.vix || status?.vix}
                     />
                     <div className="mt-3 pt-3 border-t border-slate-100">
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
@@ -751,6 +876,21 @@ export default function Dashboard() {
                   <TabsContent value="alerts" className="mt-0">
                     <div className="text-sm font-semibold mb-2">All Alerts</div>
                     <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} />
+                  </TabsContent>
+
+                  <TabsContent value="activity" className="mt-0">
+                    <div className="text-sm font-semibold mb-2">Unusual Activity Feed</div>
+                    <ActivityFeed
+                      events={activity.filter((e) => e.index === activeIndex)}
+                      activeIndex={activeIndex}
+                      onClear={() => { setActivity([]); seenActivityRef.current.clear(); }}
+                      filter={activityFilter}
+                      onSetFilter={setActivityFilter}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="holidays" className="mt-0">
+                    <HolidaysTab />
                   </TabsContent>
                 </div>
 
