@@ -60,20 +60,41 @@ export default function BuildupTable({ current, previous, atm, timeframeLabel })
         </div>
         <Popover>
           <PopoverTrigger asChild>
-            <button className="text-slate-500 hover:text-slate-800" title="How to read this?">
-              <Info className="w-4 h-4" />
+            <button
+              data-testid="buildup-info-btn"
+              className="flex items-center gap-1 px-2 py-1 rounded-sm border border-current opacity-80 hover:opacity-100 hover:bg-white/40 text-[11px] font-semibold"
+              title="What do LB / SB / SC / LU mean?"
+            >
+              <Info className="w-3.5 h-3.5" />
+              What do these mean?
             </button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 text-xs text-slate-700 space-y-2">
+          <PopoverContent align="end" className="w-96 text-xs text-slate-700 space-y-2" data-testid="buildup-info-popover">
             <div className="font-semibold text-slate-900 text-sm">Long / Short Build-up cheat-sheet</div>
-            <ul className="space-y-1 pl-2 text-[11px]">
-              <li>🟢 <b>LB Long Build-up</b>: OI ↑ &amp; Price ↑ (fresh buyers). CE=bullish · PE=bearish.</li>
-              <li>🔴 <b>SB Short Build-up</b>: OI ↑ &amp; Price ↓ (fresh writers). CE=bearish · PE=bullish.</li>
-              <li>🔵 <b>SC Short Covering</b>: OI ↓ &amp; Price ↑ (writers exit). CE=bullish squeeze · PE=bearish.</li>
-              <li>🟠 <b>LU Long Unwinding</b>: OI ↓ &amp; Price ↓ (buyers exit). CE=bearish · PE=bullish.</li>
-            </ul>
-            <div className="text-slate-500 text-[11px]">
-              A cell shows the classification, ΔOI% and ΔLTP%. The row background tints by bullish bias for that strike.
+            <div className="grid grid-cols-1 gap-2">
+              <div className="rounded-sm border border-emerald-200 bg-emerald-50 p-2">
+                <div className="font-semibold text-emerald-800">🟢 LB — Long Build-up</div>
+                <div className="text-[11px]">OI ↑ &amp; Price ↑ — fresh buyers entering.</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">CE side = bullish (call buyers). PE side = bearish (put buyers hedging).</div>
+              </div>
+              <div className="rounded-sm border border-rose-200 bg-rose-50 p-2">
+                <div className="font-semibold text-rose-800">🔴 SB — Short Build-up</div>
+                <div className="text-[11px]">OI ↑ &amp; Price ↓ — fresh writers / sellers entering.</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">CE side = bearish (resistance forming). PE side = bullish (support forming).</div>
+              </div>
+              <div className="rounded-sm border border-sky-200 bg-sky-50 p-2">
+                <div className="font-semibold text-sky-800">🔵 SC — Short Covering</div>
+                <div className="text-[11px]">OI ↓ &amp; Price ↑ — writers unwinding / squeezed out.</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">CE side = bullish squeeze (resistance broken). PE side = bearish (support crumbling).</div>
+              </div>
+              <div className="rounded-sm border border-amber-200 bg-amber-50 p-2">
+                <div className="font-semibold text-amber-800">🟠 LU — Long Unwinding</div>
+                <div className="text-[11px]">OI ↓ &amp; Price ↓ — buyers giving up / booking losses.</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">CE side = bearish (buyers exiting). PE side = bullish (hedges exiting).</div>
+              </div>
+            </div>
+            <div className="text-slate-500 text-[11px] pt-1 border-t border-slate-100">
+              Each row shows the classification, ΔOI% and ΔLTP%. Row tint = bullish bias for that strike (green up, red down).
             </div>
           </PopoverContent>
         </Popover>

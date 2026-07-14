@@ -14,6 +14,9 @@ import ActivityFeed from "@/components/ActivityFeed";
 import HolidaysTab from "@/components/HolidaysTab";
 import BuildupTable from "@/components/BuildupTable";
 import PositionsPanel from "@/components/PositionsPanel";
+import RightPanel from "@/components/RightPanel";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { PanelRightOpen } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -115,6 +118,22 @@ export default function Dashboard() {
   const [activity, setActivity] = useState([]);       // unusual activity feed events
   const [activityFilter, setActivityFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("oi-change");
+  const [rightPanelOpen, setRightPanelOpen] = useState(() => {
+    try { return localStorage.getItem("rightPanelOpen") !== "0"; } catch { return true; }
+  });
+  const [rightPanelView, setRightPanelView] = useState(() => {
+    try { return localStorage.getItem("rightPanelView") || "alerts"; } catch { return "alerts"; }
+  });
+  const [vixSessionOpen, setVixSessionOpen] = useState(() => {
+    try {
+      const raw = localStorage.getItem("vixSessionOpen");
+      if (!raw) return null;
+      const { date, vix } = JSON.parse(raw);
+      const today = new Date().toISOString().slice(0, 10);
+      if (date !== today) return null;
+      return vix;
+    } catch { return null; }
+  });
   const seenActivityRef = useRef(new Set());          // dedupe key set per session
 
   const lastAlertIdRef = useRef(null);
@@ -122,6 +141,22 @@ export default function Dashboard() {
   const { alarm, siren, push, requestPermission } = useNotify();
 
   // Poll status
+  useEffect(() => {
+    try { localStorage.setItem("rightPanelOpen", rightPanelOpen ? "1" : "0"); } catch (_) { /* noop */ }
+  }, [rightPanelOpen]);
+  useEffect(() => {
+    try { localStorage.setItem("rightPanelView", rightPanelView); } catch (_) { /* noop */ }
+  }, [rightPanelView]);
+  // Capture the FIRST VIX value we see today as the session baseline so we can
+  // compute today's % change accurately.
+  useEffect(() => {
+    const v = current?.vix;
+    if (v == null || v <= 0 || vixSessionOpen) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setVixSessionOpen(v);
+    try { localStorage.setItem("vixSessionOpen", JSON.stringify({ date: today, vix: v })); } catch (_) { /* noop */ }
+  }, [current?.vix, vixSessionOpen]);
+
   const loadStatus = useCallback(async () => {
     try {
       const s = await fetchStatus();
@@ -589,6 +624,7 @@ export default function Dashboard() {
         onToggleNotif={handleToggleNotif}
         onOpenHolidays={() => setActiveTab("holidays")}
         onOpenEvents={() => setActiveTab("holidays")}
+        vixSessionOpen={vixSessionOpen}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -607,7 +643,7 @@ export default function Dashboard() {
           onChangeExpiry={handleChangeExpiry}
         />
 
-        <main className="flex-1 overflow-auto p-5 pt-16 md:pt-20">
+        <main className="flex-1 overflow-auto p-5">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center justify-between mb-4">
               <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 rounded-none w-full justify-start">
@@ -633,8 +669,9 @@ export default function Dashboard() {
               </TabsList>
             </div>
 
-            <div className="grid grid-cols-12 gap-4">
-              <div className={`col-span-12 lg:col-span-9 space-y-4 ${flash ? "alert-flash" : ""}`}>
+            <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full">
+              <Panel defaultSize={rightPanelOpen ? 72 : 100} minSize={50} className={flash ? "alert-flash" : ""}>
+                <div className="h-full space-y-4 pr-2">
                 {changeSummary && (
                   <SentimentBar
                     ceDelta={changeSummary.ce}
@@ -952,12 +989,53 @@ export default function Dashboard() {
                     </span>
                   </div>
                 </div>
-              </div>
-
-              <div className="col-span-12 lg:col-span-3">
-                <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} />
-              </div>
-            </div>
+                </div>
+              </Panel>
+              {rightPanelOpen && (
+                <>
+                  <PanelResizeHandle className="w-1 mx-1 bg-slate-200 hover:bg-sky-400 transition-colors cursor-col-resize rounded-full" data-testid="right-panel-handle" />
+                  <Panel defaultSize={28} minSize={18} maxSize={55}>
+                    <RightPanel
+                      view={rightPanelView}
+                      onChangeView={setRightPanelView}
+                      onClose={() => setRightPanelOpen(false)}
+                      alerts={alerts}
+                      onClearAlerts={handleClearAlerts}
+                      activeIndex={activeIndex}
+                      filteredCurrent={filteredCurrent}
+                      current={current}
+                      previous={previous}
+                      atm={current?.atm}
+                      timeframeMin={resolveMinutes(timeframe)}
+                      timeframeLabel={timeframeLabel}
+                      oiSettings={oiSettings}
+                      lotSize={oiSettings.lotSize?.[activeIndex] || 1}
+                      selectedExpiry={selectedExpiry}
+                      vixNow={current?.vix || status?.vix}
+                      activity={activity}
+                      activityFilter={activityFilter}
+                      setActivityFilter={setActivityFilter}
+                      clearActivity={() => { setActivity([]); seenActivityRef.current.clear(); }}
+                      isKiteMode={status?.mode === "kite"}
+                      status={status}
+                      showOI={showOI}
+                    />
+                  </Panel>
+                </>
+              )}
+            </PanelGroup>
+            {!rightPanelOpen && (
+              <button
+                type="button"
+                onClick={() => setRightPanelOpen(true)}
+                data-testid="btn-open-right-panel"
+                className="fixed right-4 bottom-4 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 px-3 py-2 text-xs font-semibold flex items-center gap-1.5 z-50"
+                title="Reopen side panel"
+              >
+                <PanelRightOpen className="w-4 h-4" />
+                Side Panel
+              </button>
+            )}
           </Tabs>
         </main>
       </div>

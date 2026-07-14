@@ -16,14 +16,21 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
   const [settings, setSettings] = useState(null);
   const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     if (!open) return;
-    api.get("/settings").then((r) => setSettings(r.data));
+    setLoadError(null);
+    setSettings(null);
+    api.get("/settings")
+      .then((r) => setSettings(r.data))
+      .catch((e) => {
+        setLoadError(e?.response?.data?.detail || e.message || "Failed to load settings");
+        // Provide sensible defaults so the modal is still usable.
+        setSettings({ threshold_pct: 15, compare_minutes: 3, cooldown_seconds: 120, enabled_indices: ["NIFTY", "SENSEX"] });
+      });
     setLocal(loadOISettings());
   }, [open]);
-
-  if (!settings) return null;
 
   const toggleIndex = (idx) => {
     const cur = new Set(settings.enabled_indices || []);
@@ -45,7 +52,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
       onLocalSaved?.(local);
       onOpenChange(false);
     } catch (e) {
-      toast.error("Failed to save settings");
+      toast.error("Failed to save settings: " + (e?.response?.data?.detail || e.message));
     } finally {
       setSaving(false);
     }
@@ -69,6 +76,16 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           </DialogDescription>
         </DialogHeader>
 
+        {loadError && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-xs px-3 py-2">
+            ⚠️ {loadError} — using defaults. Save will retry.
+          </div>
+        )}
+
+        {!settings ? (
+          <div className="py-12 text-center text-xs text-slate-500">Loading settings…</div>
+        ) : (
+        <>
         <div className="space-y-6 pt-2">
           {/* ------------- Backend reversal engine ------------- */}
           <section className="space-y-4">
@@ -309,6 +326,8 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
             {saving ? "Saving…" : "Save"}
           </Button>
         </div>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );

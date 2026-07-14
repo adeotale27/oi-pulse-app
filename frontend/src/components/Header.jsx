@@ -14,6 +14,7 @@ export default function Header({
   onToggleNotif,
   onOpenHolidays,
   onOpenEvents,
+  vixSessionOpen,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -27,7 +28,7 @@ export default function Header({
   return (
     <header
       data-testid="dashboard-header"
-      className="w-full bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between relative"
+      className="w-full bg-white border-b border-slate-200 px-6 py-2 flex items-center justify-between gap-4 flex-wrap"
     >
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
@@ -46,12 +47,22 @@ export default function Header({
           <Metric label={current?.index || "—"} value={price.toLocaleString(undefined, { maximumFractionDigits: 2 })} accent />
           <Metric label="ATM" value={atm.toLocaleString()} />
           <Metric label="PCR" value={pcr.toFixed(2)} tone={pcr > 1 ? "green" : "red"} />
-          <Metric label="INDIA VIX" value={vix.toFixed(2)} tone="amber" />
+          <VixMetric value={vix} sessionOpen={vixSessionOpen} />
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-mono-data" data-testid="last-updated">
+      {/* Badges */}
+      <div className="hidden md:flex items-stretch gap-2 flex-1 max-w-[560px] justify-end">
+        <div className="w-56">
+          <HolidayBadge onClick={onOpenHolidays} />
+        </div>
+        <div className="w-64">
+          <MarketEventsBadge onClick={onOpenEvents} />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 font-mono-data" data-testid="last-updated">
           <span className={`w-2 h-2 rounded-full ${status?.running ? "bg-emerald-500 live-dot" : "bg-slate-300"}`} />
           <span>{lastUpdated}</span>
         </div>
@@ -102,15 +113,34 @@ export default function Header({
           Kite API
         </Button>
       </div>
-    <div className="hidden md:flex absolute right-6 top-full mt-1 z-30 gap-2 items-stretch">
-      <div className="w-60">
-        <HolidayBadge onClick={onOpenHolidays} />
-      </div>
-      <div className="w-72">
-        <MarketEventsBadge onClick={onOpenEvents} />
+    </header>
+  );
+}
+
+function VixMetric({ value, sessionOpen }) {
+  const v = value ?? 0;
+  let arrow = null, tone = "amber", chgLabel = "";
+  if (sessionOpen && sessionOpen > 0 && v > 0) {
+    const chg = v - sessionOpen;
+    const pct = (chg / sessionOpen) * 100;
+    if (pct > 0.05) { arrow = "▲"; tone = "rose"; }
+    else if (pct < -0.05) { arrow = "▼"; tone = "emerald"; }
+    else { arrow = "▬"; tone = "slate"; }
+    chgLabel = `${chg >= 0 ? "+" : ""}${chg.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`;
+  }
+  const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : tone === "slate" ? "text-slate-500" : "text-amber-600";
+  return (
+    <div className="flex flex-col" data-testid="vix-metric">
+      <div className="text-[10px] uppercase tracking-widest text-slate-500">INDIA VIX</div>
+      <div className="flex items-baseline gap-1.5">
+        <div className={`text-sm font-semibold font-mono-data ${toneCls}`} data-testid="vix-value">{v.toFixed(2)}</div>
+        {arrow && (
+          <div className={`text-[10px] font-mono-data ${toneCls}`} data-testid="vix-change">
+            <span className="mr-0.5">{arrow}</span>{chgLabel}
+          </div>
+        )}
       </div>
     </div>
-    </header>
   );
 }
 
