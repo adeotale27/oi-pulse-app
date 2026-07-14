@@ -625,6 +625,8 @@ export default function Dashboard() {
         onOpenHolidays={() => setActiveTab("holidays")}
         onOpenEvents={() => setActiveTab("holidays")}
         vixSessionOpen={vixSessionOpen}
+        activeIndex={activeIndex}
+        onSelectIndex={setActiveIndex}
       />
 
       <div className="flex flex-1 overflow-hidden">

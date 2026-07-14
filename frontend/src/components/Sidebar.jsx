@@ -5,6 +5,27 @@ import { RotateCcw, TrendingUp, TrendingDown } from "lucide-react";
 
 const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
 
+const INDEX_THEME = {
+  NIFTY: {
+    label: "NIFTY",
+    activeCls:   "bg-gradient-to-br from-sky-500 to-indigo-600 text-white border-transparent shadow-lg shadow-indigo-500/25 ring-2 ring-sky-300/60",
+    idleCls:     "bg-gradient-to-br from-sky-50 to-indigo-50 text-indigo-800 border-indigo-100 hover:from-sky-100 hover:to-indigo-100",
+    dot:         "bg-sky-500",
+  },
+  SENSEX: {
+    label: "SENSEX",
+    activeCls:   "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-transparent shadow-lg shadow-orange-500/25 ring-2 ring-amber-300/60",
+    idleCls:     "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-800 border-orange-100 hover:from-amber-100 hover:to-orange-100",
+    dot:         "bg-amber-500",
+  },
+  BANKNIFTY: {
+    label: "BANK",
+    activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-transparent shadow-lg shadow-teal-500/25 ring-2 ring-emerald-300/60",
+    idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-teal-100",
+    dot:         "bg-emerald-500",
+  },
+};
+
 export default function Sidebar({
   indices,
   activeIndex,
@@ -31,18 +52,18 @@ export default function Sidebar({
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {indices.map((idx) => {
             const active = idx === activeIndex;
+            const theme = INDEX_THEME[idx] || INDEX_THEME.NIFTY;
             return (
               <button
                 key={idx}
                 data-testid={`btn-index-${idx}`}
                 onClick={() => onChangeIndex(idx)}
-                className={`text-xs font-medium rounded-sm py-2 border ${
-                  active
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                className={`relative text-xs font-semibold rounded-md py-2 border transition-all ${
+                  active ? theme.activeCls : theme.idleCls
                 }`}
               >
-                {idx === "BANKNIFTY" ? "BANK" : idx}
+                <span className={`absolute top-1 left-1.5 w-1.5 h-1.5 rounded-full ${theme.dot} ${active ? "opacity-100" : "opacity-70"}`} />
+                {theme.label}
               </button>
             );
           })}
@@ -80,14 +101,16 @@ export default function Sidebar({
                 key={exp + i}
                 data-testid={`expiry-${exp}`}
                 onClick={() => onChangeExpiry?.(exp)}
-                className={`w-full expiry-row flex items-center gap-2 py-1.5 px-2 rounded-sm text-left ${
-                  active ? "bg-slate-900 text-white" : "text-slate-700"
+                className={`w-full expiry-row flex items-center gap-2 py-1.5 px-2 rounded-md text-left transition-colors ${
+                  active
+                    ? "bg-gradient-to-r from-indigo-600 to-sky-600 text-white shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
                 }`}
               >
                 <span className={`w-3 h-3 rounded-sm border ${active ? "bg-white border-white" : "border-slate-400"}`} />
                 <span className="text-sm font-mono-data">{exp}</span>
                 {i === 0 && (
-                  <span className={`text-[9px] uppercase ml-auto ${active ? "text-white/70" : "text-slate-400"}`}>
+                  <span className={`text-[9px] uppercase ml-auto ${active ? "text-white/80" : "text-slate-400"}`}>
                     nearest
                   </span>
                 )}
@@ -145,9 +168,9 @@ export default function Sidebar({
           <button
             data-testid="strikes-all"
             onClick={() => onChangeStrikesAround("all")}
-            className={`text-xs px-2.5 py-1 rounded-sm border font-mono-data ${
+            className={`text-xs px-2.5 py-1 rounded-md border font-mono-data transition-colors ${
               strikesAround === "all"
-                ? "bg-slate-900 text-white border-slate-900"
+                ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white border-transparent shadow"
                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
             }`}
           >
@@ -158,9 +181,9 @@ export default function Sidebar({
               key={n}
               data-testid={`strikes-${n}`}
               onClick={() => onChangeStrikesAround(n)}
-              className={`text-xs px-2.5 py-1 rounded-sm border font-mono-data ${
+              className={`text-xs px-2.5 py-1 rounded-md border font-mono-data transition-colors ${
                 strikesAround === n
-                  ? "bg-slate-900 text-white border-slate-900"
+                  ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white border-transparent shadow"
                   : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
               }`}
             >

@@ -308,6 +308,67 @@ async def get_config():
     return {"indices": INDEX_CONFIG, "poll_interval_seconds": 15}
 
 
+# ------------------- Multi-index quote for header ticker -------------------
+@api_router.get("/tickers")
+async def get_tickers():
+    """Return LTP + previous close + change + change% for NIFTY 50, SENSEX and
+    BANK NIFTY. Used by the header static ticker strip so users can eyeball
+    today's movement at a glance across all three main indices.
+    Falls back to mock movement when Kite isn't connected."""
+    import asyncio, random
+    result = []
+    symbols = [
+        ("NIFTY",     "NSE:NIFTY 50",   "NIFTY 50"),
+        ("SENSEX",    "BSE:SENSEX",     "SENSEX"),
+        ("BANKNIFTY", "NSE:NIFTY BANK", "BANK NIFTY"),
+    ]
+    if tracker.mode == "kite" and tracker.kite_service:
+        try:
+            kite = tracker.kite_service.kite
+            keys = [s[1] for s in symbols]
+            data = await asyncio.to_thread(kite.quote, keys)
+            for internal, symbol, label in symbols:
+                q = data.get(symbol, {}) if isinstance(data, dict) else {}
+                ltp = float(q.get("last_price", 0) or 0)
+                ohlc = q.get("ohlc") or {}
+                prev = float(ohlc.get("close", 0) or 0)
+                change = ltp - prev if prev else 0.0
+                change_pct = (change / prev * 100) if prev else 0.0
+                result.append({
+                    "index": internal,
+                    "label": label,
+                    "ltp": round(ltp, 2),
+                    "prev_close": round(prev, 2),
+                    "day_open": round(float(ohlc.get("open", 0) or 0), 2),
+                    "day_high": round(float(ohlc.get("high", 0) or 0), 2),
+                    "day_low":  round(float(ohlc.get("low", 0) or 0), 2),
+                    "change": round(change, 2),
+                    "change_pct": round(change_pct, 3),
+                    "source": "kite",
+                })
+            return {"mode": tracker.mode, "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
+        except Exception as e:
+            logger.warning(f"tickers kite failed, falling back to snapshot: {e}")
+
+    # Fallback: use the tracker's last_snapshot which has live prices, and mock a
+    # prev_close by biasing it 0-0.8% away from current LTP.
+    for internal, _symbol, label in symbols:
+        snap = tracker.last_snapshot.get(internal) or {}
+        ltp = float(snap.get("price") or 0)
+        prev = ltp * (1 - random.uniform(-0.008, 0.008)) if ltp else 0
+        change = ltp - prev
+        change_pct = (change / prev * 100) if prev else 0.0
+        result.append({
+            "index": internal, "label": label,
+            "ltp": round(ltp, 2), "prev_close": round(prev, 2),
+            "day_open": round(prev, 2),
+            "day_high": round(ltp * 1.003, 2), "day_low": round(ltp * 0.997, 2),
+            "change": round(change, 2), "change_pct": round(change_pct, 3),
+            "source": "mock",
+        })
+    return {"mode": tracker.mode, "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
+
+
 # ------------------- Zerodha positions -------------------
 @api_router.get("/positions")
 async def get_positions():
