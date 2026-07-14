@@ -102,15 +102,61 @@ def _parkinson_vol(highs: List[float], lows: List[float]) -> Optional[float]:
 
 
 def _classify_vrp(vrp: Optional[float]) -> Dict[str, str]:
+    """Zone classification per the trader's spec:
+       VRP > +2      → rich premium, sell size
+       +0.5 to +2    → fair premium
+       -0.5 to +0.5  → thin edge, reduce size
+       < -0.5        → negative edge, skip / defensive-only
+    """
     if vrp is None:
-        return {"regime": "unknown", "label": "—", "tone": "slate"}
-    if vrp >= 3:
-        return {"regime": "rich",   "label": "Rich premium",       "tone": "emerald"}
-    if vrp >= 1:
-        return {"regime": "fair",   "label": "Fair premium",       "tone": "amber"}
-    if vrp >= -1:
-        return {"regime": "thin",   "label": "Thin premium",       "tone": "amber"}
-    return     {"regime": "poor",   "label": "Under-paid — avoid", "tone": "rose"}
+        return {"regime": "unknown", "label": "—", "tone": "slate", "zone": "unknown"}
+    if vrp >= 2:
+        return {"regime": "rich", "label": "Rich premium — sell size", "tone": "emerald", "zone": "rich"}
+    if vrp >= 0.5:
+        return {"regime": "fair", "label": "Fair premium", "tone": "emerald", "zone": "fair"}
+    if vrp >= -0.5:
+        return {"regime": "thin", "label": "Thin edge — reduce size", "tone": "amber", "zone": "thin"}
+    return {"regime": "poor", "label": "HV outrunning IV — SKIP", "tone": "rose", "zone": "poor"}
+
+
+def _classify_trend(series: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Look at the last 5 VRP points and label the trend.
+
+    Returns { direction, slope_per_day, label } where direction is one of
+    'rising' / 'falling' / 'flat' and label is a short human-readable summary
+    the UI can render as a chip.
+    """
+    if not series or len(series) < 3:
+        return {"direction": "unknown", "slope": None, "label": "—"}
+    tail = series[-5:] if len(series) >= 5 else series
+    xs = list(range(len(tail)))
+    ys = [p.get("vrp_10") for p in tail if p.get("vrp_10") is not None]
+    if len(ys) < 3:
+        return {"direction": "unknown", "slope": None, "label": "—"}
+    # Simple OLS slope over the last N points
+    n = len(ys)
+    mean_x = sum(xs[:n]) / n
+    mean_y = sum(ys) / n
+    num = sum((xs[i] - mean_x) * (ys[i] - mean_y) for i in range(n))
+    den = sum((xs[i] - mean_x) ** 2 for i in range(n)) or 1
+    slope = num / den
+    latest = ys[-1]
+    if slope <= -0.15:
+        direction = "falling"
+        if latest <= 0:
+            label = "Grinding into negative — reduce"
+        else:
+            label = "Compressing toward zero"
+    elif slope >= 0.15:
+        direction = "rising"
+        if latest >= 1:
+            label = "Expanding — sell opportunity"
+        else:
+            label = "Recovering off lows"
+    else:
+        direction = "flat"
+        label = "Flat"
+    return {"direction": direction, "slope": round(slope, 3), "label": label}
 
 
 def _now_ts() -> float:
@@ -181,7 +227,10 @@ async def compute_vrp(
 
     vrp_10 = (iv_pct - hv_10) if (iv_pct is not None and hv_10 is not None) else None
     vrp_20 = (iv_pct - hv_20) if (iv_pct is not None and hv_20 is not None) else None
-    vrp_main = vrp_20 if vrp_20 is not None else vrp_10
+    # Use VRP_10 as the PRIMARY trading signal — it responds faster to recent
+    # HV regime changes, which is what determines whether short-DTE writers
+    # are actually being over-paid or under-paid right this week.
+    vrp_main = vrp_10 if vrp_10 is not None else vrp_20
 
     # ------ Build the rolling series (last N points of VRP_10) ------
     #   For each date i (starting at index 10), compute HV_10 for the 10 sessions
@@ -226,6 +275,7 @@ async def compute_vrp(
         logger.warning(f"[vrp] persist failed for {idx}: {e}")
 
     classification = _classify_vrp(vrp_main)
+    trend = _classify_trend(series)
 
     return {
         "index": idx,
@@ -237,8 +287,10 @@ async def compute_vrp(
         "vrp_20": vrp_20,
         "vrp": vrp_main,
         "regime": classification["regime"],
+        "zone": classification["zone"],
         "label": classification["label"],
         "tone": classification["tone"],
+        "trend": trend,
         "series": series,
         "as_of": dates[-1] if dates else None,
         "source": "kite_historical",

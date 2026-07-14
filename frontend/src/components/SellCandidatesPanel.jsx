@@ -202,7 +202,7 @@ export default function SellCandidatesPanel({
           testId="scpill-iv-rank"
         />
         <Pill
-          label="VRP (IV − HV)"
+          label="VRP (IV − HV₁₀)"
           value={vrp && vrp.vrp != null ? `${vrp.vrp >= 0 ? "+" : ""}${vrp.vrp.toFixed(2)}` : "—"}
           sub={vrp?.label || (vrp?.error === "not_in_kite_mode" ? "Needs Kite login" : "—")}
           tone={vrp?.tone || "slate"}
@@ -230,6 +230,34 @@ export default function SellCandidatesPanel({
           testId="scpill-verdict"
         />
       </div>
+
+      {/* Dangerous quadrant warning — low IV Rank + non-positive VRP */}
+      {!expiryStale && verdict.dangerousQuadrant && (
+        <div className="rounded-md border-2 border-rose-400 bg-rose-50 dark:bg-rose-950/50 dark:border-rose-700 text-rose-900 dark:text-rose-100 p-3 flex gap-3" data-testid="sc-dangerous-quadrant">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-600" />
+          <div className="space-y-1">
+            <div className="font-bold text-sm">⚠ Dangerous quadrant — the retail trap</div>
+            <div className="text-xs">
+              IV Rank {ivRank} looks &quot;cheap&quot; but VRP is <b>{vrp?.vrp?.toFixed(2)}</b>. That&apos;s because realised vol has picked up FASTER than IV has repriced. Retail sees &quot;cheap IV, let&apos;s sell&quot; and gets run over. <b>Skip today or trade defensive-only.</b>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VRP trend chip */}
+      {!expiryStale && vrp?.trend?.direction && vrp.trend.direction !== "unknown" && (
+        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap" data-testid="sc-vrp-trend">
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-700 px-2 py-0.5 bg-white dark:bg-slate-900">
+            VRP trend (5-session):
+            <b className={
+              vrp.trend.direction === "rising" ? "text-emerald-600 dark:text-emerald-300" :
+              vrp.trend.direction === "falling" ? "text-rose-600 dark:text-rose-300" :
+              "text-slate-600 dark:text-slate-300"
+            }>{vrp.trend.label}</b>
+            {vrp.trend.slope != null && <span className="opacity-70">(slope {vrp.trend.slope})</span>}
+          </span>
+        </div>
+      )}
 
       {/* Volatility smile + VRP sparkline */}
       {!expiryStale && (

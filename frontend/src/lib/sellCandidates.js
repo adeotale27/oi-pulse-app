@@ -245,24 +245,48 @@ export function computeSellCandidates({
   if (vix.spiking) {
     reasons.push(`India VIX up ${vix.changePct.toFixed(1)}% intraday — volatility is spiking.`);
   }
-  // Hard block: VRP < -1 means IV < realised vol → sellers are receiving less
-  // premium than the market's actual movement warrants. Institutional-grade
-  // "stop selling" trigger.
-  if (vrp && vrp.vrp != null && vrp.vrp < -1) {
-    reasons.push(`Volatility Risk Premium ${vrp.vrp.toFixed(2)} — IV (${(vrp.iv ?? 0).toFixed(1)}%) is below realised vol (HV ${((vrp.hv_20 ?? vrp.hv_10) ?? 0).toFixed(1)}%). Sellers under-paid for the market's actual movement.`);
+  // Hard block: VRP < -0.5 means realised vol is outrunning implied vol —
+  // sellers are getting paid less than the market's actual movement warrants.
+  // This is the institutional-grade "stop selling" trigger.
+  if (vrp && vrp.vrp != null && vrp.vrp < -0.5) {
+    reasons.push(`VRP ${vrp.vrp.toFixed(2)} — realised vol (HV${vrp.hv_10 != null ? "\u2081\u2080 " + vrp.hv_10.toFixed(1) : ""}%) is outrunning IV (${(vrp.iv ?? 0).toFixed(1)}%). Sellers under-paid for the market's actual movement — SKIP.`);
   }
   const tradeable = reasons.length === 0;
-  // Advisory notes shown alongside candidates when the market is tradeable but
-  // some individual signals are still lukewarm.
+
+  // ---- Advisory notes ----
   const advisories = [];
-  if (tradeable && ivRank != null && ivRank < 30) {
+  // DANGEROUS QUADRANT: low IV Rank + non-positive VRP. The retail trap this
+  // app is specifically designed to catch — "IV looks cheap so let's sell"
+  // when in reality HV has already run ahead of IV. Flag prominently.
+  const dangerousQuadrant = (
+    ivRank != null && ivRank < 40 &&
+    vrp && vrp.vrp != null && vrp.vrp <= 0
+  );
+  if (dangerousQuadrant) {
+    advisories.push(
+      `⚠ Dangerous quadrant — IV Rank ${ivRank} looks "cheap" but VRP is ${vrp.vrp.toFixed(2)}. That's because realised vol has picked up FASTER than IV has repriced. Retail sees "cheap IV, let's sell" and gets run over. Skip today or trade defensive-only.`
+    );
+  }
+  if (tradeable && !dangerousQuadrant && ivRank != null && ivRank < 30) {
     advisories.push(`IV Rank ${ivRank} — premium is on the cheaper side. Consider smaller size or wait for a VIX spike.`);
   }
   if (tradeable && dealer.regime === "neutral") {
     advisories.push("Dealer gamma is neutral — no strong sticky-range tailwind for premium sellers.");
   }
-  if (tradeable && vrp && vrp.vrp != null && vrp.vrp < 1) {
-    advisories.push(`VRP ${vrp.vrp.toFixed(2)} — realised vol is catching up to IV. Compression underway; consider tighter DTE / smaller size.`);
+  // VRP zone-based advisories
+  if (tradeable && vrp && vrp.vrp != null) {
+    if (vrp.vrp >= -0.5 && vrp.vrp < 0.5) {
+      advisories.push(`VRP ${vrp.vrp.toFixed(2)} — thin edge zone. Reduce size and widen strikes (shorter DTE preferred).`);
+    } else if (vrp.vrp >= 0.5 && vrp.vrp < 2) {
+      advisories.push(`VRP ${vrp.vrp.toFixed(2)} — fair premium zone. Normal position sizing OK.`);
+    }
+  }
+  // VRP trend advisories
+  if (tradeable && vrp?.trend?.direction === "falling" && vrp.vrp != null && vrp.vrp < 1) {
+    advisories.push(`VRP trend is falling (slope ${vrp.trend.slope}) — realised vol has been creeping up for several sessions. Tighten risk parameters going in.`);
+  }
+  if (vrp?.trend?.direction === "rising" && vrp.vrp != null && vrp.vrp >= 1) {
+    advisories.push(`VRP trend is rising (slope ${vrp.trend.slope}) — IV bid without matching HV. Good opportunity if no real event justifies it.`);
   }
 
   // ---- Per-strike scoring ----
@@ -320,15 +344,17 @@ export function computeSellCandidates({
     // 8. Volume gate
     const s8 = (vol || 0) >= 5_000 ? 5 : 0;
 
-    // 9. VRP bonus/penalty (market-wide, applied per-strike so composite score
-    //    is comparable across signals). +12 when VRP is rich, +6 when fair,
-    //    0 when thin, negative when poor.
+    // 9. VRP zone bonus/penalty. Zones per user's spec:
+    //   VRP > +2      → +15 (rich premium, sell size)
+    //   +0.5 to +2    → +8  (fair)
+    //   -0.5 to +0.5  → 0   (thin edge)
+    //   < -0.5        → -15 (HV outrunning IV — punish so score falls off)
     let s9 = 0;
     if (vrp && vrp.vrp != null) {
-      if (vrp.vrp >= 3) s9 = 12;
-      else if (vrp.vrp >= 1) s9 = 6;
-      else if (vrp.vrp >= -1) s9 = 0;
-      else s9 = -10;
+      if (vrp.vrp >= 2) s9 = 15;
+      else if (vrp.vrp >= 0.5) s9 = 8;
+      else if (vrp.vrp >= -0.5) s9 = 0;
+      else s9 = -15;
     }
 
     const total = Math.round(s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8 + s9);
@@ -347,8 +373,10 @@ export function computeSellCandidates({
     if (isMig) rationale.push("OI migrating in");
     if (smile.meanIv && iv_pct > smile.meanIv * 1.10) rationale.push("Smile-skew premium");
     if (vrp && vrp.vrp != null) {
-      if (vrp.vrp >= 3) rationale.push(`VRP +${vrp.vrp.toFixed(1)} (rich)`);
-      else if (vrp.vrp < 0) rationale.push(`VRP ${vrp.vrp.toFixed(1)} (under-paid)`);
+      if (vrp.vrp >= 2) rationale.push(`VRP +${vrp.vrp.toFixed(1)} (rich · sell size)`);
+      else if (vrp.vrp >= 0.5) rationale.push(`VRP +${vrp.vrp.toFixed(1)} (fair)`);
+      else if (vrp.vrp < -0.5) rationale.push(`VRP ${vrp.vrp.toFixed(1)} (HV outrunning IV)`);
+      else rationale.push(`VRP ${vrp.vrp.toFixed(1)} (thin edge)`);
     }
 
     return {
@@ -384,7 +412,7 @@ export function computeSellCandidates({
   }
 
   return {
-    verdict: { tradeable, reasons, advisories },
+    verdict: { tradeable, reasons, advisories, dangerousQuadrant },
     candidates: { ce, pe },
     smile,
     dealer,
