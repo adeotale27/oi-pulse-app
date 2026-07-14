@@ -27,6 +27,9 @@ import {
 import { AlertTriangle, TrendingUp, TrendingDown, Info, Zap, ArrowRightLeft, Shield } from "lucide-react";
 import InfoTip from "./InfoTip";
 import { computeSellCandidates } from "@/lib/sellCandidates";
+import {
+  ivRankGuide, vrpGuide, dealerGammaGuide, vixGuide, scoreGuide, verdictGuide,
+} from "@/lib/metricGuides";
 
 const toneMap = {
   emerald: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-900",
@@ -35,10 +38,17 @@ const toneMap = {
   slate: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-200 dark:border-slate-700",
 };
 
-function Pill({ label, value, sub, tone = "slate", testId }) {
+function Pill({ label, value, sub, tone = "slate", testId, tip }) {
   return (
     <div className={`rounded-md border px-3 py-2 text-xs flex flex-col gap-0.5 min-w-[130px] ${toneMap[tone]}`} data-testid={testId}>
-      <span className="uppercase tracking-wide text-[10px] opacity-80">{label}</span>
+      <span className="uppercase tracking-wide text-[10px] opacity-80 flex items-center gap-1">
+        {label}
+        {tip && (
+          <InfoTip testId={`${testId}-tip`}>
+            {tip}
+          </InfoTip>
+        )}
+      </span>
       <span className="font-bold text-sm leading-none">{value}</span>
       {sub && <span className="text-[11px] opacity-80 leading-none mt-0.5">{sub}</span>}
     </div>
@@ -51,8 +61,13 @@ function ScoreBadge({ score }) {
   else if (score >= 60) tone = "amber";
   else tone = "slate";
   return (
-    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-mono-data font-bold ${toneMap[tone]}`}>
-      {score}
+    <span className="inline-flex items-center gap-1">
+      <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-mono-data font-bold ${toneMap[tone]}`}>
+        {score}
+      </span>
+      <InfoTip testId={`score-tip-${score}`}>
+        {scoreGuide(score)}
+      </InfoTip>
     </span>
   );
 }
@@ -200,6 +215,7 @@ export default function SellCandidatesPanel({
           sub={ivRankSub}
           tone={ivRankTone}
           testId="scpill-iv-rank"
+          tip={ivRankGuide(ivRank)}
         />
         <Pill
           label="VRP (IV − HV₁₀)"
@@ -207,6 +223,7 @@ export default function SellCandidatesPanel({
           sub={vrp?.label || (vrp?.error === "not_in_kite_mode" ? "Needs Kite login" : "—")}
           tone={vrp?.tone || "slate"}
           testId="scpill-vrp"
+          tip={vrpGuide(vrp?.vrp)}
         />
         <Pill
           label="Dealer γ (GEX)"
@@ -214,6 +231,7 @@ export default function SellCandidatesPanel({
           sub={dealer.label}
           tone={dealer.tone}
           testId="scpill-dealer-gamma"
+          tip={dealerGammaGuide(dealer.gexT)}
         />
         <Pill
           label="India VIX"
@@ -221,6 +239,7 @@ export default function SellCandidatesPanel({
           sub={vixSub}
           tone={vixTone}
           testId="scpill-vix"
+          tip={vixGuide(vixNow, vix?.changePct)}
         />
         <Pill
           label="Verdict"
@@ -228,6 +247,7 @@ export default function SellCandidatesPanel({
           sub={lastComputedAt ? `Updated ${new Date(lastComputedAt).toLocaleTimeString()}` : ""}
           tone={verdictTone}
           testId="scpill-verdict"
+          tip={verdictGuide(verdict.tradeable, verdict.dangerousQuadrant)}
         />
       </div>
 

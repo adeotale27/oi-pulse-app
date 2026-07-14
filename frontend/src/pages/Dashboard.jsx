@@ -19,6 +19,8 @@ import HolidayBadge from "@/components/HolidayBadge";
 import MarketEventsBadge from "@/components/MarketEventsBadge";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
+import InfoTip from "@/components/InfoTip";
+import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -883,7 +885,12 @@ export default function Dashboard() {
                           }`}
                           data-testid="market-verdict"
                         >
-                          <span className="uppercase tracking-widest text-[9px] opacity-70">Bias</span>
+                          <span className="uppercase tracking-widest text-[9px] opacity-70 flex items-center gap-1">
+                            Bias
+                            <InfoTip testId="market-verdict-tip">
+                              {biasGuide(marketIntel.score)}
+                            </InfoTip>
+                          </span>
                           <span className="text-sm font-semibold" data-testid="market-verdict-label">{marketIntel.label}</span>
                           <span className={`ml-auto text-[10px] tabular-nums ${marketIntel.score >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                             {marketIntel.score >= 0 ? "+" : ""}{marketIntel.score}
@@ -891,7 +898,8 @@ export default function Dashboard() {
                         </div>
                         <IntelCell label="PCR" value={marketIntel.pcr.toFixed(2)}
                           hint={marketIntel.pcr >= 1.05 ? "Bullish (≥1.05)" : marketIntel.pcr <= 0.95 ? "Bearish (≤0.95)" : "Neutral"}
-                          tone={marketIntel.pcr >= 1.05 ? "emerald" : marketIntel.pcr <= 0.95 ? "rose" : "slate"} />
+                          tone={marketIntel.pcr >= 1.05 ? "emerald" : marketIntel.pcr <= 0.95 ? "rose" : "slate"}
+                          tip={pcrGuide(marketIntel.pcr)} />
                         <IntelCell label="Max Pain" value={marketIntel.maxPain?.toLocaleString()}
                           hint={
                             current?.price && marketIntel.maxPain
@@ -900,11 +908,14 @@ export default function Dashboard() {
                                 : `Spot ${((marketIntel.maxPain - current.price) / marketIntel.maxPain * 100).toFixed(2)}% below`
                               : ""
                           }
-                          tone={current?.price > marketIntel.maxPain ? "emerald" : "rose"} />
+                          tone={current?.price > marketIntel.maxPain ? "emerald" : "rose"}
+                          tip={maxPainGuide(current?.price, marketIntel.maxPain)} />
                         <IntelCell label="Support" value={marketIntel.support?.toLocaleString()}
-                          hint="Highest Put OI" tone="emerald" />
+                          hint="Highest Put OI" tone="emerald"
+                          tip={supportGuide()} />
                         <IntelCell label="Resistance" value={marketIntel.resistance?.toLocaleString()}
-                          hint="Highest Call OI" tone="rose" />
+                          hint="Highest Call OI" tone="rose"
+                          tip={resistanceGuide()} />
                       </div>
                     )}
                     <div className="mt-3 pt-3 border-t border-slate-100 space-y-3">
@@ -1182,7 +1193,7 @@ export default function Dashboard() {
   );
 }
 
-function IntelCell({ label, value, hint, tone = "slate" }) {
+function IntelCell({ label, value, hint, tone = "slate", tip }) {
   const toneClass =
     tone === "emerald"
       ? "text-emerald-700"
@@ -1194,7 +1205,14 @@ function IntelCell({ label, value, hint, tone = "slate" }) {
       className="rounded-md border border-slate-200 bg-white px-3 py-2 flex flex-col leading-tight"
       data-testid={`intel-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
-      <span className="uppercase tracking-widest text-[9px] text-slate-400">{label}</span>
+      <span className="uppercase tracking-widest text-[9px] text-slate-400 flex items-center gap-1">
+        {label}
+        {tip && (
+          <InfoTip testId={`intel-${label.toLowerCase().replace(/\s+/g, "-")}-tip`}>
+            {tip}
+          </InfoTip>
+        )}
+      </span>
       <span className={`text-sm font-semibold ${toneClass}`}>{value ?? "—"}</span>
       {hint ? <span className="text-[10px] text-slate-500 truncate">{hint}</span> : null}
     </div>
