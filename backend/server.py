@@ -270,11 +270,58 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         projection={"_id": 0},
     )
 
+    # Guard against returning the SAME underlying snapshot as `current`. This
+    # can happen right after a backend restart (very little history) or when
+    # market data is throttled: the DB's latest doc within the query window
+    # may share the exact `timestamp` (market tick time) as the live snapshot,
+    # which would render ΔOI = 0 for every strike and confuse users.
+    current_ts = current.get("timestamp")
+    if prev_doc and prev_doc.get("timestamp") == current_ts:
+        alt_query = {**query, "timestamp": {"$ne": current_ts}}
+        prev_doc = await db.oi_snapshots.find_one(
+            alt_query,
+            sort=[("created_at", -1)],
+            projection={"_id": 0},
+        )
+
+    # Also fall back to the OLDEST available snapshot if we don't yet have one
+    # `minutes` back — so shortly after a restart, we still show *some* diff
+    # instead of a blank window.
+    if not prev_doc:
+        fallback_query = {"index": idx}
+        if expiry:
+            fallback_query["expiry"] = expiry
+        if current_ts:
+            fallback_query["timestamp"] = {"$ne": current_ts}
+        prev_doc = await db.oi_snapshots.find_one(
+            fallback_query,
+            sort=[("created_at", 1)],  # oldest available
+            projection={"_id": 0},
+        )
+
+    # Attach a small meta so the frontend can indicate "history warming up" when
+    # the requested lookback isn't available yet.
+    history_ready = True
+    if prev_doc and current_ts:
+        try:
+            prev_ts_dt = datetime.fromisoformat(prev_doc.get("timestamp"))
+            cur_ts_dt = datetime.fromisoformat(current_ts)
+            elapsed_min = (cur_ts_dt - prev_ts_dt).total_seconds() / 60.0
+            # Consider history "ready" only if we have at least ~80 % of the
+            # requested lookback available. Otherwise flag it as warming up.
+            if elapsed_min < 0.8 * minutes:
+                history_ready = False
+        except Exception:
+            pass
+    elif not prev_doc:
+        history_ready = False
+
     return {
         "index": idx,
         "current": current,
         "previous": prev_doc,
         "minutes": minutes,
+        "history_ready": history_ready,
     }
 
 

@@ -197,6 +197,7 @@ export default function Dashboard() {
     }
   }, []);
 
+  const [historyReady, setHistoryReady] = useState(true);
   // Poll OI + previous for the active index
   const loadOI = useCallback(async () => {
     try {
@@ -205,6 +206,7 @@ export default function Dashboard() {
       const { data } = await api.get(`/oi/${activeIndex}/change`, { params });
       setCurrent(data.current);
       setPrevious(data.previous);
+      setHistoryReady(data.history_ready !== false);
       setLastPulledAt(new Date().toISOString());
       // Visual "just pulled" pulse on the chart card so users can see the
       // bars refresh at each 30-second cycle.
@@ -729,9 +731,18 @@ export default function Dashboard() {
                     timeframeMin={timeframe}
                   />
                 )}
+                {!historyReady && (
+                  <div
+                    data-testid="history-warming-banner"
+                    className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-700 px-3 py-2 text-xs flex items-center gap-2"
+                  >
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    History warming up — we have less than the requested {timeframeLabel} of stored snapshots. Bars use the oldest available baseline; wait a few minutes for full accuracy.
+                  </div>
+                )}
                 <div
-                  className={`bg-white border rounded-md p-4 transition-all duration-700 ${
-                    pulsePull ? "ring-2 ring-sky-300 border-sky-300" : "border-slate-200"
+                  className={`bg-white dark:bg-slate-900 border rounded-md p-4 transition-all duration-700 ${
+                    pulsePull ? "ring-2 ring-sky-300 border-sky-300" : "border-slate-200 dark:border-slate-700"
                   }`}
                   data-testid="oi-change-card"
                   style={

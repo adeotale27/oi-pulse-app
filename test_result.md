@@ -103,26 +103,112 @@
 #====================================================================================================
 
 user_problem_statement: |
-  July 2026 iteration #4 — user asked for a large set of polish + fixes:
-  1) BUG: Alert Settings slider "not working" — investigated and hardened value
-     defaults (value={[settings.threshold_pct ?? 15]}) so slider never receives
-     undefined during the loading window. Round-trip lint clean, drag test moved
-     value 15→16 in preview.
-  2) UX: Move ticker tiles for NIFTY/SENSEX/BANK NIFTY next to India VIX (single
-     header row). Move Holiday + Events badges to the tab-selector row (right
-     side). Move "OI last pulled at HH:MM:SS" next to the live clock in header.
-  3) NEW: Dark mode toggle (button + Ctrl+D auto not added, only button). Persisted.
-  4) NEW: Compact mode toggle (button + Ctrl/Cmd+B) — hides sidebar. Persisted.
-  5) NEW: Alert Sound Preferences modal — pick a distinct pattern per alert kind
-     (reversal / huge shift / gamma wall / institution / velocity / adjustment)
-     with a Play preview button. Persisted in localStorage.
-  6) NEW: InfoTip component & hover-info icons added next to labels in
-     Alert Settings (5 tooltips), Strike Table (ATM IV Rank + Call Signals + Put
-     Signals headers). Beginner-friendly explanations.
-  7) UX: Strike Table — sticky Call Signals + Strike + Put Signals columns so
-     when window is narrow the most useful cells stay visible.
-  8) BACKEND: /api/tickers now used by TickerStrip and by Header for the NIFTY
-     row's yesterday-close % change.
+  July 2026 iteration #5 — CRITICAL bug:
+  "Data for 1 min / 3 min / 5 min / 10 min is not getting shown on the data page"
+  Root cause: /api/oi/{index}/change was returning a `previous` snapshot whose
+  `timestamp` field was identical to `current.timestamp` (right after backend
+  restart, or when the tracker's most-recent snapshot was already served as
+  `current` and again matched by the `created_at <= now - minutes` query).
+  Result: every strike showed ΔOI = 0 → Call OI change 0 / Put OI change 0 and
+  the chart bars looked flat for all short timeframes.
+
+  Fix applied:
+  1. Backend: if the initial DB lookup returns a doc with `timestamp == current`,
+     do a second lookup that excludes that exact `timestamp`.
+  2. Backend: if still no doc, fall back to the OLDEST available snapshot with a
+     different timestamp — so users see some diff instead of a blank window even
+     right after a restart.
+  3. Backend: response now includes `history_ready: bool` — false when the
+     available baseline is < 80 % of the requested lookback.
+  4. Frontend: shows an amber "History warming up" banner on top of the OI Change
+     card whenever history_ready is false, explaining the situation instead of
+     hiding it.
+
+backend:
+  - task: "GET /api/oi/{index}/change — previous snapshot never equals current (BUG FIX)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          Fix in server.py get_oi_change():
+            - After the primary $lte lookup, if prev_doc.timestamp == current.timestamp
+              perform an $ne re-lookup to avoid returning the same snapshot.
+            - If still None, fall back to earliest-available snapshot with $ne timestamp.
+            - Compute and return history_ready=true|false based on whether the
+              elapsed gap between current.timestamp and prev_doc.timestamp is at
+              least 80% of the requested `minutes`.
+          curl test after fix (mode=kite):
+            minutes=1  -> previous.timestamp != current.timestamp ✅
+            minutes=10 -> previous.timestamp != current.timestamp ✅
+          Please regression-test that all timeframe endpoints (minutes=1/3/5/10/15/30/60)
+          return distinct current vs previous, valid history_ready flag, and no 5xx.
+
+frontend:
+  - task: "History warming up banner + non-zero deltas in short timeframes (BUG FIX visible verification)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/Dashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          Dashboard now reads data.history_ready and sets historyReady state.
+          When false, an amber banner ([data-testid="history-warming-banner"]) shows
+          above the OI Change card with copy explaining the situation.
+          Please verify:
+            - Switch through timeframes 1/3/5/10/15 mins. For each, the
+              "Call OI change" and "Put OI change" values should NOT both be
+              exactly 0 unless the market truly is flat (which is highly unlikely
+              during a live session with 500+ strikes).
+            - When timeframe is 1 min but stored history is only ~2 min old, the
+              amber banner should be visible.
+
+metadata:
+  created_by: "main_agent"
+  version: "5.0"
+  test_sequence: 5
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "GET /api/oi/{index}/change — previous snapshot never equals current (BUG FIX)"
+    - "History warming up banner + non-zero deltas in short timeframes (BUG FIX visible verification)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: |
+      CRITICAL BUG FIX. Please verify with high priority.
+
+      BACKEND:
+        1) Call GET /api/oi/NIFTY/change?minutes=1
+           Expect: 200, current.timestamp != previous.timestamp (both strings).
+        2) Repeat for minutes=3, 5, 10, 15, 30. All must have distinct timestamps.
+        3) Response must include a boolean key `history_ready`.
+        4) No 5xx anywhere.
+
+      FRONTEND:
+        A) Load dashboard. Ensure Call OI change and Put OI change values on the
+           OI Change tab are NOT both zero across timeframes 1/3/5/10/15 min.
+           (Market is live and Kite is streaming — expect non-zero deltas.)
+        B) If timeframe is 1 min and history is fresh, the amber
+           [data-testid="history-warming-banner"] should be present with copy
+           starting with "History warming up".
+        C) Ensure earlier features remain functional: alert-settings sliders drag,
+           ticker cards show LTPs, dark mode toggles, compact mode toggles.
+
+      Update /app/test_result.md with your findings under the two current_focus tasks.
 
 backend:
   - task: "GET /api/tickers — 3-index quote + prev close"
