@@ -198,6 +198,7 @@ export default function Dashboard() {
   }, []);
 
   const [historyReady, setHistoryReady] = useState(true);
+  const [availableHistoryMin, setAvailableHistoryMin] = useState(0);
   // Poll OI + previous for the active index
   const loadOI = useCallback(async () => {
     try {
@@ -207,6 +208,7 @@ export default function Dashboard() {
       setCurrent(data.current);
       setPrevious(data.previous);
       setHistoryReady(data.history_ready !== false);
+      setAvailableHistoryMin(Number(data.available_history_minutes || 0));
       setLastPulledAt(new Date().toISOString());
       // Visual "just pulled" pulse on the chart card so users can see the
       // bars refresh at each 30-second cycle.
@@ -737,7 +739,15 @@ export default function Dashboard() {
                     className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-700 px-3 py-2 text-xs flex items-center gap-2"
                   >
                     <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    History warming up — we have less than the requested {timeframeLabel} of stored snapshots. Bars use the oldest available baseline; wait a few minutes for full accuracy.
+                    {previous ? (
+                      <span>
+                        History warming up — we only have {availableHistoryMin.toFixed(1)} min of snapshots so the {timeframeLabel} bars are approximate. Wait ~{Math.max(1, Math.ceil(resolveMinutes(timeframe) - availableHistoryMin))} more min for a true {timeframeLabel} comparison.
+                      </span>
+                    ) : (
+                      <span>
+                        Not enough stored history yet for a {timeframeLabel} comparison ({availableHistoryMin.toFixed(1)} min available). Try a shorter timeframe, or wait ~{Math.max(1, Math.ceil(resolveMinutes(timeframe) - availableHistoryMin))} more min.
+                      </span>
+                    )}
                   </div>
                 )}
                 <div

@@ -352,18 +352,34 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
     # Attach a small meta so the frontend can indicate "history warming up" when
     # the requested lookback isn't available yet.
     history_ready = True
+    elapsed_min_val: Optional[float] = None
     if prev_doc and current_ts:
         try:
             prev_ts_dt = datetime.fromisoformat(prev_doc.get("timestamp"))
             cur_ts_dt = datetime.fromisoformat(current_ts)
-            elapsed_min = (cur_ts_dt - prev_ts_dt).total_seconds() / 60.0
+            elapsed_min_val = (cur_ts_dt - prev_ts_dt).total_seconds() / 60.0
             # Consider history "ready" only if we have at least ~80 % of the
             # requested lookback available. Otherwise flag it as warming up.
-            if elapsed_min < 0.8 * minutes:
+            if elapsed_min_val < 0.8 * minutes:
                 history_ready = False
         except Exception:
             pass
     elif not prev_doc:
+        history_ready = False
+
+    # ------------------------------------------------------------------ #
+    # P0 FIX (round 2): Suppress the fallback snapshot when it is FAR too
+    # young for the requested lookback. Otherwise multiple longer
+    # timeframes (10/15/30 min etc.) would all resolve to the SAME
+    # "oldest available" doc and display identical CE/PE change values,
+    # which is what the user reported as the bug.
+    #
+    # Rule: if the available baseline is < 60 % of the requested minutes,
+    # drop `previous` (return null) so the UI can honestly show "not
+    # enough history yet" instead of misleading identical numbers.
+    # ------------------------------------------------------------------ #
+    if prev_doc and elapsed_min_val is not None and elapsed_min_val < 0.6 * minutes:
+        prev_doc = None
         history_ready = False
 
     return {
@@ -372,6 +388,7 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         "previous": prev_doc,
         "minutes": minutes,
         "history_ready": history_ready,
+        "available_history_minutes": round(elapsed_min_val, 2) if elapsed_min_val is not None else 0.0,
     }
 
 
