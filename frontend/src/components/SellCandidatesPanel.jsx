@@ -123,6 +123,41 @@ function VolatilitySmileChart({ smile, atm }) {
   );
 }
 
+function VrpSparkline({ vrp }) {
+  if (!vrp?.series?.length) return null;
+  const data = vrp.series.map((p) => ({ date: p.date?.slice(5) || "", VRP: p.vrp_10, HV: p.hv_10 }));
+  const latest = data[data.length - 1];
+  return (
+    <div className="w-full h-40 bg-white dark:bg-slate-900 border rounded-md border-slate-200 dark:border-slate-700 p-2" data-testid="vrp-sparkline">
+      <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-between gap-1">
+        <span className="flex items-center gap-1">
+          Volatility Risk Premium — last {data.length} sessions
+          <InfoTip title="Volatility Risk Premium (VRP)" testId="tip-vrp">
+            VRP = Implied Vol − Realised Vol. When positive, sellers get paid MORE than the market&apos;s actual movement warrants — a real edge. When VRP compresses toward zero or turns negative, stop selling.
+          </InfoTip>
+        </span>
+        {latest && (
+          <span className="font-mono-data text-slate-700 dark:text-slate-200">
+            Today HV<sub>10</sub> <b>{(latest.HV ?? 0).toFixed(1)}%</b> · VRP <b>{(latest.VRP ?? 0).toFixed(2)}</b>
+          </span>
+        )}
+      </div>
+      <ResponsiveContainer width="100%" height="82%">
+        <LineChart data={data} margin={{ top: 4, right: 12, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+          <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={35} />
+          <Tooltip formatter={(v) => (v != null ? Number(v).toFixed(2) : "—")} />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
+          <Line type="monotone" dataKey="VRP" stroke="#0ea5e9" dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="HV" stroke="#f97316" dot={false} strokeWidth={1} isAnimationActive={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export default function SellCandidatesPanel({
   current,
   previous,
@@ -130,6 +165,7 @@ export default function SellCandidatesPanel({
   vixNow,
   vixOpen,
   step,
+  vrp,
   lastComputedAt,
 }) {
   const result = useMemo(() => computeSellCandidates({
@@ -139,7 +175,8 @@ export default function SellCandidatesPanel({
     vixOpen,
     indexName,
     step,
-  }), [current, previous, vixNow, vixOpen, indexName, step, lastComputedAt]);
+    vrp,
+  }), [current, previous, vixNow, vixOpen, indexName, step, vrp, lastComputedAt]);
 
   const { verdict, candidates, smile, dealer, ivRank, vix, walls, expiryStale } = result;
   const atm = current?.atm;
@@ -156,13 +193,20 @@ export default function SellCandidatesPanel({
   return (
     <div className="space-y-4" data-testid="sell-candidates-panel">
       {/* Header pills */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Pill
           label="IV Rank"
           value={ivRank != null ? ivRank : "—"}
           sub={ivRankSub}
           tone={ivRankTone}
           testId="scpill-iv-rank"
+        />
+        <Pill
+          label="VRP (IV − HV)"
+          value={vrp && vrp.vrp != null ? `${vrp.vrp >= 0 ? "+" : ""}${vrp.vrp.toFixed(2)}` : "—"}
+          sub={vrp?.label || (vrp?.error === "not_in_kite_mode" ? "Needs Kite login" : "—")}
+          tone={vrp?.tone || "slate"}
+          testId="scpill-vrp"
         />
         <Pill
           label="Dealer γ (GEX)"
@@ -187,8 +231,13 @@ export default function SellCandidatesPanel({
         />
       </div>
 
-      {/* Volatility smile */}
-      {!expiryStale && <VolatilitySmileChart smile={smile} atm={atm} />}
+      {/* Volatility smile + VRP sparkline */}
+      {!expiryStale && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <VolatilitySmileChart smile={smile} atm={atm} />
+          <VrpSparkline vrp={vrp} />
+        </div>
+      )}
 
       {/* Gamma walls reference */}
       {!expiryStale && walls?.ceWall != null && walls?.peWall != null && (
@@ -292,7 +341,7 @@ export default function SellCandidatesPanel({
       {/* Legend / signal explanations */}
       <div className="text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-2 flex items-center gap-3 flex-wrap">
         <Info className="w-3 h-3" />
-        Score combines: IV Rank · |Δ| · fresh writing · gamma-wall position · dealer γ regime · VIX intraday · OI migration · liquidity.
+        Score combines: IV Rank · VRP (IV − HV) · |Δ| · fresh writing · gamma-wall position · dealer γ regime · VIX intraday · OI migration · liquidity.
       </div>
     </div>
   );

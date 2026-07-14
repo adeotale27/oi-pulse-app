@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 
 from oi_tracker import OITracker, INDICES
 from oi_service import INDEX_CONFIG
+from vrp_service import compute_vrp
 from cryptography.fernet import Fernet
 import base64, hashlib
 
@@ -403,6 +404,50 @@ async def get_history(index_name: str, minutes: int = Query(60, ge=1, le=1440)):
         {"_id": 0}
     ).sort("created_at", 1).to_list(length=5000)
     return {"index": idx, "count": len(docs), "history": docs}
+
+
+@api_router.get("/vrp/{index_name}")
+async def get_vrp(index_name: str, days: int = Query(30, ge=5, le=90)):
+    """Volatility Risk Premium for an index (IV - Historical Vol).
+
+    Uses Kite historical_data (daily OHLC) to compute HV_10, HV_20 and
+    Parkinson high-low HV. Compares against the current India VIX (from
+    tracker.last_snapshot[idx].vix) to produce VRP and a rolling series
+    for the sparkline.
+
+    Requires Kite credentials — in mock mode returns an empty-shape response
+    with an `error` field so the frontend can degrade gracefully.
+    """
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(404, "Unknown index")
+
+    # Resolve current IV (India VIX). We prefer the most recent snapshot's vix
+    # value; fall back to any index's vix if the target index hasn't polled.
+    iv_pct: Optional[float] = None
+    snap = tracker.last_snapshot.get(idx)
+    if snap and snap.get("vix"):
+        iv_pct = float(snap["vix"])
+    else:
+        for k in ("NIFTY", "SENSEX", "BANKNIFTY"):
+            s = tracker.last_snapshot.get(k)
+            if s and s.get("vix"):
+                iv_pct = float(s["vix"])
+                break
+
+    if tracker.mode != "kite" or not tracker.kite_service:
+        return {
+            "index": idx,
+            "iv": iv_pct,
+            "vrp": None,
+            "regime": "unknown",
+            "label": "Needs Kite login",
+            "tone": "slate",
+            "series": [],
+            "error": "not_in_kite_mode",
+        }
+
+    return await compute_vrp(tracker.kite_service, db, idx, iv_pct, days=days)
 
 
 @api_router.get("/alerts")

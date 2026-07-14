@@ -181,6 +181,7 @@ export function computeSellCandidates({
   vixOpen,
   indexName,
   step,
+  vrp,
   r = DEFAULT_RISK_FREE_RATE,
 }) {
   const spot = current?.price || current?.atm;
@@ -244,6 +245,12 @@ export function computeSellCandidates({
   if (vix.spiking) {
     reasons.push(`India VIX up ${vix.changePct.toFixed(1)}% intraday — volatility is spiking.`);
   }
+  // Hard block: VRP < -1 means IV < realised vol → sellers are receiving less
+  // premium than the market's actual movement warrants. Institutional-grade
+  // "stop selling" trigger.
+  if (vrp && vrp.vrp != null && vrp.vrp < -1) {
+    reasons.push(`Volatility Risk Premium ${vrp.vrp.toFixed(2)} — IV (${(vrp.iv ?? 0).toFixed(1)}%) is below realised vol (HV ${((vrp.hv_20 ?? vrp.hv_10) ?? 0).toFixed(1)}%). Sellers under-paid for the market's actual movement.`);
+  }
   const tradeable = reasons.length === 0;
   // Advisory notes shown alongside candidates when the market is tradeable but
   // some individual signals are still lukewarm.
@@ -253,6 +260,9 @@ export function computeSellCandidates({
   }
   if (tradeable && dealer.regime === "neutral") {
     advisories.push("Dealer gamma is neutral — no strong sticky-range tailwind for premium sellers.");
+  }
+  if (tradeable && vrp && vrp.vrp != null && vrp.vrp < 1) {
+    advisories.push(`VRP ${vrp.vrp.toFixed(2)} — realised vol is catching up to IV. Compression underway; consider tighter DTE / smaller size.`);
   }
 
   // ---- Per-strike scoring ----
@@ -310,7 +320,18 @@ export function computeSellCandidates({
     // 8. Volume gate
     const s8 = (vol || 0) >= 5_000 ? 5 : 0;
 
-    const total = Math.round(s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8);
+    // 9. VRP bonus/penalty (market-wide, applied per-strike so composite score
+    //    is comparable across signals). +12 when VRP is rich, +6 when fair,
+    //    0 when thin, negative when poor.
+    let s9 = 0;
+    if (vrp && vrp.vrp != null) {
+      if (vrp.vrp >= 3) s9 = 12;
+      else if (vrp.vrp >= 1) s9 = 6;
+      else if (vrp.vrp >= -1) s9 = 0;
+      else s9 = -10;
+    }
+
+    const total = Math.round(s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8 + s9);
 
     // Rationale bullets.
     const rationale = [];
@@ -325,6 +346,10 @@ export function computeSellCandidates({
     if (s4 >= 12) rationale.push(isCall ? "Above CE gamma-wall" : "Below PE gamma-wall");
     if (isMig) rationale.push("OI migrating in");
     if (smile.meanIv && iv_pct > smile.meanIv * 1.10) rationale.push("Smile-skew premium");
+    if (vrp && vrp.vrp != null) {
+      if (vrp.vrp >= 3) rationale.push(`VRP +${vrp.vrp.toFixed(1)} (rich)`);
+      else if (vrp.vrp < 0) rationale.push(`VRP ${vrp.vrp.toFixed(1)} (under-paid)`);
+    }
 
     return {
       strike: s.strike,

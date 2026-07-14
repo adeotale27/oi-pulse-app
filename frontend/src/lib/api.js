@@ -10,6 +10,8 @@ export const fetchOI = (idx) => api.get(`/oi/${idx}`).then((r) => r.data);
 export const fetchOIChange = (idx, minutes) =>
   api.get(`/oi/${idx}/change`, { params: { minutes } }).then((r) => r.data);
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
+export const fetchVRP = (idx, days = 30) =>
+  api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);
 export const clearAlerts = () => api.delete("/alerts").then((r) => r.data);
 export const saveCredentials = (api_key, access_token) =>
   api.post("/credentials", { api_key, access_token }).then((r) => r.data);

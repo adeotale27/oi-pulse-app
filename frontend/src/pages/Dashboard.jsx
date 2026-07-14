@@ -25,7 +25,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, api } from "@/lib/api";
+import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api } from "@/lib/api";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
@@ -156,6 +156,24 @@ export default function Dashboard() {
     const iv = setInterval(() => setScTick(Date.now()), 60_000);
     return () => clearInterval(iv);
   }, []);
+
+  // VRP (Volatility Risk Premium) — one per active index. Fetched on index
+  // change and refreshed every 5 minutes (EOD data doesn't change intraday).
+  const [vrp, setVrp] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await fetchVRP(activeIndex, 30);
+        if (!cancelled) setVrp(data);
+      } catch (e) {
+        console.error("fetchVRP failed", e);
+      }
+    };
+    load();
+    const iv = setInterval(load, 5 * 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [activeIndex]);
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -1011,6 +1029,7 @@ export default function Dashboard() {
                       vixNow={current?.vix || status?.vix}
                       vixOpen={vixSessionOpen}
                       step={INDEX_STEP[activeIndex] || 50}
+                      vrp={vrp}
                       lastComputedAt={scTick}
                     />
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
