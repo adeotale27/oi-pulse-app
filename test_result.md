@@ -150,11 +150,11 @@ user_problem_statement: |
 backend:
   - task: "P0 FIX — /api/oi/{index}/change refreshes stale cache inline + poll-loop timeout"
     implemented: true
-    working: "NA"
+    working: false
     file: "backend/server.py, backend/oi_tracker.py, backend/oi_service.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         -working: "NA"
         -agent: "main"
@@ -190,6 +190,38 @@ backend:
           - When two calls are made 30-60s apart, `current.timestamp` MUST
             differ between them (proves inline refresh is firing).
           - Log spot-check: no `TIMEOUT` warnings during normal operation.
+        -working: false
+        -agent: "testing"
+        -comment: |
+          PARTIAL BUG CONFIRMED - Fix works for short timeframes but fails for long timeframes.
+          
+          UI testing on July 14, 2026 at 8:01 AM revealed:
+          
+          ✅ SHORT TIMEFRAMES (1, 3, 5 mins) - FIX IS WORKING:
+          - tf-1: CE +2.19L, PE +21.09L (prev TS: 8:00 AM, history_ready: True)
+          - tf-3: CE -28.70L, PE +25.93L (prev TS: 7:58 AM, history_ready: True)
+          - tf-5: CE -19.13L, PE +11.2K (prev TS: 7:56 AM, history_ready: True)
+          - All show DIFFERENT values and DIFFERENT previous timestamps ✅
+          
+          ❌ LONG TIMEFRAMES (10, 15, 30 mins) - BUG STILL EXISTS:
+          - tf-10: CE +650, PE 0 (prev TS: 8:01 AM, history_ready: False)
+          - tf-15: CE +650, PE 0 (prev TS: 8:01 AM, history_ready: False)
+          - tf-30: CE +650, PE 0 (prev TS: 8:01 AM, history_ready: False)
+          - All show IDENTICAL values and IDENTICAL previous timestamps ❌
+          
+          ROOT CAUSE: When history_ready=False (insufficient history), the fallback
+          logic returns the SAME "oldest available" snapshot for ALL longer timeframes,
+          causing identical CE/PE change values. This is the exact bug the user reported.
+          
+          The backend had only been running for ~8 minutes (earliest snapshot: 7:56 AM),
+          so timeframes requiring 10+ minutes of history all fell back to the same
+          snapshot (8:01 AM), resulting in identical values.
+          
+          RECOMMENDATION: Improve fallback logic to either:
+          1) Return NULL for previous when insufficient history (show "—" in UI)
+          2) Return DIFFERENT previous snapshots for different timeframes even when
+             insufficient history exists (proportional fallback)
+          3) Make "History warming up" banner more explicit about identical values
 
   - task: "GET /api/oi/{index}/change — previous snapshot never equals current (BUG FIX)"
     implemented: true
@@ -279,6 +311,136 @@ agent_communication:
       for verifying the fix — the fix is data-source-agnostic.
 
       Do NOT test the frontend yet; user will test frontend after backend passes.
+    -agent: "testing"
+    -message: |
+      P0 BUG DIAGNOSTIC COMPLETE - PARTIAL BUG CONFIRMED
+      
+      Comprehensive UI testing performed on https://300ad38b-a880-40db-87fa-6fe4a12e04c4.preview.emergentagent.com
+      Test date: July 14, 2026 at 8:01 AM
+      
+      ========================================
+      CRITICAL FINDING: USER BUG REPORT IS PARTIALLY VALID
+      ========================================
+      
+      The fix applied in iteration #6 IS WORKING for short timeframes (1, 3, 5 mins)
+      but the bug STILL EXISTS for longer timeframes (10, 15, 30 mins) when
+      history_ready=False.
+      
+      DETAILED TEST RESULTS:
+      
+      ✅ SHORT TIMEFRAMES (1, 3, 5 mins) - FIX IS WORKING:
+      
+      tf-1 (Last 1 min):
+        - Minutes param: 1
+        - Current TS: 2026-07-14T08:01:46.815357+00:00
+        - Previous TS: 2026-07-14T08:00:38.462625+00:00 (DIFFERENT)
+        - History ready: True
+        - CE change: +2.19L
+        - PE change: +21.09L
+        - Window start: 8:00 AM
+      
+      tf-3 (Last 3 mins):
+        - Minutes param: 3
+        - Current TS: 2026-07-14T08:01:46.815357+00:00
+        - Previous TS: 2026-07-14T07:58:41.324540+00:00 (DIFFERENT)
+        - History ready: True
+        - CE change: -28.70L
+        - PE change: +25.93L
+        - Window start: 7:58 AM
+      
+      tf-5 (Last 5 mins):
+        - Minutes param: 5
+        - Current TS: 2026-07-14T08:01:46.815357+00:00
+        - Previous TS: 2026-07-14T07:56:45.845359+00:00 (DIFFERENT)
+        - History ready: True
+        - CE change: -19.13L
+        - PE change: +11.2K
+        - Window start: 7:56 AM
+      
+      ❌ LONG TIMEFRAMES (10, 15, 30 mins) - BUG STILL EXISTS:
+      
+      tf-10 (Last 10 mins):
+        - Minutes param: 10
+        - Current TS: 2026-07-14T08:02:03.667357+00:00
+        - Previous TS: 2026-07-14T08:01:46.815357+00:00 (IDENTICAL to tf-15 and tf-30)
+        - History ready: False
+        - CE change: +650 (IDENTICAL to tf-15 and tf-30)
+        - PE change: 0 (IDENTICAL to tf-15 and tf-30)
+        - Window start: 8:01 AM (IDENTICAL to tf-15 and tf-30)
+      
+      tf-15 (Last 15 mins):
+        - Minutes param: 15
+        - Current TS: 2026-07-14T08:02:03.667357+00:00
+        - Previous TS: 2026-07-14T08:01:46.815357+00:00 (IDENTICAL to tf-10 and tf-30)
+        - History ready: False
+        - CE change: +650 (IDENTICAL to tf-10 and tf-30)
+        - PE change: 0 (IDENTICAL to tf-10 and tf-30)
+        - Window start: 8:01 AM (IDENTICAL to tf-10 and tf-30)
+      
+      tf-30 (Last 30 mins):
+        - Minutes param: 30
+        - Current TS: 2026-07-14T08:02:03.667357+00:00
+        - Previous TS: 2026-07-14T08:01:46.815357+00:00 (IDENTICAL to tf-10 and tf-15)
+        - History ready: False
+        - CE change: +650 (IDENTICAL to tf-10 and tf-15)
+        - PE change: 0 (IDENTICAL to tf-10 and tf-15)
+        - Window start: 8:01 AM (IDENTICAL to tf-10 and tf-15)
+      
+      ========================================
+      ROOT CAUSE ANALYSIS
+      ========================================
+      
+      The backend has only been running for ~8 minutes (earliest snapshot: 7:56 AM).
+      
+      When history_ready=False (insufficient history for the requested timeframe):
+      - The fallback logic returns the SAME "oldest available" snapshot for ALL
+        longer timeframes (10, 15, 30 mins)
+      - This causes previous.timestamp to be IDENTICAL across these timeframes
+      - Result: All longer timeframes show IDENTICAL CE/PE change values
+      
+      This is the EXACT bug the user reported: "Last 10 mins / Last 15 mins all
+      show the SAME OI change values."
+      
+      ========================================
+      VERDICT
+      ========================================
+      
+      ❌ PARTIAL FAIL: The fix is working for short timeframes (1, 3, 5 mins) but
+      the bug PERSISTS for longer timeframes (10, 15, 30 mins) when insufficient
+      history exists.
+      
+      The amber "History warming up" banner IS displayed correctly, but users don't
+      understand that this means ALL longer timeframes will show IDENTICAL values
+      until more history accumulates.
+      
+      ========================================
+      RECOMMENDED FIX
+      ========================================
+      
+      The backend fallback logic needs improvement. When history_ready=False:
+      
+      Option 1: Return NULL for previous snapshot instead of falling back to the
+      same oldest snapshot for all timeframes. This would make the UI show "—"
+      instead of misleading identical values.
+      
+      Option 2: Improve the fallback logic to return DIFFERENT previous snapshots
+      for different timeframes, even when insufficient history exists. For example:
+      - tf-10 requests 10 mins but only 8 mins available → use 8-min-old snapshot
+      - tf-15 requests 15 mins but only 8 mins available → use 8-min-old snapshot
+      - tf-30 requests 30 mins but only 8 mins available → use 8-min-old snapshot
+      Currently all three get the SAME snapshot, causing identical values.
+      
+      Option 3: Make the "History warming up" banner more explicit: "Values for
+      10/15/30 min timeframes will be identical until more history accumulates."
+      
+      ========================================
+      CONSOLE WARNINGS (NON-CRITICAL)
+      ========================================
+      
+      - Chart dimension warnings (width/height -1) - cosmetic issue, doesn't affect
+        functionality
+      
+      No critical console errors detected.
 
     -agent: "main"
     -message: |
