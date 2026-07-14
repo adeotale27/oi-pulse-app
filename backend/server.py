@@ -260,42 +260,52 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
     if not current:
         raise HTTPException(503, "No current data")
 
-    target = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-    query = {"index": idx, "created_at": {"$lte": target.isoformat()}}
+    # Always persist the freshly-served `current` snapshot to Mongo so the
+    # /change endpoint keeps history current even if the background tracker
+    # thread stalls. Upsert on (index, timestamp) so we don't create duplicates
+    # for the same market tick.
+    current_ts = current.get("timestamp")
+    if current_ts:
+        try:
+            await db.oi_snapshots.update_one(
+                {"index": idx, "timestamp": current_ts, "expiry": current.get("expiry")},
+                {"$setOnInsert": {**{k: v for k, v in current.items() if k != "_id"},
+                                    "created_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
+        except Exception as _e:
+            logger.warning(f"/change upsert failed for {idx}: {_e}")
+
+    # Anchor the lookback on the `current` snapshot's own timestamp (the actual
+    # market-tick time), NOT on wall-clock now(). Using now() would cause every
+    # short timeframe (1/3/5/10/15 min) to collapse to the same DB doc whenever
+    # the tracker was even briefly behind wall-clock.
+    try:
+        anchor = datetime.fromisoformat(current_ts) if current_ts else datetime.now(timezone.utc)
+    except Exception:
+        anchor = datetime.now(timezone.utc)
+    target = anchor - timedelta(minutes=minutes)
+    # Query on the snapshot's own `timestamp` field (also indexed) so we look
+    # for OI data that was actually recorded ~N minutes before `current`.
+    query = {"index": idx, "timestamp": {"$lt": current_ts, "$lte": target.isoformat()}} if current_ts else {"index": idx, "created_at": {"$lte": target.isoformat()}}
     if expiry:
         query["expiry"] = expiry
     prev_doc = await db.oi_snapshots.find_one(
         query,
-        sort=[("created_at", -1)],
+        sort=[("timestamp", -1)],
         projection={"_id": 0},
     )
 
-    # Guard against returning the SAME underlying snapshot as `current`. This
-    # can happen right after a backend restart (very little history) or when
-    # market data is throttled: the DB's latest doc within the query window
-    # may share the exact `timestamp` (market tick time) as the live snapshot,
-    # which would render ΔOI = 0 for every strike and confuse users.
-    current_ts = current.get("timestamp")
-    if prev_doc and prev_doc.get("timestamp") == current_ts:
-        alt_query = {**query, "timestamp": {"$ne": current_ts}}
-        prev_doc = await db.oi_snapshots.find_one(
-            alt_query,
-            sort=[("created_at", -1)],
-            projection={"_id": 0},
-        )
-
-    # Also fall back to the OLDEST available snapshot if we don't yet have one
-    # `minutes` back — so shortly after a restart, we still show *some* diff
-    # instead of a blank window.
-    if not prev_doc:
-        fallback_query = {"index": idx}
+    # If we don't have a snapshot exactly `minutes` old yet, take the closest
+    # older snapshot (still strictly older than current) so users see *some*
+    # diff instead of a blank window — and flag history_ready=False.
+    if not prev_doc and current_ts:
+        fallback_query = {"index": idx, "timestamp": {"$lt": current_ts}}
         if expiry:
             fallback_query["expiry"] = expiry
-        if current_ts:
-            fallback_query["timestamp"] = {"$ne": current_ts}
         prev_doc = await db.oi_snapshots.find_one(
             fallback_query,
-            sort=[("created_at", 1)],  # oldest available
+            sort=[("timestamp", -1)],
             projection={"_id": 0},
         )
 
