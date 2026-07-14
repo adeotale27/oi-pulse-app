@@ -18,6 +18,7 @@ import RightPanel from "@/components/RightPanel";
 import HolidayBadge from "@/components/HolidayBadge";
 import MarketEventsBadge from "@/components/MarketEventsBadge";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
+import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -34,6 +35,7 @@ import { playForAlert } from "@/lib/sounds";
 import { Play, HelpCircle } from "lucide-react";
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+const INDEX_STEP = { NIFTY: 50, SENSEX: 100, BANKNIFTY: 100 };
 const POLL_MS = 30000;
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
@@ -146,6 +148,14 @@ export default function Dashboard() {
     } catch { return null; }
   });
   const seenActivityRef = useRef(new Set());          // dedupe key set per session
+
+  // Force Sell Candidates panel to recompute every minute so scores stay fresh
+  // even if the underlying OI snapshot only ticks every 30s.
+  const [scTick, setScTick] = useState(Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setScTick(Date.now()), 60_000);
+    return () => clearInterval(iv);
+  }, []);
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -696,6 +706,7 @@ export default function Dashboard() {
                   { v: "oi-change", l: "OI Change" },
                   { v: "open-interest", l: "Open Interest" },
                   { v: "strike-table", l: "Strike Table" },
+                  { v: "sell-candidates", l: "Sell Candidates" },
                   { v: "buildup", l: "Build-up" },
                   { v: "positions", l: "Positions" },
                   { v: "alerts", l: "Alerts" },
@@ -982,6 +993,27 @@ export default function Dashboard() {
                       vixNow={current?.vix || status?.vix}
                     />
                     <div className="mt-3 pt-3 border-t border-slate-100">
+                      <TimeframePills value={timeframe} onChange={setTimeframe} />
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="sell-candidates" className="mt-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-semibold">{activeIndex} Sell Candidates — safest strikes to short</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Timeframe: <b>{timeframeLabel}</b> · auto-recomputes every 60s
+                      </div>
+                    </div>
+                    <SellCandidatesPanel
+                      current={filteredCurrent}
+                      previous={previous}
+                      indexName={activeIndex}
+                      vixNow={current?.vix || status?.vix}
+                      vixOpen={vixSessionOpen}
+                      step={INDEX_STEP[activeIndex] || 50}
+                      lastComputedAt={scTick}
+                    />
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                     </div>
                   </TabsContent>
