@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Settings2 } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
+import InfoTip from "@/components/InfoTip";
 
 const ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 
@@ -94,11 +95,14 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
             </div>
             <div>
               <div className="flex justify-between mb-1">
-                <Label className="text-xs uppercase tracking-wider text-slate-500">
+                <Label className="text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   OI change threshold
+                  <InfoTip title="OI Change Threshold" testId="tip-threshold-pct">
+                    The minimum % change in Call or Put OI that must occur (between the current snapshot and the compared one) before a reversal alert fires. Lower = more alerts, higher = only meaningful shifts.
+                  </InfoTip>
                 </Label>
                 <span className="text-xs font-mono-data font-semibold">
-                  {settings.threshold_pct}%
+                  {settings.threshold_pct ?? 15}%
                 </span>
               </div>
               <Slider
@@ -106,18 +110,21 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                 min={5}
                 max={50}
                 step={1}
-                value={[settings.threshold_pct]}
+                value={[settings.threshold_pct ?? 15]}
                 onValueChange={(v) => setSettings({ ...settings, threshold_pct: v[0] })}
               />
             </div>
 
             <div>
               <div className="flex justify-between mb-1">
-                <Label className="text-xs uppercase tracking-wider text-slate-500">
+                <Label className="text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   Compare with snapshot from
+                  <InfoTip title="Compare Window" testId="tip-compare-min">
+                    How many minutes back the reversal detector should look for the &quot;before&quot; snapshot. 3 min = quick reactions, 15+ min = smoother signals. Match this to your trading style.
+                  </InfoTip>
                 </Label>
                 <span className="text-xs font-mono-data font-semibold">
-                  {settings.compare_minutes} min ago
+                  {settings.compare_minutes ?? 3} min ago
                 </span>
               </div>
               <Slider
@@ -125,18 +132,21 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                 min={1}
                 max={30}
                 step={1}
-                value={[settings.compare_minutes]}
+                value={[settings.compare_minutes ?? 3]}
                 onValueChange={(v) => setSettings({ ...settings, compare_minutes: v[0] })}
               />
             </div>
 
             <div>
               <div className="flex justify-between mb-1">
-                <Label className="text-xs uppercase tracking-wider text-slate-500">
+                <Label className="text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   Alert cooldown
+                  <InfoTip title="Cooldown between alerts" testId="tip-cooldown">
+                    Silences repeat alerts of the same kind for N seconds. Prevents notification spam when OI is trending. Start with 120 s (2 min); raise if you get too many, lower if you want faster warnings.
+                  </InfoTip>
                 </Label>
                 <span className="text-xs font-mono-data font-semibold">
-                  {settings.cooldown_seconds}s
+                  {settings.cooldown_seconds ?? 120}s
                 </span>
               </div>
               <Slider
@@ -144,7 +154,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                 min={30}
                 max={600}
                 step={30}
-                value={[settings.cooldown_seconds]}
+                value={[settings.cooldown_seconds ?? 120]}
                 onValueChange={(v) => setSettings({ ...settings, cooldown_seconds: v[0] })}
               />
             </div>
@@ -173,8 +183,11 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
 
           {/* ------------- Huge OI shift popup ------------- */}
           <section className="space-y-3 pt-2 border-t border-slate-200">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               Huge OI shift popup (ATM ± 1 strikes)
+              <InfoTip title="Huge OI Shift Popup">
+                Blocking modal that fires when the total change in Call OR Put OI across the ATM strike and its neighbours (ATM+step, ATM-step) crosses your threshold in any monitored window. Meant to catch massive institutional footprints you should NEVER miss.
+              </InfoTip>
             </div>
             <NumberField
               label="Threshold (per side, aggregate |ΔOI|)"
@@ -214,8 +227,11 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
 
           {/* ------------- Gamma wall ------------- */}
           <section className="space-y-3 pt-2 border-t border-slate-200">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               Gamma wall detection
+              <InfoTip title="Gamma Wall">
+                A single strike where institutions dump a huge amount of OI in a short window — usually to defend that price. Once flagged as a &quot;wall&quot;, the market often struggles to cross it. Threshold: how much CE or PE OI must build on ONE strike within the window below.
+              </InfoTip>
             </div>
             <NumberField
               label="Min single-strike ΔOI"
@@ -240,8 +256,11 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
 
           {/* ------------- Velocity badges ------------- */}
           <section className="space-y-3 pt-2 border-t border-slate-200">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               OI velocity badges (per strike)
+              <InfoTip title="OI Velocity">
+                Rate of OI change per minute. Fast build-up = fresh aggressive positioning; Medium = normal; Slow = little conviction. Helps identify which strikes are getting the most fresh money right now.
+              </InfoTip>
             </div>
             <NumberField
               label="🔥 Fast build-up ≥"
@@ -264,8 +283,11 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
 
           {/* ------------- Institutional detector ------------- */}
           <section className="space-y-3 pt-2 border-t border-slate-200">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               🏦 Institutional activity detector
+              <InfoTip title="Institutional Activity">
+                Flags strikes where all THREE conditions hit at once: high open interest, above-average volume, and total premium value (LTP × OI × lot size) ≥ ₹X Crore. When all three trigger, an institution is almost certainly parked on that strike.
+              </InfoTip>
             </div>
             <NumberField
               label="Min OI"

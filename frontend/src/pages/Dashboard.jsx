@@ -15,6 +15,9 @@ import HolidaysTab from "@/components/HolidaysTab";
 import BuildupTable from "@/components/BuildupTable";
 import PositionsPanel from "@/components/PositionsPanel";
 import RightPanel from "@/components/RightPanel";
+import HolidayBadge from "@/components/HolidayBadge";
+import MarketEventsBadge from "@/components/MarketEventsBadge";
+import SoundSettingsModal from "@/components/SoundSettingsModal";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,6 +30,7 @@ import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
 import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
+import { playForAlert } from "@/lib/sounds";
 import { Play, HelpCircle } from "lucide-react";
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
@@ -118,6 +122,13 @@ export default function Dashboard() {
   const [activity, setActivity] = useState([]);       // unusual activity feed events
   const [activityFilter, setActivityFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("oi-change");
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem("darkMode") === "1"; } catch { return false; }
+  });
+  const [compact, setCompact] = useState(() => {
+    try { return localStorage.getItem("compact") === "1"; } catch { return false; }
+  });
+  const [soundsOpen, setSoundsOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
     try { return localStorage.getItem("rightPanelOpen") !== "0"; } catch { return true; }
   });
@@ -147,6 +158,26 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem("rightPanelView", rightPanelView); } catch (_) { /* noop */ }
   }, [rightPanelView]);
+  // Dark mode -> toggle html.dark class + persist
+  useEffect(() => {
+    const el = document.documentElement;
+    if (darkMode) el.classList.add("dark"); else el.classList.remove("dark");
+    try { localStorage.setItem("darkMode", darkMode ? "1" : "0"); } catch (_) { /* noop */ }
+  }, [darkMode]);
+  useEffect(() => {
+    try { localStorage.setItem("compact", compact ? "1" : "0"); } catch (_) { /* noop */ }
+  }, [compact]);
+  // Ctrl/Cmd + B toggles compact sidebar
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        setCompact((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // Capture the FIRST VIX value we see today as the session baseline so we can
   // compute today's % change accurately.
   useEffect(() => {
@@ -227,7 +258,7 @@ export default function Dashboard() {
               description: `Price ${a.price?.toFixed?.(2)} · ATM ${a.atm}`,
               duration: 8000,
             });
-            alarm();
+            playForAlert("reversal");
             push(`OI Reversal · ${a.index}`, a.direction);
             setFlash(true);
             setTimeout(() => setFlash(false), 1800);
@@ -485,7 +516,7 @@ export default function Dashboard() {
       return;
     }
     setHugeShift(shift);
-    try { siren(); } catch (_) { /* noop */ }
+    try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
     try {
       push(
         `HUGE OI SHIFT · ${shift.index}`,
@@ -501,10 +532,10 @@ export default function Dashboard() {
       const next = hugeShiftQueueRef.current.shift();
       if (next) {
         setHugeShift(next);
-        try { siren(); } catch (_) { /* noop */ }
+        try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
       }
     }, 250);
-  }, [siren]);
+  }, []);
 
   useHugeShiftMonitor({
     index: activeIndex,
@@ -613,12 +644,13 @@ export default function Dashboard() {
   }, [alerts, activeIndex, pushActivity]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
       <Header
         status={status}
         current={current}
         onOpenCreds={() => setCredsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSounds={() => setSoundsOpen(true)}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
         notifEnabled={notifEnabled}
         onToggleNotif={handleToggleNotif}
@@ -627,28 +659,35 @@ export default function Dashboard() {
         vixSessionOpen={vixSessionOpen}
         activeIndex={activeIndex}
         onSelectIndex={setActiveIndex}
+        lastPulledAt={lastPulledAt}
+        darkMode={darkMode}
+        onToggleDark={() => setDarkMode((v) => !v)}
+        compact={compact}
+        onToggleCompact={() => setCompact((v) => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          indices={INDICES}
-          activeIndex={activeIndex}
-          onChangeIndex={setActiveIndex}
-          current={current}
-          strikesAround={strikesAround}
-          onChangeStrikesAround={setStrikesAround}
-          strikeRange={strikeRange}
-          onChangeStrikeRange={setStrikeRange}
-          onReset={handleReset}
-          expiries={expiries}
-          selectedExpiry={selectedExpiry}
-          onChangeExpiry={handleChangeExpiry}
-        />
+        {!compact && (
+          <Sidebar
+            indices={INDICES}
+            activeIndex={activeIndex}
+            onChangeIndex={setActiveIndex}
+            current={current}
+            strikesAround={strikesAround}
+            onChangeStrikesAround={setStrikesAround}
+            strikeRange={strikeRange}
+            onChangeStrikeRange={setStrikeRange}
+            onReset={handleReset}
+            expiries={expiries}
+            selectedExpiry={selectedExpiry}
+            onChangeExpiry={handleChangeExpiry}
+          />
+        )}
 
-        <main className="flex-1 overflow-auto p-5">
+        <main className="flex-1 overflow-auto p-5 dark:bg-slate-950 dark:text-slate-200">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="flex items-center justify-between mb-4">
-              <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 rounded-none w-full justify-start">
+            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+              <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 dark:border-slate-700 rounded-none justify-start">
                 {[
                   { v: "oi-change", l: "OI Change" },
                   { v: "open-interest", l: "Open Interest" },
@@ -663,12 +702,21 @@ export default function Dashboard() {
                     key={t.v}
                     value={t.v}
                     data-testid={`tab-${t.v}`}
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-slate-900 data-[state=active]:text-slate-900 data-[state=active]:bg-transparent data-[state=active]:shadow-none text-slate-500 px-3 py-2 text-sm font-medium"
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-slate-900 dark:data-[state=active]:border-slate-100 data-[state=active]:text-slate-900 dark:data-[state=active]:text-slate-100 data-[state=active]:bg-transparent data-[state=active]:shadow-none text-slate-500 dark:text-slate-400 px-3 py-2 text-sm font-medium"
                   >
                     {t.l}
                   </TabsTrigger>
                 ))}
               </TabsList>
+              {/* Holiday & Events badges docked to the right of the tab-selector row */}
+              <div className="hidden md:flex items-stretch gap-2 ml-auto">
+                <div className="w-52">
+                  <HolidayBadge onClick={() => setActiveTab("holidays")} />
+                </div>
+                <div className="w-60">
+                  <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
+                </div>
+              </div>
             </div>
 
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full">
@@ -1056,6 +1104,8 @@ export default function Dashboard() {
       />
 
       <HugeShiftModal shift={hugeShift} onClose={dismissHugeShift} />
+
+      <SoundSettingsModal open={soundsOpen} onOpenChange={setSoundsOpen} />
     </div>
   );
 }

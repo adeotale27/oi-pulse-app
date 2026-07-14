@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { classifyVelocity } from "@/lib/oiSettings";
 import { strikeAnalytics, yearsToExpiry, classifyIvRank } from "@/lib/blackScholes";
+import InfoTip from "@/components/InfoTip";
 
 function formatOI(v) {
   if (v == null) return "—";
@@ -119,7 +120,12 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
           data-testid="iv-rank-summary"
         >
           <div>
-            <span className="uppercase tracking-widest text-[9px] opacity-70">ATM IV Rank</span>
+            <span className="uppercase tracking-widest text-[9px] opacity-70 flex items-center gap-1">
+              ATM IV Rank
+              <InfoTip title="ATM IV Rank" testId="tip-iv-rank">
+                Where today&apos;s ATM option implied volatility (IV) sits inside the typical range of India VIX (7–35 %). 0 = extremely cheap (buy options), 100 = extremely rich (sell options). Rule of thumb: rank &gt; 70 favours option sellers, rank &lt; 30 favours option buyers, in between = neutral.
+              </InfoTip>
+            </span>
             <div className="text-lg font-semibold font-mono-data">{atmRow.ivRank}<span className="text-xs opacity-70">/100</span></div>
           </div>
           <div className="flex-1">
@@ -131,24 +137,44 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
         </div>
       )}
     <div className="overflow-auto" data-testid="strike-table">
-      <table className="w-full text-xs font-mono-data">
-        <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
+      <table className="w-full text-xs font-mono-data border-separate border-spacing-0">
+        <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-300 uppercase tracking-wider text-[10px]">
           <tr>
-            <th className="text-left px-2 py-2">Call Signals</th>
+            <th className="text-left px-2 py-2 sticky left-0 z-20 bg-slate-50 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700">
+              <span className="inline-flex items-center gap-1">
+                Call Signals
+                <InfoTip title="Call-side Signal Badges">
+                  These badges auto-detect exceptional activity on CE:
+                  <ul className="list-disc pl-4 mt-1">
+                    <li>🔥/🟢/⚪ velocity — rate of OI build per minute (Fast/Medium/Slow).</li>
+                    <li>🚧 Gamma Wall — massive single-strike OI spike; a defended level.</li>
+                    <li>🏦 Institution — high OI + high volume + big premium =&gt; real institutional footprint.</li>
+                  </ul>
+                </InfoTip>
+              </span>
+            </th>
             <th className="text-right px-2 py-2">Call Δ</th>
             <th className="text-right px-2 py-2">Call Θ</th>
             <th className="text-right px-2 py-2">Call IV</th>
             <th className="text-right px-3 py-2">Call Δ%</th>
             <th className="text-right px-3 py-2">Call OI</th>
             <th className="text-right px-3 py-2">Call LTP</th>
-            <th className="text-center px-3 py-2 bg-slate-100">Strike</th>
+            <th className="text-center px-3 py-2 bg-slate-100 dark:bg-slate-700 sticky left-[110px] md:left-[130px] z-20 border-l border-r border-slate-200 dark:border-slate-700 hidden md:table-cell" style={{ position: "sticky" }}>Strike</th>
+            <th className="text-center px-3 py-2 bg-slate-100 dark:bg-slate-700 md:hidden">Strike</th>
             <th className="text-right px-3 py-2">Put LTP</th>
             <th className="text-right px-3 py-2">Put OI</th>
             <th className="text-right px-3 py-2">Put Δ%</th>
             <th className="text-right px-2 py-2">Put IV</th>
             <th className="text-right px-2 py-2">Put Θ</th>
             <th className="text-right px-2 py-2">Put Δ</th>
-            <th className="text-left px-2 py-2">Put Signals</th>
+            <th className="text-left px-2 py-2 sticky right-0 z-20 bg-slate-50 dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700">
+              <span className="inline-flex items-center gap-1">
+                Put Signals
+                <InfoTip title="Put-side Signal Badges">
+                  Same signal detectors applied to PE side. Watch for 🏦 on PE far below spot (protective hedges) and 🚧 near ATM (support forming).
+                </InfoTip>
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -159,9 +185,9 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
             return (
               <tr
                 key={r.strike}
-                className={`border-b border-slate-100 hover:bg-slate-50 ${isAtm ? "bg-amber-50" : ""}`}
+                className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 ${isAtm ? "bg-amber-50 dark:bg-amber-900/20" : "bg-white dark:bg-slate-900"}`}
               >
-                <td className="px-2 py-1.5 text-left">
+                <td className={`px-2 py-1.5 text-left sticky left-0 z-10 border-r border-slate-200 dark:border-slate-700 ${isAtm ? "bg-amber-50 dark:bg-amber-900/20" : "bg-white dark:bg-slate-900"}`}>
                   <SignalBadges
                     velocity={ceV}
                     velocityValue={r.ce_vel}
@@ -170,38 +196,38 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
                     side="CE"
                   />
                 </td>
-                <td className="text-right px-2 py-1.5 text-slate-700">
+                <td className="text-right px-2 py-1.5 text-slate-700 dark:text-slate-300">
                   {r.ce_delta_g != null ? r.ce_delta_g.toFixed(2) : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5 text-slate-700">
+                <td className="text-right px-2 py-1.5 text-slate-700 dark:text-slate-300">
                   {r.ce_theta != null ? r.ce_theta.toFixed(2) : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5 text-slate-700">
+                <td className="text-right px-2 py-1.5 text-slate-700 dark:text-slate-300">
                   {r.ce_iv != null ? r.ce_iv.toFixed(1) + "%" : "—"}
                 </td>
                 <td className={`text-right px-3 py-1.5 ${r.ce_pct >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
                   {r.ce_pct >= 0 ? "+" : ""}{r.ce_pct.toFixed(2)}%
                 </td>
-                <td className="text-right px-3 py-1.5 text-slate-800">{formatOI(r.ce_oi)}</td>
-                <td className="text-right px-3 py-1.5 text-slate-600">{r.ce_ltp?.toFixed?.(2)}</td>
-                <td className={`text-center px-3 py-1.5 font-semibold ${isAtm ? "text-amber-700" : "text-slate-900"}`}>
+                <td className="text-right px-3 py-1.5 text-slate-800 dark:text-slate-200">{formatOI(r.ce_oi)}</td>
+                <td className="text-right px-3 py-1.5 text-slate-600 dark:text-slate-300">{r.ce_ltp?.toFixed?.(2)}</td>
+                <td className={`text-center px-3 py-1.5 font-semibold ${isAtm ? "text-amber-700 bg-amber-100 dark:bg-amber-900/40" : "text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800"} sticky z-10 border-l border-r border-slate-200 dark:border-slate-700`} style={{ left: "clamp(110px, 15vw, 200px)", position: "sticky" }}>
                   {r.strike}
                 </td>
-                <td className="text-right px-3 py-1.5 text-slate-600">{r.pe_ltp?.toFixed?.(2)}</td>
-                <td className="text-right px-3 py-1.5 text-slate-800">{formatOI(r.pe_oi)}</td>
+                <td className="text-right px-3 py-1.5 text-slate-600 dark:text-slate-300">{r.pe_ltp?.toFixed?.(2)}</td>
+                <td className="text-right px-3 py-1.5 text-slate-800 dark:text-slate-200">{formatOI(r.pe_oi)}</td>
                 <td className={`text-right px-3 py-1.5 ${r.pe_pct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                   {r.pe_pct >= 0 ? "+" : ""}{r.pe_pct.toFixed(2)}%
                 </td>
-                <td className="text-right px-2 py-1.5 text-slate-700">
+                <td className="text-right px-2 py-1.5 text-slate-700 dark:text-slate-300">
                   {r.pe_iv != null ? r.pe_iv.toFixed(1) + "%" : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5 text-slate-700">
+                <td className="text-right px-2 py-1.5 text-slate-700 dark:text-slate-300">
                   {r.pe_theta != null ? r.pe_theta.toFixed(2) : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5 text-slate-700">
+                <td className="text-right px-2 py-1.5 text-slate-700 dark:text-slate-300">
                   {r.pe_delta_g != null ? r.pe_delta_g.toFixed(2) : "—"}
                 </td>
-                <td className="px-2 py-1.5 text-left">
+                <td className={`px-2 py-1.5 text-left sticky right-0 z-10 border-l border-slate-200 dark:border-slate-700 ${isAtm ? "bg-amber-50 dark:bg-amber-900/20" : "bg-white dark:bg-slate-900"}`}>
                   <SignalBadges
                     velocity={peV}
                     velocityValue={r.pe_vel}

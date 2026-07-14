@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { Activity, KeyRound, Bell, BellOff, Settings2, Download } from "lucide-react";
+import { Activity, KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import HolidayBadge from "@/components/HolidayBadge";
-import MarketEventsBadge from "@/components/MarketEventsBadge";
 import TickerStrip from "@/components/TickerStrip";
 
 export default function Header({
@@ -12,6 +10,7 @@ export default function Header({
   onOpenCreds,
   onOpenSettings,
   onDownloadCsv,
+  onOpenSounds,
   notifEnabled,
   onToggleNotif,
   onOpenHolidays,
@@ -20,6 +19,11 @@ export default function Header({
   activeIndex,
   onSelectIndex,
   tickerData,
+  lastPulledAt,
+  darkMode,
+  onToggleDark,
+  compact,
+  onToggleCompact,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -42,32 +46,41 @@ export default function Header({
   return (
     <header
       data-testid="dashboard-header"
-      className="w-full bg-white border-b border-slate-200 relative"
+      className="w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 relative"
     >
-      {/* --- Top row: brand, secondary metrics, action buttons --- */}
-      <div className="px-6 pt-2 pb-1 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-slate-900 rounded-sm flex items-center justify-center">
-              <Activity className="w-4 h-4 text-white" strokeWidth={2} />
-            </div>
-            <div>
-              <div className="text-sm font-semibold tracking-tight">OI Pulse</div>
-              <div className="text-[10px] uppercase tracking-widest text-slate-500">
-                NSE Open Interest Tracker
-              </div>
-            </div>
+      {/* --- Single row: brand, secondary metrics, tickers, clock, actions --- */}
+      <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-8 h-8 bg-slate-900 dark:bg-slate-700 rounded-sm flex items-center justify-center">
+            <Activity className="w-4 h-4 text-white" strokeWidth={2} />
           </div>
-
-          <div className="hidden md:flex items-center gap-5 pl-4 border-l border-slate-200">
-            <Metric label="ATM" value={atm.toLocaleString()} />
-            <Metric label="PCR" value={pcr.toFixed(2)} tone={pcr > 1 ? "green" : "red"} />
-            <VixMetric value={vix} sessionOpen={vixSessionOpen} />
+          <div>
+            <div className="text-sm font-semibold tracking-tight dark:text-slate-100">OI Pulse</div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">
+              NSE OI Tracker
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 font-mono-data" data-testid="last-updated">
+        <div className="hidden md:flex items-center gap-4 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
+          <Metric label="ATM" value={atm.toLocaleString()} />
+          <Metric label="PCR" value={pcr.toFixed(2)} tone={pcr > 1 ? "green" : "red"} />
+          <VixMetric value={vix} sessionOpen={vixSessionOpen} />
+        </div>
+
+        {/* Ticker cards inline beside VIX */}
+        <div className="flex items-stretch gap-1.5 flex-1 min-w-0 pl-3 border-l border-slate-200 dark:border-slate-700 flex-wrap">
+          <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} />
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          {lastPulledAt && (
+            <div className="hidden lg:flex items-center gap-1 text-[10px] font-mono-data text-slate-500 dark:text-slate-400 leading-tight" data-testid="oi-last-pulled-top">
+              <span className="uppercase tracking-widest text-slate-400 dark:text-slate-500">OI pulled</span>
+              <span className="text-slate-700 dark:text-slate-200">{new Date(lastPulledAt).toLocaleTimeString()}</span>
+            </div>
+          )}
+          <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono-data" data-testid="last-updated">
             <span className={`w-2 h-2 rounded-full ${status?.running ? "bg-emerald-500 live-dot" : "bg-slate-300"}`} />
             <span data-testid="live-clock">{nowLabel}</span>
           </div>
@@ -78,20 +91,40 @@ export default function Header({
             {mode === "kite" ? "LIVE · Kite" : "DEMO"}
           </Badge>
           <Button
+            data-testid="btn-toggle-compact"
+            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            onClick={onToggleCompact}
+            title={compact ? "Show sidebar (Ctrl+B)" : "Hide sidebar (Ctrl+B)"}
+          >
+            {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+          </Button>
+          <Button
+            data-testid="btn-toggle-dark"
+            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            onClick={onToggleDark}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Button>
+          <Button
             data-testid="btn-toggle-notifications"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
+            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
             onClick={onToggleNotif}
             title={notifEnabled ? "Notifications on" : "Enable notifications"}
           >
             {notifEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
           </Button>
           <Button
+            data-testid="btn-open-sounds"
+            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            onClick={onOpenSounds}
+            title="Alert sound preferences"
+          >
+            <Volume2 className="w-4 h-4" />
+          </Button>
+          <Button
             data-testid="btn-download-csv"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
+            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
             onClick={onDownloadCsv}
             title="Download current OI as CSV"
           >
@@ -99,9 +132,7 @@ export default function Header({
           </Button>
           <Button
             data-testid="btn-open-settings"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
+            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
             onClick={onOpenSettings}
             title="Alert settings"
           >
@@ -109,27 +140,12 @@ export default function Header({
           </Button>
           <Button
             data-testid="btn-open-credentials"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
+            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
             onClick={onOpenCreds}
           >
             <KeyRound className="w-4 h-4 mr-1.5" />
             Kite API
           </Button>
-        </div>
-      </div>
-
-      {/* --- Bottom row: index ticker strip + calendar badges --- */}
-      <div className="px-6 pb-2 pt-1 flex items-stretch gap-2 flex-wrap justify-between">
-        <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} />
-        <div className="flex items-stretch gap-2">
-          <div className="w-56">
-            <HolidayBadge onClick={onOpenHolidays} />
-          </div>
-          <div className="w-64">
-            <MarketEventsBadge onClick={onOpenEvents} />
-          </div>
         </div>
       </div>
     </header>
@@ -147,10 +163,10 @@ function VixMetric({ value, sessionOpen }) {
     else { arrow = "▬"; tone = "slate"; }
     chgLabel = `${chg >= 0 ? "+" : ""}${chg.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`;
   }
-  const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : tone === "slate" ? "text-slate-500" : "text-amber-600";
+  const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : tone === "slate" ? "text-slate-500 dark:text-slate-400" : "text-amber-600";
   return (
     <div className="flex flex-col" data-testid="vix-metric">
-      <div className="text-[10px] uppercase tracking-widest text-slate-500">INDIA VIX</div>
+      <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">INDIA VIX</div>
       <div className="flex items-baseline gap-1.5">
         <div className={`text-sm font-semibold font-mono-data ${toneCls}`} data-testid="vix-value">{v.toFixed(2)}</div>
         {arrow && (
@@ -168,10 +184,10 @@ function Metric({ label, value, tone, accent }) {
     green: "text-emerald-600",
     red: "text-rose-600",
     amber: "text-amber-600",
-  }[tone] || (accent ? "text-slate-900" : "text-slate-800");
+  }[tone] || (accent ? "text-slate-900 dark:text-slate-100" : "text-slate-800 dark:text-slate-200");
   return (
     <div className="flex flex-col">
-      <div className="text-[10px] uppercase tracking-widest text-slate-500">{label}</div>
+      <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</div>
       <div className={`text-sm font-semibold font-mono-data ${toneCls}`}>{value}</div>
     </div>
   );
