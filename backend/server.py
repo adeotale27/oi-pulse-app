@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
 import logging
 from pathlib import Path
 from pydantic import BaseModel
@@ -193,7 +194,6 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
     # if expiry mismatch or no snap, fetch on-demand
     if not snap or (expiry and snap.get("expiry") != expiry):
         try:
-            import asyncio
             svc = tracker._get_service()
             snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
             if snap:
@@ -247,16 +247,56 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
     if expiry:
         tracker.set_expiry(idx, expiry)
     current = tracker.last_snapshot.get(idx)
-    if not current or (expiry and current.get("expiry") != expiry):
+
+    # -------------------------------------------------------------- #
+    # P0 FIX: If cached `last_snapshot` is older than STALE_THRESHOLD
+    # seconds, force a fresh get_snapshot() call INLINE. This
+    # protects the /change endpoint from a silently-stalled
+    # background poll loop (which was causing 1/3/5/10/15 min windows
+    # to all resolve to the same DB doc and return identical deltas).
+    # -------------------------------------------------------------- #
+    STALE_THRESHOLD_SECONDS = 20
+    is_stale = False
+    if current:
         try:
-            import asyncio
+            cur_ts_dt = datetime.fromisoformat(current.get("timestamp"))
+            age = (datetime.now(timezone.utc) - cur_ts_dt).total_seconds()
+            if age > STALE_THRESHOLD_SECONDS:
+                is_stale = True
+                logger.warning(
+                    f"/change: cached snapshot for {idx} is {age:.1f}s old "
+                    f"(>{STALE_THRESHOLD_SECONDS}s) — refreshing inline."
+                )
+        except Exception:
+            is_stale = True
+
+    if (not current) or is_stale or (expiry and current.get("expiry") != expiry):
+        try:
             svc = tracker._get_service()
-            current = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
-            if current:
-                current["mode"] = tracker.mode
-                tracker.last_snapshot[idx] = current
+            fresh = await asyncio.wait_for(
+                asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
+                timeout=10.0,
+            )
+            if fresh:
+                fresh["mode"] = tracker.mode
+                tracker.last_snapshot[idx] = fresh
+                current = fresh
+            elif not current:
+                # No cache AND fresh returned None
+                raise HTTPException(503, f"No data available for {idx}")
+            else:
+                # Keep stale as fallback but log
+                logger.warning(f"/change: fresh get_snapshot({idx}) returned None; using stale cache.")
+        except asyncio.TimeoutError:
+            logger.error(f"/change: get_snapshot({idx}) timed out after 10s; using stale cache if any.")
+            if not current:
+                raise HTTPException(504, f"Snapshot fetch timed out for {idx}")
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(500, str(e))
+            logger.exception(f"/change inline refresh failed for {idx}: {e}")
+            if not current:
+                raise HTTPException(500, str(e))
     if not current:
         raise HTTPException(503, "No current data")
 
@@ -372,7 +412,7 @@ async def get_tickers():
     BANK NIFTY. Used by the header static ticker strip so users can eyeball
     today's movement at a glance across all three main indices.
     Falls back to mock movement when Kite isn't connected."""
-    import asyncio, random
+    import random
     result = []
     symbols = [
         ("NIFTY",     "NSE:NIFTY 50",   "NIFTY 50"),
@@ -435,7 +475,7 @@ async def get_positions():
     if tracker.mode != "kite" or not tracker.kite_service:
         return {"mode": tracker.mode, "positions": [], "error": "Not in Kite mode. Connect Kite API first."}
     try:
-        import asyncio, re
+        import re
         kite = tracker.kite_service.kite
         raw = await asyncio.to_thread(kite.positions)
         net = raw.get("net", []) if isinstance(raw, dict) else raw

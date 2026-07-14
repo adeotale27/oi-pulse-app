@@ -103,6 +103,29 @@
 #====================================================================================================
 
 user_problem_statement: |
+  July 2026 iteration #6 — CRITICAL P0 bug:
+  "1 min / 3 min / 5 min / 10 min / 15 min all show the SAME Call/Put OI change values"
+  Root cause (verified in DB): tracker.last_snapshot['NIFTY'] was being kept for
+  8+ minutes because the background poll loop's `to_thread(svc.get_snapshot,...)`
+  silently hung on ONE index — starving the loop, so the stored last_snapshot
+  never advanced. Because /api/oi/{index}/change serves that cached snapshot as
+  `current` and anchors lookback on `current.timestamp`, every lookback window
+  (1/3/5/10/15 min) resolved to the SAME two adjacent DB docs → identical
+  deltas across all timeframes.
+
+  Fix applied (iteration #6):
+  a) server.py get_oi_change(): if cached last_snapshot is older than 20s, force
+     a fresh `await asyncio.wait_for(to_thread(svc.get_snapshot,...), 10s)` inline
+     BEFORE running the lookback query. Cache is refreshed and upserted into
+     oi_snapshots so subsequent shorter timeframes have fresh anchor points.
+  b) oi_service.KiteService.get_snapshot: rich, explicit logger.error/warning on
+     every None-return path (load_instruments fail, index quote fail, empty
+     opt_df, no available expiries, empty tokens, options quote fail).
+  c) oi_tracker._poll_once: wrap each per-index snapshot fetch in
+     `asyncio.wait_for(..., timeout=10.0)` so a silently-hanging quote() call for
+     ONE index cannot starve the whole loop / block other indices from ticking.
+     Also added a `WARNING` log when get_snapshot returns None.
+
   July 2026 iteration #5 — CRITICAL bug:
   "Data for 1 min / 3 min / 5 min / 10 min is not getting shown on the data page"
   Root cause: /api/oi/{index}/change was returning a `previous` snapshot whose
@@ -125,6 +148,49 @@ user_problem_statement: |
      hiding it.
 
 backend:
+  - task: "P0 FIX — /api/oi/{index}/change refreshes stale cache inline + poll-loop timeout"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py, backend/oi_tracker.py, backend/oi_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          P0 fix for "1/3/5/10/15 min all show identical values" bug.
+
+          Changes:
+          1) server.py get_oi_change(): after fetching cached last_snapshot,
+             compute its age. If > 20s (STALE_THRESHOLD_SECONDS) force an inline
+             `asyncio.wait_for(to_thread(svc.get_snapshot, idx, exp), 10s)`,
+             then update tracker.last_snapshot AND upsert into oi_snapshots so
+             subsequent short-window lookbacks have a fresh anchor.
+          2) oi_service.py KiteService.get_snapshot: rich logger.error on every
+             None-return path — load_instruments fail, index-quote fail, empty
+             opt_df, no expiries, empty tokens, options quote fail. Every path
+             now includes [get_snapshot:{index}] prefix + exception type.
+          3) oi_tracker.py _poll_once: each per-index fetch is now wrapped in
+             `asyncio.wait_for(..., timeout=10.0)`. A hang on ONE index is
+             logged and skipped; other indices continue to tick.
+
+          Verified locally in mock mode:
+            curl /api/oi/NIFTY/change?minutes=1  → prvTS ~1 min old
+            curl /api/oi/NIFTY/change?minutes=3  → prvTS ~3 min old (distinct!)
+            curl /api/oi/NIFTY/change?minutes=10 → falls back to oldest, ready:False
+          Different timeframes now resolve to different DB docs.
+
+          Please verify:
+          - GET /api/oi/NIFTY/change?minutes=1,3,5,10,15,30,60 all return 200.
+          - `current.timestamp` is FRESH (< 20s old when the caller waits ~30s
+            between requests — i.e. cache is being refreshed on demand).
+          - `history_ready` boolean present.
+          - No 5xx.
+          - When two calls are made 30-60s apart, `current.timestamp` MUST
+            differ between them (proves inline refresh is firing).
+          - Log spot-check: no `TIMEOUT` warnings during normal operation.
+
   - task: "GET /api/oi/{index}/change — previous snapshot never equals current (BUG FIX)"
     implemented: true
     working: "NA"
@@ -180,8 +246,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "GET /api/oi/{index}/change — previous snapshot never equals current (BUG FIX)"
-    - "History warming up banner + non-zero deltas in short timeframes (BUG FIX visible verification)"
+    - "P0 FIX — /api/oi/{index}/change refreshes stale cache inline + poll-loop timeout"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -189,7 +254,35 @@ test_plan:
 agent_communication:
     -agent: "main"
     -message: |
-      CRITICAL BUG FIX. Please verify with high priority.
+      P0 REGRESSION — Please high-priority verify the "identical values across
+      1/3/5/10/15 min" fix.
+
+      TEST STEPS:
+      1) GET /api/status → 200, running=true.
+      2) GET /api/oi/NIFTY/change?minutes=1 → capture `current.timestamp` = T1.
+         Wait ~30 seconds.
+         GET /api/oi/NIFTY/change?minutes=1 again → capture `current.timestamp` = T2.
+         ASSERT T1 != T2 (proves inline refresh triggers when cache >20s stale).
+      3) Sequentially call minutes=1,3,5,10,15,30 within a few seconds.
+         For each: HTTP 200, response has keys current/previous/minutes/history_ready.
+         When enough history exists (backend has been running > 15 min), the
+         `previous.timestamp` should DIFFER between distinct `minutes` values.
+         When history is still warming up, `history_ready` MUST be false and
+         previous falls back to oldest available.
+      4) Compute the OI delta (sum |ce_oi diff| across all strikes) for
+         minutes=1 vs minutes=15. When >15 min of history exists, these must
+         DIFFER (not identical). If backend was just started they may match with
+         history_ready=false — that is acceptable.
+      5) No 5xx anywhere. No `TIMEOUT` errors in normal operation.
+
+      Currently the backend is in MOCK mode (no Kite credentials). That is fine
+      for verifying the fix — the fix is data-source-agnostic.
+
+      Do NOT test the frontend yet; user will test frontend after backend passes.
+
+    -agent: "main"
+    -message: |
+      Previous iteration #5 message follows (kept for context only):
 
       BACKEND:
         1) Call GET /api/oi/NIFTY/change?minutes=1
@@ -380,7 +473,7 @@ agent_communication:
     -message: |
       ITERATION #4 REGRESSION TESTING COMPLETE - ALL TESTS PASSED
       
-      Comprehensive UI testing performed on https://india-options-trader.preview.emergentagent.com
+      Comprehensive UI testing performed on https://stale-snapshot-cache.preview.emergentagent.com
       Test viewport: 1920x1080 (large desktop)
       
       ========================================
@@ -854,7 +947,7 @@ agent_communication:
     -message: |
       TESTING COMPLETE - ALL 5 TASKS VERIFIED SUCCESSFULLY
       
-      Comprehensive UI testing performed on https://india-options-trader.preview.emergentagent.com
+      Comprehensive UI testing performed on https://stale-snapshot-cache.preview.emergentagent.com
       
       ✅ Task 1: Blank chart fix on SENSEX/BANK switch
          - SENSEX: Strike range correctly updates to 75500-78500 (SENSEX range)
@@ -891,7 +984,7 @@ agent_communication:
     -message: |
       SECOND ROUND TESTING COMPLETE - ALL 5 ITEMS (A-E) VERIFIED SUCCESSFULLY
       
-      Comprehensive verification performed on https://india-options-trader.preview.emergentagent.com
+      Comprehensive verification performed on https://stale-snapshot-cache.preview.emergentagent.com
       
       ✅ ITEM A: Full Day pill dynamic minutes calculation
          - Clicked Full Day pill (data-testid="tf-full")
@@ -937,7 +1030,7 @@ agent_communication:
     -message: |
       ROUND 3 TESTING COMPLETE - ALL 3 ITEMS VERIFIED SUCCESSFULLY
       
-      Comprehensive verification performed on https://india-options-trader.preview.emergentagent.com
+      Comprehensive verification performed on https://stale-snapshot-cache.preview.emergentagent.com
       Testing focused on the 3 specific items requested in the review_request.
       
       ✅ ITEM 1: Toast colour matches alert direction

@@ -95,7 +95,7 @@ class KiteService:
         try:
             self._load_instruments()
         except Exception as e:
-            logger.error(f"load_instruments failed: {e}")
+            logger.error(f"[get_snapshot:{index_name}] load_instruments failed: {type(e).__name__}: {e}")
             return None
 
         cfg = INDEX_CONFIG[index_name]
@@ -104,7 +104,7 @@ class KiteService:
             q = self.kite.quote(cfg["quote_symbol"])
             ltp = q[cfg["quote_symbol"]]["last_price"]
         except Exception as e:
-            logger.error(f"quote index failed: {e}")
+            logger.error(f"[get_snapshot:{index_name}] index quote failed for {cfg['quote_symbol']}: {type(e).__name__}: {e}")
             return None
 
         step = cfg["step"]
@@ -117,11 +117,18 @@ class KiteService:
             (self.instruments_df["name"] == cfg["name"])
             & (self.instruments_df["segment"] == cfg["segment"])
         ].copy()
+        if opt_df.empty:
+            logger.error(f"[get_snapshot:{index_name}] no option rows found in instruments_df for name={cfg['name']} segment={cfg['segment']}")
+            return None
         opt_df["expiry"] = pd.to_datetime(opt_df["expiry"])
         available = sorted(opt_df["expiry"].unique())
+        if not available:
+            logger.error(f"[get_snapshot:{index_name}] no expiries available")
+            return None
         if expiry:
             selected = pd.to_datetime(expiry)
             if selected not in available:
+                logger.warning(f"[get_snapshot:{index_name}] requested expiry {expiry} not available; falling back to {available[0]}")
                 selected = available[0]
         else:
             selected = available[0]
@@ -140,11 +147,16 @@ class KiteService:
         all_syms = list(ce_syms.values()) + list(pe_syms.values())
         tokens = [self.instrument_token_map[s] for s in all_syms if s in self.instrument_token_map]
         if not tokens:
+            logger.error(
+                f"[get_snapshot:{index_name}] EMPTY tokens for expiry={selected} atm={atm} "
+                f"strikes_count={len(strikes)} ce_syms={len(ce_syms)} pe_syms={len(pe_syms)} "
+                f"instrument_token_map_size={len(self.instrument_token_map)}"
+            )
             return None
         try:
             quotes = self.kite.quote(tokens)
         except Exception as e:
-            logger.error(f"quote options failed: {e}")
+            logger.error(f"[get_snapshot:{index_name}] options quote failed (tokens={len(tokens)}): {type(e).__name__}: {e}")
             return None
 
         sym_to_data = {}

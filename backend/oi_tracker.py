@@ -152,12 +152,25 @@ class OITracker:
                 continue
             try:
                 exp = self.selected_expiry.get(idx)
-                snap = await asyncio.to_thread(svc.get_snapshot, idx, exp)
+                # P0 FIX: wrap per-index fetch in a hard 10s timeout so that a
+                # silently-hanging quote() call on ONE index can never starve
+                # the entire poll loop (which was leaving other indices' caches
+                # stale — root cause of 1/3/5/10/15 min returning identical
+                # deltas).
+                snap = await asyncio.wait_for(
+                    asyncio.to_thread(svc.get_snapshot, idx, exp),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"[_poll_once] snapshot TIMEOUT for {idx} after 10s — skipping this tick.")
+                self.last_error = f"snapshot timeout for {idx}"
+                continue
             except Exception as e:
-                logger.error(f"snapshot failed for {idx}: {e}")
+                logger.error(f"[_poll_once] snapshot failed for {idx}: {type(e).__name__}: {e}")
                 self.last_error = str(e)
                 continue
             if not snap:
+                logger.warning(f"[_poll_once] get_snapshot({idx}) returned None — see oi_service logs above for reason.")
                 continue
             snap["mode"] = self.mode
             self.last_snapshot[idx] = snap

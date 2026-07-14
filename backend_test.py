@@ -10,7 +10,7 @@ import time
 from typing import Dict, Any, List, Tuple
 
 # Backend URL from frontend/.env
-BASE_URL = "https://india-options-trader.preview.emergentagent.com/api"
+BASE_URL = "https://stale-snapshot-cache.preview.emergentagent.com/api"
 TIMEOUT = 5  # 5 second timeout as per requirements
 
 class Colors:
