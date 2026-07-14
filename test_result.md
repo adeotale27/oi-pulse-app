@@ -191,6 +191,15 @@ backend:
             minutes=10 → prvTS ~10 min old, history_ready=True
             minutes=15 → prvTS ~15 min old, history_ready=True
             minutes=30 → previous=null (0.15 min history at test time)
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ROUND 2 UI VERIFICATION — P0 BUG COMPLETELY RESOLVED.
+          Table across 6 timeframes: all 4 with sufficient history show
+          distinct CE/PE change values AND distinct previous.timestamp.
+          The 2 with insufficient history correctly show "—" and the
+          "Not enough stored history yet" banner. Also verified SENSEX
+          switch, dark-mode toggle, no console errors.
 
           Changes:
           1) server.py get_oi_change(): after fetching cached last_snapshot,
