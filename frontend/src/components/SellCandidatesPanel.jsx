@@ -12,7 +12,7 @@
 // Everything is recomputed by the parent every minute via useMemo dependencies.
 // -----------------------------------------------------------------------------
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -25,6 +25,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { AlertTriangle, TrendingUp, TrendingDown, Info, Zap, ArrowRightLeft, Shield } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import InfoTip from "./InfoTip";
 import { computeSellCandidates } from "@/lib/sellCandidates";
 import {
@@ -183,6 +184,14 @@ export default function SellCandidatesPanel({
   vrp,
   lastComputedAt,
 }) {
+  // Toggle: allow user to disable VRP contribution to score / verdict.
+  const [useVrp, setUseVrp] = useState(() => {
+    try { return localStorage.getItem("sc.useVrp") !== "0"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("sc.useVrp", useVrp ? "1" : "0"); } catch { /* noop */ }
+  }, [useVrp]);
+
   const result = useMemo(() => computeSellCandidates({
     current,
     previous,
@@ -190,8 +199,8 @@ export default function SellCandidatesPanel({
     vixOpen,
     indexName,
     step,
-    vrp,
-  }), [current, previous, vixNow, vixOpen, indexName, step, vrp, lastComputedAt]);
+    vrp: useVrp ? vrp : null,
+  }), [current, previous, vixNow, vixOpen, indexName, step, vrp, useVrp, lastComputedAt]);
 
   const { verdict, candidates, smile, dealer, ivRank, vix, walls, expiryStale } = result;
   const atm = current?.atm;
@@ -207,6 +216,12 @@ export default function SellCandidatesPanel({
 
   return (
     <div className="space-y-4" data-testid="sell-candidates-panel">
+      {/* VRP toggle */}
+      <div className="flex items-center justify-end gap-2 text-xs" data-testid="sc-vrp-toggle-row">
+        <span className={useVrp ? "text-slate-700 dark:text-slate-200" : "text-slate-400"}>Use VRP in scoring &amp; verdict</span>
+        <Switch checked={useVrp} onCheckedChange={setUseVrp} data-testid="sc-vrp-toggle" />
+      </div>
+
       {/* Header pills */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Pill

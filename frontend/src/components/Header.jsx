@@ -24,6 +24,8 @@ export default function Header({
   onToggleDark,
   compact,
   onToggleCompact,
+  pollMs,
+  onChangePollMs,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -78,6 +80,21 @@ export default function Header({
             <div className="hidden lg:flex items-center gap-1 text-[10px] font-mono-data text-slate-500 dark:text-slate-400 leading-tight" data-testid="oi-last-pulled-top">
               <span className="uppercase tracking-widest text-slate-400 dark:text-slate-500">OI pulled</span>
               <span className="text-slate-700 dark:text-slate-200">{new Date(lastPulledAt).toLocaleTimeString()}</span>
+            </div>
+          )}
+          {onChangePollMs && (
+            <div className="hidden lg:flex items-center gap-1 text-[10px]" title="How often OI data is refreshed">
+              <span className="uppercase tracking-widest text-slate-400 dark:text-slate-500">Every</span>
+              <select
+                data-testid="poll-interval-select"
+                value={pollMs || 30000}
+                onChange={(e) => onChangePollMs(parseInt(e.target.value, 10))}
+                className="text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-1.5 py-0.5"
+              >
+                <option value={15000}>15s</option>
+                <option value={30000}>30s</option>
+                <option value={60000}>60s</option>
+              </select>
             </div>
           )}
           <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono-data" data-testid="last-updated">

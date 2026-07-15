@@ -42,6 +42,7 @@ export default function RightPanel({
   isKiteMode,
   status,
   showOI,
+  suggestion,
 }) {
   return (
     <div className="h-full flex flex-col bg-white border border-slate-200 rounded-md overflow-hidden" data-testid="right-panel">
@@ -123,6 +124,13 @@ export default function RightPanel({
           />
         )}
       </div>
+      {/* Persistent suggestion block — stays regardless of the selected view.
+          Only disappears when the whole right panel is closed. */}
+      {suggestion && (
+        <div className="border-t border-slate-200 dark:border-slate-700 p-3 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950" data-testid="right-panel-suggestion">
+          {suggestion}
+        </div>
+      )}
     </div>
   );
 }

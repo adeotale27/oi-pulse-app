@@ -19,6 +19,7 @@ import HolidayBadge from "@/components/HolidayBadge";
 import MarketEventsBadge from "@/components/MarketEventsBadge";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
+import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -38,7 +39,8 @@ import { Play, HelpCircle } from "lucide-react";
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 const INDEX_STEP = { NIFTY: 50, SENSEX: 100, BANKNIFTY: 100 };
-const POLL_MS = 30000;
+const POLL_OPTIONS = [15000, 30000, 60000];
+const DEFAULT_POLL_MS = 30000;
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
@@ -304,17 +306,28 @@ export default function Dashboard() {
     }
   }, [alarm, push, activeIndex]);
 
+  // ---- Configurable OI poll interval (15 / 30 / 60 s) ----
+  const [pollMs, setPollMs] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem("oiPollMs") || "", 10);
+      return POLL_OPTIONS.includes(v) ? v : DEFAULT_POLL_MS;
+    } catch { return DEFAULT_POLL_MS; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("oiPollMs", String(pollMs)); } catch { /* noop */ }
+  }, [pollMs]);
+
   useEffect(() => {
     loadStatus();
     loadOI();
     loadAlerts();
-    const id1 = setInterval(loadOI, POLL_MS);
-    const id2 = setInterval(loadStatus, POLL_MS);
+    const id1 = setInterval(loadOI, pollMs);
+    const id2 = setInterval(loadStatus, pollMs);
     const id3 = setInterval(loadAlerts, 5000);
     return () => {
       clearInterval(id1); clearInterval(id2); clearInterval(id3);
     };
-  }, [loadOI, loadStatus, loadAlerts]);
+  }, [loadOI, loadStatus, loadAlerts, pollMs]);
 
   // When index changes, immediately clear current/previous & strike range so
   // filters from the previous index don't hide the new index's strikes.
@@ -576,13 +589,70 @@ export default function Dashboard() {
     expiry: selectedExpiry,
     windows: oiSettings.hugeShiftWindows,
     thresholdAbs: oiSettings.hugeShiftAbs,
-    pollMs: POLL_MS,
+    pollMs: pollMs,
     cooldownMs: 120000,
     onShift: handleHugeShift,
     enabled: true,
   });
 
   // -------- Per-strike activity detector (gamma wall / institution / fast velocity) --------
+  // Also builds a Map<strike, {ce:[tags], pe:[tags]}> that the OI chart uses to
+  // render institution / gamma-wall / velocity icons UNDER each bar.
+  const perStrikeSignals = useMemo(() => {
+    const map = new Map();
+    if (!filteredCurrent?.strikes?.length || !previous?.strikes?.length) return map;
+    const prevMap = new Map();
+    previous.strikes.forEach((s) => prevMap.set(s.strike, s));
+    const minutes = Math.max(1, resolveMinutes(timeframe));
+    const gwWindow = oiSettings.gammaWallMinutes || 3;
+    const gwThresh = oiSettings.gammaWallAbs || 200_000;
+    const gwScale = minutes >= gwWindow ? 1 : minutes / gwWindow;
+    const gwEffective = gwThresh * gwScale;
+
+    const lot = oiSettings.lotSize?.[activeIndex] || 1;
+    const oiMin = oiSettings.instOiMin || 50_000;
+    const premCr = oiSettings.instPremiumCr || 10;
+    let vSum = 0, vCount = 0;
+    filteredCurrent.strikes.forEach((s) => { vSum += (s.ce_volume || 0) + (s.pe_volume || 0); vCount += 2; });
+    const avgVolume = vCount > 0 ? vSum / vCount : 0;
+
+    const velMin = oiSettings.velocityFastMin || 50_000;
+
+    for (const s of filteredCurrent.strikes) {
+      const p = prevMap.get(s.strike);
+      if (!p) continue;
+      const ceDelta = s.ce_oi - p.ce_oi;
+      const peDelta = s.pe_oi - p.pe_oi;
+      const ceVel = ceDelta / minutes;
+      const peVel = peDelta / minutes;
+
+      const ceTags = [];
+      const peTags = [];
+
+      if (ceDelta >= gwEffective) ceTags.push({ type: "gamma-wall", value: ceDelta, tooltip: `Gamma wall (+${(ceDelta / 1e5).toFixed(2)}L CE OI in last ${minutes} min)` });
+      if (peDelta >= gwEffective) peTags.push({ type: "gamma-wall", value: peDelta, tooltip: `Gamma wall (+${(peDelta / 1e5).toFixed(2)}L PE OI in last ${minutes} min)` });
+
+      if (Math.abs(ceVel) >= velMin) ceTags.push({ type: "velocity", value: ceVel, tooltip: `Fast CE OI ${ceDelta > 0 ? "build" : "unwind"} (${Math.round(ceVel / 1000)}K/min)` });
+      if (Math.abs(peVel) >= velMin) peTags.push({ type: "velocity", value: peVel, tooltip: `Fast PE OI ${peDelta > 0 ? "build" : "unwind"} (${Math.round(peVel / 1000)}K/min)` });
+
+      const cePrem = (s.ce_ltp || 0) * (s.ce_oi || 0) * lot;
+      const pePrem = (s.pe_ltp || 0) * (s.pe_oi || 0) * lot;
+      if ((s.ce_oi || 0) > oiMin && (s.ce_volume || 0) > avgVolume && cePrem >= premCr * 1e7) {
+        ceTags.push({ type: "institution", value: cePrem, tooltip: `Institutional footprint · ₹${(cePrem / 1e7).toFixed(1)}Cr premium · vol ${(s.ce_volume / 1000).toFixed(0)}K` });
+      }
+      if ((s.pe_oi || 0) > oiMin && (s.pe_volume || 0) > avgVolume && pePrem >= premCr * 1e7) {
+        peTags.push({ type: "institution", value: pePrem, tooltip: `Institutional footprint · ₹${(pePrem / 1e7).toFixed(1)}Cr premium · vol ${(s.pe_volume / 1000).toFixed(0)}K` });
+      }
+
+      if (ceTags.length || peTags.length) {
+        map.set(s.strike, { ce: ceTags, pe: peTags });
+      }
+    }
+    return map;
+  }, [filteredCurrent, previous, timeframe, activeIndex, oiSettings]);
+
+  // Same signals, side-effect: push into activity feed. (kept separate so the
+  // useMemo above stays pure.)
   useEffect(() => {
     if (!filteredCurrent?.strikes?.length || !previous?.strikes?.length) return;
     const prevMap = new Map();
@@ -698,6 +768,8 @@ export default function Dashboard() {
         onToggleDark={() => setDarkMode((v) => !v)}
         compact={compact}
         onToggleCompact={() => setCompact((v) => !v)}
+        pollMs={pollMs}
+        onChangePollMs={setPollMs}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -869,6 +941,7 @@ export default function Dashboard() {
                       showOI={showOI}
                       currentTime={current?.timestamp}
                       prevTime={(replayFrame || previous)?.timestamp}
+                      signalsMap={perStrikeSignals}
                     />
                     {marketIntel && (
                       <div
@@ -1152,6 +1225,15 @@ export default function Dashboard() {
                       isKiteMode={status?.mode === "kite"}
                       status={status}
                       showOI={showOI}
+                      suggestion={
+                        <SuggestionBox
+                          indexName={activeIndex}
+                          marketIntel={marketIntel}
+                          vrp={vrp}
+                          vixNow={current?.vix || status?.vix}
+                          vixOpen={vixSessionOpen}
+                        />
+                      }
                     />
                   </Panel>
                 </>

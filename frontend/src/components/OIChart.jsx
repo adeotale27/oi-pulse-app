@@ -24,7 +24,7 @@ function formatTime(iso) {
   }
 }
 
-export default function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime }) {
+export default function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap }) {
   // Build merged strike -> { pe_now, pe_prev, ce_now, ce_prev }
   const data = useMemo(() => {
     if (!current) return [];
@@ -62,8 +62,9 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
   const pt = prevTime || previous?.timestamp;
 
   return (
-    <div className="w-full h-[440px]" data-testid="oi-chart">
-      <ResponsiveContainer>
+    <div className="w-full" data-testid="oi-chart">
+      <div className="w-full h-[440px]">
+        <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 20 }} barCategoryGap="18%">
           <defs>
             <pattern id="pe-inc-pat" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
@@ -132,7 +133,48 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
           <Bar dataKey="ce_dec" stackId="ce" name="Call Decrease" fill="transparent" stroke={CALL_RED} strokeWidth={1.4} radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
+      </div>
+      {/* Signal strip — icons stacked under each strike bar for institution /
+          gamma-wall / velocity events detected in the current lookback window. */}
+      {signalsMap && signalsMap.size > 0 && (
+        <div className="w-full pl-[70px] pr-[20px] mt-1" data-testid="signal-strip">
+          <div className="flex" style={{ gap: 0 }}>
+            {data.map((d) => {
+              const sig = signalsMap.get(d.strike);
+              return (
+                <div key={d.strike} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+                  {sig?.ce?.map((t, i) => (
+                    <SignalIcon key={`ce-${i}`} tag={t} side="CE" />
+                  ))}
+                  {sig?.pe?.map((t, i) => (
+                    <SignalIcon key={`pe-${i}`} tag={t} side="PE" />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function SignalIcon({ tag, side }) {
+  const isCall = side === "CE";
+  const cfg = {
+    institution: { emoji: "🏦", cls: isCall ? "bg-rose-100 text-rose-700 border-rose-300" : "bg-emerald-100 text-emerald-700 border-emerald-300" },
+    "gamma-wall": { emoji: "🚧", cls: isCall ? "bg-rose-100 text-rose-700 border-rose-300" : "bg-emerald-100 text-emerald-700 border-emerald-300" },
+    velocity:    { emoji: "🔥", cls: isCall ? "bg-rose-100 text-rose-700 border-rose-300" : "bg-emerald-100 text-emerald-700 border-emerald-300" },
+  }[tag.type] || { emoji: "•", cls: "bg-slate-100 text-slate-700 border-slate-300" };
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-full border text-[9px] leading-none px-1 py-0.5 whitespace-nowrap ${cfg.cls}`}
+      title={`${side} · ${tag.tooltip}`}
+      data-testid={`chart-signal-${tag.type}-${side}`}
+    >
+      <span className="text-[10px]">{cfg.emoji}</span>
+      <span className="ml-0.5 font-semibold">{side}</span>
+    </span>
   );
 }
 
