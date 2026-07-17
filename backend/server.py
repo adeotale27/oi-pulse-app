@@ -1120,6 +1120,7 @@ app.add_middleware(RateLimitMiddleware)
 # --- CORS (restricted; wildcard only if explicitly set) ---
 _cors_env = os.environ.get('CORS_ORIGINS', '*').strip()
 _cors_origins = [o.strip() for o in _cors_env.split(',') if o.strip()]
+_cors_regex = os.environ.get('CORS_ORIGIN_REGEX', '').strip() or None
 _allow_credentials = True
 if _cors_origins == ['*']:
     # Browser spec: wildcard + credentials is invalid; disable credentials in that case.
@@ -1129,8 +1130,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_credentials=_allow_credentials,
     allow_origins=_cors_origins,
+    allow_origin_regex=_cors_regex,
     allow_methods=["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["*", "Authorization", "Content-Type", "X-Admin-Token", "X-Guest-Token"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

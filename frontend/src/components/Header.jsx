@@ -126,7 +126,7 @@ export default function Header({
             data-testid="mode-badge"
             className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-amber-500 hover:bg-amber-500"}`}
           >
-            {mode === "kite" ? "LIVE · Kite" : "DEMO"}
+            {mode === "kite" ? "LIVE" : "DEMO"}
           </Badge>
           <AdminControls />
           <Button
