@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Activity, KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
+import OiPulseLogo from "@/components/OiPulseLogo";
+import { api } from "@/lib/api";
 
 export default function Header({
   status,
@@ -36,6 +38,22 @@ export default function Header({
   const vix = current?.vix ?? 0;
   const mode = status?.mode ?? "mock";
 
+  // Auth state — used to hide sensitive buttons from guests.
+  const [authState, setAuthState] = useState({ is_admin: false });
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const { data } = await api.get("/auth/state");
+        if (alive) setAuthState(data);
+      } catch (_) { /* ignore */ }
+    };
+    load();
+    const iv = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+  const isAdmin = !!authState.is_admin;
+
   // Continuous 1-second clock (independent of the 30s poll).
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -56,11 +74,11 @@ export default function Header({
       {/* --- Single row: brand, secondary metrics, tickers, clock, actions --- */}
       <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 shrink-0">
-          <div className="w-8 h-8 bg-slate-900 dark:bg-slate-700 rounded-sm flex items-center justify-center">
-            <Activity className="w-4 h-4 text-white" strokeWidth={2} />
-          </div>
+          <OiPulseLogo className="w-9 h-9 drop-shadow-sm" withGlow />
           <div>
-            <div className="text-sm font-semibold tracking-tight dark:text-slate-100">OI Pulse</div>
+            <div className="text-sm font-semibold tracking-tight dark:text-slate-100 bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
+              OI Pulse
+            </div>
             <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">
               NSE OI Tracker
             </div>
@@ -163,7 +181,7 @@ export default function Header({
             data-testid="btn-morning-refresh"
             size="sm"
             onClick={onOpenMorningRefresh}
-            className="rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+            className={`rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
             title="Morning Kite token refresh (one-tap)"
           >
             <RefreshCw className="w-4 h-4 mr-1.5" />
@@ -172,7 +190,7 @@ export default function Header({
           <Button
             data-testid="btn-open-telegram-prefs"
             variant="outline" size="sm"
-            className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
             onClick={onOpenTelegramPrefs}
             title="Telegram alert preferences"
           >
@@ -181,7 +199,8 @@ export default function Header({
           </Button>
           <Button
             data-testid="btn-open-credentials"
-            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            variant="outline" size="sm"
+            className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
             onClick={onOpenCreds}
           >
             <KeyRound className="w-4 h-4 mr-1.5" />

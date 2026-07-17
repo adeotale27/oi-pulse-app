@@ -47,9 +47,12 @@ export default function AdminControls() {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (_) { /* ignore */ }
     localStorage.removeItem("oi_admin_token");
-    toast.success("Logged out");
+    toast.success("Signed out");
     // Hard reload so AuthGate re-evaluates cleanly.
     window.location.reload();
   };

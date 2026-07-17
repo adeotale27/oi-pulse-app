@@ -11,7 +11,7 @@ function formatTime(iso) {
   }
 }
 
-export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: showAllProp }) {
+export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: showAllProp, canClear = true }) {
   const [localShowAll, setLocalShowAll] = useState(false);
   // If parent passes an activeIndex, filter to that index by default; the user
   // can flip a small toggle to view alerts for other indices too.
@@ -52,6 +52,7 @@ export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: sho
               {filterEnabled ? "All" : activeIndex}
             </Button>
           )}
+          {canClear && (
           <Button
             data-testid="btn-clear-alerts"
             size="sm"
@@ -61,6 +62,7 @@ export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: sho
           >
             <X className="w-3 h-3 mr-1" /> Clear
           </Button>
+          )}
         </div>
       </div>
       <ScrollArea className="flex-1 max-h-[420px]">

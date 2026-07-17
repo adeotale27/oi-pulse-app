@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
 import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
+import GuestBanner from "@/components/GuestBanner";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
@@ -109,6 +110,7 @@ export default function Dashboard() {
   const [current, setCurrent] = useState(null);
   const [previous, setPrevious] = useState(null);
   const [status, setStatus] = useState(null);
+  const [authState, setAuthState] = useState({ is_admin: false, is_guest: false, guest_name: null, admin_display_name: null });
   const [alerts, setAlerts] = useState([]);
   const [strikesAround, setStrikesAround] = useState(10);
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
@@ -231,6 +233,11 @@ export default function Dashboard() {
     } catch (e) {
       console.error("loadStatus failed", e);
     }
+    // Also refresh auth state so we can hide admin controls for guests.
+    try {
+      const { data } = await api.get("/auth/state");
+      setAuthState(data);
+    } catch (_) { /* ignore */ }
   }, []);
 
   const [historyReady, setHistoryReady] = useState(true);
@@ -766,6 +773,12 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
+      {authState.is_guest && (
+        <GuestBanner
+          guestName={authState.guest_name}
+          adminName={authState.admin_display_name}
+        />
+      )}
       <Header
         status={status}
         current={current}
@@ -817,13 +830,13 @@ export default function Dashboard() {
                   { v: "oi-change", l: "OI Change" },
                   { v: "open-interest", l: "Open Interest" },
                   { v: "strike-table", l: "Strike Table" },
-                  { v: "sell-candidates", l: "Sell Candidates" },
+                  { v: "sell-candidates", l: "Sell Candidates", adminOnly: true },
                   { v: "buildup", l: "Build-up" },
-                  { v: "positions", l: "Positions" },
+                  { v: "positions", l: "Positions", adminOnly: true },
                   { v: "alerts", l: "Alerts" },
                   { v: "activity", l: "Activity" },
                   { v: "holidays", l: "Events" },
-                ].map((t) => (
+                ].filter((t) => !t.adminOnly || authState.is_admin).map((t) => (
                   <TabsTrigger
                     key={t.v}
                     value={t.v}
@@ -1177,7 +1190,7 @@ export default function Dashboard() {
 
                   <TabsContent value="alerts" className="mt-0">
                     <div className="text-sm font-semibold mb-2">All Alerts</div>
-                    <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} />
+                    <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} canClear={authState.is_admin} />
                   </TabsContent>
 
                   <TabsContent value="activity" className="mt-0">
@@ -1226,6 +1239,7 @@ export default function Dashboard() {
                       onClose={() => setRightPanelOpen(false)}
                       alerts={alerts}
                       onClearAlerts={handleClearAlerts}
+                      canClearAlerts={authState.is_admin}
                       activeIndex={activeIndex}
                       filteredCurrent={filteredCurrent}
                       current={current}

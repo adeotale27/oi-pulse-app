@@ -24,6 +24,7 @@ export default function RightPanel({
   // props for panel contents
   alerts,
   onClearAlerts,
+  canClearAlerts = true,
   activeIndex,
   filteredCurrent,
   current,
@@ -71,7 +72,7 @@ export default function RightPanel({
       </div>
       <div className="flex-1 overflow-auto p-2">
         {view === "alerts" && (
-          <AlertsPanel alerts={alerts} onClear={onClearAlerts} activeIndex={activeIndex} />
+          <AlertsPanel alerts={alerts} onClear={onClearAlerts} activeIndex={activeIndex} canClear={canClearAlerts} />
         )}
         {view === "strike" && (
           <StrikeTable

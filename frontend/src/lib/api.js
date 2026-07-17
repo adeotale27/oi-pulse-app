@@ -5,14 +5,33 @@ export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({ baseURL: API, timeout: 20000 });
 
-// Attach admin token (if any) to every request so backend can identify the admin.
+// Attach admin & guest tokens (if any) to every request.
 api.interceptors.request.use((config) => {
   try {
-    const tok = localStorage.getItem("oi_admin_token");
-    if (tok) config.headers["X-Admin-Token"] = tok;
+    const at = localStorage.getItem("oi_admin_token");
+    if (at) config.headers["X-Admin-Token"] = at;
+    const gt = localStorage.getItem("oi_guest_token");
+    if (gt) config.headers["X-Guest-Token"] = gt;
   } catch (_) { /* ignore */ }
   return config;
 });
+
+// Global 401 handler — session likely expired; clear tokens so AuthGate re-prompts.
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err?.response?.status === 401) {
+      try {
+        // Only wipe admin token on auth-state failures; keep vault etc. untouched otherwise.
+        const url = (err.config?.url) || "";
+        if (url.includes("/auth/state")) {
+          localStorage.removeItem("oi_admin_token");
+        }
+      } catch (_) { /* ignore */ }
+    }
+    return Promise.reject(err);
+  },
+);
 
 export const fetchStatus = () => api.get("/status").then((r) => r.data);
 export const fetchOI = (idx) => api.get(`/oi/${idx}`).then((r) => r.data);

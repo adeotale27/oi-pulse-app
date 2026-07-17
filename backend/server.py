@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -41,6 +41,112 @@ tracker = OITracker(db)
 # Give notifier a handle to the db so it can read/write prefs
 import notifier as _notifier_boot
 _notifier_boot.set_db(db)
+
+
+# ------------------- Auth helpers (must be defined before endpoints that Depends on them) -------------------
+import secrets
+import hmac
+
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Adeotale")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "MasterApp@123")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
+if not ADMIN_TOKEN:
+    ADMIN_TOKEN = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}:oi-pulse".encode()).hexdigest()
+
+# 8-hour idle timeout for admin sessions.
+ADMIN_SESSION_TTL_SECONDS = int(os.environ.get("ADMIN_SESSION_TTL_SECONDS", str(8 * 3600)))
+GUEST_SESSION_TTL_SECONDS = int(os.environ.get("GUEST_SESSION_TTL_SECONDS", str(12 * 3600)))
+
+
+def _extract_bearer(request: Request, header: str) -> str:
+    tok = (request.headers.get(header) or "").strip()
+    if tok:
+        return tok
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return ""
+
+
+async def _admin_from_request(request: Request):
+    tok = _extract_bearer(request, "x-admin-token")
+    if not tok:
+        return None
+    sess = await db.admin_sessions.find_one({"_id": tok})
+    if not sess:
+        return None
+    try:
+        created_at = datetime.fromisoformat(sess.get("created_at"))
+    except Exception:
+        return None
+    age = (datetime.now(timezone.utc) - created_at).total_seconds()
+    if age > ADMIN_SESSION_TTL_SECONDS:
+        try:
+            await db.admin_sessions.delete_one({"_id": tok})
+        except Exception:
+            pass
+        return None
+    return sess
+
+
+async def _is_admin_request(request: Request) -> bool:
+    return (await _admin_from_request(request)) is not None
+
+
+async def require_admin(request: Request):
+    """FastAPI dependency: 401 if not authenticated as admin."""
+    if not await _is_admin_request(request):
+        raise HTTPException(401, "Admin only")
+    return True
+
+
+async def _guest_from_request(request: Request):
+    tok = _extract_bearer(request, "x-guest-token")
+    if not tok:
+        return None
+    sess = await db.guest_sessions.find_one({"_id": tok})
+    if not sess:
+        return None
+    try:
+        started = datetime.fromisoformat(sess.get("started_at"))
+    except Exception:
+        return None
+    if (datetime.now(timezone.utc) - started).total_seconds() > GUEST_SESSION_TTL_SECONDS:
+        try:
+            await db.guest_sessions.delete_one({"_id": tok})
+        except Exception:
+            pass
+        return None
+    return sess
+
+
+def _next_market_close_ist() -> datetime:
+    from market_hours import IST
+    now = datetime.now(IST)
+    close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    if now >= close:
+        close = close + timedelta(days=1)
+    return close.astimezone(timezone.utc)
+
+
+async def _get_public_access_state():
+    doc = await db.settings.find_one({"_id": "public_access"}) or {}
+    open_ = bool(doc.get("open", False))
+    exp = doc.get("expires_at")
+    expires_at_iso = None
+    if exp:
+        try:
+            exp_dt = datetime.fromisoformat(exp)
+            if datetime.now(timezone.utc) >= exp_dt:
+                await db.settings.update_one(
+                    {"_id": "public_access"}, {"$set": {"open": False, "expires_at": None}}, upsert=True
+                )
+                open_ = False
+            else:
+                expires_at_iso = exp_dt.isoformat()
+        except Exception:
+            open_ = False
+    return open_, expires_at_iso
 
 
 # ------------------- Models -------------------
@@ -87,7 +193,7 @@ async def get_status():
 
 
 @api_router.post("/credentials")
-async def set_credentials(payload: CredentialsIn):
+async def set_credentials(payload: CredentialsIn, _admin: bool = Depends(require_admin)):
     try:
         await tracker.set_credentials(payload.api_key, payload.access_token)
     except Exception as e:
@@ -96,7 +202,7 @@ async def set_credentials(payload: CredentialsIn):
 
 
 @api_router.post("/kite/generate-session")
-async def generate_session(payload: GenerateTokenIn):
+async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(require_admin)):
     """Exchange api_key + api_secret + request_token for a fresh access_token
     using KiteConnect.generate_session(), save it, and switch to LIVE mode."""
     try:
@@ -123,7 +229,7 @@ async def generate_session(payload: GenerateTokenIn):
 
 
 @api_router.get("/kite/vault")
-async def vault_status():
+async def vault_status(_admin: bool = Depends(require_admin)):
     doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key": 1, "api_secret_enc": 1})
     return {
         "has_api_key": bool(doc and doc.get("api_key")),
@@ -133,7 +239,7 @@ async def vault_status():
 
 
 @api_router.post("/kite/refresh")
-async def kite_refresh(payload: RefreshTokenIn):
+async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_admin)):
     """One-click daily refresh: uses stored api_key + encrypted api_secret + given request_token."""
     doc = await db.credentials.find_one({"_id": "kite"})
     if not doc or not doc.get("api_key") or not doc.get("api_secret_enc"):
@@ -157,13 +263,13 @@ async def kite_refresh(payload: RefreshTokenIn):
 
 
 @api_router.delete("/kite/vault")
-async def clear_vault():
+async def clear_vault(_admin: bool = Depends(require_admin)):
     await db.credentials.update_one({"_id": "kite"}, {"$unset": {"api_secret_enc": ""}})
     return {"ok": True}
 
 
 @api_router.get("/credentials/status")
-async def credentials_status():
+async def credentials_status(_admin: bool = Depends(require_admin)):
     doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key": 1, "updated_at": 1})
     return {
         "configured": bool(doc),
@@ -173,7 +279,7 @@ async def credentials_status():
 
 
 @api_router.post("/mode")
-async def set_mode(payload: ModeIn):
+async def set_mode(payload: ModeIn, _admin: bool = Depends(require_admin)):
     try:
         await tracker.set_mode(payload.mode)
     except Exception as e:
@@ -182,13 +288,13 @@ async def set_mode(payload: ModeIn):
 
 
 @api_router.post("/tracker/start")
-async def tracker_start():
+async def tracker_start(_admin: bool = Depends(require_admin)):
     await tracker.start()
     return await tracker.get_status()
 
 
 @api_router.post("/tracker/stop")
-async def tracker_stop():
+async def tracker_stop(_admin: bool = Depends(require_admin)):
     await tracker.stop()
     return await tracker.get_status()
 
@@ -225,7 +331,7 @@ async def get_expiries(index_name: str):
 
 
 @api_router.post("/expiries/{index_name}")
-async def set_expiry(index_name: str, payload: ExpiryIn):
+async def set_expiry(index_name: str, payload: ExpiryIn, _admin: bool = Depends(require_admin)):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
@@ -239,7 +345,7 @@ async def get_settings():
 
 
 @api_router.post("/settings")
-async def update_settings(payload: SettingsIn):
+async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_admin)):
     patch = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "enabled_indices" in patch:
         for i in patch["enabled_indices"]:
@@ -466,7 +572,7 @@ async def get_alerts(limit: int = 50):
 
 
 @api_router.delete("/alerts")
-async def clear_alerts():
+async def clear_alerts(_admin: bool = Depends(require_admin)):
     r = await db.alerts.delete_many({})
     return {"deleted": r.deleted_count}
 
@@ -477,38 +583,7 @@ async def get_config():
 
 
 # ------------------- Simple Admin Auth + Public Access Toggle -------------------
-import secrets
-import hmac
-
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Adeotale")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "MasterApp@123")
-# ADMIN_TOKEN is the bearer value the client stores in localStorage. Rotate by changing .env
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
-if not ADMIN_TOKEN:
-    # Fallback: derive a deterministic token from credentials so restarts don't invalidate sessions.
-    # Not cryptographically ideal but "minimalistic" per user request.
-    ADMIN_TOKEN = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}:oi-pulse".encode()).hexdigest()
-
-
-def _is_admin_request(request: Request) -> bool:
-    tok = (request.headers.get("x-admin-token") or "").strip()
-    if not tok:
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            tok = auth[7:].strip()
-    if not tok:
-        return False
-    return hmac.compare_digest(tok, ADMIN_TOKEN)
-
-
-def _next_market_close_ist() -> datetime:
-    """Return the next datetime (UTC) representing today's 3:30 PM IST, or tomorrow's if past."""
-    from market_hours import IST
-    now = datetime.now(IST)
-    close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    if now >= close:
-        close = close + timedelta(days=1)
-    return close.astimezone(timezone.utc)
+# Helpers moved to top of file. Endpoints follow.
 
 
 class LoginIn(BaseModel):
@@ -517,39 +592,88 @@ class LoginIn(BaseModel):
 
 
 @api_router.post("/auth/login")
-async def auth_login(payload: LoginIn):
+async def auth_login(payload: LoginIn, request: Request):
     if not (hmac.compare_digest(payload.username, ADMIN_USERNAME) and
             hmac.compare_digest(payload.password, ADMIN_PASSWORD)):
         raise HTTPException(401, "Invalid credentials")
-    return {"ok": True, "token": ADMIN_TOKEN, "is_admin": True, "username": ADMIN_USERNAME}
+    # Rotate a fresh session token, store with created_at → allows 8h expiry.
+    token = secrets.token_urlsafe(32)
+    ip = request.client.host if request.client else None
+    await db.admin_sessions.insert_one({
+        "_id": token,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "ip": ip,
+        "user_agent": request.headers.get("user-agent", "")[:200],
+    })
+    return {
+        "ok": True, "token": token, "is_admin": True, "username": ADMIN_USERNAME,
+        "expires_in_seconds": ADMIN_SESSION_TTL_SECONDS,
+    }
+
+
+@api_router.post("/auth/logout")
+async def auth_logout(request: Request):
+    tok = _extract_bearer(request, "x-admin-token")
+    if tok:
+        await db.admin_sessions.delete_one({"_id": tok})
+    return {"ok": True}
+
+
+class GuestSessionIn(BaseModel):
+    name: str
+
+
+@api_router.post("/auth/guest")
+async def auth_guest_start(payload: GuestSessionIn, request: Request):
+    """Register a guest with their full name. Requires public access to be OPEN."""
+    open_, _ = await _get_public_access_state()
+    if not open_:
+        raise HTTPException(403, "Public access is not open. Please contact the admin.")
+    name = (payload.name or "").strip()
+    if len(name) < 2 or len(name) > 100:
+        raise HTTPException(400, "Please enter your full name (2–100 chars).")
+    # Very light sanity: must contain a space (full name)
+    if " " not in name:
+        raise HTTPException(400, "Please enter your FULL name (first name + last name).")
+    token = secrets.token_urlsafe(32)
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent", "")[:200]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.guest_sessions.insert_one({
+        "_id": token,
+        "name": name,
+        "ip": ip,
+        "user_agent": ua,
+        "started_at": now_iso,
+        "last_seen_at": now_iso,
+    })
+    logger.info(f"GUEST session started: name='{name}' ip={ip}")
+    return {"ok": True, "token": token, "name": name, "expires_in_seconds": GUEST_SESSION_TTL_SECONDS}
 
 
 @api_router.get("/auth/state")
 async def auth_state(request: Request):
-    """Public endpoint — returns whether the app currently requires login and the admin flag."""
-    doc = await db.settings.find_one({"_id": "public_access"}) or {}
-    open_ = bool(doc.get("open", False))
-    exp = doc.get("expires_at")
-    expires_at_iso = None
-    if exp:
-        try:
-            exp_dt = datetime.fromisoformat(exp)
-            if datetime.now(timezone.utc) >= exp_dt:
-                # Auto-close: persist so future calls are clean
-                await db.settings.update_one(
-                    {"_id": "public_access"}, {"$set": {"open": False, "expires_at": None}}, upsert=True
-                )
-                open_ = False
-            else:
-                expires_at_iso = exp_dt.isoformat()
-        except Exception:
-            open_ = False
-    is_admin = _is_admin_request(request)
+    """Public endpoint — returns app-access state for the caller."""
+    open_, expires_at_iso = await _get_public_access_state()
+    admin_sess = await _admin_from_request(request)
+    is_admin = admin_sess is not None
+    guest_sess = None if is_admin else (await _guest_from_request(request))
+    is_guest = guest_sess is not None
+    admin_name = ADMIN_USERNAME if is_admin else None
+    guest_name = guest_sess.get("name") if is_guest else None
+    needs_guest_name = open_ and not is_admin and not is_guest
+    requires_login = (not open_) and (not is_admin)
     return {
-        "requires_login": (not open_) and (not is_admin),
+        "requires_login": requires_login,
         "public_access_open": open_,
         "public_access_expires_at": expires_at_iso,
         "is_admin": is_admin,
+        "is_guest": is_guest,
+        "guest_name": guest_name,
+        "needs_guest_name": needs_guest_name,
+        "admin_name": admin_name,
+        "admin_display_name": ADMIN_USERNAME,   # shown in "Guest access via <name>" banner
+        "session_ttl_seconds": ADMIN_SESSION_TTL_SECONDS,
     }
 
 
@@ -557,9 +681,9 @@ class PublicAccessIn(BaseModel):
     open: bool
 
 
-@api_router.post("/auth/public-access")
+@api_router.post("/auth/public-access", dependencies=[])
 async def auth_toggle_public(payload: PublicAccessIn, request: Request):
-    if not _is_admin_request(request):
+    if not await _is_admin_request(request):
         raise HTTPException(401, "Admin only")
     if payload.open:
         expires_utc = _next_market_close_ist()
@@ -575,7 +699,21 @@ async def auth_toggle_public(payload: PublicAccessIn, request: Request):
             {"$set": {"open": False, "expires_at": None}},
             upsert=True,
         )
+        # Also drop all guest sessions so nobody remains authenticated after close.
+        try:
+            await db.guest_sessions.delete_many({})
+        except Exception:
+            pass
         return {"ok": True, "open": False, "expires_at": None}
+
+
+@api_router.get("/auth/guests")
+async def auth_list_guests(request: Request):
+    """Admin-only: list current+recent guest sessions with their names."""
+    if not await _is_admin_request(request):
+        raise HTTPException(401, "Admin only")
+    docs = await db.guest_sessions.find({}, {"_id": 0}).sort("started_at", -1).to_list(length=500)
+    return {"guests": docs, "count": len(docs)}
 
 
 # ------------------- Telegram notifications -------------------
@@ -589,7 +727,7 @@ async def telegram_status():
 
 
 @api_router.get("/telegram/prefs")
-async def telegram_prefs_get():
+async def telegram_prefs_get(_admin: bool = Depends(require_admin)):
     return await _notifier.get_prefs()
 
 
@@ -602,7 +740,7 @@ class TelegramPrefsIn(BaseModel):
 
 
 @api_router.post("/telegram/prefs")
-async def telegram_prefs_set(payload: TelegramPrefsIn):
+async def telegram_prefs_set(payload: TelegramPrefsIn, _admin: bool = Depends(require_admin)):
     return await _notifier.save_prefs(payload.model_dump(exclude_none=True))
 
 
@@ -649,7 +787,7 @@ _PRESETS = {
 
 
 @api_router.post("/telegram/prefs/preset/{name}")
-async def telegram_prefs_preset(name: str):
+async def telegram_prefs_preset(name: str, _admin: bool = Depends(require_admin)):
     preset = _PRESETS.get(name)
     if not preset:
         raise HTTPException(400, f"Unknown preset '{name}'. Available: {list(_PRESETS.keys())}")
@@ -657,7 +795,7 @@ async def telegram_prefs_preset(name: str):
 
 
 @api_router.post("/telegram/test")
-async def telegram_test():
+async def telegram_test(_admin: bool = Depends(require_admin)):
     if not _notifier.is_configured():
         raise HTTPException(400, "Telegram not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in backend/.env and restart.")
     ok = await _notifier.send_test_message()
@@ -678,8 +816,10 @@ class HugeShiftIn(BaseModel):
 
 
 @api_router.post("/telegram/huge-shift")
-async def telegram_huge_shift(payload: HugeShiftIn):
-    """Called by the frontend when the HugeShiftModal fires — forwards to Telegram."""
+async def telegram_huge_shift(payload: HugeShiftIn, request: Request):
+    """Called by the frontend when the HugeShiftModal fires — forwards to Telegram.
+    Kept OPEN (no admin guard) because the browser tab that saw the popup fires it,
+    but rate-limited by the middleware (see _RATE_LIMITED_PREFIXES)."""
     if not _notifier.is_configured():
         return {"ok": False, "reason": "telegram_not_configured"}
     try:
@@ -690,13 +830,13 @@ async def telegram_huge_shift(payload: HugeShiftIn):
 
 
 @api_router.post("/telegram/digest/preview")
-async def telegram_digest_preview():
+async def telegram_digest_preview(_admin: bool = Depends(require_admin)):
     """Build (but do NOT send) today's digest — for UI preview / testing."""
     return await tracker.build_daily_digest()
 
 
 @api_router.post("/telegram/digest/send")
-async def telegram_digest_send():
+async def telegram_digest_send(_admin: bool = Depends(require_admin)):
     """Manually send today's digest to Telegram now (useful for testing or if auto-send missed)."""
     if not _notifier.is_configured():
         raise HTTPException(400, "Telegram not configured.")
@@ -773,7 +913,7 @@ async def get_tickers():
 
 # ------------------- Zerodha positions -------------------
 @api_router.get("/positions")
-async def get_positions():
+async def get_positions(_admin: bool = Depends(require_admin)):
     """Fetch open F&O positions from the user's Kite account (net + day).
     Only available in kite mode. Returns a normalised list with parsed
     strike / side / expiry for options so the frontend can overlay them."""
@@ -872,6 +1012,9 @@ _RATE_LIMITED_PREFIXES = (
     "/api/kite/refresh",
     "/api/kite/vault",
     "/api/mode",
+    "/api/telegram/huge-shift",
+    "/api/auth/guest",
+    "/api/auth/login",
 )
 _RATE_LIMIT_MAX = int(os.environ.get('RATE_LIMIT_MAX', '20'))       # requests
 _RATE_LIMIT_WINDOW = int(os.environ.get('RATE_LIMIT_WINDOW', '60')) # seconds
