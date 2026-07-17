@@ -262,8 +262,10 @@ export default function Header({
 }
 
 function VixMetric({ value, sessionOpen, liveVix }) {
-  // Prefer live Yahoo-fed VIX (updates every 30s within its window) over the
-  // snapshot-embedded value (which freezes when OI polling stops at 3:30 PM).
+  // VIX is a market-wide (single) index — always prefer the yfinance-fed
+  // ExtraTickers value so it stays consistent across NIFTY / SENSEX / BANKNIFTY
+  // and remains visible outside the polling window (persisted last-known value
+  // is served by the backend on restart).
   const v = liveVix?.last != null && liveVix.last > 0 ? liveVix.last : (value ?? 0);
   let arrow = null, tone = "amber", chgLabel = "";
   if (liveVix && liveVix.change != null && liveVix.prev_close) {

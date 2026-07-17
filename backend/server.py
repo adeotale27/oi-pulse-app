@@ -376,18 +376,24 @@ async def get_expiries(index_name: str):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
-    dates = tracker.list_expiries(idx)
+    all_dates = tracker.list_expiries(idx)
 
-    # Annotate each date as weekly / monthly. Heuristic: an expiry is "monthly"
-    # if it is the LAST expiry falling within that calendar month & year in the
-    # returned list. Everything else is "weekly".
+    # Cap to the first 8 nearest (Kite instrument list can span multiple years
+    # of monthly expiries which drowns the UI).
     from datetime import date as _date, datetime as _datetime
     parsed = []
-    for d in dates:
+    for d in all_dates:
         try:
             parsed.append(_datetime.fromisoformat(d).date() if "T" in d else _date.fromisoformat(d))
         except Exception:
             continue
+    parsed.sort()
+    parsed = parsed[:8]
+    dates = [p.isoformat() for p in parsed]
+
+    # Annotate each date as weekly / monthly. Heuristic: an expiry is "monthly"
+    # if it is the LAST expiry falling within that calendar month & year in the
+    # returned list. Everything else is "weekly".
     by_month = {}
     for p in parsed:
         by_month.setdefault((p.year, p.month), []).append(p)
@@ -395,13 +401,17 @@ async def get_expiries(index_name: str):
     for _, lst in by_month.items():
         monthly_dates.add(max(lst))
 
+    # BANKNIFTY special case: NSE discontinued weekly BANKNIFTY in Nov-2024.
+    # If Kite returns only one date per month for BANKNIFTY, tag them ALL as M
+    # (they're all monthly) and expose a hint.
+    only_monthlies = idx == "BANKNIFTY" and all(len(v) == 1 for v in by_month.values())
+
     today = _date.today()
     meta = []
     for p in parsed:
         iso = p.isoformat()
-        is_monthly = p in monthly_dates
+        is_monthly = p in monthly_dates or only_monthlies
         days = (p - today).days
-        # Friendly label like "21 Jul"
         label = p.strftime("%d %b").lstrip("0")
         meta.append({
             "date": iso,
@@ -413,9 +423,14 @@ async def get_expiries(index_name: str):
 
     return {
         "index": idx,
-        "expiries": dates,           # backward-compatible: array of ISO strings
-        "expiries_meta": meta,       # new enriched shape (date, tag, days, label)
+        "expiries": dates,
+        "expiries_meta": meta,
         "selected": tracker.selected_expiry.get(idx),
+        "note": (
+            "BANKNIFTY weekly expiries were discontinued by NSE in Nov-2024. "
+            "Only monthly (last-Tuesday-of-month) contracts are listed."
+            if only_monthlies else None
+        ),
     }
 
 
@@ -1325,6 +1340,7 @@ async def _startup():
     await tracker.load_credentials()
     await tracker.load_settings()
     await tracker.start()
+    extra_tickers.attach_db(db)
     await extra_tickers.start()
 
     # Report how much of today's session data we already have so operators

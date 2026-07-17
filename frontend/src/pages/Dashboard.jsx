@@ -133,6 +133,7 @@ export default function Dashboard() {
   const [flash, setFlash] = useState(false);
   const [expiries, setExpiries] = useState([]);
   const [expiriesMeta, setExpiriesMeta] = useState([]);
+  const [expiriesNote, setExpiriesNote] = useState(null);
   const [selectedExpiry, setSelectedExpiry] = useState(null);
   const [replayFrame, setReplayFrame] = useState(null);
   const [showOI, setShowOI] = useState(true);
@@ -286,6 +287,7 @@ export default function Dashboard() {
       const meta = r.data.expiries_meta || [];
       setExpiries(list);
       setExpiriesMeta(meta);
+      setExpiriesNote(r.data.note || null);
       // reset selected expiry when switching index
       setSelectedExpiry(list[0] || null);
     }).catch((e) => console.error("loadExpiries failed", e));
@@ -842,6 +844,7 @@ export default function Dashboard() {
             onReset={handleReset}
             expiries={expiries}
             expiriesMeta={expiriesMeta}
+            expiriesNote={expiriesNote}
             selectedExpiry={selectedExpiry}
             onChangeExpiry={handleChangeExpiry}
           />
@@ -1271,7 +1274,7 @@ export default function Dashboard() {
                   <div className="text-slate-500">
                     Auto-refresh every 30s ·{" "}
                     <span className="font-mono-data">
-                      {status?.mode === "kite" ? "Live Zerodha feed" : "Demo simulator"}
+                      {status?.mode === "kite" ? "Live" : "Demo simulator"}
                     </span>
                   </div>
                 </div>

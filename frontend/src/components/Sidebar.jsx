@@ -18,7 +18,7 @@ const INDEX_THEME = {
     dot:         "bg-amber-500",
   },
   BANKNIFTY: {
-    label: "BANK",
+    label: "BANK NIFTY",
     activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-transparent shadow-lg shadow-teal-500/25 ring-2 ring-emerald-300/60",
     idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-emerald-100",
     dot:         "bg-emerald-500",
@@ -104,6 +104,7 @@ export default function Sidebar({
   onReset,
   expiries,
   expiriesMeta,
+  expiriesNote,
   selectedExpiry,
   onChangeExpiry,
 }) {
@@ -137,7 +138,7 @@ export default function Sidebar({
                 key={idx}
                 data-testid={`btn-index-${idx}`}
                 onClick={() => onChangeIndex(idx)}
-                className={`relative text-xs font-semibold rounded-md py-2 border transition-all ${
+                className={`relative text-[11px] font-semibold rounded-md py-2 px-1 border transition-all leading-tight whitespace-nowrap ${
                   active ? theme.activeCls : theme.idleCls
                 }`}
               >
@@ -205,6 +206,14 @@ export default function Sidebar({
             <p className="text-[11px] text-slate-400 italic pl-1">Loading expiries…</p>
           )}
         </div>
+        {expiriesNote && (
+          <p
+            data-testid="expiries-note"
+            className="mt-2 text-[10px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5"
+          >
+            <b>Note:</b> {expiriesNote}
+          </p>
+        )}
       </div>
 
       {/* Strike range with stepper (index-aware step: NIFTY 50, SENSEX/BANK 100) */}

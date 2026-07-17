@@ -4603,3 +4603,220 @@ backend:
     working: true
   - task: "POST /api/admin/refresh-day backfills ALL three indices in mock mode"
     working: true
+
+
+#====================================================================================================
+# 2026-07-17 (8th round) — VIX persistence + BANKNIFTY explanation + capped expiries
+#====================================================================================================
+
+backend:
+  - task: "VIX populates on startup regardless of polling window"
+    implemented: true
+    working: true
+    file: "/app/backend/gift_vix_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "ExtraTickers now does a boot-time yfinance fetch for BOTH ^INDIAVIX and ^NSEI ignoring the VIX/GIFT windows, then persists to Mongo `extra_tickers` collection. On subsequent restarts it loads from Mongo first. Verify GET /api/tickers/extras returns non-null vix with a positive `last` value even though IST is currently past 15:30."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ROUND 8 TASK 1 PASSED - VIX persistence working correctly
+          
+          Test date: 2026-07-17 at 19:42 IST
+          Test file: /app/backend_test_round8.py
+          
+          GET /api/tickers/extras:
+            - Status: 200 OK
+          
+          VIX Validation:
+            ✅ vix is NOT null
+            ✅ vix.symbol == "^INDIAVIX"
+            ✅ vix.last == 13.15 (float > 0)
+            - prev_close: 12.87
+            - change: 0.28
+            - change_pct: 2.176%
+            - ts: 2026-07-17T14:10:00.906912+00:00
+          
+          GIFT NIFTY Validation:
+            ✅ gift_nifty is NOT null
+            ✅ gift_nifty.symbol == "^NSEI"
+            ✅ gift_nifty.last == 24334.3 (float > 0)
+            - prev_close: 24081.1
+            - change: 253.2
+            - change_pct: 1.051%
+            - ts: 2026-07-17T14:12:01.580533+00:00
+          
+          Server Time IST:
+            - server_time_ist: 2026-07-17T19:42:50.271095+05:30
+            ℹ️  Server time is 19:42 IST (past 15:30), demonstrating VIX populates 
+                outside the 09:15-15:30 polling window
+            ℹ️  Boot-time fetch ensures VIX is available regardless of polling window
+          
+          VERDICT: The round-8 fix is working correctly. VIX and GIFT NIFTY both 
+          populate on startup via boot-time yfinance fetch and persist to MongoDB, 
+          making them available even when the current time is outside their respective 
+          polling windows. This resolves the issue where VIX would be null after 15:30 IST.
+
+  - task: "GET /api/expiries/{index} capped to 8 nearest; BANKNIFTY has 'note' field"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Response now caps expiries_meta to 8 nearest by date. BANKNIFTY: when only one date per month is returned (real NSE state — weekly BANKNIFTY discontinued Nov-2024), ALL items are tagged 'M' and response.note explains this. Verify NIFTY/SENSEX still return W+M mix with count<=8, BANKNIFTY returns all-M items and response.note is a non-null string."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ROUND 8 TASK 2 PASSED - Expiries capped correctly, BANKNIFTY note present
+          
+          Test date: 2026-07-17 at 19:42 IST
+          Test file: /app/backend_test_round8.py
+          
+          NIFTY:
+            - Status: 200 OK
+            ✅ len(expiries_meta) == 8 (≤8 and >0)
+            ✅ Tags: ['W', 'M', 'W', 'W', 'W', 'M', 'M', 'M']
+            ✅ Has at least one 'W' tag and one 'M' tag
+            ✅ note is null (correct for NIFTY)
+          
+          SENSEX:
+            - Status: 200 OK
+            ✅ len(expiries_meta) == 8 (≤8 and >0)
+            ✅ Tags: ['W', 'M', 'W', 'W', 'W', 'M', 'W', 'M']
+            ✅ Has at least one 'W' tag and one 'M' tag
+            ✅ note is null (correct for SENSEX)
+          
+          BANKNIFTY:
+            - Status: 200 OK
+            ✅ len(expiries_meta) == 6 (≤8 and >0)
+            ✅ Tags: ['M', 'M', 'M', 'M', 'M', 'M']
+            ✅ EVERY item has tag == 'M' (all monthly)
+            ✅ note is a non-empty string
+            ✅ note contains "weekly" and "discontinued"
+            - Note text: "BANKNIFTY weekly expiries were discontinued by NSE in 
+              Nov-2024. Only monthly (last-Tuesday-of-month) contracts are listed."
+          
+          VERDICT: All expiries endpoints working correctly. NIFTY and SENSEX return 
+          up to 8 expiries with a mix of weekly (W) and monthly (M) tags, with no note 
+          field. BANKNIFTY returns up to 8 expiries with ALL monthly (M) tags and 
+          includes an explanatory note about weekly expiries being discontinued. The 
+          capping to 8 nearest expiries is working as expected.
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  test_sequence: 10
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Round 8 backend regression:
+
+        1. GET /api/tickers/extras
+           - Assert `vix` is NOT null: has fields symbol=="^INDIAVIX", last (float>0), prev_close,
+             change, change_pct, ts.
+           - Assert `gift_nifty` is NOT null with same shape (symbol=="^NSEI", last>0).
+           - This must be true even though the container's IST clock is post 15:30 (the
+             boot-time fetch is what provides the initial value).
+
+        2. GET /api/expiries/NIFTY, /api/expiries/SENSEX
+           - `len(expiries_meta) <= 8`.
+           - At least one W and one M in expiries_meta.
+           - response.note is None (or absent).
+
+        3. GET /api/expiries/BANKNIFTY
+           - `len(expiries_meta) <= 8` and > 0.
+           - EVERY item in expiries_meta has tag == "M" (all monthly).
+           - response.note is a non-empty string mentioning "weekly" or "discontinued".
+
+        Constraints unchanged: ≤5 login attempts, no password change, no vault mutation.
+    - agent: "testing"
+      message: |
+        ✅ BACKEND REGRESSION TEST ROUND 8 COMPLETE - ALL TESTS PASSED
+        
+        Test date: 2026-07-17 at 19:42 IST
+        Test file: /app/backend_test_round8.py
+        Backend URL: https://06809b2f-6889-48e8-a120-619601eb6da3.preview.emergentagent.com/api
+        Login attempts: 0/5 (no login required)
+        
+        ========================================
+        SUMMARY: BOTH TASKS PASSED ✅
+        ========================================
+        
+        ✅ TASK 1: VIX persistence (boot-time fetch) — PASSED
+           - GET /api/tickers/extras → 200 OK
+           - vix is NOT null ✓
+           - vix.symbol == "^INDIAVIX" ✓
+           - vix.last == 13.15 (float > 0) ✓
+           - gift_nifty is NOT null ✓
+           - gift_nifty.symbol == "^NSEI" ✓
+           - gift_nifty.last == 24334.3 (float > 0) ✓
+           - server_time_ist: 19:42 IST (past 15:30) ✓
+           
+           ℹ️  This demonstrates VIX populates outside the 09:15-15:30 polling window.
+               Boot-time fetch ensures VIX is available regardless of polling window.
+        
+        ✅ TASK 2: Expiries capped + BANKNIFTY note — PASSED
+           
+           NIFTY:
+           - len(expiries_meta) == 8 (≤8 and >0) ✓
+           - Tags: ['W', 'M', 'W', 'W', 'W', 'M', 'M', 'M']
+           - Has at least one 'W' and one 'M' tag ✓
+           - note is null ✓
+           
+           SENSEX:
+           - len(expiries_meta) == 8 (≤8 and >0) ✓
+           - Tags: ['W', 'M', 'W', 'W', 'W', 'M', 'W', 'M']
+           - Has at least one 'W' and one 'M' tag ✓
+           - note is null ✓
+           
+           BANKNIFTY:
+           - len(expiries_meta) == 6 (≤8 and >0) ✓
+           - Tags: ['M', 'M', 'M', 'M', 'M', 'M']
+           - EVERY item has tag == 'M' (all monthly) ✓
+           - note is a non-empty string ✓
+           - note contains "weekly" and "discontinued" ✓
+           - Note text: "BANKNIFTY weekly expiries were discontinued by NSE in 
+             Nov-2024. Only monthly (last-Tuesday-of-month) contracts are listed."
+        
+        ========================================
+        CONSTRAINTS COMPLIANCE
+        ========================================
+        
+        ✅ Login attempts: 0/5 (no login required for these tests)
+        ✅ Admin password: NOT changed
+        ✅ Public access: NOT toggled
+        ✅ Vault/credentials: NOT mutated
+        ✅ Alerts: NOT deleted
+        
+        ========================================
+        CONCLUSION
+        ========================================
+        
+        Both backend regression tasks for round 8 passed successfully:
+        
+        1. VIX persistence: Boot-time fetch working correctly. VIX and GIFT NIFTY 
+           both populate on startup and persist to MongoDB, making them available 
+           even when the current time is outside their respective polling windows.
+        
+        2. Expiries capped + BANKNIFTY note: All expiries endpoints correctly capped 
+           to 8 nearest dates. NIFTY and SENSEX return a mix of weekly (W) and monthly 
+           (M) tags with no note field. BANKNIFTY returns all monthly (M) tags with an 
+           explanatory note about weekly expiries being discontinued.
+        
+        No critical issues found. All features working as expected.

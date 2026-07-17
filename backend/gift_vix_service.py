@@ -8,6 +8,12 @@ plagues cloud IPs.
 Polling windows (IST, fixed by user):
   • India VIX     : 09:15 – 15:30  (Mon–Fri, non-holiday)
   • GIFT NIFTY    : 06:30 – 23:30  (Mon–Fri, non-holiday)
+
+Persistence:
+  Values are persisted to MongoDB (`extra_tickers` collection) so a backend
+  restart doesn't lose the last-known VIX close from the previous session.
+  On startup we fetch VIX and GIFT NIFTY ONCE regardless of window so the UI
+  always has a baseline number to display.
 """
 import asyncio
 import logging
@@ -29,10 +35,6 @@ POLL_SECONDS = 60
 
 # Yahoo symbols
 SYM_VIX  = "^INDIAVIX"
-# GIFT NIFTY has no first-class Yahoo symbol; ^NSEI (NIFTY 50 spot) is the
-# closest continuously-updating proxy Yahoo carries. During GIFT NIFTY's
-# extended session we return this. If the user wires an NSE IX API key later
-# we can swap this out.
 SYM_GIFT_PRIMARY = "^NSEI"
 
 
@@ -45,18 +47,13 @@ def _in_window(now_ist: datetime, window) -> bool:
 
 
 def _yf_last_price(symbol: str) -> Optional[Dict[str, Any]]:
-    """Return {last, prev_close, change, change_pct, ts} or None on failure.
-
-    Uses yfinance which manages Yahoo cookies/crumb and retries internally,
-    working around the raw HTTP 429s the container's IP was getting.
-    """
+    """Return {last, prev_close, change, change_pct, ts} or None on failure."""
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.fast_info
         last = float(info.get("lastPrice") or 0)
         prev = float(info.get("previousClose") or info.get("regularMarketPreviousClose") or 0)
         if last <= 0:
-            # Fallback: history() gives us a 1m tick if fast_info is empty.
             hist = ticker.history(period="1d", interval="1m")
             if len(hist) > 0:
                 last = float(hist["Close"].iloc[-1])
@@ -80,8 +77,7 @@ def _yf_last_price(symbol: str) -> Optional[Dict[str, Any]]:
 
 
 class ExtraTickers:
-    """Holds last-known VIX + GIFT NIFTY values and refreshes them in a
-    background task. Handles rate-limit backoff automatically via yfinance."""
+    """Holds last-known VIX + GIFT NIFTY values, persisted to Mongo."""
 
     def __init__(self):
         self.vix: Optional[Dict[str, Any]] = None
@@ -89,6 +85,35 @@ class ExtraTickers:
         self._task: Optional[asyncio.Task] = None
         self._running = False
         self._consecutive_failures = 0
+        self._db = None  # set via attach_db()
+
+    def attach_db(self, db):
+        """Wire in the Mongo db handle so we can persist/read last-known values."""
+        self._db = db
+
+    async def _persist(self, key: str, value: Dict[str, Any]):
+        if self._db is None or value is None:
+            return
+        try:
+            await self._db.extra_tickers.update_one(
+                {"_id": key}, {"$set": {"value": value, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True,
+            )
+        except Exception as e:
+            logger.warning(f"persist extra ticker {key} failed: {e}")
+
+    async def _load_persisted(self):
+        if self._db is None:
+            return
+        try:
+            v = await self._db.extra_tickers.find_one({"_id": "vix"})
+            g = await self._db.extra_tickers.find_one({"_id": "gift_nifty"})
+            if v and v.get("value"):
+                self.vix = v["value"]
+            if g and g.get("value"):
+                self.gift = g["value"]
+                self.gift["label"] = "GIFT NIFTY"
+        except Exception as e:
+            logger.warning(f"load persisted extra tickers failed: {e}")
 
     def snapshot(self) -> Dict[str, Any]:
         return {
@@ -101,23 +126,45 @@ class ExtraTickers:
             "server_time_ist": datetime.now(IST).isoformat(),
         }
 
-    async def force_refresh(self) -> Dict[str, Any]:
-        """One-shot fetch triggered by API (e.g. admin action)."""
-        now_ist = datetime.now(IST)
-        if _in_window(now_ist, VIX_WINDOW):
-            v = await asyncio.to_thread(_yf_last_price, SYM_VIX)
-            if v:
-                self.vix = v
+    async def _fetch_vix_and_persist(self):
+        v = await asyncio.to_thread(_yf_last_price, SYM_VIX)
+        if v:
+            self.vix = v
+            await self._persist("vix", v)
+            return True
+        return False
+
+    async def _fetch_gift_and_persist(self):
         g = await asyncio.to_thread(_yf_last_price, SYM_GIFT_PRIMARY)
         if g:
             g["label"] = "GIFT NIFTY"
             self.gift = g
+            await self._persist("gift_nifty", g)
+            return True
+        return False
+
+    async def force_refresh(self) -> Dict[str, Any]:
+        """One-shot fetch triggered by API (e.g. admin action)."""
+        await self._fetch_vix_and_persist()
+        await self._fetch_gift_and_persist()
         return self.snapshot()
 
     async def start(self):
         if self._running:
             return
         self._running = True
+        # Warm cache from Mongo BEFORE first live fetch so UI has data instantly.
+        await self._load_persisted()
+        # Boot-time fetch of BOTH symbols regardless of window, so the header
+        # always has a value to show even when the app boots after 15:30 IST.
+        try:
+            await self._fetch_vix_and_persist()
+        except Exception as e:
+            logger.warning(f"boot VIX fetch failed: {e}")
+        try:
+            await self._fetch_gift_and_persist()
+        except Exception as e:
+            logger.warning(f"boot GIFT fetch failed: {e}")
         self._task = asyncio.create_task(self._loop())
         logger.info("ExtraTickers loop started (VIX + GIFT NIFTY via yfinance)")
 
@@ -131,24 +178,17 @@ class ExtraTickers:
                 pass
 
     async def _loop(self):
-        # Initial fetch immediately so the UI has data on the first call.
-        await asyncio.sleep(1)
         while self._running:
             try:
                 now_ist = datetime.now(IST)
                 ok = True
                 if _in_window(now_ist, VIX_WINDOW):
-                    v = await asyncio.to_thread(_yf_last_price, SYM_VIX)
-                    if v:
-                        self.vix = v
-                    else:
+                    got_v = await self._fetch_vix_and_persist()
+                    if not got_v:
                         ok = False
                 if _in_window(now_ist, GIFT_WINDOW):
-                    g = await asyncio.to_thread(_yf_last_price, SYM_GIFT_PRIMARY)
-                    if g:
-                        g["label"] = "GIFT NIFTY"
-                        self.gift = g
-                    else:
+                    got_g = await self._fetch_gift_and_persist()
+                    if not got_g:
                         ok = False
                 if ok:
                     self._consecutive_failures = 0
@@ -160,7 +200,6 @@ class ExtraTickers:
                 logger.warning(f"ExtraTickers loop error: {e}")
                 self._consecutive_failures += 1
 
-            # Exponential backoff on repeated failures (up to 5 minutes).
             sleep_s = min(POLL_SECONDS * (2 ** min(self._consecutive_failures, 3)), 300)
             await asyncio.sleep(sleep_s)
 
