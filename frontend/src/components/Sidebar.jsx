@@ -80,10 +80,10 @@ function ExpiryBadge({ tag }) {
   return (
     <span
       data-testid={`expiry-tag-${tag}`}
-      className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold leading-none border ${
+      className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold leading-none border shadow-sm shrink-0 ${
         isWeekly
-          ? "bg-sky-100 text-sky-700 border-sky-200"
-          : "bg-amber-100 text-amber-700 border-amber-300"
+          ? "bg-sky-500 text-white border-sky-600"
+          : "bg-amber-500 text-white border-amber-600"
       }`}
       title={isWeekly ? "Weekly expiry" : "Monthly expiry"}
     >

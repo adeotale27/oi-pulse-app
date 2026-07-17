@@ -218,29 +218,22 @@ class MockService:
         self._state: Dict[str, Dict[str, Any]] = {}
         # base prices
         self._base_price = {"NIFTY": 23800.0, "SENSEX": 78500.0, "BANKNIFTY": 51200.0}
-        # generate 4 synthetic weekly expiries
+        # NSE moved NIFTY weekly expiry to Tuesday (from Thursday). BANKNIFTY
+        # weekly has been discontinued but we still surface Tuesdays for parity.
+        # SENSEX (BFO) is also Tuesday. So all three indices use Tuesday here.
+        # Generate 6 consecutive weekly Tuesday expiries; the W/M classifier in
+        # server.py will label the last Tuesday of each calendar month as "M".
         from datetime import date
         today = date.today()
-        # weekly Thursday for NFO, Tuesday for BFO — but we just use 7-day rolls
-        # Generate 6 upcoming expiries: 4 consecutive weeklies followed by 2
-        # monthly-ish rolls, so the frontend has both weekly (W) and monthly (M)
-        # badges to render.
-        weekly = [
-            (today + timedelta(days=(((3 - today.weekday()) % 7) or 7) + 7 * k)).isoformat()
-            for k in range(4)
-        ]
-        # Add "last Thursday of month+1" and "last Thursday of month+2"
-        from calendar import monthrange
-        def _last_thu(year: int, month: int) -> str:
-            last_day = monthrange(year, month)[1]
-            d = date(year, month, last_day)
-            offset = (d.weekday() - 3) % 7  # 3=Thursday
-            return (d - timedelta(days=offset)).isoformat()
-        yr, mo = today.year, today.month
-        m1_y, m1_m = (yr, mo + 1) if mo < 12 else (yr + 1, 1)
-        m2_y, m2_m = (m1_y, m1_m + 1) if m1_m < 12 else (m1_y + 1, 1)
-        monthly_more = [_last_thu(m1_y, m1_m), _last_thu(m2_y, m2_m)]
-        self._expiries = sorted(list({*weekly, *monthly_more}))
+        WEEKDAY = 1  # Monday=0 ... Tuesday=1
+        days_ahead = (WEEKDAY - today.weekday()) % 7
+        if days_ahead == 0:
+            days_ahead = 7  # if today is Tuesday, skip to next Tuesday
+        first_expiry = today + timedelta(days=days_ahead)
+        self._expiries = sorted([
+            (first_expiry + timedelta(days=7 * k)).isoformat()
+            for k in range(6)
+        ])
         for idx in ("NIFTY", "SENSEX", "BANKNIFTY"):
             self._init_index(idx)
 

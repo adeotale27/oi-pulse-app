@@ -4177,3 +4177,149 @@ agent_communication:
         
         The VIX being null is expected behavior (Yahoo Finance rate limiting or outside trading
         window 09:15-15:30 IST). GIFT NIFTY is returning valid data with correct structure.
+
+
+#====================================================================================================
+# 2026-07-17 (6th round) — Expiries switched to Tuesday + bigger W/M badges
+#====================================================================================================
+
+backend:
+  - task: "Expiry dates are Tuesdays (matching NSE post Sept-2025 change)"
+    implemented: true
+    working: true
+    file: "/app/backend/oi_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Mock service now generates 6 consecutive weekly TUESDAY expiries (WEEKDAY=1) for all three indices. Prior implementation generated Thursdays. Verify /api/expiries/NIFTY, /api/expiries/BANKNIFTY, /api/expiries/SENSEX each return 6 dates that all fall on Tuesday, and at least one has tag='M' (last-of-month) and at least one has tag='W'."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ROUND 6 BACKEND REGRESSION TEST PASSED - ALL CRITERIA MET
+          
+          Test date: 2026-07-17 at 13:37 UTC
+          Test file: /app/backend_test_round6.py
+          Test results: All 3 indices passed (NIFTY, BANKNIFTY, SENSEX)
+          
+          TEST RESULTS FOR ALL THREE INDICES:
+          
+          ✅ NIFTY (6/6 tests passed):
+             - HTTP 200 ✓
+             - len(expiries) == 6 ✓
+             - len(expiries_meta) == 6 ✓
+             - All 6 dates are Tuesdays:
+               • 2026-07-21 (Tuesday)
+               • 2026-07-28 (Tuesday)
+               • 2026-08-04 (Tuesday)
+               • 2026-08-11 (Tuesday)
+               • 2026-08-18 (Tuesday)
+               • 2026-08-25 (Tuesday)
+             - Tags found: ['W', 'M', 'W', 'W', 'W', 'M']
+             - At least one 'M' tag ✓
+             - At least one 'W' tag ✓
+          
+          ✅ BANKNIFTY (6/6 tests passed):
+             - HTTP 200 ✓
+             - len(expiries) == 6 ✓
+             - len(expiries_meta) == 6 ✓
+             - All 6 dates are Tuesdays:
+               • 2026-07-21 (Tuesday)
+               • 2026-07-28 (Tuesday)
+               • 2026-08-04 (Tuesday)
+               • 2026-08-11 (Tuesday)
+               • 2026-08-18 (Tuesday)
+               • 2026-08-25 (Tuesday)
+             - Tags found: ['W', 'M', 'W', 'W', 'W', 'M']
+             - At least one 'M' tag ✓
+             - At least one 'W' tag ✓
+          
+          ✅ SENSEX (6/6 tests passed):
+             - HTTP 200 ✓
+             - len(expiries) == 6 ✓
+             - len(expiries_meta) == 6 ✓
+             - All 6 dates are Tuesdays:
+               • 2026-07-21 (Tuesday)
+               • 2026-07-28 (Tuesday)
+               • 2026-08-04 (Tuesday)
+               • 2026-08-11 (Tuesday)
+               • 2026-08-18 (Tuesday)
+               • 2026-08-25 (Tuesday)
+             - Tags found: ['W', 'M', 'W', 'W', 'W', 'M']
+             - At least one 'M' tag ✓
+             - At least one 'W' tag ✓
+          
+          VERDICT: All expiry dates are correctly set to Tuesdays (weekday=1) for all three
+          indices. Each index returns exactly 6 expiries with 6 corresponding expiries_meta
+          entries. All indices have at least one 'M' (monthly) and one 'W' (weekly) tag as
+          required. The NSE post-Sept-2025 change to Tuesday expiries is correctly implemented.
+
+metadata:
+  created_by: "main_agent"
+  version: "1.8"
+  test_sequence: 8
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Backend regression:
+
+        1. For each idx in [NIFTY, BANKNIFTY, SENSEX]:
+           - GET /api/expiries/{idx} → 200.
+           - Assert `len(expiries) == 6` and `len(expiries_meta) == 6`.
+           - For every ISO date in `expiries`, parse it with datetime.date.fromisoformat and
+             assert d.weekday() == 1 (Tuesday). i.e. ALL six dates must be Tuesdays.
+           - Assert at least one expiries_meta item has tag='M' and at least one has tag='W'.
+
+        Constraints unchanged: ≤5 login attempts, no state mutation.
+    - agent: "testing"
+      message: |
+        ✅ ROUND 6 BACKEND REGRESSION TESTING COMPLETE - ALL TESTS PASSED
+        
+        Test date: 2026-07-17 at 13:37 UTC
+        Test file: /app/backend_test_round6.py
+        Test results: 3/3 indices passed, 0 failed
+        Login attempts: 0/5 (no login required)
+        
+        ========================================
+        SUMMARY: ALL TESTS PASSED ✅
+        ========================================
+        
+        ✅ NIFTY: All 6 expiry dates are Tuesdays
+           Dates: 2026-07-21, 2026-07-28, 2026-08-04, 2026-08-11, 2026-08-18, 2026-08-25
+           Tags: ['W', 'M', 'W', 'W', 'W', 'M'] (has both M and W) ✓
+        
+        ✅ BANKNIFTY: All 6 expiry dates are Tuesdays
+           Dates: 2026-07-21, 2026-07-28, 2026-08-04, 2026-08-11, 2026-08-18, 2026-08-25
+           Tags: ['W', 'M', 'W', 'W', 'W', 'M'] (has both M and W) ✓
+        
+        ✅ SENSEX: All 6 expiry dates are Tuesdays
+           Dates: 2026-07-21, 2026-07-28, 2026-08-04, 2026-08-11, 2026-08-18, 2026-08-25
+           Tags: ['W', 'M', 'W', 'W', 'W', 'M'] (has both M and W) ✓
+        
+        ========================================
+        CONSTRAINTS MET
+        ========================================
+        
+        ✅ No login required (0 auth calls)
+        ✅ No state mutations
+        ✅ All dates verified as Tuesdays (weekday=1)
+        ✅ All indices return exactly 6 expiries and 6 expiries_meta
+        ✅ All indices have at least one 'M' and one 'W' tag
+        
+        ========================================
+        VERDICT
+        ========================================
+        
+        The NSE post-Sept-2025 change to Tuesday expiries is correctly implemented.
+        All three indices (NIFTY, BANKNIFTY, SENSEX) return 6 consecutive Tuesday
+        expiry dates with proper weekly (W) and monthly (M) tagging. No issues found.
