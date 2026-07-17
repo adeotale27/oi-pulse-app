@@ -1,10 +1,15 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Request
+from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import asyncio
 import logging
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, List
@@ -600,11 +605,73 @@ async def get_positions():
 # ------------------- Lifecycle -------------------
 app.include_router(api_router)
 
+# --- Security: Trusted Host (prevent Host header attacks) ---
+_trusted_hosts_env = os.environ.get('TRUSTED_HOSTS', '').strip()
+if _trusted_hosts_env:
+    _trusted_hosts = [h.strip() for h in _trusted_hosts_env.split(',') if h.strip()]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts)
+
+# --- Security: HTTP security headers ---
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        # HSTS: enable only when served over HTTPS in production
+        if os.environ.get('ENABLE_HSTS', 'true').lower() == 'true':
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# --- Security: Simple in-memory rate limiter for sensitive endpoints ---
+_rate_buckets: dict = defaultdict(deque)
+_RATE_LIMITED_PREFIXES = (
+    "/api/credentials",
+    "/api/kite/generate-session",
+    "/api/kite/refresh",
+    "/api/kite/vault",
+    "/api/mode",
+)
+_RATE_LIMIT_MAX = int(os.environ.get('RATE_LIMIT_MAX', '20'))       # requests
+_RATE_LIMIT_WINDOW = int(os.environ.get('RATE_LIMIT_WINDOW', '60')) # seconds
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if request.method in ("POST", "DELETE") and any(path.startswith(p) for p in _RATE_LIMITED_PREFIXES):
+            ip = request.client.host if request.client else "unknown"
+            key = f"{ip}:{path}"
+            now = time.time()
+            bucket = _rate_buckets[key]
+            while bucket and now - bucket[0] > _RATE_LIMIT_WINDOW:
+                bucket.popleft()
+            if len(bucket) >= _RATE_LIMIT_MAX:
+                return Response(
+                    content='{"detail":"Too many requests. Please slow down."}',
+                    status_code=429,
+                    media_type="application/json",
+                )
+            bucket.append(now)
+        return await call_next(request)
+
+app.add_middleware(RateLimitMiddleware)
+
+# --- CORS (restricted; wildcard only if explicitly set) ---
+_cors_env = os.environ.get('CORS_ORIGINS', '*').strip()
+_cors_origins = [o.strip() for o in _cors_env.split(',') if o.strip()]
+_allow_credentials = True
+if _cors_origins == ['*']:
+    # Browser spec: wildcard + credentials is invalid; disable credentials in that case.
+    _allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
+    allow_credentials=_allow_credentials,
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 

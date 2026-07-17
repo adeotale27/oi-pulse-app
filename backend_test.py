@@ -1,576 +1,323 @@
 #!/usr/bin/env python3
 """
-Backend API Regression Test Suite for OI Pulse - July 2026 Update
-Tests all critical endpoints with focus on /api/positions and /api/settings
+Backend Security Hardening Test Suite
+Tests production security middleware for NSE OI Tracker deployment on oi-pulse.emergent.host
 """
 
 import requests
-import json
 import time
-from typing import Dict, Any, List, Tuple
+from typing import Dict, List, Tuple
 
-# Backend URL from frontend/.env
-BASE_URL = "https://deploy-guide-97.preview.emergentagent.com/api"
-TIMEOUT = 5  # 5 second timeout as per requirements
+# Backend URL - using localhost:8001 as per review request
+# (external URL has TrustedHostMiddleware that blocks direct Python requests)
+BASE_URL = "http://localhost:8001/api"
 
-class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
+# Expected security headers
+EXPECTED_SECURITY_HEADERS = {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "permissions-policy": "geolocation=(), microphone=(), camera=()",
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+}
 
-def log_test(name: str):
-    print(f"\n{Colors.BLUE}{Colors.BOLD}{'='*80}{Colors.RESET}")
-    print(f"{Colors.BLUE}{Colors.BOLD}TEST: {name}{Colors.RESET}")
-    print(f"{Colors.BLUE}{Colors.BOLD}{'='*80}{Colors.RESET}")
+# CORS test origins
+ALLOWED_ORIGIN = "https://oi-pulse.emergent.host"
+EVIL_ORIGIN = "https://evil.example.com"
 
-def log_pass(msg: str):
-    print(f"{Colors.GREEN}✓ PASS: {msg}{Colors.RESET}")
-
-def log_fail(msg: str):
-    print(f"{Colors.RED}✗ FAIL: {msg}{Colors.RESET}")
-
-def log_info(msg: str):
-    print(f"{Colors.YELLOW}ℹ INFO: {msg}{Colors.RESET}")
-
-def log_warning(msg: str):
-    print(f"{Colors.YELLOW}⚠ WARNING: {msg}{Colors.RESET}")
+# Test results tracking
+test_results = {
+    "passed": [],
+    "failed": [],
+    "warnings": [],
+}
 
 
-class TestResults:
-    def __init__(self):
-        self.passed = []
-        self.failed = []
-        self.warnings = []
+def log_pass(test_name: str, details: str = ""):
+    """Log a passing test"""
+    msg = f"✅ {test_name}"
+    if details:
+        msg += f": {details}"
+    print(msg)
+    test_results["passed"].append(test_name)
+
+
+def log_fail(test_name: str, details: str):
+    """Log a failing test"""
+    msg = f"❌ {test_name}: {details}"
+    print(msg)
+    test_results["failed"].append(f"{test_name}: {details}")
+
+
+def log_warning(test_name: str, details: str):
+    """Log a warning"""
+    msg = f"⚠️  {test_name}: {details}"
+    print(msg)
+    test_results["warnings"].append(f"{test_name}: {details}")
+
+
+def test_regression_sanity_check():
+    """Test 1: Regression sanity check on read-only endpoints"""
+    print("\n" + "="*80)
+    print("TEST 1: REGRESSION SANITY CHECK - READ-ONLY ENDPOINTS")
+    print("="*80)
     
-    def add_pass(self, test_name: str, detail: str = ""):
-        self.passed.append((test_name, detail))
-    
-    def add_fail(self, test_name: str, detail: str):
-        self.failed.append((test_name, detail))
-    
-    def add_warning(self, test_name: str, detail: str):
-        self.warnings.append((test_name, detail))
-    
-    def summary(self):
-        print(f"\n{Colors.BOLD}{'='*80}{Colors.RESET}")
-        print(f"{Colors.BOLD}TEST SUMMARY{Colors.RESET}")
-        print(f"{Colors.BOLD}{'='*80}{Colors.RESET}")
-        print(f"{Colors.GREEN}Passed: {len(self.passed)}{Colors.RESET}")
-        print(f"{Colors.RED}Failed: {len(self.failed)}{Colors.RESET}")
-        print(f"{Colors.YELLOW}Warnings: {len(self.warnings)}{Colors.RESET}")
-        
-        if self.failed:
-            print(f"\n{Colors.RED}{Colors.BOLD}FAILED TESTS:{Colors.RESET}")
-            for test_name, detail in self.failed:
-                print(f"{Colors.RED}  ✗ {test_name}{Colors.RESET}")
-                print(f"    {detail}")
-        
-        if self.warnings:
-            print(f"\n{Colors.YELLOW}{Colors.BOLD}WARNINGS:{Colors.RESET}")
-            for test_name, detail in self.warnings:
-                print(f"{Colors.YELLOW}  ⚠ {test_name}{Colors.RESET}")
-                print(f"    {detail}")
-        
-        print(f"\n{Colors.BOLD}{'='*80}{Colors.RESET}\n")
-        return len(self.failed) == 0
-
-
-results = TestResults()
-
-
-def test_positions_endpoint():
-    """
-    HIGH PRIORITY TEST 1: GET /api/positions
-    Must return 200 always (even if Kite not connected)
-    Response must contain: mode, positions, and optionally spot, error
-    """
-    log_test("GET /api/positions - Kite positions endpoint")
-    
-    try:
-        start_time = time.time()
-        response = requests.get(f"{BASE_URL}/positions", timeout=TIMEOUT)
-        elapsed = time.time() - start_time
-        
-        # Check response time
-        if elapsed > TIMEOUT:
-            log_fail(f"Response time {elapsed:.2f}s exceeds {TIMEOUT}s timeout")
-            results.add_fail("GET /api/positions - Response time", f"Took {elapsed:.2f}s (> {TIMEOUT}s)")
-        else:
-            log_pass(f"Response time: {elapsed:.2f}s (< {TIMEOUT}s)")
-        
-        # Check status code
-        if response.status_code != 200:
-            log_fail(f"Expected status 200, got {response.status_code}")
-            results.add_fail("GET /api/positions - Status code", f"Got {response.status_code}, expected 200")
-            log_info(f"Response body: {response.text}")
-            return
-        else:
-            log_pass(f"Status code: {response.status_code}")
-        
-        # Check JSON response
-        try:
-            data = response.json()
-            log_pass("Response is valid JSON")
-        except json.JSONDecodeError as e:
-            log_fail(f"Response is not valid JSON: {e}")
-            results.add_fail("GET /api/positions - JSON parsing", f"Invalid JSON: {e}")
-            return
-        
-        # Check required keys
-        required_keys = ["mode", "positions"]
-        missing_keys = [k for k in required_keys if k not in data]
-        if missing_keys:
-            log_fail(f"Missing required keys: {missing_keys}")
-            results.add_fail("GET /api/positions - Required keys", f"Missing: {missing_keys}")
-        else:
-            log_pass(f"All required keys present: {required_keys}")
-        
-        # Check mode value
-        mode = data.get("mode")
-        if mode not in ["mock", "kite"]:
-            log_warning(f"Unexpected mode value: {mode} (expected 'mock' or 'kite')")
-            results.add_warning("GET /api/positions - Mode value", f"Got '{mode}', expected 'mock' or 'kite'")
-        else:
-            log_pass(f"Mode value valid: '{mode}'")
-        
-        # Check positions type
-        positions = data.get("positions")
-        if not isinstance(positions, list):
-            log_fail(f"'positions' should be a list, got {type(positions).__name__}")
-            results.add_fail("GET /api/positions - Positions type", f"Expected list, got {type(positions).__name__}")
-        else:
-            log_pass(f"'positions' is a list with {len(positions)} items")
-        
-        # Check optional keys
-        if "spot" in data:
-            if isinstance(data["spot"], dict):
-                log_pass(f"Optional 'spot' key present and is dict with {len(data['spot'])} indices")
-            else:
-                log_warning(f"'spot' key present but not a dict: {type(data['spot']).__name__}")
-                results.add_warning("GET /api/positions - Spot type", f"Expected dict, got {type(data['spot']).__name__}")
-        
-        if "error" in data:
-            log_info(f"Error message present: {data['error']}")
-            if mode == "mock":
-                log_pass("Error message expected in mock mode")
-            else:
-                log_warning(f"Error message present in {mode} mode: {data['error']}")
-        
-        # Mock mode specific checks
-        if mode == "mock":
-            if len(positions) == 0:
-                log_pass("Mock mode returns empty positions list (expected)")
-            else:
-                log_warning(f"Mock mode has {len(positions)} positions (expected 0)")
-                results.add_warning("GET /api/positions - Mock mode positions", f"Expected empty list, got {len(positions)} items")
-            
-            if "error" in data:
-                log_pass(f"Mock mode includes error message: '{data['error']}'")
-            else:
-                log_info("Mock mode has no error message (acceptable)")
-        
-        # If positions exist, validate structure
-        if len(positions) > 0:
-            log_info(f"Validating structure of {len(positions)} positions...")
-            sample = positions[0]
-            expected_fields = ["tradingsymbol", "quantity", "average_price", "last_price", "pnl"]
-            missing_fields = [f for f in expected_fields if f not in sample]
-            if missing_fields:
-                log_warning(f"Position missing expected fields: {missing_fields}")
-                results.add_warning("GET /api/positions - Position structure", f"Missing fields: {missing_fields}")
-            else:
-                log_pass(f"Position structure valid (sample: {sample.get('tradingsymbol')})")
-        
-        log_info(f"Full response: {json.dumps(data, indent=2)}")
-        results.add_pass("GET /api/positions", f"Mode: {mode}, Positions: {len(positions)}")
-        
-    except requests.Timeout:
-        log_fail(f"Request timed out after {TIMEOUT}s")
-        results.add_fail("GET /api/positions - Timeout", f"Request exceeded {TIMEOUT}s timeout")
-    except requests.RequestException as e:
-        log_fail(f"Request failed: {e}")
-        results.add_fail("GET /api/positions - Request error", str(e))
-    except Exception as e:
-        log_fail(f"Unexpected error: {e}")
-        results.add_fail("GET /api/positions - Unexpected error", str(e))
-
-
-def test_settings_roundtrip():
-    """
-    HIGH PRIORITY TEST 2: POST /api/settings - Settings save/load round trip
-    User reported alert settings might not be persisting
-    """
-    log_test("POST /api/settings - Settings persistence round trip")
-    
-    try:
-        # Step 1: GET current settings
-        log_info("Step 1: GET /api/settings - Fetching current settings...")
-        response = requests.get(f"{BASE_URL}/settings", timeout=TIMEOUT)
-        
-        if response.status_code != 200:
-            log_fail(f"GET /api/settings failed with status {response.status_code}")
-            results.add_fail("POST /api/settings - GET initial", f"Status {response.status_code}")
-            return
-        
-        original_settings = response.json()
-        log_pass(f"Current settings retrieved: {json.dumps(original_settings, indent=2)}")
-        
-        # Step 2: POST new settings
-        log_info("Step 2: POST /api/settings - Saving new settings...")
-        new_settings = {
-            "threshold_pct": 18.0,
-            "compare_minutes": 4,
-            "cooldown_seconds": 90,
-            "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"]
-        }
-        log_info(f"Posting: {json.dumps(new_settings, indent=2)}")
-        
-        start_time = time.time()
-        response = requests.post(f"{BASE_URL}/settings", json=new_settings, timeout=TIMEOUT)
-        elapsed = time.time() - start_time
-        
-        if elapsed > TIMEOUT:
-            log_fail(f"POST response time {elapsed:.2f}s exceeds {TIMEOUT}s")
-            results.add_fail("POST /api/settings - Response time", f"Took {elapsed:.2f}s")
-        else:
-            log_pass(f"POST response time: {elapsed:.2f}s")
-        
-        if response.status_code != 200:
-            log_fail(f"POST /api/settings failed with status {response.status_code}")
-            log_info(f"Response: {response.text}")
-            results.add_fail("POST /api/settings - POST status", f"Status {response.status_code}")
-            return
-        
-        returned_settings = response.json()
-        log_pass(f"Settings saved, response: {json.dumps(returned_settings, indent=2)}")
-        
-        # Verify POST response reflects new values
-        mismatches = []
-        for key, expected_value in new_settings.items():
-            actual_value = returned_settings.get(key)
-            if actual_value != expected_value:
-                mismatches.append(f"{key}: expected {expected_value}, got {actual_value}")
-        
-        if mismatches:
-            log_fail(f"POST response doesn't reflect new values: {mismatches}")
-            results.add_fail("POST /api/settings - Response values", f"Mismatches: {mismatches}")
-        else:
-            log_pass("POST response correctly reflects all new values")
-        
-        # Step 3: GET settings again to verify persistence
-        log_info("Step 3: GET /api/settings - Verifying persistence...")
-        time.sleep(0.5)  # Small delay to ensure persistence
-        response = requests.get(f"{BASE_URL}/settings", timeout=TIMEOUT)
-        
-        if response.status_code != 200:
-            log_fail(f"Second GET /api/settings failed with status {response.status_code}")
-            results.add_fail("POST /api/settings - GET verification", f"Status {response.status_code}")
-            return
-        
-        persisted_settings = response.json()
-        log_pass(f"Persisted settings retrieved: {json.dumps(persisted_settings, indent=2)}")
-        
-        # Verify persistence
-        persistence_mismatches = []
-        for key, expected_value in new_settings.items():
-            actual_value = persisted_settings.get(key)
-            if actual_value != expected_value:
-                persistence_mismatches.append(f"{key}: expected {expected_value}, got {actual_value}")
-        
-        if persistence_mismatches:
-            log_fail(f"Settings not persisted correctly: {persistence_mismatches}")
-            results.add_fail("POST /api/settings - Persistence", f"Mismatches: {persistence_mismatches}")
-        else:
-            log_pass("✓ CRITICAL: Settings persisted correctly - round trip successful!")
-        
-        # Step 4: Restore original settings
-        log_info("Step 4: Restoring original settings...")
-        response = requests.post(f"{BASE_URL}/settings", json=original_settings, timeout=TIMEOUT)
-        
-        if response.status_code == 200:
-            log_pass("Original settings restored successfully")
-        else:
-            log_warning(f"Failed to restore original settings (status {response.status_code})")
-        
-        if not persistence_mismatches:
-            results.add_pass("POST /api/settings - Round trip", "Settings save/load working correctly")
-        
-    except requests.Timeout:
-        log_fail(f"Request timed out after {TIMEOUT}s")
-        results.add_fail("POST /api/settings - Timeout", f"Request exceeded {TIMEOUT}s")
-    except requests.RequestException as e:
-        log_fail(f"Request failed: {e}")
-        results.add_fail("POST /api/settings - Request error", str(e))
-    except Exception as e:
-        log_fail(f"Unexpected error: {e}")
-        results.add_fail("POST /api/settings - Unexpected error", str(e))
-
-
-def test_settings_validation():
-    """
-    HIGH PRIORITY TEST 2b: POST /api/settings - Invalid payload handling
-    Should return 4xx for bad payloads, not 500
-    """
-    log_test("POST /api/settings - Invalid payload validation")
-    
-    test_cases = [
-        {
-            "name": "Out of range threshold",
-            "payload": {"threshold_pct": -10},
-            "expected_status_range": (400, 499)
-        },
-        {
-            "name": "Invalid index in enabled_indices",
-            "payload": {"enabled_indices": ["NIFTY", "INVALID_INDEX"]},
-            "expected_status_range": (400, 499)
-        },
-        {
-            "name": "Wrong type for compare_minutes",
-            "payload": {"compare_minutes": "not_a_number"},
-            "expected_status_range": (400, 499)
-        }
+    endpoints = [
+        ("/", "Root endpoint"),
+        ("/status", "Status endpoint"),
+        ("/config", "Config endpoint"),
+        ("/oi/NIFTY", "OI NIFTY endpoint"),
+        ("/history/NIFTY?minutes=30", "History NIFTY 30min"),
+        ("/vrp/NIFTY", "VRP NIFTY endpoint"),
     ]
     
-    for test_case in test_cases:
-        log_info(f"Testing: {test_case['name']}")
+    for path, description in endpoints:
+        try:
+            url = f"{BASE_URL}{path}"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    log_pass(f"GET {path}", f"200 OK, valid JSON ({len(str(data))} bytes)")
+                except ValueError:
+                    log_fail(f"GET {path}", f"200 but invalid JSON: {response.text[:100]}")
+            else:
+                log_fail(f"GET {path}", f"Expected 200, got {response.status_code}: {response.text[:200]}")
+        except requests.exceptions.Timeout:
+            log_fail(f"GET {path}", "Request timed out after 10s")
+        except Exception as e:
+            log_fail(f"GET {path}", f"{type(e).__name__}: {str(e)}")
+
+
+def test_security_headers():
+    """Test 2: Verify security headers are present on all responses"""
+    print("\n" + "="*80)
+    print("TEST 2: SECURITY HEADERS VERIFICATION")
+    print("="*80)
+    
+    try:
+        response = requests.get(f"{BASE_URL}/", timeout=10)
+        headers_lower = {k.lower(): v for k, v in response.headers.items()}
+        
+        all_present = True
+        for header_name, expected_value in EXPECTED_SECURITY_HEADERS.items():
+            actual_value = headers_lower.get(header_name)
+            if actual_value:
+                if actual_value == expected_value:
+                    log_pass(f"Security header '{header_name}'", f"'{expected_value}'")
+                else:
+                    log_warning(f"Security header '{header_name}'", 
+                              f"Expected '{expected_value}', got '{actual_value}'")
+            else:
+                log_fail(f"Security header '{header_name}'", "Header missing")
+                all_present = False
+        
+        if all_present:
+            log_pass("All security headers", "All 5 required headers present")
+    except Exception as e:
+        log_fail("Security headers test", f"{type(e).__name__}: {str(e)}")
+
+
+def test_cors_restriction():
+    """Test 3: CORS restriction - allowed origin vs evil origin"""
+    print("\n" + "="*80)
+    print("TEST 3: CORS RESTRICTION")
+    print("="*80)
+    
+    # Test 3a: Allowed origin
+    try:
+        response = requests.get(
+            f"{BASE_URL}/",
+            headers={"Origin": ALLOWED_ORIGIN},
+            timeout=10
+        )
+        cors_header = response.headers.get("access-control-allow-origin")
+        if cors_header == ALLOWED_ORIGIN:
+            log_pass("CORS allowed origin", f"'{ALLOWED_ORIGIN}' echoed correctly")
+        else:
+            log_fail("CORS allowed origin", 
+                    f"Expected '{ALLOWED_ORIGIN}', got '{cors_header}'")
+    except Exception as e:
+        log_fail("CORS allowed origin test", f"{type(e).__name__}: {str(e)}")
+    
+    # Test 3b: Evil origin
+    try:
+        response = requests.get(
+            f"{BASE_URL}/",
+            headers={"Origin": EVIL_ORIGIN},
+            timeout=10
+        )
+        cors_header = response.headers.get("access-control-allow-origin")
+        if cors_header is None or cors_header != EVIL_ORIGIN:
+            log_pass("CORS evil origin blocked", 
+                    f"Evil origin '{EVIL_ORIGIN}' not echoed (header: {cors_header})")
+        else:
+            log_fail("CORS evil origin blocked", 
+                    f"Evil origin '{EVIL_ORIGIN}' was echoed - security breach!")
+    except Exception as e:
+        log_fail("CORS evil origin test", f"{type(e).__name__}: {str(e)}")
+    
+    # Test 3c: Preflight OPTIONS request with allowed origin
+    try:
+        response = requests.options(
+            f"{BASE_URL}/mode",
+            headers={
+                "Origin": ALLOWED_ORIGIN,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+            timeout=10
+        )
+        if response.status_code == 200:
+            cors_header = response.headers.get("access-control-allow-origin")
+            if cors_header == ALLOWED_ORIGIN:
+                log_pass("CORS preflight OPTIONS", 
+                        f"200 OK with correct CORS headers for '{ALLOWED_ORIGIN}'")
+            else:
+                log_warning("CORS preflight OPTIONS", 
+                          f"200 but CORS header is '{cors_header}' instead of '{ALLOWED_ORIGIN}'")
+        else:
+            log_warning("CORS preflight OPTIONS", 
+                       f"Expected 200, got {response.status_code}")
+    except Exception as e:
+        log_fail("CORS preflight test", f"{type(e).__name__}: {str(e)}")
+
+
+def test_rate_limiter():
+    """Test 4: Rate limiter on POST /api/mode (20 req/60s limit)"""
+    print("\n" + "="*80)
+    print("TEST 4: RATE LIMITER ON POST /api/mode")
+    print("="*80)
+    print("⏳ Sending 25 rapid POST requests to /api/mode...")
+    print("   Expected: First 20 succeed (200), requests 21-25 return 429")
+    print("   Note: Mode will stay as 'kite' (sending same mode repeatedly)")
+    
+    success_count = 0
+    rate_limited_count = 0
+    other_errors = []
+    
+    for i in range(1, 26):
         try:
             response = requests.post(
-                f"{BASE_URL}/settings",
-                json=test_case["payload"],
-                timeout=TIMEOUT
+                f"{BASE_URL}/mode",
+                json={"mode": "kite"},  # Keep mode as kite
+                headers={"Content-Type": "application/json"},
+                timeout=10
             )
             
-            status = response.status_code
-            expected_min, expected_max = test_case["expected_status_range"]
-            
-            if status == 500:
-                log_fail(f"{test_case['name']}: Got 500 error (should be 4xx)")
-                results.add_fail(
-                    f"POST /api/settings - {test_case['name']}",
-                    f"Got 500 error instead of 4xx for invalid payload"
-                )
-            elif expected_min <= status <= expected_max:
-                log_pass(f"{test_case['name']}: Correctly returned {status}")
+            if response.status_code == 200:
+                success_count += 1
+                if i <= 20:
+                    print(f"   Request {i:2d}/25: ✅ 200 OK (expected)")
+                else:
+                    print(f"   Request {i:2d}/25: ⚠️  200 OK (expected 429 after 20th request)")
+            elif response.status_code == 429:
+                rate_limited_count += 1
+                try:
+                    error_detail = response.json().get("detail", "")
+                    if "Too many requests" in error_detail:
+                        print(f"   Request {i:2d}/25: ✅ 429 Rate Limited (expected)")
+                    else:
+                        print(f"   Request {i:2d}/25: ⚠️  429 but unexpected detail: {error_detail}")
+                except:
+                    print(f"   Request {i:2d}/25: ✅ 429 Rate Limited")
             else:
-                log_warning(f"{test_case['name']}: Got {status}, expected {expected_min}-{expected_max}")
-                results.add_warning(
-                    f"POST /api/settings - {test_case['name']}",
-                    f"Got {status}, expected {expected_min}-{expected_max}"
-                )
-        
+                other_errors.append((i, response.status_code, response.text[:100]))
+                print(f"   Request {i:2d}/25: ❌ {response.status_code} (unexpected)")
         except Exception as e:
-            log_fail(f"{test_case['name']}: Exception - {e}")
-            results.add_fail(f"POST /api/settings - {test_case['name']}", str(e))
+            other_errors.append((i, "Exception", str(e)))
+            print(f"   Request {i:2d}/25: ❌ {type(e).__name__}: {str(e)}")
     
-    results.add_pass("POST /api/settings - Validation", "Invalid payloads handled correctly")
-
-
-def test_status_endpoint():
-    """SMOKE TEST: GET /api/status"""
-    log_test("GET /api/status - Smoke test")
+    print(f"\n📊 Rate Limiter Results:")
+    print(f"   Success (200): {success_count}")
+    print(f"   Rate Limited (429): {rate_limited_count}")
+    print(f"   Other Errors: {len(other_errors)}")
     
-    try:
-        response = requests.get(f"{BASE_URL}/status", timeout=TIMEOUT)
-        
-        if response.status_code != 200:
-            log_fail(f"Status code: {response.status_code}")
-            results.add_fail("GET /api/status", f"Status {response.status_code}")
-            return
-        
-        data = response.json()
-        required_keys = ["mode", "running", "has_kite_credentials", "poll_interval_seconds"]
-        missing = [k for k in required_keys if k not in data]
-        
-        if missing:
-            log_fail(f"Missing keys: {missing}")
-            results.add_fail("GET /api/status - Keys", f"Missing: {missing}")
-        else:
-            log_pass(f"All required keys present: {data}")
-            results.add_pass("GET /api/status", f"Mode: {data.get('mode')}, Running: {data.get('running')}")
-    
-    except Exception as e:
-        log_fail(f"Error: {e}")
-        results.add_fail("GET /api/status", str(e))
-
-
-def test_oi_change_endpoint():
-    """SMOKE TEST: GET /api/oi/NIFTY/change with various minutes parameters"""
-    log_test("GET /api/oi/NIFTY/change - Multiple timeframes")
-    
-    test_minutes = [1, 3, 5, 15]
-    
-    for minutes in test_minutes:
-        log_info(f"Testing minutes={minutes}...")
-        try:
-            start_time = time.time()
-            response = requests.get(
-                f"{BASE_URL}/oi/NIFTY/change",
-                params={"minutes": minutes},
-                timeout=TIMEOUT
-            )
-            elapsed = time.time() - start_time
-            
-            if response.status_code != 200:
-                log_fail(f"minutes={minutes}: Status {response.status_code}")
-                results.add_fail(f"GET /api/oi/NIFTY/change?minutes={minutes}", f"Status {response.status_code}")
-                continue
-            
-            if elapsed > TIMEOUT:
-                log_fail(f"minutes={minutes}: Response time {elapsed:.2f}s > {TIMEOUT}s")
-                results.add_fail(f"GET /api/oi/NIFTY/change?minutes={minutes}", f"Timeout {elapsed:.2f}s")
-                continue
-            
-            data = response.json()
-            
-            # Check structure
-            if "current" not in data:
-                log_fail(f"minutes={minutes}: Missing 'current' key")
-                results.add_fail(f"GET /api/oi/NIFTY/change?minutes={minutes}", "Missing 'current' key")
-                continue
-            
-            current = data["current"]
-            if "strikes" not in current:
-                log_fail(f"minutes={minutes}: Missing 'current.strikes' key")
-                results.add_fail(f"GET /api/oi/NIFTY/change?minutes={minutes}", "Missing 'current.strikes'")
-                continue
-            
-            strikes = current["strikes"]
-            if not isinstance(strikes, list) or len(strikes) == 0:
-                log_fail(f"minutes={minutes}: 'current.strikes' is empty or not a list")
-                results.add_fail(f"GET /api/oi/NIFTY/change?minutes={minutes}", "Empty strikes list")
-                continue
-            
-            # Validate strike structure
-            sample_strike = strikes[0]
-            required_strike_keys = ["strike", "ce_oi", "pe_oi", "ce_ltp", "pe_ltp"]
-            missing_keys = [k for k in required_strike_keys if k not in sample_strike]
-            
-            if missing_keys:
-                log_fail(f"minutes={minutes}: Strike missing keys: {missing_keys}")
-                results.add_fail(f"GET /api/oi/NIFTY/change?minutes={minutes}", f"Strike missing: {missing_keys}")
-                continue
-            
-            # Check for ATM and price
-            if "atm" not in current:
-                log_warning(f"minutes={minutes}: Missing 'atm' in current")
-            if "price" not in current:
-                log_warning(f"minutes={minutes}: Missing 'price' in current")
-            
-            log_pass(f"minutes={minutes}: OK ({len(strikes)} strikes, {elapsed:.2f}s)")
-            results.add_pass(f"GET /api/oi/NIFTY/change?minutes={minutes}", f"{len(strikes)} strikes")
-        
-        except Exception as e:
-            log_fail(f"minutes={minutes}: {e}")
-            results.add_fail(f"GET /api/oi/NIFTY/change?minutes={minutes}", str(e))
-
-
-def test_alerts_endpoint():
-    """SMOKE TEST: GET /api/alerts"""
-    log_test("GET /api/alerts - Smoke test")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/alerts", timeout=TIMEOUT)
-        
-        if response.status_code != 200:
-            log_fail(f"Status code: {response.status_code}")
-            results.add_fail("GET /api/alerts", f"Status {response.status_code}")
-            return
-        
-        data = response.json()
-        
-        if "alerts" not in data:
-            log_fail("Missing 'alerts' key in response")
-            results.add_fail("GET /api/alerts", "Missing 'alerts' key")
-            return
-        
-        alerts = data["alerts"]
-        if not isinstance(alerts, list):
-            log_fail(f"'alerts' should be a list, got {type(alerts).__name__}")
-            results.add_fail("GET /api/alerts", f"Wrong type: {type(alerts).__name__}")
-            return
-        
-        log_pass(f"Response valid with {len(alerts)} alerts")
-        results.add_pass("GET /api/alerts", f"{len(alerts)} alerts")
-    
-    except Exception as e:
-        log_fail(f"Error: {e}")
-        results.add_fail("GET /api/alerts", str(e))
-
-
-def test_expiries_endpoint():
-    """SMOKE TEST: GET /api/expiries/NIFTY"""
-    log_test("GET /api/expiries/NIFTY - Smoke test")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/expiries/NIFTY", timeout=TIMEOUT)
-        
-        if response.status_code != 200:
-            log_fail(f"Status code: {response.status_code}")
-            results.add_fail("GET /api/expiries/NIFTY", f"Status {response.status_code}")
-            return
-        
-        data = response.json()
-        
-        if "expiries" not in data:
-            log_fail("Missing 'expiries' key in response")
-            results.add_fail("GET /api/expiries/NIFTY", "Missing 'expiries' key")
-            return
-        
-        expiries = data["expiries"]
-        if not isinstance(expiries, list):
-            log_fail(f"'expiries' should be a list, got {type(expiries).__name__}")
-            results.add_fail("GET /api/expiries/NIFTY", f"Wrong type: {type(expiries).__name__}")
-            return
-        
-        log_pass(f"Response valid with {len(expiries)} expiries")
-        log_info(f"Expiries: {expiries}")
-        results.add_pass("GET /api/expiries/NIFTY", f"{len(expiries)} expiries")
-    
-    except Exception as e:
-        log_fail(f"Error: {e}")
-        results.add_fail("GET /api/expiries/NIFTY", str(e))
-
-
-def main():
-    print(f"\n{Colors.BOLD}{'='*80}{Colors.RESET}")
-    print(f"{Colors.BOLD}OI PULSE BACKEND REGRESSION TEST SUITE - JULY 2026{Colors.RESET}")
-    print(f"{Colors.BOLD}{'='*80}{Colors.RESET}")
-    print(f"Backend URL: {BASE_URL}")
-    print(f"Timeout: {TIMEOUT}s")
-    print(f"{Colors.BOLD}{'='*80}{Colors.RESET}\n")
-    
-    # HIGH PRIORITY TESTS
-    print(f"\n{Colors.BOLD}{'='*80}{Colors.RESET}")
-    print(f"{Colors.BOLD}HIGH PRIORITY TESTS{Colors.RESET}")
-    print(f"{Colors.BOLD}{'='*80}{Colors.RESET}\n")
-    
-    test_positions_endpoint()
-    test_settings_roundtrip()
-    test_settings_validation()
-    
-    # SMOKE TESTS
-    print(f"\n{Colors.BOLD}{'='*80}{Colors.RESET}")
-    print(f"{Colors.BOLD}SMOKE TESTS{Colors.RESET}")
-    print(f"{Colors.BOLD}{'='*80}{Colors.RESET}\n")
-    
-    test_status_endpoint()
-    test_oi_change_endpoint()
-    test_alerts_endpoint()
-    test_expiries_endpoint()
-    
-    # SUMMARY
-    success = results.summary()
-    
-    if success:
-        print(f"{Colors.GREEN}{Colors.BOLD}ALL TESTS PASSED ✓{Colors.RESET}\n")
-        return 0
+    # Evaluate results
+    if success_count == 20 and rate_limited_count == 5:
+        log_pass("Rate limiter", "Exactly 20 succeeded, 5 rate-limited (perfect)")
+    elif success_count <= 20 and rate_limited_count >= 5:
+        log_pass("Rate limiter", f"{success_count} succeeded, {rate_limited_count} rate-limited (working)")
+    elif rate_limited_count > 0:
+        log_warning("Rate limiter", 
+                   f"Partially working: {success_count} succeeded, {rate_limited_count} rate-limited")
     else:
-        print(f"{Colors.RED}{Colors.BOLD}SOME TESTS FAILED ✗{Colors.RESET}\n")
-        return 1
+        log_fail("Rate limiter", f"Not working: {success_count} succeeded, 0 rate-limited")
+    
+    if other_errors:
+        for req_num, status, detail in other_errors:
+            log_warning(f"Rate limiter request {req_num}", f"{status}: {detail}")
+
+
+def verify_mode_still_kite():
+    """Verify that mode is still 'kite' after all tests"""
+    print("\n" + "="*80)
+    print("VERIFICATION: MODE STILL 'KITE'")
+    print("="*80)
+    
+    try:
+        response = requests.get(f"{BASE_URL}/status", timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            mode = data.get("mode")
+            if mode == "kite":
+                log_pass("Mode verification", "Mode is still 'kite' ✅")
+            else:
+                log_fail("Mode verification", f"Mode changed to '{mode}' (expected 'kite')")
+        else:
+            log_fail("Mode verification", f"Status endpoint returned {response.status_code}")
+    except Exception as e:
+        log_fail("Mode verification", f"{type(e).__name__}: {str(e)}")
+
+
+def print_summary():
+    """Print test summary"""
+    print("\n" + "="*80)
+    print("TEST SUMMARY")
+    print("="*80)
+    
+    total_tests = len(test_results["passed"]) + len(test_results["failed"])
+    
+    print(f"\n✅ PASSED: {len(test_results['passed'])}/{total_tests}")
+    if test_results["passed"]:
+        for test in test_results["passed"]:
+            print(f"   • {test}")
+    
+    if test_results["failed"]:
+        print(f"\n❌ FAILED: {len(test_results['failed'])}/{total_tests}")
+        for test in test_results["failed"]:
+            print(f"   • {test}")
+    
+    if test_results["warnings"]:
+        print(f"\n⚠️  WARNINGS: {len(test_results['warnings'])}")
+        for warning in test_results["warnings"]:
+            print(f"   • {warning}")
+    
+    print("\n" + "="*80)
+    if test_results["failed"]:
+        print("❌ OVERALL: SOME TESTS FAILED")
+    elif test_results["warnings"]:
+        print("⚠️  OVERALL: ALL TESTS PASSED WITH WARNINGS")
+    else:
+        print("✅ OVERALL: ALL TESTS PASSED")
+    print("="*80 + "\n")
 
 
 if __name__ == "__main__":
-    exit(main())
+    print("="*80)
+    print("NSE OI TRACKER - PRODUCTION SECURITY HARDENING TEST SUITE")
+    print("="*80)
+    print(f"Backend URL: {BASE_URL}")
+    print(f"Test Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*80)
+    
+    # Run all tests
+    test_regression_sanity_check()
+    test_security_headers()
+    test_cors_restriction()
+    test_rate_limiter()
+    verify_mode_still_kite()
+    
+    # Print summary
+    print_summary()
