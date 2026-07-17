@@ -4323,3 +4323,13 @@ agent_communication:
         The NSE post-Sept-2025 change to Tuesday expiries is correctly implemented.
         All three indices (NIFTY, BANKNIFTY, SENSEX) return 6 consecutive Tuesday
         expiry dates with proper weekly (W) and monthly (M) tagging. No issues found.
+
+    - agent: "testing"
+      message: |
+        ✅ Round 6 backend PASSED (2026-07-17):
+        - NIFTY, BANKNIFTY, SENSEX each return 6 expiries; ALL Tuesdays; at least one W + one M tag.
+        - Sample: 2026-07-21, 2026-07-28, 2026-08-04, 2026-08-11, 2026-08-18, 2026-08-25.
+
+backend:
+  - task: "Expiry dates are Tuesdays (matching NSE post Sept-2025 change)"
+    working: true
