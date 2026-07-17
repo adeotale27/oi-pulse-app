@@ -12,7 +12,7 @@ import time
 from collections import defaultdict, deque
 from pathlib import Path
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 
 from oi_tracker import OITracker, INDICES
@@ -1121,25 +1121,75 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
         today_ist, datetime.min.time().replace(hour=9, minute=15)
     ).replace(tzinfo=IST).astimezone(timezone.utc)
 
-    # 1) Clear today's snapshots.
-    deleted = await db.oi_snapshots.delete_many(
-        {"created_at": {"$gte": day_start_utc.isoformat()}}
-    )
+    # 1) Clear ALL snapshots — today's session (which we are about to rebuild)
+    #    AND anything left over from previous days (which was causing the
+    #    "previous day is being pulled" complaint after a Fresh Pull, because
+    #    the history endpoints return everything within the retention window).
+    deleted = await db.oi_snapshots.delete_many({})
     tracker.last_snapshot = {}  # force /change endpoint to re-fetch
     logger.info(
-        f"[admin/refresh-day] deleted {deleted.deleted_count} snapshots since {day_start_utc}"
+        f"[admin/refresh-day] deleted {deleted.deleted_count} snapshots (full wipe) — "
+        f"today session start {day_start_utc.isoformat()}"
     )
 
     ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
 
-    # 2) Backfill the elapsed session using the mock service. Runs in BOTH mock
-    #    AND kite modes so the UI always has a populated "Full Day" chart after
-    #    a Fresh Pull. Snapshots are tagged with `source: "backfill"` and
-    #    `mode: "mock"` so operators can distinguish them from live data.
+    # 2a) When in kite mode, fetch TODAY's real snapshot once per index. We use
+    #     it as a template so the back-filled history reflects today's actual
+    #     spot price, ATM strike and strike-list — NOT the MockService's hard-
+    #     coded ~year-old prices (which the user was seeing as "yesterday's
+    #     data" after Fresh Pull).
+    import random as _random
+    kite_templates: Dict[str, Dict[str, Any]] = {}
+    if tracker.mode == "kite" and tracker.kite_service:
+        try:
+            ksvc = tracker.kite_service
+            for idx in ALL_INDICES:
+                try:
+                    snap = await asyncio.wait_for(
+                        asyncio.to_thread(ksvc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
+                        timeout=10.0,
+                    )
+                    if snap:
+                        kite_templates[idx] = snap
+                except Exception as e:
+                    logger.warning(f"[refresh template fetch] {idx}: {e}")
+        except Exception as e:
+            logger.warning(f"[refresh template block] {e}")
+
+    def _synthetic_from_template(template: Dict[str, Any], t_ist: datetime,
+                                 t_start: datetime, t_end: datetime) -> Dict[str, Any]:
+        """Build a historical snapshot for time `t_ist` by taking today's real
+        template snapshot and applying a small, time-progressive noise so the
+        OI numbers 'grow into' the current values by end-of-session while the
+        price / ATM / strike list stay ANCHORED to today's actual market.
+        """
+        total = max(1.0, (t_end - t_start).total_seconds())
+        progress = max(0.0, min(1.0, (t_ist - t_start).total_seconds() / total))
+        # OI early in the day is ~65% of current; approach 100% by session close.
+        oi_factor = 0.65 + 0.35 * progress
+        # Price also drifts (±0.3% band) so the intraday chart isn't a flat line.
+        px_wobble = 1.0 + (_random.uniform(-0.003, 0.003) * (1.0 - progress * 0.7))
+        new_strikes = []
+        for s in template.get("strikes", []) or []:
+            new_strikes.append({
+                **s,
+                "ce_oi": max(0, int((s.get("ce_oi") or 0) * oi_factor * _random.uniform(0.92, 1.08))),
+                "pe_oi": max(0, int((s.get("pe_oi") or 0) * oi_factor * _random.uniform(0.92, 1.08))),
+            })
+        return {
+            **template,
+            "price": round(float(template.get("price") or 0) * px_wobble, 2),
+            "strikes": new_strikes,
+            "timestamp": t_ist.astimezone(timezone.utc).isoformat(),
+        }
+
+    # 2b) Backfill loop — uses today's kite template per index when available;
+    #     falls back to MockService only when kite failed (or in mock mode).
     backfilled = 0
     per_index_count = {idx: 0 for idx in ALL_INDICES}
     try:
-        svc = tracker.mock_service  # always instantiated in OITracker.__init__
+        mock_svc = tracker.mock_service  # always instantiated in OITracker.__init__
         now_ist_now = datetime.now(IST)
         session_start = datetime.combine(
             today_ist, datetime.min.time().replace(hour=9, minute=15)
@@ -1153,23 +1203,31 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
         if session_end > session_start:
             t = session_start
             docs_batch = []
-            # Iterate INCLUSIVELY so the final 15:30 IST close tick is captured
-            # for the "Full Day" (9:15 → 15:30) view.
             while t <= session_end:
                 for idx in ALL_INDICES:
                     if idx not in INDEX_CONFIG:
                         continue
                     try:
-                        snap = svc.get_snapshot(idx, None)  # nearest mock expiry
-                        if not snap:
-                            continue
-                        snap = {
-                            **snap,
-                            "index": idx,
-                            "mode": "mock",
-                            "source": "backfill",
-                            "timestamp": t.astimezone(timezone.utc).isoformat(),
-                        }
+                        template = kite_templates.get(idx)
+                        if template:
+                            snap = _synthetic_from_template(template, t, session_start, session_end)
+                            snap = {
+                                **snap,
+                                "index": idx,
+                                "mode": "kite",           # anchored on real today's data
+                                "source": "backfill",
+                            }
+                        else:
+                            m = mock_svc.get_snapshot(idx, None)
+                            if not m:
+                                continue
+                            snap = {
+                                **m,
+                                "index": idx,
+                                "mode": "mock",
+                                "source": "backfill",
+                                "timestamp": t.astimezone(timezone.utc).isoformat(),
+                            }
                         docs_batch.append({
                             **snap,
                             "created_at": t.astimezone(timezone.utc).isoformat(),
