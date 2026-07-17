@@ -476,6 +476,108 @@ async def get_config():
     return {"indices": INDEX_CONFIG, "poll_interval_seconds": 15}
 
 
+# ------------------- Simple Admin Auth + Public Access Toggle -------------------
+import secrets
+import hmac
+
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Adeotale")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "MasterApp@123")
+# ADMIN_TOKEN is the bearer value the client stores in localStorage. Rotate by changing .env
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
+if not ADMIN_TOKEN:
+    # Fallback: derive a deterministic token from credentials so restarts don't invalidate sessions.
+    # Not cryptographically ideal but "minimalistic" per user request.
+    ADMIN_TOKEN = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}:oi-pulse".encode()).hexdigest()
+
+
+def _is_admin_request(request: Request) -> bool:
+    tok = (request.headers.get("x-admin-token") or "").strip()
+    if not tok:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            tok = auth[7:].strip()
+    if not tok:
+        return False
+    return hmac.compare_digest(tok, ADMIN_TOKEN)
+
+
+def _next_market_close_ist() -> datetime:
+    """Return the next datetime (UTC) representing today's 3:30 PM IST, or tomorrow's if past."""
+    from market_hours import IST
+    now = datetime.now(IST)
+    close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    if now >= close:
+        close = close + timedelta(days=1)
+    return close.astimezone(timezone.utc)
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+@api_router.post("/auth/login")
+async def auth_login(payload: LoginIn):
+    if not (hmac.compare_digest(payload.username, ADMIN_USERNAME) and
+            hmac.compare_digest(payload.password, ADMIN_PASSWORD)):
+        raise HTTPException(401, "Invalid credentials")
+    return {"ok": True, "token": ADMIN_TOKEN, "is_admin": True, "username": ADMIN_USERNAME}
+
+
+@api_router.get("/auth/state")
+async def auth_state(request: Request):
+    """Public endpoint — returns whether the app currently requires login and the admin flag."""
+    doc = await db.settings.find_one({"_id": "public_access"}) or {}
+    open_ = bool(doc.get("open", False))
+    exp = doc.get("expires_at")
+    expires_at_iso = None
+    if exp:
+        try:
+            exp_dt = datetime.fromisoformat(exp)
+            if datetime.now(timezone.utc) >= exp_dt:
+                # Auto-close: persist so future calls are clean
+                await db.settings.update_one(
+                    {"_id": "public_access"}, {"$set": {"open": False, "expires_at": None}}, upsert=True
+                )
+                open_ = False
+            else:
+                expires_at_iso = exp_dt.isoformat()
+        except Exception:
+            open_ = False
+    is_admin = _is_admin_request(request)
+    return {
+        "requires_login": (not open_) and (not is_admin),
+        "public_access_open": open_,
+        "public_access_expires_at": expires_at_iso,
+        "is_admin": is_admin,
+    }
+
+
+class PublicAccessIn(BaseModel):
+    open: bool
+
+
+@api_router.post("/auth/public-access")
+async def auth_toggle_public(payload: PublicAccessIn, request: Request):
+    if not _is_admin_request(request):
+        raise HTTPException(401, "Admin only")
+    if payload.open:
+        expires_utc = _next_market_close_ist()
+        await db.settings.update_one(
+            {"_id": "public_access"},
+            {"$set": {"open": True, "expires_at": expires_utc.isoformat()}},
+            upsert=True,
+        )
+        return {"ok": True, "open": True, "expires_at": expires_utc.isoformat()}
+    else:
+        await db.settings.update_one(
+            {"_id": "public_access"},
+            {"$set": {"open": False, "expires_at": None}},
+            upsert=True,
+        )
+        return {"ok": True, "open": False, "expires_at": None}
+
+
 # ------------------- Telegram notifications -------------------
 import notifier as _notifier
 from market_hours import market_status as _market_status

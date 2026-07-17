@@ -3,6 +3,7 @@ import { Activity, KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, Pane
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
+import AdminControls from "@/components/AdminControls";
 
 export default function Header({
   status,
@@ -109,6 +110,7 @@ export default function Header({
           >
             {mode === "kite" ? "LIVE · Kite" : "DEMO"}
           </Badge>
+          <AdminControls />
           <Button
             data-testid="btn-toggle-compact"
             variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"

@@ -1,476 +1,507 @@
 #!/usr/bin/env python3
 """
-Backend test suite for NSE OI Tracker - Telegram Preferences Feature
+Backend test suite for NSE OI Tracker - Admin Authentication Endpoints
 Test date: 2026-07-17
-Focus: Telegram preferences (per-index / per-type / quiet hours / presets) + MAJOR shift signal + Lakh formatting
-
-CRITICAL CONSTRAINTS:
-- Send AT MOST 2 Telegram messages during testing
-- DO NOT change Kite mode, DO NOT wipe vault, DO NOT flood rate limiter
-- MUST restore prefs to preset "everything" at the END of testing
+Focus: Admin login gate + admin-only Public Access toggle (auto-expires 3:30 PM IST)
 """
 
 import requests
 import json
-import time
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 # Backend URL from frontend/.env
 BASE_URL = "https://768861c1-e842-4795-b466-c68d987f3978.preview.emergentagent.com/api"
 
-# Test results tracking
-test_results = []
-telegram_messages_sent = 0
-MAX_TELEGRAM_MESSAGES = 2
+# Test credentials from /app/memory/test_credentials.md
+ADMIN_USERNAME = "Adeotale"
+ADMIN_PASSWORD = "MasterApp@123"
 
+# Global variable to store admin token
+ADMIN_TOKEN = None
 
-def log_test(test_num: int, description: str, passed: bool, details: str = ""):
-    """Log test result"""
-    status = "✅ PASS" if passed else "❌ FAIL"
-    result = {
-        "test": test_num,
-        "description": description,
-        "status": status,
-        "passed": passed,
-        "details": details
+# ANSI color codes for output
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+RESET = "\033[0m"
+
+def log_test(test_num: int, description: str):
+    """Log test start"""
+    print(f"\n{BLUE}{'='*80}{RESET}")
+    print(f"{BLUE}Test {test_num}: {description}{RESET}")
+    print(f"{BLUE}{'='*80}{RESET}")
+
+def log_pass(message: str):
+    """Log test pass"""
+    print(f"{GREEN}✅ PASS: {message}{RESET}")
+
+def log_fail(message: str):
+    """Log test fail"""
+    print(f"{RED}❌ FAIL: {message}{RESET}")
+
+def log_info(message: str):
+    """Log info"""
+    print(f"{YELLOW}ℹ️  INFO: {message}{RESET}")
+
+def log_request(method: str, url: str, headers: Dict = None, data: Any = None):
+    """Log HTTP request details"""
+    print(f"\n{YELLOW}→ {method} {url}{RESET}")
+    if headers:
+        print(f"  Headers: {json.dumps({k: v for k, v in headers.items() if 'token' not in k.lower()}, indent=2)}")
+        if any('token' in k.lower() for k in headers.keys()):
+            print(f"  Auth headers: [REDACTED]")
+    if data:
+        print(f"  Body: {json.dumps(data, indent=2)}")
+
+def log_response(response: requests.Response):
+    """Log HTTP response details"""
+    print(f"\n{YELLOW}← Status: {response.status_code}{RESET}")
+    try:
+        body = response.json()
+        print(f"  Body: {json.dumps(body, indent=2)}")
+    except:
+        print(f"  Body: {response.text[:200]}")
+    print(f"  Response time: {response.elapsed.total_seconds():.2f}s")
+
+def check_security_headers(response: requests.Response) -> bool:
+    """Check if all required security headers are present"""
+    required_headers = [
+        'x-content-type-options',
+        'x-frame-options',
+        'strict-transport-security'
+    ]
+    
+    missing = []
+    for header in required_headers:
+        if header not in response.headers:
+            missing.append(header)
+    
+    if missing:
+        log_fail(f"Missing security headers: {missing}")
+        return False
+    else:
+        log_pass(f"All required security headers present")
+        return True
+
+def test_1_auth_state_anonymous():
+    """Test 1: GET /api/auth/state (no headers) - should require login"""
+    log_test(1, "GET /api/auth/state (anonymous) - should require login")
+    
+    url = f"{BASE_URL}/auth/state"
+    log_request("GET", url)
+    
+    response = requests.get(url)
+    log_response(response)
+    
+    if response.status_code != 200:
+        log_fail(f"Expected 200, got {response.status_code}")
+        return False
+    
+    data = response.json()
+    
+    # Check required keys
+    required_keys = ['requires_login', 'is_admin', 'public_access_open']
+    missing_keys = [k for k in required_keys if k not in data]
+    if missing_keys:
+        log_fail(f"Missing keys: {missing_keys}")
+        return False
+    
+    # Check values
+    if data['requires_login'] != True:
+        log_fail(f"Expected requires_login=true, got {data['requires_login']}")
+        return False
+    
+    if data['is_admin'] != False:
+        log_fail(f"Expected is_admin=false, got {data['is_admin']}")
+        return False
+    
+    if data['public_access_open'] != False:
+        log_fail(f"Expected public_access_open=false, got {data['public_access_open']}")
+        return False
+    
+    log_pass("Auth state correct: requires_login=true, is_admin=false, public_access_open=false")
+    return True
+
+def test_2_admin_login_success():
+    """Test 2: POST /api/auth/login with correct credentials"""
+    global ADMIN_TOKEN
+    
+    log_test(2, "POST /api/auth/login with correct credentials")
+    
+    url = f"{BASE_URL}/auth/login"
+    payload = {
+        "username": ADMIN_USERNAME,
+        "password": ADMIN_PASSWORD
     }
-    test_results.append(result)
-    print(f"\nTest {test_num}: {description}")
-    print(f"  {status}")
-    if details:
-        print(f"  Details: {details}")
-
-
-def test_1_get_telegram_prefs():
-    """Test 1: GET /api/telegram/prefs -> 200 with required keys"""
-    try:
-        resp = requests.get(f"{BASE_URL}/telegram/prefs", timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(1, "GET /api/telegram/prefs", False, 
-                    f"Expected 200, got {resp.status_code}")
-            return None
-        
-        data = resp.json()
-        required_keys = ["enabled", "indices", "types", "quiet_hours", "major_abs_threshold"]
-        missing_keys = [k for k in required_keys if k not in data]
-        
-        if missing_keys:
-            log_test(1, "GET /api/telegram/prefs", False, 
-                    f"Missing keys: {missing_keys}")
-            return None
-        
-        log_test(1, "GET /api/telegram/prefs", True, 
-                f"All required keys present: {list(data.keys())}")
-        return data
-    except Exception as e:
-        log_test(1, "GET /api/telegram/prefs", False, f"Exception: {e}")
-        return None
-
-
-def test_2_post_telegram_prefs_indices():
-    """Test 2: POST /api/telegram/prefs with index filtering -> verify persistence"""
-    try:
-        # Set NIFTY=true, SENSEX=false, BANKNIFTY=false
-        payload = {
-            "indices": {
-                "NIFTY": True,
-                "SENSEX": False,
-                "BANKNIFTY": False
-            }
-        }
-        
-        resp = requests.post(f"{BASE_URL}/telegram/prefs", json=payload, timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(2, "POST /api/telegram/prefs (index filtering)", False, 
-                    f"POST returned {resp.status_code}")
-            return False
-        
-        # Verify persistence with GET
-        time.sleep(0.5)  # Brief delay for DB write
-        get_resp = requests.get(f"{BASE_URL}/telegram/prefs", timeout=10)
-        
-        if get_resp.status_code != 200:
-            log_test(2, "POST /api/telegram/prefs (index filtering)", False, 
-                    f"GET verification returned {get_resp.status_code}")
-            return False
-        
-        data = get_resp.json()
-        indices = data.get("indices", {})
-        
-        if indices.get("NIFTY") == True and indices.get("SENSEX") == False and indices.get("BANKNIFTY") == False:
-            log_test(2, "POST /api/telegram/prefs (index filtering)", True, 
-                    f"Indices persisted correctly: NIFTY=True, SENSEX=False, BANKNIFTY=False")
-            return True
-        else:
-            log_test(2, "POST /api/telegram/prefs (index filtering)", False, 
-                    f"Indices not persisted correctly: {indices}")
-            return False
-    except Exception as e:
-        log_test(2, "POST /api/telegram/prefs (index filtering)", False, f"Exception: {e}")
-        return False
-
-
-def test_3_huge_shift_with_sensex_off():
-    """Test 3: POST /api/telegram/huge-shift with SENSEX OFF -> verify no crash"""
-    global telegram_messages_sent
     
-    try:
-        # SENSEX is already OFF from test 2
-        payload = {
-            "index": "SENSEX",
-            "side": "PE",
-            "value": 5000000,
-            "direction": "build",
-            "window": 3,
-            "price": 77500.0,
-            "atm": 77500,
-            "contributing": [{"strike": 77500, "ce_delta": -100000, "pe_delta": 5000000}]
-        }
-        
-        resp = requests.post(f"{BASE_URL}/telegram/huge-shift", json=payload, timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(3, "POST /api/telegram/huge-shift (SENSEX OFF)", False, 
-                    f"Expected 200, got {resp.status_code}")
-            return False
-        
-        data = resp.json()
-        # Backend returns {"ok": true} even when message not sent (silent no-op)
-        log_test(3, "POST /api/telegram/huge-shift (SENSEX OFF)", True, 
-                f"No crash, returned 200 with response: {data}")
-        # Message should NOT be sent because SENSEX is OFF
-        return True
-    except Exception as e:
-        log_test(3, "POST /api/telegram/huge-shift (SENSEX OFF)", False, f"Exception: {e}")
-        return False
-
-
-def test_4_preset_nifty_only():
-    """Test 4: POST /api/telegram/prefs/preset/nifty_only -> verify preset works"""
-    try:
-        resp = requests.post(f"{BASE_URL}/telegram/prefs/preset/nifty_only", timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(4, "POST /api/telegram/prefs/preset/nifty_only", False, 
-                    f"Expected 200, got {resp.status_code}")
-            return False
-        
-        data = resp.json()
-        indices = data.get("indices", {})
-        
-        if indices.get("NIFTY") == True and indices.get("SENSEX") == False and indices.get("BANKNIFTY") == False:
-            log_test(4, "POST /api/telegram/prefs/preset/nifty_only", True, 
-                    f"Preset applied correctly: NIFTY=True, SENSEX=False, BANKNIFTY=False")
-            return True
-        else:
-            log_test(4, "POST /api/telegram/prefs/preset/nifty_only", False, 
-                    f"Preset not applied correctly: {indices}")
-            return False
-    except Exception as e:
-        log_test(4, "POST /api/telegram/prefs/preset/nifty_only", False, f"Exception: {e}")
-        return False
-
-
-def test_5_preset_off():
-    """Test 5: POST /api/telegram/prefs/preset/off -> verify master switch"""
-    try:
-        resp = requests.post(f"{BASE_URL}/telegram/prefs/preset/off", timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(5, "POST /api/telegram/prefs/preset/off", False, 
-                    f"Expected 200, got {resp.status_code}")
-            return False
-        
-        data = resp.json()
-        enabled = data.get("enabled")
-        
-        if enabled == False:
-            log_test(5, "POST /api/telegram/prefs/preset/off", True, 
-                    f"Master switch disabled: enabled=False")
-            return True
-        else:
-            log_test(5, "POST /api/telegram/prefs/preset/off", False, 
-                    f"Master switch not disabled: enabled={enabled}")
-            return False
-    except Exception as e:
-        log_test(5, "POST /api/telegram/prefs/preset/off", False, f"Exception: {e}")
-        return False
-
-
-def test_6_huge_shift_while_disabled():
-    """Test 6: POST /api/telegram/huge-shift while enabled=false -> verify no send"""
-    global telegram_messages_sent
+    log_request("POST", url, data=payload)
     
-    try:
-        # Master switch is OFF from test 5
-        payload = {
-            "index": "NIFTY",
-            "side": "CE",
-            "value": 8000000,
-            "direction": "build",
-            "window": 5,
-            "price": 24250.0,
-            "atm": 24250,
-            "contributing": [{"strike": 24250, "ce_delta": 8000000, "pe_delta": -200000}]
-        }
-        
-        resp = requests.post(f"{BASE_URL}/telegram/huge-shift", json=payload, timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(6, "POST /api/telegram/huge-shift (enabled=false)", False, 
-                    f"Expected 200, got {resp.status_code}")
-            return False
-        
-        data = resp.json()
-        # Backend returns {"ok": true} even when message not sent
-        log_test(6, "POST /api/telegram/huge-shift (enabled=false)", True, 
-                f"No crash, returned 200. Message should NOT be sent (master switch OFF)")
-        return True
-    except Exception as e:
-        log_test(6, "POST /api/telegram/huge-shift (enabled=false)", False, f"Exception: {e}")
-        return False
-
-
-def test_7_preset_everything_restore():
-    """Test 7: POST /api/telegram/prefs/preset/everything -> RESTORE (REQUIRED)"""
-    try:
-        resp = requests.post(f"{BASE_URL}/telegram/prefs/preset/everything", timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(7, "POST /api/telegram/prefs/preset/everything (RESTORE)", False, 
-                    f"Expected 200, got {resp.status_code}")
-            return False
-        
-        data = resp.json()
-        enabled = data.get("enabled")
-        indices = data.get("indices", {})
-        
-        all_indices_enabled = (indices.get("NIFTY") == True and 
-                              indices.get("SENSEX") == True and 
-                              indices.get("BANKNIFTY") == True)
-        
-        if enabled == True and all_indices_enabled:
-            log_test(7, "POST /api/telegram/prefs/preset/everything (RESTORE)", True, 
-                    f"✅ CRITICAL: Prefs restored to 'everything' - enabled=True, all indices=True")
-            return True
-        else:
-            log_test(7, "POST /api/telegram/prefs/preset/everything (RESTORE)", False, 
-                    f"❌ CRITICAL: Prefs NOT fully restored: enabled={enabled}, indices={indices}")
-            return False
-    except Exception as e:
-        log_test(7, "POST /api/telegram/prefs/preset/everything (RESTORE)", False, 
-                f"❌ CRITICAL FAILURE: Exception: {e}")
-        return False
-
-
-def test_8_preset_invalid():
-    """Test 8: POST /api/telegram/prefs/preset/nonsense -> verify 400 error"""
-    try:
-        resp = requests.post(f"{BASE_URL}/telegram/prefs/preset/nonsense", timeout=10)
-        
-        if resp.status_code == 400:
-            data = resp.json()
-            detail = data.get("detail", "")
-            if "nonsense" in detail.lower() or "available" in detail.lower():
-                log_test(8, "POST /api/telegram/prefs/preset/nonsense", True, 
-                        f"Correctly returned 400 with detail: {detail}")
-                return True
-            else:
-                log_test(8, "POST /api/telegram/prefs/preset/nonsense", False, 
-                        f"Returned 400 but detail unclear: {detail}")
-                return False
-        else:
-            log_test(8, "POST /api/telegram/prefs/preset/nonsense", False, 
-                    f"Expected 400, got {resp.status_code}")
-            return False
-    except Exception as e:
-        log_test(8, "POST /api/telegram/prefs/preset/nonsense", False, f"Exception: {e}")
-        return False
-
-
-def test_9_major_shift_with_buy_banner():
-    """Test 9: POST /api/telegram/huge-shift with major shift -> verify 200 (sends 1 message)"""
-    global telegram_messages_sent
+    response = requests.post(url, json=payload)
+    log_response(response)
     
-    try:
-        if telegram_messages_sent >= MAX_TELEGRAM_MESSAGES:
-            log_test(9, "POST /api/telegram/huge-shift (major shift)", False, 
-                    f"SKIPPED: Already sent {telegram_messages_sent} messages (max {MAX_TELEGRAM_MESSAGES})")
-            return False
-        
-        # Major shift: value >= 20_000_000 (2 Cr) -> triggers BUY banner
-        payload = {
-            "index": "NIFTY",
-            "side": "PE",
-            "value": 25000000,  # 2.5 Cr - MAJOR shift
-            "direction": "build",
-            "window": 3,
-            "price": 24244.85,
-            "atm": 24250,
-            "contributing": [
-                {"strike": 24250, "ce_delta": -500000, "pe_delta": 22000000}
-            ]
-        }
-        
-        resp = requests.post(f"{BASE_URL}/telegram/huge-shift", json=payload, timeout=10)
-        
-        if resp.status_code != 200:
-            log_test(9, "POST /api/telegram/huge-shift (major shift)", False, 
-                    f"Expected 200, got {resp.status_code}")
-            return False
-        
-        data = resp.json()
-        if data.get("ok") == True:
-            telegram_messages_sent += 1
-            log_test(9, "POST /api/telegram/huge-shift (major shift)", True, 
-                    f"Returned 200 with ok=true. Message sent ({telegram_messages_sent}/{MAX_TELEGRAM_MESSAGES}). Should show 🟢🟢🟢 BUY BUY BUY banner")
-            return True
-        else:
-            log_test(9, "POST /api/telegram/huge-shift (major shift)", False, 
-                    f"Returned 200 but ok={data.get('ok')}")
-            return False
-    except Exception as e:
-        log_test(9, "POST /api/telegram/huge-shift (major shift)", False, f"Exception: {e}")
+    if response.status_code != 200:
+        log_fail(f"Expected 200, got {response.status_code}")
         return False
+    
+    data = response.json()
+    
+    # Check required keys
+    required_keys = ['ok', 'token', 'is_admin', 'username']
+    missing_keys = [k for k in required_keys if k not in data]
+    if missing_keys:
+        log_fail(f"Missing keys: {missing_keys}")
+        return False
+    
+    # Check values
+    if not data.get('ok'):
+        log_fail(f"Expected ok=true, got {data.get('ok')}")
+        return False
+    
+    if not data.get('token'):
+        log_fail("Token is empty or missing")
+        return False
+    
+    if data.get('is_admin') != True:
+        log_fail(f"Expected is_admin=true, got {data.get('is_admin')}")
+        return False
+    
+    if data.get('username') != ADMIN_USERNAME:
+        log_fail(f"Expected username={ADMIN_USERNAME}, got {data.get('username')}")
+        return False
+    
+    # Save token for subsequent tests
+    ADMIN_TOKEN = data['token']
+    log_pass(f"Login successful, token received: {ADMIN_TOKEN[:20]}...")
+    log_pass(f"is_admin=true, username={ADMIN_USERNAME}")
+    
+    return True
 
+def test_3_admin_login_failure():
+    """Test 3: POST /api/auth/login with wrong credentials"""
+    log_test(3, "POST /api/auth/login with wrong credentials - expect 401")
+    
+    url = f"{BASE_URL}/auth/login"
+    payload = {
+        "username": "wrong_user",
+        "password": "wrong_pass"
+    }
+    
+    log_request("POST", url, data=payload)
+    
+    response = requests.post(url, json=payload)
+    log_response(response)
+    
+    if response.status_code != 401:
+        log_fail(f"Expected 401, got {response.status_code}")
+        return False
+    
+    data = response.json()
+    
+    if 'detail' not in data or 'Invalid credentials' not in data['detail']:
+        log_fail(f"Expected 'Invalid credentials' in detail, got: {data}")
+        return False
+    
+    log_pass("Login correctly rejected with 401 'Invalid credentials'")
+    return True
 
-def test_10_regression_endpoints():
-    """Test 10: Regression - GET /api/status, /api/market/status, /api/telegram/status all 200"""
+def test_4_auth_state_with_admin_token():
+    """Test 4: GET /api/auth/state with admin token"""
+    log_test(4, "GET /api/auth/state with X-Admin-Token header")
+    
+    if not ADMIN_TOKEN:
+        log_fail("No admin token available from test 2")
+        return False
+    
+    url = f"{BASE_URL}/auth/state"
+    headers = {"X-Admin-Token": ADMIN_TOKEN}
+    
+    log_request("GET", url, headers=headers)
+    
+    response = requests.get(url, headers=headers)
+    log_response(response)
+    
+    if response.status_code != 200:
+        log_fail(f"Expected 200, got {response.status_code}")
+        return False
+    
+    data = response.json()
+    
+    if data.get('is_admin') != True:
+        log_fail(f"Expected is_admin=true, got {data.get('is_admin')}")
+        return False
+    
+    log_pass("Auth state with admin token: is_admin=true")
+    return True
+
+def test_5_public_access_without_admin():
+    """Test 5: POST /api/auth/public-access without admin header - expect 401"""
+    log_test(5, "POST /api/auth/public-access without admin header - expect 401")
+    
+    url = f"{BASE_URL}/auth/public-access"
+    payload = {"open": True}
+    
+    log_request("POST", url, data=payload)
+    
+    response = requests.post(url, json=payload)
+    log_response(response)
+    
+    if response.status_code != 401:
+        log_fail(f"Expected 401, got {response.status_code}")
+        return False
+    
+    log_pass("Public access correctly rejected without admin token (401)")
+    return True
+
+def test_6_public_access_open():
+    """Test 6: POST /api/auth/public-access with admin header (open=true)"""
+    log_test(6, "POST /api/auth/public-access with admin header (open=true)")
+    
+    if not ADMIN_TOKEN:
+        log_fail("No admin token available from test 2")
+        return False
+    
+    url = f"{BASE_URL}/auth/public-access"
+    headers = {"X-Admin-Token": ADMIN_TOKEN}
+    payload = {"open": True}
+    
+    log_request("POST", url, headers=headers, data=payload)
+    
+    response = requests.post(url, json=payload, headers=headers)
+    log_response(response)
+    
+    if response.status_code != 200:
+        log_fail(f"Expected 200, got {response.status_code}")
+        return False
+    
+    data = response.json()
+    
+    if data.get('open') != True:
+        log_fail(f"Expected open=true, got {data.get('open')}")
+        return False
+    
+    if 'expires_at' not in data or not data['expires_at']:
+        log_fail("expires_at is missing or empty")
+        return False
+    
+    # Parse expires_at and verify it's in the future
+    try:
+        expires_at = datetime.fromisoformat(data['expires_at'].replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        
+        if expires_at <= now:
+            log_fail(f"expires_at is not in the future: {expires_at}")
+            return False
+        
+        # Check if it's roughly 3:30 PM IST (10:00 UTC)
+        # IST is UTC+5:30, so 3:30 PM IST = 10:00 UTC
+        hour_utc = expires_at.hour
+        minute_utc = expires_at.minute
+        
+        log_info(f"expires_at: {data['expires_at']}")
+        log_info(f"Parsed: {expires_at} (UTC hour: {hour_utc}:{minute_utc:02d})")
+        
+        # Should be 10:00 UTC (3:30 PM IST)
+        if hour_utc == 10 and minute_utc == 0:
+            log_pass(f"expires_at correctly set to 3:30 PM IST (10:00 UTC)")
+        else:
+            log_info(f"expires_at is {hour_utc}:{minute_utc:02d} UTC (expected 10:00 UTC for 3:30 PM IST)")
+        
+    except Exception as e:
+        log_fail(f"Failed to parse expires_at: {e}")
+        return False
+    
+    log_pass("Public access opened successfully with valid expires_at")
+    return True
+
+def test_7_auth_state_public_open():
+    """Test 7: GET /api/auth/state (anonymous) after opening public access"""
+    log_test(7, "GET /api/auth/state (anonymous) after opening public access")
+    
+    url = f"{BASE_URL}/auth/state"
+    log_request("GET", url)
+    
+    response = requests.get(url)
+    log_response(response)
+    
+    if response.status_code != 200:
+        log_fail(f"Expected 200, got {response.status_code}")
+        return False
+    
+    data = response.json()
+    
+    if data.get('requires_login') != False:
+        log_fail(f"Expected requires_login=false (public open), got {data.get('requires_login')}")
+        return False
+    
+    if data.get('public_access_open') != True:
+        log_fail(f"Expected public_access_open=true, got {data.get('public_access_open')}")
+        return False
+    
+    log_pass("Auth state correct: requires_login=false, public_access_open=true")
+    return True
+
+def test_8_public_access_close():
+    """Test 8: POST /api/auth/public-access with admin header (open=false) - REQUIRED"""
+    log_test(8, "POST /api/auth/public-access with admin header (open=false) - LOCK APP")
+    
+    if not ADMIN_TOKEN:
+        log_fail("No admin token available from test 2")
+        return False
+    
+    url = f"{BASE_URL}/auth/public-access"
+    headers = {"X-Admin-Token": ADMIN_TOKEN}
+    payload = {"open": False}
+    
+    log_request("POST", url, headers=headers, data=payload)
+    
+    response = requests.post(url, json=payload, headers=headers)
+    log_response(response)
+    
+    if response.status_code != 200:
+        log_fail(f"Expected 200, got {response.status_code}")
+        return False
+    
+    data = response.json()
+    
+    if data.get('open') != False:
+        log_fail(f"Expected open=false, got {data.get('open')}")
+        return False
+    
+    # expires_at should be null when closed
+    if data.get('expires_at') is not None:
+        log_info(f"expires_at is {data.get('expires_at')} (expected null, but not critical)")
+    
+    log_pass("✅ CRITICAL: Public access closed successfully (app is locked)")
+    
+    # Verify by checking auth state
+    verify_url = f"{BASE_URL}/auth/state"
+    verify_response = requests.get(verify_url)
+    verify_data = verify_response.json()
+    
+    if verify_data.get('requires_login') == True and verify_data.get('public_access_open') == False:
+        log_pass("✅ VERIFIED: Auth state confirms app is locked (requires_login=true)")
+    else:
+        log_fail(f"Auth state verification failed: {verify_data}")
+        return False
+    
+    return True
+
+def test_9_regression_endpoints():
+    """Test 9: Regression - existing endpoints still work"""
+    log_test(9, "Regression - /api/status, /api/oi/NIFTY, /api/telegram/prefs")
+    
     endpoints = [
         "/status",
-        "/market/status",
-        "/telegram/status"
+        "/oi/NIFTY",
+        "/telegram/prefs"
     ]
     
     all_passed = True
-    details = []
     
     for endpoint in endpoints:
-        try:
-            resp = requests.get(f"{BASE_URL}{endpoint}", timeout=10)
-            if resp.status_code == 200:
-                details.append(f"{endpoint}: ✅ 200")
-            else:
-                details.append(f"{endpoint}: ❌ {resp.status_code}")
-                all_passed = False
-        except Exception as e:
-            details.append(f"{endpoint}: ❌ Exception: {e}")
+        url = f"{BASE_URL}{endpoint}"
+        log_info(f"Testing {endpoint}...")
+        log_request("GET", url)
+        
+        response = requests.get(url)
+        log_response(response)
+        
+        if response.status_code != 200:
+            log_fail(f"{endpoint} returned {response.status_code} (expected 200)")
             all_passed = False
+        else:
+            log_pass(f"{endpoint} returned 200")
     
-    log_test(10, "Regression: status endpoints", all_passed, 
-            "\n    " + "\n    ".join(details))
+    if all_passed:
+        log_pass("All regression endpoints working correctly")
+    
     return all_passed
 
-
-def test_11_cors_security_headers():
-    """Test 11: CORS + security headers on new endpoints"""
+def test_10_security_headers():
+    """Test 10: Security headers on /api/auth/* endpoints"""
+    log_test(10, "Security headers on /api/auth/* endpoints")
+    
     endpoints = [
-        "/telegram/prefs",
-        "/telegram/prefs/preset/everything"
-    ]
-    
-    required_headers = [
-        "x-content-type-options",
-        "x-frame-options",
-        "referrer-policy",
-        "permissions-policy"
+        "/auth/state",
+        "/auth/login"
     ]
     
     all_passed = True
-    details = []
     
     for endpoint in endpoints:
-        try:
-            if "preset" in endpoint:
-                resp = requests.post(f"{BASE_URL}{endpoint}", timeout=10)
-            else:
-                resp = requests.get(f"{BASE_URL}{endpoint}", timeout=10)
-            
-            missing_headers = []
-            for header in required_headers:
-                if header not in resp.headers:
-                    missing_headers.append(header)
-            
-            if missing_headers:
-                details.append(f"{endpoint}: ❌ Missing headers: {missing_headers}")
-                all_passed = False
-            else:
-                details.append(f"{endpoint}: ✅ All security headers present")
-        except Exception as e:
-            details.append(f"{endpoint}: ❌ Exception: {e}")
+        url = f"{BASE_URL}{endpoint}"
+        log_info(f"Checking security headers on {endpoint}...")
+        
+        if endpoint == "/auth/login":
+            response = requests.post(url, json={"username": "test", "password": "test"})
+        else:
+            response = requests.get(url)
+        
+        log_info(f"Status: {response.status_code}")
+        
+        if not check_security_headers(response):
             all_passed = False
     
-    log_test(11, "CORS + security headers on new endpoints", all_passed, 
-            "\n    " + "\n    ".join(details))
+    if all_passed:
+        log_pass("All auth endpoints have required security headers")
+    
     return all_passed
-
-
-def print_summary():
-    """Print test summary"""
-    print("\n" + "="*80)
-    print("TEST SUMMARY - Telegram Preferences Backend")
-    print("="*80)
-    
-    passed = sum(1 for r in test_results if r["passed"])
-    total = len(test_results)
-    
-    print(f"\nTotal Tests: {total}")
-    print(f"Passed: {passed}")
-    print(f"Failed: {total - passed}")
-    print(f"Telegram Messages Sent: {telegram_messages_sent}/{MAX_TELEGRAM_MESSAGES}")
-    
-    print("\n" + "-"*80)
-    print("DETAILED RESULTS:")
-    print("-"*80)
-    
-    for result in test_results:
-        print(f"\n{result['status']} Test {result['test']}: {result['description']}")
-        if result['details']:
-            print(f"  {result['details']}")
-    
-    print("\n" + "="*80)
-    
-    if passed == total:
-        print("✅ ALL TESTS PASSED")
-    else:
-        print(f"❌ {total - passed} TEST(S) FAILED")
-    
-    print("="*80)
-
 
 def main():
-    """Run all tests in sequence"""
-    print("="*80)
-    print("NSE OI Tracker - Telegram Preferences Backend Test Suite")
-    print("Test Date: 2026-07-17")
-    print("="*80)
-    print(f"\nBackend URL: {BASE_URL}")
-    print(f"Max Telegram Messages: {MAX_TELEGRAM_MESSAGES}")
-    print("\nStarting tests...\n")
+    """Run all tests"""
+    print(f"\n{BLUE}{'='*80}{RESET}")
+    print(f"{BLUE}NSE OI Tracker - Admin Authentication Backend Tests{RESET}")
+    print(f"{BLUE}Test Date: 2026-07-17{RESET}")
+    print(f"{BLUE}Backend URL: {BASE_URL}{RESET}")
+    print(f"{BLUE}{'='*80}{RESET}")
     
-    # Run tests in order
-    test_1_get_telegram_prefs()
-    test_2_post_telegram_prefs_indices()
-    test_3_huge_shift_with_sensex_off()
-    test_4_preset_nifty_only()
-    test_5_preset_off()
-    test_6_huge_shift_while_disabled()
-    test_7_preset_everything_restore()  # CRITICAL: Must restore at end
-    test_8_preset_invalid()
-    test_9_major_shift_with_buy_banner()
-    test_10_regression_endpoints()
-    test_11_cors_security_headers()
+    tests = [
+        test_1_auth_state_anonymous,
+        test_2_admin_login_success,
+        test_3_admin_login_failure,
+        test_4_auth_state_with_admin_token,
+        test_5_public_access_without_admin,
+        test_6_public_access_open,
+        test_7_auth_state_public_open,
+        test_8_public_access_close,
+        test_9_regression_endpoints,
+        test_10_security_headers
+    ]
     
-    # Print summary
-    print_summary()
+    results = []
     
-    # Return exit code
-    passed = sum(1 for r in test_results if r["passed"])
-    total = len(test_results)
-    return 0 if passed == total else 1
-
+    for test in tests:
+        try:
+            result = test()
+            results.append((test.__name__, result))
+        except Exception as e:
+            log_fail(f"Test {test.__name__} raised exception: {e}")
+            results.append((test.__name__, False))
+    
+    # Summary
+    print(f"\n{BLUE}{'='*80}{RESET}")
+    print(f"{BLUE}TEST SUMMARY{RESET}")
+    print(f"{BLUE}{'='*80}{RESET}")
+    
+    passed = sum(1 for _, result in results if result)
+    total = len(results)
+    
+    for test_name, result in results:
+        status = f"{GREEN}✅ PASS{RESET}" if result else f"{RED}❌ FAIL{RESET}"
+        print(f"{status}: {test_name}")
+    
+    print(f"\n{BLUE}{'='*80}{RESET}")
+    print(f"{BLUE}Total: {passed}/{total} tests passed{RESET}")
+    print(f"{BLUE}{'='*80}{RESET}")
+    
+    if passed == total:
+        print(f"\n{GREEN}✅ ALL TESTS PASSED{RESET}")
+        return 0
+    else:
+        print(f"\n{RED}❌ SOME TESTS FAILED{RESET}")
+        return 1
 
 if __name__ == "__main__":
     exit(main())

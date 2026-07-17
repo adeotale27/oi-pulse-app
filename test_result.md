@@ -2280,3 +2280,244 @@ agent_communication:
             Frontend testing NOT performed as per instructions.
 
 
+
+
+  - task: "Admin login gate + admin-only Public Access toggle (auto-expires 3:30 PM IST) — 2026-07-17"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/.env, /app/frontend/src/components/AuthGate.jsx, /app/frontend/src/components/AdminControls.jsx, /app/frontend/src/App.js, /app/frontend/src/components/Header.jsx, /app/frontend/src/lib/api.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Added a minimal single-admin login gate with an admin-controlled "Public Access"
+            switch that auto-expires at 3:30 PM IST every day.
+        - working: true
+          agent: "testing"
+          comment: |
+            ✅ ADMIN AUTHENTICATION BACKEND VERIFICATION COMPLETE - ALL 10 TESTS PASSED
+            
+            Comprehensive backend testing performed on 2026-07-17.
+            Test suite: /app/backend_test.py (10/10 tests passed)
+            Backend URL: https://768861c1-e842-4795-b466-c68d987f3978.preview.emergentagent.com/api
+            Test credentials: username="Adeotale", password="MasterApp@123" (from /app/memory/test_credentials.md)
+            
+            ========================================
+            SUMMARY: ALL 10 FOCUS TESTS PASSED ✅
+            ========================================
+            
+            ✅ Test 1: GET /api/auth/state (anonymous)
+               - Returns 200 with requires_login=true, is_admin=false, public_access_open=false
+               - Structure correct with all required keys
+            
+            ✅ Test 2: POST /api/auth/login (correct credentials)
+               - Successfully authenticated with username="Adeotale", password="MasterApp@123"
+               - Returns 200 with token, is_admin=true, username="Adeotale"
+               - Token saved: 18e0d61a2304ab04f7a65aa9c5ada0792cea590ffd48526f536cd29276834a07
+            
+            ✅ Test 3: POST /api/auth/login (wrong credentials)
+               - Correctly rejected with 401 "Invalid credentials"
+               - Proper error handling working
+            
+            ✅ Test 4: GET /api/auth/state (with admin token)
+               - Returns 200 with is_admin=true when X-Admin-Token header provided
+               - Admin token authentication working correctly
+            
+            ✅ Test 5: POST /api/auth/public-access (without admin header)
+               - Correctly rejected with 401 "Admin only"
+               - Admin-only endpoint protection working
+            
+            ✅ Test 6: POST /api/auth/public-access (open=true with admin header)
+               - Returns 200 with open=true, expires_at="2026-07-17T10:00:00+00:00"
+               - expires_at correctly set to 3:30 PM IST (10:00 UTC)
+               - Auto-expiry mechanism working correctly
+            
+            ✅ Test 7: GET /api/auth/state (anonymous after opening public access)
+               - Returns 200 with requires_login=false, public_access_open=true
+               - Public access flag correctly allows anonymous access
+            
+            ✅ Test 8: POST /api/auth/public-access (open=false with admin header) ⚠️ CRITICAL
+               - ✅ CRITICAL REQUIREMENT MET: Public access closed successfully
+               - Returns 200 with open=false, expires_at=null
+               - Verified: Auth state confirms app is locked (requires_login=true)
+               - App is safely locked for deployment
+            
+            ✅ Test 9: Regression - existing endpoints still work
+               - GET /api/status: ✅ 200 (mode=kite, running=true, market_open=true)
+               - GET /api/oi/NIFTY: ✅ 200 (31 strikes, price=24290.1, atm=24300)
+               - GET /api/telegram/prefs: ✅ 200 (enabled=true, NIFTY=true)
+               - All existing endpoints remain functional (auth not enforced on read endpoints)
+            
+            ✅ Test 10: Security headers on /api/auth/* endpoints
+               - GET /api/auth/state: All security headers present ✓
+               - POST /api/auth/login: All security headers present ✓
+               - Headers verified: x-content-type-options, x-frame-options, strict-transport-security
+            
+            ========================================
+            TEST CONSTRAINTS COMPLIANCE
+            ========================================
+            
+            ✅ Kite mode: NOT changed (remained in kite mode throughout)
+            ✅ Vault: NOT wiped (credentials intact)
+            ✅ Telegram prefs: NOT modified (NIFTY=true, SENSEX=false, BANKNIFTY=false)
+            ✅ Login attempts: 2 total (within limit of ~5)
+            ✅ Public access: CLOSED at end (app is locked for safe deployment)
+            
+            ========================================
+            FEATURE VERIFICATION
+            ========================================
+            
+            ✅ Admin login: Working (correct credentials accepted, wrong credentials rejected)
+            ✅ Admin token: Working (deterministic SHA256 token, survives restarts)
+            ✅ X-Admin-Token header: Working (attached to requests, recognized by backend)
+            ✅ Public access toggle: Working (open/close functionality)
+            ✅ Auto-expiry: Working (expires_at set to 3:30 PM IST / 10:00 UTC)
+            ✅ Admin-only protection: Working (401 without admin token)
+            ✅ Anonymous access: Working (requires_login flag controls access)
+            ✅ Security headers: Present on all auth endpoints
+            ✅ Regression: All existing endpoints still functional
+            
+            ========================================
+            CONCLUSION
+            ========================================
+            
+            All 10 backend focus tests PASSED. The admin authentication feature is working correctly:
+            - Login gate functional with correct credential validation
+            - Admin token authentication working (X-Admin-Token header)
+            - Public access toggle working with auto-expiry at 3:30 PM IST
+            - Admin-only endpoint protection working
+            - Security headers present on all auth endpoints
+            - All regression tests passed (existing endpoints unaffected)
+            
+            ⚠️ CRITICAL: Public access successfully closed at end of testing.
+            App is safely locked and ready for deployment.
+            
+            No critical issues found. Backend is production-ready.
+            Frontend testing NOT performed as per instructions.
+
+            Backend (server.py):
+              * Reads ADMIN_USERNAME (Adeotale) and ADMIN_PASSWORD (MasterApp@123) from .env.
+              * ADMIN_TOKEN = sha256(user:pass:oi-pulse) — deterministic so tokens survive restarts.
+              * Endpoints:
+                    POST /api/auth/login             {username,password} → {ok,token,is_admin,username} | 401
+                    GET  /api/auth/state             (public) → {requires_login, public_access_open,
+                                                                public_access_expires_at, is_admin}
+                    POST /api/auth/public-access     {open:bool}  admin-only → sets flag + expires_at.
+                                                     When open=true, expires_at = next 3:30 PM IST (UTC ISO).
+              * Public access flag is stored in db.settings/_id="public_access". GET /api/auth/state
+                lazily auto-closes it (persisted) if the current time is past expires_at.
+              * _is_admin_request(): checks X-Admin-Token header or Authorization: Bearer <token>.
+
+            Frontend:
+              * lib/api.js axios interceptor attaches `X-Admin-Token` from localStorage("oi_admin_token")
+                to every request.
+              * components/AuthGate.jsx wraps <Dashboard/>. On mount + every 60s, calls /api/auth/state:
+                    - if requires_login==false → renders children (dashboard).
+                    - else → renders a minimal login card (Login ID + Password + Sign in).
+                On success, stores token in localStorage("oi_admin_token") then refresh.
+              * components/AdminControls.jsx renders only when is_admin=true (checks /api/auth/state
+                every 60s). Contains:
+                    - <Switch> "Public" — POST /api/auth/public-access
+                    - Logout icon — clears localStorage + reload.
+              * Injected into Header.jsx right after the LIVE/DEMO badge.
+
+            Credentials saved to /app/memory/test_credentials.md.
+
+            Local smoke tests OK:
+              * GET /api/auth/state (anon) → requires_login=true, is_admin=false
+              * POST /api/auth/login {"username":"Adeotale","password":"MasterApp@123"} → 200 with token
+              * POST /api/auth/login with wrong creds → 401 "Invalid credentials"
+              * POST /api/auth/public-access {open:true} with header X-Admin-Token → 200,
+                expires_at = today's 3:30 PM IST (10:00 UTC), state.requires_login flips to false for anon.
+              * POST /api/auth/public-access {open:false} → 200, requires_login flips to true again.
+              * Frontend flow: login screen appears on first visit → wrong creds shows toast →
+                correct creds loads full dashboard + "Welcome, Adeotale" toast + "Public" switch visible
+                in header (admin-controls DOM count = 1).
+
+            IMPORTANT test constraints:
+              * Kite is LIVE with real stored credentials — DO NOT wipe vault, DO NOT switch to mock.
+              * DO NOT flood /api/auth/login — try at most ~5 attempts total (rate limiter not applied
+                to auth endpoints but be nice).
+              * At the END of testing, MUST leave public_access_open = false so the user can safely
+                deploy without accidentally exposing the app.
+              * DO NOT test frontend (I'll ask user separately).
+
+            Focus tests (backend only):
+                1) GET /api/auth/state (no headers) → 200, requires_login=true, is_admin=false,
+                   public_access_open=false, expires_at=null.
+                2) POST /api/auth/login {"username":"Adeotale","password":"MasterApp@123"} → 200,
+                   response contains token (non-empty), is_admin=true, username="Adeotale".
+                   Save token as ADMIN_TOK.
+                3) POST /api/auth/login {"username":"x","password":"y"} → 401 with detail "Invalid credentials".
+                4) GET /api/auth/state with header X-Admin-Token=ADMIN_TOK → 200 with is_admin=true,
+                   requires_login=false.
+                5) POST /api/auth/public-access {"open":true} WITHOUT admin header → 401.
+                6) POST /api/auth/public-access {"open":true} WITH admin header → 200, open=true,
+                   expires_at ISO string. Verify expires_at is in the future and roughly matches
+                   the next 3:30 PM IST (10:00 UTC).
+                7) GET /api/auth/state (anon, no headers) after step 6 → 200, requires_login=false
+                   (public open), public_access_open=true.
+                8) POST /api/auth/public-access {"open":false} WITH admin header → 200,
+                   open=false, expires_at=null. (REQUIRED at end so app stays locked.)
+                9) Regression: /api/status, /api/oi/NIFTY, /api/telegram/prefs still 200 (auth is
+                   NOT enforced on those — they remain readable to keep the dashboard fetching).
+               10) Security headers still present on new /api/auth/* endpoints.
+
+
+agent_communication:
+    - agent: "testing"
+      message: |
+        ✅ ADMIN AUTHENTICATION BACKEND TESTING COMPLETE - ALL 10 TESTS PASSED
+        
+        Comprehensive backend testing performed on 2026-07-17 at 07:49 UTC.
+        Test suite: /app/backend_test.py (10/10 tests passed)
+        
+        ========================================
+        SUMMARY: ALL TESTS PASSED ✅
+        ========================================
+        
+        ✅ Test 1: GET /api/auth/state (anonymous) - requires_login=true ✓
+        ✅ Test 2: POST /api/auth/login (correct credentials) - token received ✓
+        ✅ Test 3: POST /api/auth/login (wrong credentials) - 401 rejected ✓
+        ✅ Test 4: GET /api/auth/state (with admin token) - is_admin=true ✓
+        ✅ Test 5: POST /api/auth/public-access (no admin header) - 401 rejected ✓
+        ✅ Test 6: POST /api/auth/public-access (open=true) - expires_at=10:00 UTC (3:30 PM IST) ✓
+        ✅ Test 7: GET /api/auth/state (after opening) - requires_login=false ✓
+        ✅ Test 8: POST /api/auth/public-access (open=false) - app locked ✓ CRITICAL
+        ✅ Test 9: Regression - /api/status, /api/oi/NIFTY, /api/telegram/prefs all 200 ✓
+        ✅ Test 10: Security headers - all present on auth endpoints ✓
+        
+        ========================================
+        KEY FEATURES VERIFIED
+        ========================================
+        
+        ✅ Admin login with credentials (Adeotale / MasterApp@123)
+        ✅ Admin token authentication (X-Admin-Token header)
+        ✅ Public access toggle (open/close)
+        ✅ Auto-expiry at 3:30 PM IST (10:00 UTC)
+        ✅ Admin-only endpoint protection
+        ✅ Security headers on all auth endpoints
+        
+        ========================================
+        CONSTRAINTS COMPLIANCE
+        ========================================
+        
+        ✅ Kite mode: NOT changed (remained in kite mode)
+        ✅ Vault: NOT wiped (credentials intact)
+        ✅ Telegram prefs: NOT modified
+        ✅ Public access: CLOSED at end (app is locked for safe deployment)
+        
+        ========================================
+        CONCLUSION
+        ========================================
+        
+        All 10 backend focus tests PASSED. The admin authentication feature is production-ready.
+        
+        ⚠️ CRITICAL: Public access successfully closed at end of testing. App is safely locked.
+        
+        No critical issues found. Backend is ready for deployment.
+        Frontend testing NOT performed as per instructions.
+

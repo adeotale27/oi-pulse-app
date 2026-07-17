@@ -5,6 +5,15 @@ export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({ baseURL: API, timeout: 20000 });
 
+// Attach admin token (if any) to every request so backend can identify the admin.
+api.interceptors.request.use((config) => {
+  try {
+    const tok = localStorage.getItem("oi_admin_token");
+    if (tok) config.headers["X-Admin-Token"] = tok;
+  } catch (_) { /* ignore */ }
+  return config;
+});
+
 export const fetchStatus = () => api.get("/status").then((r) => r.data);
 export const fetchOI = (idx) => api.get(`/oi/${idx}`).then((r) => r.data);
 export const fetchOIChange = (idx, minutes) =>
