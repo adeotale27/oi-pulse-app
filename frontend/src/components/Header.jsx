@@ -78,8 +78,8 @@ export default function Header({
   const onRefreshDay = async () => {
     if (!isAdmin) return;
     if (!window.confirm(
-      "Clear today's OI snapshots and repopulate from 9:15 AM to now?\n\n" +
-      "In DEMO/mock mode: synthetic data will be back-filled for the entire elapsed session.\n" +
+      "Fresh Pull: clear today's OI snapshots and re-populate from 9:15 AM to now (or 3:30 PM if the market has closed)?\n\n" +
+      "In DEMO/mock mode: synthetic data will be back-filled at 1-minute cadence for NIFTY, SENSEX and BANKNIFTY.\n" +
       "In LIVE (Kite) mode: history before 'now' cannot be recovered — live polling will simply restart from now."
     )) return;
     setRefreshing(true);
@@ -231,10 +231,10 @@ export default function Header({
             onClick={onRefreshDay}
             disabled={refreshing}
             className={`rounded-sm bg-rose-600 hover:bg-rose-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
-            title="Wipe today's OI data and repopulate from 9:15 AM to now"
+            title="Wipe today's OI data and repopulate NIFTY / SENSEX / BANKNIFTY from 9:15 AM to now (or 3:30 PM if market closed)"
           >
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
-            {refreshing ? "Refreshing…" : "Refresh DB"}
+            {refreshing ? "Refreshing…" : "Fresh Pull"}
           </Button>
           <Button
             data-testid="btn-open-telegram-prefs"

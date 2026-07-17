@@ -4333,3 +4333,255 @@ agent_communication:
 backend:
   - task: "Expiry dates are Tuesdays (matching NSE post Sept-2025 change)"
     working: true
+
+
+#====================================================================================================
+# 2026-07-17 (7th round) — SENSEX Thursdays + GIFT NIFTY via yfinance + Fresh Pull ALL indices
+#====================================================================================================
+
+backend:
+  - task: "SENSEX expiries are Thursdays; NIFTY and BANKNIFTY remain Tuesdays"
+    implemented: true
+    working: true
+    file: "/app/backend/oi_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "MockService now uses a per-index weekday map: NIFTY=1 (Tue), BANKNIFTY=1 (Tue), SENSEX=3 (Thu). Six consecutive weekly expiries are generated per index. Verify /api/expiries/NIFTY dates weekday==1; /api/expiries/BANKNIFTY weekday==1; /api/expiries/SENSEX weekday==3."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ TASK 1 PASSED - All expiry weekday assertions verified
+          
+          Test date: 2026-07-17 at 13:53 UTC
+          Test file: /app/backend_test.py
+          
+          NIFTY (6 expiries, all Tuesdays):
+            - 2026-07-21 → Tuesday (weekday=1) ✓
+            - 2026-07-28 → Tuesday (weekday=1) ✓
+            - 2026-08-04 → Tuesday (weekday=1) ✓
+            - 2026-08-11 → Tuesday (weekday=1) ✓
+            - 2026-08-18 → Tuesday (weekday=1) ✓
+            - 2026-08-25 → Tuesday (weekday=1) ✓
+            - Tags: ['W', 'M', 'W', 'W', 'W', 'M'] (has M and W) ✓
+          
+          BANKNIFTY (6 expiries, all Tuesdays):
+            - 2026-07-21 → Tuesday (weekday=1) ✓
+            - 2026-07-28 → Tuesday (weekday=1) ✓
+            - 2026-08-04 → Tuesday (weekday=1) ✓
+            - 2026-08-11 → Tuesday (weekday=1) ✓
+            - 2026-08-18 → Tuesday (weekday=1) ✓
+            - 2026-08-25 → Tuesday (weekday=1) ✓
+            - Tags: ['W', 'M', 'W', 'W', 'W', 'M'] (has M and W) ✓
+          
+          SENSEX (6 expiries, all Thursdays):
+            - 2026-07-23 → Thursday (weekday=3) ✓
+            - 2026-07-30 → Thursday (weekday=3) ✓
+            - 2026-08-06 → Thursday (weekday=3) ✓
+            - 2026-08-13 → Thursday (weekday=3) ✓
+            - 2026-08-20 → Thursday (weekday=3) ✓
+            - 2026-08-27 → Thursday (weekday=3) ✓
+            - Tags: ['W', 'M', 'W', 'W', 'W', 'M'] (has M and W) ✓
+          
+          All assertions passed:
+          ✅ NIFTY: 6 dates, all weekday==1 (Tuesday)
+          ✅ BANKNIFTY: 6 dates, all weekday==1 (Tuesday)
+          ✅ SENSEX: 6 dates, all weekday==3 (Thursday)
+          ✅ All 3 indices have at least one M tag and one W tag in expiries_meta
+
+  - task: "GIFT NIFTY updates via yfinance (no more 429s)"
+    implemented: true
+    working: true
+    file: "/app/backend/gift_vix_service.py, /app/backend/requirements.txt"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Rewrote gift_vix_service to use `yfinance` library (installed; added to requirements.txt) which manages Yahoo cookies/crumb auth internally, resolving persistent HTTP 429 errors on the container's IP. Added exponential backoff on failure. Added a POST /api/tickers/extras/refresh style force-refresh helper invoked by admin/refresh-day. Verify GET /api/tickers/extras returns gift_nifty with a non-null `last` value > 0."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ TASK 2 PASSED - GIFT NIFTY updates working correctly via yfinance
+          
+          Test date: 2026-07-17 at 13:53 UTC
+          Test file: /app/backend_test.py
+          
+          GET /api/tickers/extras:
+            - Status: 200 OK
+            - gift_nifty retrieved on attempt 1/4 (no retries needed)
+          
+          gift_nifty data:
+            - symbol: ^NSEI ✓
+            - last: 24334.3 (float > 0) ✓
+            - prev_close: 24081.1
+            - change: 253.2
+            - change_pct: 1.051
+            - ts: 2026-07-17T13:52:52.041251+00:00
+            - label: GIFT NIFTY
+          
+          VIX status:
+            - vix: null (expected after market hours, IST past 15:30)
+          
+          All assertions passed:
+          ✅ gift_nifty is not None
+          ✅ gift_nifty.last is a float > 0 (24334.3)
+          ✅ gift_nifty.symbol == "^NSEI"
+          
+          yfinance integration is working correctly, no 429 errors observed.
+
+  - task: "POST /api/admin/refresh-day backfills ALL three indices in mock mode"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Refresh loop now iterates NIFTY, SENSEX and BANKNIFTY unconditionally (regardless of enabled_indices setting) so a Fresh Pull produces a complete session for all three. Response now includes `indices_backfilled`. Verify: admin refresh in mock mode returns indices_backfilled=['NIFTY','SENSEX','BANKNIFTY']; oi_snapshots collection contains rows for each of the three indices after the call."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ TASK 3 PASSED - Fresh Pull backfills all 3 indices correctly
+          
+          Test date: 2026-07-17 at 13:53 UTC
+          Test file: /app/backend_test.py
+          Login attempts: 1/5 (within constraint)
+          
+          BUG FOUND AND FIXED:
+          - Issue: MockService.get_snapshot() line 353 had `self._expiries` but should be `self._expiries_by_index[index_name]`
+          - This caused AttributeError when refresh-day tried to backfill snapshots
+          - Fixed in /app/backend/oi_service.py line 353
+          - Backend restarted successfully after fix
+          
+          POST /api/admin/refresh-day (with X-Admin-Token):
+            - Status: 200 OK
+            - ok: true ✓
+            - deleted: 0 (no prior snapshots after restart)
+            - backfilled_snapshots: 1125 (> 0) ✓
+            - indices_backfilled: ['NIFTY', 'SENSEX', 'BANKNIFTY'] ✓
+            - mode: mock
+            - session_start_utc: 2026-07-17T03:45:00+00:00
+          
+          History verification for each index:
+            - GET /api/history/NIFTY?minutes=1440 → 200, count=376 ✓
+            - GET /api/history/SENSEX?minutes=1440 → 200, count=376 ✓
+            - GET /api/history/BANKNIFTY?minutes=1440 → 200, count=375 ✓
+          
+          All assertions passed:
+          ✅ response.ok == true
+          ✅ response.indices_backfilled == ["NIFTY", "SENSEX", "BANKNIFTY"]
+          ✅ response.backfilled_snapshots > 0 (1125 snapshots)
+          ✅ All 3 indices have history data (count > 0)
+          
+          Fresh Pull now correctly backfills all 3 indices regardless of enabled_indices setting.
+
+metadata:
+  created_by: "main_agent"
+  version: "1.9"
+  test_sequence: 9
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "SENSEX expiries are Thursdays; NIFTY and BANKNIFTY remain Tuesdays"
+    - "GIFT NIFTY updates via yfinance (no more 429s)"
+    - "POST /api/admin/refresh-day backfills ALL three indices in mock mode"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Round 7 backend regression:
+
+        1. Expiries weekday:
+           - GET /api/expiries/NIFTY     → all 6 dates weekday()==1 (Tuesday).
+           - GET /api/expiries/BANKNIFTY → all 6 dates weekday()==1 (Tuesday).
+           - GET /api/expiries/SENSEX    → all 6 dates weekday()==3 (Thursday).
+
+        2. GIFT NIFTY:
+           - GET /api/tickers/extras → response.gift_nifty.last is a float > 0
+             (symbol="^NSEI"). It may take up to ~65s after backend start for
+             yfinance to populate — please retry a couple of times with sleeps
+             before failing.
+
+        3. Fresh Pull (admin/refresh-day):
+           - Log in as admin (Adeotale / MasterApp@123).
+           - POST /api/admin/refresh-day → 200; response.indices_backfilled
+             MUST equal ["NIFTY","SENSEX","BANKNIFTY"]; backfilled_snapshots > 0.
+           - Immediately after: for each idx in NIFTY/SENSEX/BANKNIFTY,
+             GET /api/history/{idx}?minutes=1440 → response.count > 0.
+
+        Constraints unchanged: ≤5 login attempts, no password change, no
+        vault/public-access mutation.
+    - agent: "testing"
+      message: |
+        ✅ BACKEND REGRESSION TEST ROUND 7 COMPLETE - ALL 3 TASKS PASSED
+        
+        Test date: 2026-07-17 at 13:53 UTC
+        Test file: /app/backend_test.py
+        Backend URL: https://06809b2f-6889-48e8-a120-619601eb6da3.preview.emergentagent.com/api
+        Login attempts: 1/5 (within constraint)
+        
+        ========================================
+        SUMMARY: ALL 3 TASKS PASSED ✅
+        ========================================
+        
+        ✅ TASK 1: Expiry weekdays — PASSED
+           - NIFTY: 6 expiries, all Tuesdays (weekday==1)
+           - BANKNIFTY: 6 expiries, all Tuesdays (weekday==1)
+           - SENSEX: 6 expiries, all Thursdays (weekday==3)
+           - All 3 indices have M and W tags in expiries_meta
+        
+        ✅ TASK 2: GIFT NIFTY updates — PASSED
+           - gift_nifty.last: 24334.3 (float > 0)
+           - gift_nifty.symbol: ^NSEI
+           - Retrieved on first attempt (no retries needed)
+           - VIX: null (expected after market hours)
+        
+        ✅ TASK 3: Fresh Pull all indices — PASSED
+           - indices_backfilled: ['NIFTY', 'SENSEX', 'BANKNIFTY']
+           - backfilled_snapshots: 1125
+           - NIFTY history: 376 snapshots
+           - SENSEX history: 376 snapshots
+           - BANKNIFTY history: 375 snapshots
+        
+        ========================================
+        BUG FOUND AND FIXED 🐛
+        ========================================
+        
+        Issue: MockService.get_snapshot() had AttributeError
+        - Line 353: `self._expiries` should be `self._expiries_by_index[index_name]`
+        - This prevented backfill from working in TASK 3
+        - Fixed in /app/backend/oi_service.py
+        - Backend restarted successfully
+        
+        ========================================
+        CONSTRAINTS COMPLIANCE
+        ========================================
+        
+        ✅ Login attempts: 1/5 (well within limit)
+        ✅ Admin password: NOT changed (remains MasterApp@123)
+        ✅ Public access: NOT toggled
+        ✅ Vault/credentials: NOT mutated
+        
+        ========================================
+        CONCLUSION
+        ========================================
+        
+        All 3 backend regression tasks passed successfully:
+        - Expiry weekdays correctly configured per index
+        - GIFT NIFTY updates working via yfinance (no 429 errors)
+        - Fresh Pull backfills all 3 indices correctly
+        
+        One bug found and fixed during testing (MockService._expiries attribute error).
+        
+        No critical issues remaining. All features working as expected.

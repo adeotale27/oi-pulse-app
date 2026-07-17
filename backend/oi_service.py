@@ -218,22 +218,30 @@ class MockService:
         self._state: Dict[str, Dict[str, Any]] = {}
         # base prices
         self._base_price = {"NIFTY": 23800.0, "SENSEX": 78500.0, "BANKNIFTY": 51200.0}
-        # NSE moved NIFTY weekly expiry to Tuesday (from Thursday). BANKNIFTY
-        # weekly has been discontinued but we still surface Tuesdays for parity.
-        # SENSEX (BFO) is also Tuesday. So all three indices use Tuesday here.
-        # Generate 6 consecutive weekly Tuesday expiries; the W/M classifier in
-        # server.py will label the last Tuesday of each calendar month as "M".
+        # Per-index weekly expiry weekday (Python weekday: Mon=0 … Sun=6):
+        #   • NIFTY     → Tuesday (1)    — as per Sept-2025 NSE change
+        #   • BANKNIFTY → Tuesday (1)    — weekly discontinued in reality but
+        #                                  we mirror NIFTY's cadence for parity
+        #   • SENSEX    → Thursday (3)   — BFO weekly
+        self._weekday_by_index = {
+            "NIFTY": 1,
+            "BANKNIFTY": 1,
+            "SENSEX": 3,
+        }
+        # Generate 6 consecutive weekly expiries PER index using its own weekday.
+        # The W/M classifier in server.py labels the last date of each calendar
+        # month within the returned list as "M".
         from datetime import date
         today = date.today()
-        WEEKDAY = 1  # Monday=0 ... Tuesday=1
-        days_ahead = (WEEKDAY - today.weekday()) % 7
-        if days_ahead == 0:
-            days_ahead = 7  # if today is Tuesday, skip to next Tuesday
-        first_expiry = today + timedelta(days=days_ahead)
-        self._expiries = sorted([
-            (first_expiry + timedelta(days=7 * k)).isoformat()
-            for k in range(6)
-        ])
+        self._expiries_by_index: Dict[str, list] = {}
+        for idx, weekday in self._weekday_by_index.items():
+            days_ahead = (weekday - today.weekday()) % 7
+            if days_ahead == 0:
+                days_ahead = 7  # if today is that weekday, skip to next week
+            first = today + timedelta(days=days_ahead)
+            self._expiries_by_index[idx] = sorted([
+                (first + timedelta(days=7 * k)).isoformat() for k in range(6)
+            ])
         for idx in ("NIFTY", "SENSEX", "BANKNIFTY"):
             self._init_index(idx)
 
@@ -244,9 +252,10 @@ class MockService:
         atm = round(base / step) * step
         n = cfg["strikes_around_atm"]
         strikes = [atm + i * step for i in range(-n, n + 1)]
+        expiries = self._expiries_by_index[index_name]
         # Seed OI per expiry - farther expiries have less OI
         by_expiry = {}
-        for ei, exp in enumerate(self._expiries):
+        for ei, exp in enumerate(expiries):
             # Farther expiries have less OI. Extend beyond 4 items.
             _mults = [1.0, 0.55, 0.28, 0.15, 0.09, 0.06, 0.04, 0.03]
             multiplier = _mults[ei] if ei < len(_mults) else 0.03
@@ -270,15 +279,16 @@ class MockService:
         }
 
     def list_expiries(self, index_name: str):
-        return list(self._expiries)
+        return list(self._expiries_by_index.get(index_name, []))
 
     def get_snapshot(self, index_name: str, expiry: Optional[str] = None) -> Dict[str, Any]:
         cfg = INDEX_CONFIG[index_name]
         state = self._state[index_name]
-        exp = expiry or self._expiries[0]
+        expiries = self._expiries_by_index[index_name]
+        exp = expiry or expiries[0]
         if exp not in state["expiries"]:
-            # If unknown, fall back to nearest
-            exp = self._expiries[0]
+            # If unknown, fall back to nearest for THIS index.
+            exp = expiries[0]
         strike_map = state["expiries"][exp]
 
         # random walk price (shared across expiries)
@@ -340,7 +350,7 @@ class MockService:
             "price": round(state["price"], 2),
             "atm": int(new_atm),
             "expiry": exp,
-            "expiries": self._expiries,
+            "expiries": self._expiries_by_index[index_name],
             "pcr": pcr,
             "vix": vix,
             "strikes": strikes_data,

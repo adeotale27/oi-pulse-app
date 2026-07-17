@@ -1099,7 +1099,10 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
 
     # Backfill synthetic snapshots for the elapsed portion of the session — only
     # for mock mode; Kite cannot supply historical OI ticks.
+    # Always backfill all three indices (NIFTY, SENSEX, BANKNIFTY) so a "Fresh
+    # Pull" gives the operator a complete picture regardless of enabled_indices.
     backfilled = 0
+    ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
     if tracker.mode == "mock":
         try:
             svc = tracker.mock_service
@@ -1113,7 +1116,7 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
                 t = session_start
                 # 1-minute cadence backfill
                 while t < session_end:
-                    for idx in tracker.settings.get("enabled_indices", INDICES):
+                    for idx in ALL_INDICES:
                         if idx not in INDEX_CONFIG:
                             continue
                         try:
@@ -1134,14 +1137,22 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
         except Exception as e:
             logger.warning(f"[admin/refresh-day] backfill failed: {e}")
 
+    # Also nudge the extra-tickers service to pick up fresh VIX / GIFT NIFTY
+    # values right after a refresh, so the header numbers aren't stale.
+    try:
+        await extra_tickers.force_refresh()
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "deleted": deleted.deleted_count,
         "backfilled_snapshots": backfilled,
+        "indices_backfilled": ALL_INDICES if tracker.mode == "mock" else [],
         "mode": tracker.mode,
         "session_start_utc": day_start_utc.isoformat(),
         "message": (
-            "Today's data cleared and repopulated. Live polling resumes automatically."
+            "Today's data cleared and repopulated for NIFTY / SENSEX / BANKNIFTY. Live polling resumes automatically."
             if tracker.mode == "mock"
             else "Today's data cleared. Live Kite polling has restarted from now — historical OI ticks cannot be recovered."
         ),
