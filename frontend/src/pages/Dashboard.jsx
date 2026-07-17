@@ -79,9 +79,13 @@ function formatDelta(v) {
   return `${sign}${Math.round(abs)}`;
 }
 
-// Minutes elapsed since today's NSE market open (9:15 AM IST). If the current
-// wall-clock time is before market open, we fall back to yesterday's open so
-// the request always resolves to a valid earlier timestamp.
+// Minutes elapsed since today's NSE market open (9:15 AM IST), CLAMPED at market
+// close (3:30 PM IST). During market hours this returns the live "9:15 → now"
+// window; after 3:30 PM it caps at 375 min so "Full Day" stays 9:15 – 3:30.
+// Before 9:15 AM (or on weekends/holidays), we fall back to yesterday's open so
+// the request still resolves to a valid earlier timestamp.
+const MARKET_OPEN_MIN = 9 * 60 + 15;   // 9:15 AM IST
+const MARKET_CLOSE_MIN = 15 * 60 + 30; // 3:30 PM IST
 function minutesSinceMarketOpenIST() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -92,11 +96,17 @@ function minutesSinceMarketOpenIST() {
   const m = parseInt(parts.find((p) => p.type === "minute").value, 10);
   const s = parseInt(parts.find((p) => p.type === "second").value, 10);
   const nowMin = h * 60 + m + s / 60;
-  const openMin = 9 * 60 + 15; // 9:15 AM IST
-  const diff = nowMin - openMin;
-  if (diff > 0) return Math.ceil(diff);
+
+  if (nowMin >= MARKET_OPEN_MIN && nowMin <= MARKET_CLOSE_MIN) {
+    // Market open → 9:15 to now.
+    return Math.ceil(nowMin - MARKET_OPEN_MIN);
+  }
+  if (nowMin > MARKET_CLOSE_MIN) {
+    // Post-close → clamp to full session length.
+    return MARKET_CLOSE_MIN - MARKET_OPEN_MIN; // 375 min
+  }
   // Before market open today: use previous day's open (~24h earlier).
-  return Math.ceil(24 * 60 + diff);
+  return Math.ceil(24 * 60 + (nowMin - MARKET_OPEN_MIN));
 }
 
 // Turn a timeframe pill key into a concrete "minutes" value the API accepts.
@@ -530,6 +540,9 @@ export default function Dashboard() {
     // Update "last pull change" every time new data arrives so the UI can show
     // both when data was pulled and the OI change seen at that pull.
     setLastPullChange({ ce: changeSummary.ce, pe: changeSummary.pe, at: lastPulledAt, timeframeLabel });
+    // Fire local alert ONLY when the market is currently open — no more stale
+    // bullish / bearish toasts after 3:30 PM IST.
+    if (status?.market && status.market.is_market_open === false) return;
     // Fire local alert if intensity crosses threshold and cooldown has elapsed.
     const now = Date.now();
     if (
@@ -623,7 +636,10 @@ export default function Dashboard() {
     pollMs: pollMs,
     cooldownMs: 120000,
     onShift: handleHugeShift,
-    enabled: true,
+    // Only run huge-shift monitoring while the market is open — outside the
+    // 9:15–3:30 IST window the underlying data is frozen and any "shift" would
+    // be a false positive.
+    enabled: !(status?.market && status.market.is_market_open === false),
   });
 
   // -------- Per-strike activity detector (gamma wall / institution / fast velocity) --------

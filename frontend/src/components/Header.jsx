@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function Header({
   status,
@@ -54,6 +55,46 @@ export default function Header({
   }, []);
   const isAdmin = !!authState.is_admin;
 
+  // Extras (VIX + GIFT NIFTY) — independent poll cycle every 30s so they keep
+  // updating on their own schedules (VIX 09:15–15:30, GIFT 06:30–23:30 IST).
+  // These do NOT display an "OI pulled" timestamp; users are expected to know
+  // they update automatically per their own windows.
+  const [extras, setExtras] = useState({ vix: null, gift_nifty: null });
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const { data } = await api.get("/tickers/extras");
+        if (alive) setExtras({ vix: data?.vix || null, gift_nifty: data?.gift_nifty || null });
+      } catch (_) { /* ignore */ }
+    };
+    load();
+    const iv = setInterval(load, 30_000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+
+  // Refresh DB action (admin only)
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefreshDay = async () => {
+    if (!isAdmin) return;
+    if (!window.confirm(
+      "Clear today's OI snapshots and repopulate from 9:15 AM to now?\n\n" +
+      "In DEMO/mock mode: synthetic data will be back-filled for the entire elapsed session.\n" +
+      "In LIVE (Kite) mode: history before 'now' cannot be recovered — live polling will simply restart from now."
+    )) return;
+    setRefreshing(true);
+    try {
+      const { data } = await api.post("/admin/refresh-day", {});
+      toast.success(
+        `Refreshed · deleted ${data.deleted} · back-filled ${data.backfilled_snapshots} snapshots`
+      );
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // Continuous 1-second clock (independent of the 30s poll).
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -84,7 +125,8 @@ export default function Header({
 
         <div className="hidden md:flex items-center gap-4 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
           <Metric label="ATM" value={atm.toLocaleString()} />
-          <VixMetric value={vix} sessionOpen={vixSessionOpen} />
+          <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
+          <ExtraTickerCell label="GIFT NIFTY" data={extras.gift_nifty} />
         </div>
 
         {/* Ticker cards inline beside VIX */}
@@ -184,6 +226,17 @@ export default function Header({
             Refresh Kite
           </Button>
           <Button
+            data-testid="btn-refresh-day"
+            size="sm"
+            onClick={onRefreshDay}
+            disabled={refreshing}
+            className={`rounded-sm bg-rose-600 hover:bg-rose-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
+            title="Wipe today's OI data and repopulate from 9:15 AM to now"
+          >
+            <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
+            {refreshing ? "Refreshing…" : "Refresh DB"}
+          </Button>
+          <Button
             data-testid="btn-open-telegram-prefs"
             variant="outline" size="sm"
             className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
@@ -208,10 +261,19 @@ export default function Header({
   );
 }
 
-function VixMetric({ value, sessionOpen }) {
-  const v = value ?? 0;
+function VixMetric({ value, sessionOpen, liveVix }) {
+  // Prefer live Yahoo-fed VIX (updates every 30s within its window) over the
+  // snapshot-embedded value (which freezes when OI polling stops at 3:30 PM).
+  const v = liveVix?.last != null && liveVix.last > 0 ? liveVix.last : (value ?? 0);
   let arrow = null, tone = "amber", chgLabel = "";
-  if (sessionOpen && sessionOpen > 0 && v > 0) {
+  if (liveVix && liveVix.change != null && liveVix.prev_close) {
+    const chg = Number(liveVix.change);
+    const pct = Number(liveVix.change_pct || 0);
+    if (pct > 0.05) { arrow = "▲"; tone = "rose"; }
+    else if (pct < -0.05) { arrow = "▼"; tone = "emerald"; }
+    else { arrow = "▬"; tone = "slate"; }
+    chgLabel = `${chg >= 0 ? "+" : ""}${chg.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`;
+  } else if (sessionOpen && sessionOpen > 0 && v > 0) {
     const chg = v - sessionOpen;
     const pct = (chg / sessionOpen) * 100;
     if (pct > 0.05) { arrow = "▲"; tone = "rose"; }
@@ -224,10 +286,35 @@ function VixMetric({ value, sessionOpen }) {
     <div className="flex flex-col" data-testid="vix-metric">
       <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">INDIA VIX</div>
       <div className="flex items-baseline gap-1.5">
-        <div className={`text-sm font-semibold font-mono-data ${toneCls}`} data-testid="vix-value">{v.toFixed(2)}</div>
+        <div className={`text-sm font-semibold font-mono-data ${toneCls}`} data-testid="vix-value">{Number(v).toFixed(2)}</div>
         {arrow && (
           <div className={`text-[10px] font-mono-data ${toneCls}`} data-testid="vix-change">
             <span className="mr-0.5">{arrow}</span>{chgLabel}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExtraTickerCell({ label, data }) {
+  const hasData = data && data.last != null && data.last > 0;
+  const chgPct = hasData ? Number(data.change_pct || 0) : 0;
+  const chg = hasData ? Number(data.change || 0) : 0;
+  const tone = chgPct > 0.05 ? "emerald" : chgPct < -0.05 ? "rose" : "slate";
+  const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-slate-500 dark:text-slate-400";
+  const arrow = chgPct > 0.05 ? "▲" : chgPct < -0.05 ? "▼" : "▬";
+  return (
+    <div className="flex flex-col" data-testid={`ticker-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="flex items-baseline gap-1.5">
+        <div className={`text-sm font-semibold font-mono-data ${hasData ? toneCls : "text-slate-400"}`} data-testid={`ticker-${label.toLowerCase().replace(/\s+/g, "-")}-value`}>
+          {hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}
+        </div>
+        {hasData && (
+          <div className={`text-[10px] font-mono-data ${toneCls}`}>
+            <span className="mr-0.5">{arrow}</span>
+            {chg >= 0 ? "+" : ""}{chg.toFixed(2)} ({chgPct >= 0 ? "+" : ""}{chgPct.toFixed(2)}%)
           </div>
         )}
       </div>

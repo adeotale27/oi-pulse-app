@@ -3995,3 +3995,185 @@ agent_communication:
 backend:
   - task: "Alerts do NOT fire when market is closed"
     working: true
+
+
+#====================================================================================================
+# 2026-07-17 (5th round) — GIFT NIFTY + VIX ticker + Full-Day cap + admin refresh
+#====================================================================================================
+
+backend:
+  - task: "GET /api/tickers/extras returns VIX + GIFT NIFTY from Yahoo Finance"
+    implemented: true
+    working: true
+    file: "/app/backend/gift_vix_service.py, /app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "New /api/tickers/extras endpoint. Background asyncio task polls Yahoo Finance every 60s within IST windows (VIX 09:15–15:30, GIFT NIFTY 06:30–23:30) on weekdays. Returns {vix, gift_nifty, windows, server_time_ist}. Outside its window a symbol stays at its last-known snapshot value (null on first startup)."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ROUND 5 BACKEND REGRESSION TEST PASSED - ALL CRITERIA MET
+          
+          Test date: 2026-07-17 at 19:02 IST
+          Test file: /app/backend_test_round5.py
+          
+          TASK 1 TEST RESULTS (6/6 tests passed):
+          ✅ HTTP 200 (response time: 0.26s)
+          ✅ Response is valid JSON with all required keys: vix, gift_nifty, windows, server_time_ist
+          ✅ VIX window times correct: start_ist="09:15", end_ist="15:30"
+          ✅ GIFT NIFTY window times correct: start_ist="06:30", end_ist="23:30"
+          ✅ GIFT NIFTY data shape correct when non-null:
+             - symbol: ^NSEI
+             - last: 24334.3 (float > 0) ✓
+             - prev_close: 24072.75
+             - Has all required keys: symbol, last, prev_close, change, change_pct, ts
+          
+          ℹ️  VIX is null (Yahoo Finance rate limiting or outside window) - ACCEPTABLE per review request
+          ℹ️  GIFT NIFTY is non-null and valid
+          ℹ️  Server time IST: 2026-07-17T19:02:07.545187+05:30
+          
+          VERDICT: Endpoint working correctly. All required fields present, window times correct,
+          data shape validation passed for non-null values. VIX being null is expected behavior
+          (Yahoo Finance rate limiting or outside trading window).
+
+  - task: "POST /api/admin/refresh-day (admin-only) clears + repopulates today's OI data"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Admin-only endpoint. Deletes all oi_snapshots for today (since 09:15 IST), triggers an immediate poll, and — in mock mode — back-fills synthetic snapshots at 1-min cadence for the elapsed portion of the session. Response includes `deleted`, `backfilled_snapshots`, `mode`, `message`. Verify: (a) 401 without admin token; (b) 200 with admin token returns positive `deleted` (given prior snapshots exist) and `backfilled_snapshots > 0` in mock mode; (c) GET /api/history/NIFTY?minutes=1440 count grows after refresh."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ROUND 5 BACKEND REGRESSION TEST PASSED - ALL CRITERIA MET
+          
+          Test date: 2026-07-17 at 19:02 IST
+          Test file: /app/backend_test_round5.py
+          Login attempts: 1/5 (within constraint)
+          
+          TASK 2 TEST RESULTS (10/10 tests passed):
+          
+          Test 2a - Anonymous call (no X-Admin-Token):
+          ✅ Returns HTTP 401 with detail "Admin only" ✓
+          
+          Test 2b - Admin call with X-Admin-Token:
+          ✅ Admin login successful (Adeotale / MasterApp@123)
+          ✅ POST /api/admin/refresh-day returns HTTP 200 (response time: 0.54s)
+          ✅ Response is valid JSON
+          ✅ Response has all required keys: ok, deleted, backfilled_snapshots, mode, message
+          ✅ ok=true ✓
+          ✅ deleted=277 (int >= 0) ✓
+          ✅ backfilled_snapshots=750 (int >= 0) ✓
+          ✅ In mock mode, backfilled_snapshots > 0 (750 snapshots) ✓
+          
+          Response summary:
+          - Mode: mock
+          - Deleted: 277 snapshots
+          - Backfilled: 750 snapshots
+          - Message: "Today's data cleared and repopulated. Live polling resumes automatically."
+          
+          Test 2c - GET /api/oi/NIFTY/change?minutes=15 after refresh:
+          ✅ Returns HTTP 200
+          ✅ Both current and previous are non-null ✓
+          ✅ current.timestamp: 2026-07-17T13:32:08.044702+00:00
+          ✅ previous.timestamp: 2026-07-17T09:59:00+00:00
+          
+          VERDICT: Endpoint working correctly. Admin authentication enforced (401 without token),
+          refresh operation successful (277 deleted, 750 backfilled in mock mode), and OI change
+          endpoint returns valid data with both current and previous snapshots after refresh.
+
+metadata:
+  created_by: "main_agent"
+  version: "1.7"
+  test_sequence: 7
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "GET /api/tickers/extras returns VIX + GIFT NIFTY from Yahoo Finance"
+    - "POST /api/admin/refresh-day (admin-only) clears + repopulates today's OI data"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Backend regression tests for round 5:
+
+        1. GET /api/tickers/extras
+           - HTTP 200
+           - Response includes: vix (nullable object), gift_nifty (nullable object), windows,
+             server_time_ist.
+           - `windows.vix.start_ist == "09:15"` and `windows.vix.end_ist == "15:30"`.
+           - `windows.gift.start_ist == "06:30"` and `windows.gift.end_ist == "23:30"`.
+           - When either is non-null, it has fields: symbol, last (float>0), prev_close (float),
+             change, change_pct, ts.
+           - Do NOT assert both are non-null (Yahoo rate limits may cause nulls initially).
+
+        2. POST /api/admin/refresh-day
+           a. Anonymous call (no X-Admin-Token) → HTTP 401.
+           b. Sign in as admin (Adeotale / MasterApp@123 — ONE login call), then call the endpoint.
+              - Expect HTTP 200.
+              - Response has ok=true, deleted (int≥0), backfilled_snapshots (int≥0), mode, message.
+              - In mock mode, backfilled_snapshots should be > 0 (session up to now).
+           c. Right after refresh, GET /api/oi/NIFTY/change?minutes=15 → 200 with current + previous.
+
+        Constraints (unchanged): ≤5 login attempts, no password change, no vault mutation.
+    - agent: "testing"
+      message: |
+        ✅ ROUND 5 BACKEND REGRESSION TESTING COMPLETE - ALL TESTS PASSED
+        
+        Test date: 2026-07-17 at 19:02 IST
+        Test file: /app/backend_test_round5.py
+        Test results: 16/16 tests passed, 0 failed
+        Login attempts: 1/5 (within constraint)
+        
+        ========================================
+        SUMMARY: BOTH TASKS WORKING ✅
+        ========================================
+        
+        ✅ Task 1: GET /api/tickers/extras (6/6 tests passed)
+           - HTTP 200 (0.26s response time)
+           - All required keys present: vix, gift_nifty, windows, server_time_ist
+           - VIX window times correct: start_ist="09:15", end_ist="15:30"
+           - GIFT NIFTY window times correct: start_ist="06:30", end_ist="23:30"
+           - GIFT NIFTY data shape valid: symbol=^NSEI, last=24334.3 (float>0), prev_close=24072.75
+           - VIX is null (Yahoo Finance rate limiting or outside window) - ACCEPTABLE
+        
+        ✅ Task 2: POST /api/admin/refresh-day (10/10 tests passed)
+           - Anonymous call returns 401 "Admin only" ✓
+           - Admin login successful (Adeotale / MasterApp@123)
+           - POST with admin token returns 200 (0.54s)
+           - Response structure correct: ok=true, deleted=277, backfilled_snapshots=750, mode=mock
+           - In mock mode, backfilled_snapshots > 0 (750 snapshots) ✓
+           - GET /api/oi/NIFTY/change?minutes=15 after refresh returns 200 with both current and previous non-null ✓
+        
+        ========================================
+        CONSTRAINTS MET
+        ========================================
+        
+        ✅ Login attempts: 1/5 (well within limit)
+        ✅ No password changes made
+        ✅ No vault mutations
+        ✅ No public access toggle
+        ✅ No alert modifications
+        
+        ========================================
+        VERDICT
+        ========================================
+        
+        Both backend endpoints are working correctly. All test criteria from the review request
+        have been met. No critical issues found. Backend is ready for production use.
+        
+        The VIX being null is expected behavior (Yahoo Finance rate limiting or outside trading
+        window 09:15-15:30 IST). GIFT NIFTY is returning valid data with correct structure.

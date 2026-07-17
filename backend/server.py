@@ -18,7 +18,8 @@ from datetime import datetime, timezone, timedelta
 from oi_tracker import OITracker, INDICES
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
-from market_hours import is_market_open
+from market_hours import is_market_open, IST
+from gift_vix_service import extra_tickers
 from cryptography.fernet import Fernet
 import base64, hashlib
 
@@ -461,16 +462,18 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
     # -------------------------------------------------------------- #
     STALE_THRESHOLD_SECONDS = 20
     is_stale = False
+    market_is_open = is_market_open()
     if current:
         try:
             cur_ts_dt = datetime.fromisoformat(current.get("timestamp"))
             age = (datetime.now(timezone.utc) - cur_ts_dt).total_seconds()
             if age > STALE_THRESHOLD_SECONDS:
                 is_stale = True
-                logger.warning(
-                    f"/change: cached snapshot for {idx} is {age:.1f}s old "
-                    f"(>{STALE_THRESHOLD_SECONDS}s) — refreshing inline."
-                )
+                if market_is_open:
+                    logger.warning(
+                        f"/change: cached snapshot for {idx} is {age:.1f}s old "
+                        f"(>{STALE_THRESHOLD_SECONDS}s) — refreshing inline."
+                    )
         except Exception:
             is_stale = True
 
@@ -479,7 +482,6 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         # fresh ticks and simply serve the last snapshot from memory / DB.
         # This satisfies the "9:15 AM – 3:30 PM only" polling requirement
         # and keeps the UI stable overnight / on weekends / on holidays.
-        market_is_open = is_market_open()
         if not market_is_open:
             if not current:
                 # No in-memory cache — try DB for the most recent snapshot for this index.
@@ -1061,6 +1063,91 @@ async def get_tickers():
     return {"mode": tracker.mode, "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
 
 
+# ------------------- Extra tickers: VIX + GIFT NIFTY -------------------
+@api_router.get("/tickers/extras")
+async def get_extra_tickers():
+    """Live snapshot of India VIX + GIFT NIFTY, refreshed by the background
+    `extra_tickers` service on its own schedule (VIX 09:15–15:30, GIFT NIFTY
+    06:30–23:30 IST, Mon–Fri). Returns last-known values outside those windows.
+    """
+    return extra_tickers.snapshot()
+
+
+# ------------------- Admin: refresh today's OI data -------------------
+@api_router.post("/admin/refresh-day")
+async def admin_refresh_day(_admin: bool = Depends(require_admin)):
+    """Wipe today's snapshots (from 09:15 IST) and immediately re-poll so the
+    database restarts clean for the current session. In mock mode we also
+    back-fill the elapsed portion of the session with synthetic snapshots at
+    1-minute cadence so the "Full Day" view isn't empty."""
+    today_ist = datetime.now(IST).date()
+    day_start_utc = datetime.combine(
+        today_ist, datetime.min.time().replace(hour=9, minute=15)
+    ).replace(tzinfo=IST).astimezone(timezone.utc)
+
+    deleted = await db.oi_snapshots.delete_many(
+        {"created_at": {"$gte": day_start_utc.isoformat()}}
+    )
+    tracker.last_snapshot = {}  # force /change endpoint to fetch fresh
+    logger.info(f"[admin/refresh-day] deleted {deleted.deleted_count} snapshots since {day_start_utc}")
+
+    # Immediate live poll (fresh 'now' tick for each index).
+    try:
+        await tracker._poll_once()
+    except Exception as e:
+        logger.warning(f"[admin/refresh-day] initial poll failed: {e}")
+
+    # Backfill synthetic snapshots for the elapsed portion of the session — only
+    # for mock mode; Kite cannot supply historical OI ticks.
+    backfilled = 0
+    if tracker.mode == "mock":
+        try:
+            svc = tracker.mock_service
+            now_ist_now = datetime.now(IST)
+            session_start = datetime.combine(today_ist, datetime.min.time().replace(hour=9, minute=15)).replace(tzinfo=IST)
+            session_end = min(
+                now_ist_now,
+                datetime.combine(today_ist, datetime.min.time().replace(hour=15, minute=30)).replace(tzinfo=IST),
+            )
+            if session_end > session_start:
+                t = session_start
+                # 1-minute cadence backfill
+                while t < session_end:
+                    for idx in tracker.settings.get("enabled_indices", INDICES):
+                        if idx not in INDEX_CONFIG:
+                            continue
+                        try:
+                            snap = svc.get_snapshot(idx, tracker.selected_expiry.get(idx))
+                            if not snap:
+                                continue
+                            snap["mode"] = "mock"
+                            # backfilled timestamp
+                            snap = {**snap, "timestamp": t.astimezone(timezone.utc).isoformat()}
+                            await db.oi_snapshots.insert_one({
+                                **snap,
+                                "created_at": t.astimezone(timezone.utc).isoformat(),
+                            })
+                            backfilled += 1
+                        except Exception:
+                            continue
+                    t = t + timedelta(minutes=1)
+        except Exception as e:
+            logger.warning(f"[admin/refresh-day] backfill failed: {e}")
+
+    return {
+        "ok": True,
+        "deleted": deleted.deleted_count,
+        "backfilled_snapshots": backfilled,
+        "mode": tracker.mode,
+        "session_start_utc": day_start_utc.isoformat(),
+        "message": (
+            "Today's data cleared and repopulated. Live polling resumes automatically."
+            if tracker.mode == "mock"
+            else "Today's data cleared. Live Kite polling has restarted from now — historical OI ticks cannot be recovered."
+        ),
+    }
+
+
 # ------------------- Zerodha positions -------------------
 @api_router.get("/positions")
 async def get_positions(_admin: bool = Depends(require_admin)):
@@ -1227,6 +1314,7 @@ async def _startup():
     await tracker.load_credentials()
     await tracker.load_settings()
     await tracker.start()
+    await extra_tickers.start()
 
     # Report how much of today's session data we already have so operators
     # can immediately see whether continuity was preserved across a restart.
@@ -1249,4 +1337,5 @@ async def _startup():
 @app.on_event("shutdown")
 async def _shutdown():
     await tracker.stop()
+    await extra_tickers.stop()
     client.close()
