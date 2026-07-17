@@ -3854,3 +3854,16 @@ agent_communication:
         
         No critical issues found. All requirements met.
         Both tasks are production-ready.
+
+    - agent: "testing"
+      message: |
+        ✅ Round-3 backend tasks PASSED (2026-07-17):
+        - /api/expiries/{NIFTY,SENSEX,BANKNIFTY} return 6 expiries each with correct
+          expiries_meta shape; 3 W + 3 M tags per index.
+        - /api/oi/NIFTY/change returns current.pcr=0.99, current.atm=23800, current.price=23808.28.
+
+backend:
+  - task: "GET /api/expiries/{index} returns W/M tagged expiries_meta"
+    working: true
+  - task: "current.pcr still present in /api/oi/{index}/change"
+    working: true
