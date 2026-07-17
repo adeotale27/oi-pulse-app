@@ -1,18 +1,35 @@
 """
 Background OI tracker - polls Kite / Mock every N seconds, stores snapshots in Mongo,
 and evaluates alert rules for OI reversal spikes.
+
+Polls ONLY during NSE market hours (9:00–15:30 IST, Mon–Fri, excl. holidays)
+when FORCE_ALWAYS_POLL=false (default). Retains 24 h of snapshots so any
+timeframe from 5 min – 4 h has data available.
 """
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
 from oi_service import KiteService, MockService, INDEX_CONFIG
+from market_hours import is_market_open, market_status, now_ist
+import notifier
 
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SECONDS = 15
 INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
+
+# Data retention: keep 24 hours so a full trading day (9:00–15:30 = 6.5h)
+# plus overnight review is always available.
+SNAPSHOT_RETENTION_HOURS = int(os.environ.get("SNAPSHOT_RETENTION_HOURS", "24"))
+
+# When true, poll 24/7 (dev / mock). When false, poll only inside NSE hours.
+FORCE_ALWAYS_POLL = os.environ.get("FORCE_ALWAYS_POLL", "false").lower() == "true"
+
+# Sleep interval when market is closed — check every 60s if window has opened.
+CLOSED_MARKET_SLEEP_SECONDS = 60
 
 DEFAULT_SETTINGS = {
     "threshold_pct": 15.0,      # % OI change to trigger alert
@@ -136,13 +153,66 @@ class OITracker:
         logger.info("OI tracker stopped")
 
     async def _loop(self):
+        """
+        Main polling loop.
+
+        Behavior:
+          * If FORCE_ALWAYS_POLL=true → poll every POLL_INTERVAL_SECONDS regardless of time.
+          * Else → poll only during NSE market hours (9:00–15:30 IST Mon–Fri, excl. holidays);
+            outside the window, sleep 60s and re-check. Announce open/close to Telegram once/day.
+        """
+        was_open = False
         while self.running:
             try:
-                await self._poll_once()
+                if FORCE_ALWAYS_POLL or is_market_open():
+                    if not was_open:
+                        logger.info("Market OPEN — starting polling.")
+                        await notifier.alert_market_open()
+                        was_open = True
+                    await self._poll_once()
+                    await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                else:
+                    if was_open:
+                        logger.info("Market CLOSED — pausing polling.")
+                        await notifier.alert_market_close()
+                        was_open = False
+                    # opportunistic pre-market check: warn if kite creds seem stale
+                    await self._premarket_check()
+                    await asyncio.sleep(CLOSED_MARKET_SLEEP_SECONDS)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                logger.exception("poll error: %s", e)
+                logger.exception("loop error: %s", e)
                 self.last_error = str(e)
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                await notifier.alert_tracker_error(str(e))
+                await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+    async def _premarket_check(self):
+        """Between 8:45 and 9:00 IST on trading days, verify Kite is usable.
+        If not, ping the user on Telegram (once per day)."""
+        try:
+            dt = now_ist()
+            if dt.weekday() >= 5:
+                return
+            if not (dt.hour == 8 and dt.minute >= 45):
+                return
+            if self.mode != "kite" or self.kite_service is None:
+                await notifier.alert_kite_token_issue(
+                    "Tracker is in MOCK mode — no Kite credentials configured."
+                )
+                return
+            # Cheap validation: profile() call
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(self.kite_service.kite.profile),
+                    timeout=8.0,
+                )
+            except Exception as e:
+                await notifier.alert_kite_token_issue(
+                    f"Kite token check failed: {type(e).__name__}: {e}"
+                )
+        except Exception as e:
+            logger.warning(f"premarket_check error: {e}")
 
     async def _poll_once(self):
         svc = self._get_service()
@@ -176,8 +246,8 @@ class OITracker:
             self.last_snapshot[idx] = snap
             # store
             await self.db.oi_snapshots.insert_one({**snap, "created_at": datetime.now(timezone.utc).isoformat()})
-            # keep only last 6 hours
-            cutoff = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
+            # keep only last SNAPSHOT_RETENTION_HOURS (default 24) so full day session is preserved
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
             await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
             # evaluate alerts
             await self._evaluate_alerts(idx, snap)
@@ -258,8 +328,14 @@ class OITracker:
         }
         await self.db.alerts.insert_one(alert)
         logger.warning("ALERT: %s", alert["message"])
+        # Forward to Telegram (fire-and-forget; graceful no-op if not configured)
+        try:
+            await notifier.alert_oi_spike(alert)
+        except Exception as e:
+            logger.warning(f"telegram forward failed: {e}")
 
     async def get_status(self):
+        ms = market_status()
         return {
             "running": self.running,
             "mode": self.mode,
@@ -267,4 +343,8 @@ class OITracker:
             "last_error": self.last_error,
             "has_kite_credentials": self.kite_service is not None,
             "poll_interval_seconds": POLL_INTERVAL_SECONDS,
+            "market": ms,
+            "telegram_configured": notifier.is_configured(),
+            "retention_hours": SNAPSHOT_RETENTION_HOURS,
+            "always_poll": FORCE_ALWAYS_POLL,
         }

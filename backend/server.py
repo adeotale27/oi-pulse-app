@@ -472,6 +472,31 @@ async def get_config():
     return {"indices": INDEX_CONFIG, "poll_interval_seconds": 15}
 
 
+# ------------------- Telegram notifications -------------------
+import notifier as _notifier
+from market_hours import market_status as _market_status
+
+
+@api_router.get("/telegram/status")
+async def telegram_status():
+    return {"configured": _notifier.is_configured()}
+
+
+@api_router.post("/telegram/test")
+async def telegram_test():
+    if not _notifier.is_configured():
+        raise HTTPException(400, "Telegram not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in backend/.env and restart.")
+    ok = await _notifier.send_test_message()
+    if not ok:
+        raise HTTPException(502, "Telegram send failed — check bot token / chat id / network.")
+    return {"ok": True, "sent": True}
+
+
+@api_router.get("/market/status")
+async def market_status_endpoint():
+    return _market_status()
+
+
 # ------------------- Multi-index quote for header ticker -------------------
 @api_router.get("/tickers")
 async def get_tickers():
