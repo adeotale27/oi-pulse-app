@@ -152,6 +152,61 @@ async def alert_oi_spike(alert: dict):
     await send_message(text, dedupe_key=None)
 
 
+async def alert_huge_shift(shift: dict):
+    """Called from frontend when the HugeShiftModal fires. Forwards the same data to Telegram."""
+    idx = shift.get("index", "?")
+    side = shift.get("side", "?")           # 'CE' or 'PE'
+    value = shift.get("value", 0)
+    direction = shift.get("direction", "build")   # 'build' or 'unwind'
+    window = shift.get("window", "?")
+    price = shift.get("price")
+    atm = shift.get("atm")
+    contributing = (shift.get("contributing") or [])[:5]
+
+    # Emoji: CE build = bearish (red), CE unwind = bullish (green)
+    # PE build = bullish (green), PE unwind = bearish (red)
+    bullish = (side == "PE" and direction == "build") or (side == "CE" and direction == "unwind")
+    emoji = "🟢" if bullish else "🔴"
+    sign = "+" if value > 0 else ""
+    mn = f"{value/1e6:.2f}M"  # human-readable
+
+    contrib_lines = "\n".join(
+        f"• {c['strike']}: CE {c.get('ce_delta',0)/1e6:+.2f}M · PE {c.get('pe_delta',0)/1e6:+.2f}M"
+        for c in contributing
+    )
+
+    text = (
+        f"{emoji} <b>HUGE OI SHIFT · {idx}</b>\n"
+        f"{side} {direction.upper()} in last <b>{window} min</b> → <b>{sign}{mn}</b>\n"
+        f"Price: <b>{price}</b>  |  ATM: <b>{atm}</b>\n"
+        f"{contrib_lines}"
+    )
+    # Dedupe per (index, window, side, direction) for 2 min so we don't spam
+    key = f"huge:{idx}:{window}:{side}:{direction}"
+    await send_message(text, dedupe_key=key, cooldown_seconds=120)
+
+
+async def send_daily_digest(digest: dict):
+    """Send end-of-day summary. digest = {
+        date, alerts_total, indices: [ {index, closing_price, atm, total_alerts,
+        top_bullish: {...}, top_bearish: {...}, biggest_ce_shift, biggest_pe_shift} ] } """
+    date = digest.get("date", "?")
+    total = digest.get("alerts_total", 0)
+    lines = [f"📊 <b>OI-Pulse Daily Digest — {date}</b>", f"Total alerts: <b>{total}</b>", ""]
+    for row in digest.get("indices", []):
+        lines.append(f"<b>{row['index']}</b>")
+        lines.append(f"Close: {row.get('closing_price', '—')}  |  ATM: {row.get('atm', '—')}")
+        lines.append(f"Alerts today: {row.get('total_alerts', 0)}")
+        tb = row.get("top_bullish")
+        tbe = row.get("top_bearish")
+        if tb:
+            lines.append(f"🟢 Top bullish: {tb.get('index','')} — strike {tb.get('strike','?')} PE {tb.get('pe_pct',0):+.1f}%")
+        if tbe:
+            lines.append(f"🔴 Top bearish: {tbe.get('index','')} — strike {tbe.get('strike','?')} CE {tbe.get('ce_pct',0):+.1f}%")
+        lines.append("")
+    await send_message("\n".join(lines).strip(), dedupe_key=f"digest:{date}", cooldown_seconds=86400)
+
+
 async def send_test_message() -> bool:
     return await send_message(
         "✅ <b>OI-Pulse Telegram is connected!</b>\n"

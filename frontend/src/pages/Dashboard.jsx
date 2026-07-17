@@ -6,6 +6,7 @@ import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
+import MorningRefreshModal from "@/components/MorningRefreshModal";
 import SettingsModal from "@/components/SettingsModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import SentimentBar from "@/components/SentimentBar";
@@ -111,6 +112,7 @@ export default function Dashboard() {
   const [strikesAround, setStrikesAround] = useState(10);
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
   const [credsOpen, setCredsOpen] = useState(false);
+  const [morningRefreshOpen, setMorningRefreshOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -570,6 +572,19 @@ export default function Dashboard() {
         `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
       );
     } catch (_) { /* noop */ }
+    // Forward to Telegram (fire-and-forget; backend no-ops if not configured).
+    try {
+      api.post("/telegram/huge-shift", {
+        index: shift.index,
+        side: shift.side,
+        value: shift.value,
+        direction: shift.value > 0 ? "build" : "unwind",
+        window: shift.window,
+        price: shift.price,
+        atm: shift.atm,
+        contributing: shift.contributing || [],
+      }).catch(() => { /* silent — user already sees the modal */ });
+    } catch (_) { /* noop */ }
   }, [activeIndex, hugeShift, siren, push, pushActivity]);
 
   const dismissHugeShift = useCallback(() => {
@@ -753,6 +768,7 @@ export default function Dashboard() {
         status={status}
         current={current}
         onOpenCreds={() => setCredsOpen(true)}
+        onOpenMorningRefresh={() => setMorningRefreshOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSounds={() => setSoundsOpen(true)}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
@@ -1259,6 +1275,13 @@ export default function Dashboard() {
         open={credsOpen}
         onOpenChange={setCredsOpen}
         onSaved={loadStatus}
+      />
+
+      <MorningRefreshModal
+        open={morningRefreshOpen}
+        onOpenChange={setMorningRefreshOpen}
+        onRefreshed={loadStatus}
+        onNeedFullSetup={() => setCredsOpen(true)}
       />
 
       <SettingsModal

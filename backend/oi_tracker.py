@@ -175,6 +175,13 @@ class OITracker:
                     if was_open:
                         logger.info("Market CLOSED — pausing polling.")
                         await notifier.alert_market_close()
+                        # Build and send daily digest right after close (only when market
+                        # was open just now, i.e. real end-of-session).
+                        try:
+                            digest = await self.build_daily_digest()
+                            await notifier.send_daily_digest(digest)
+                        except Exception as e:
+                            logger.warning(f"daily digest failed: {e}")
                         was_open = False
                     # opportunistic pre-market check: warn if kite creds seem stale
                     await self._premarket_check()
@@ -333,6 +340,48 @@ class OITracker:
             await notifier.alert_oi_spike(alert)
         except Exception as e:
             logger.warning(f"telegram forward failed: {e}")
+
+    async def build_daily_digest(self) -> dict:
+        """Aggregate today's alerts and closing snapshots for the daily Telegram digest."""
+        from market_hours import IST
+        today_ist = now_ist().date()
+        start_utc = datetime.combine(today_ist, datetime.min.time()).replace(tzinfo=IST).astimezone(timezone.utc)
+        alerts_today = await self.db.alerts.find(
+            {"created_at": {"$gte": start_utc.isoformat()}},
+            {"_id": 0}
+        ).sort("created_at", -1).to_list(length=1000)
+
+        indices_out = []
+        for idx in INDICES:
+            snap = self.last_snapshot.get(idx) or {}
+            idx_alerts = [a for a in alerts_today if a.get("index") == idx]
+            # biggest bullish PE build (highest positive pe_pct across all alert strikes today)
+            top_bullish = None
+            top_bearish = None
+            best_pe = -1e9
+            best_ce = -1e9
+            for a in idx_alerts:
+                for s in a.get("strikes", []):
+                    if s.get("pe_pct", 0) > best_pe:
+                        best_pe = s["pe_pct"]
+                        top_bullish = {"index": idx, "strike": s.get("strike"), "pe_pct": s.get("pe_pct", 0)}
+                    if s.get("ce_pct", 0) > best_ce:
+                        best_ce = s["ce_pct"]
+                        top_bearish = {"index": idx, "strike": s.get("strike"), "ce_pct": s.get("ce_pct", 0)}
+            indices_out.append({
+                "index": idx,
+                "closing_price": snap.get("price"),
+                "atm": snap.get("atm"),
+                "total_alerts": len(idx_alerts),
+                "top_bullish": top_bullish,
+                "top_bearish": top_bearish,
+            })
+
+        return {
+            "date": today_ist.isoformat(),
+            "alerts_total": len(alerts_today),
+            "indices": indices_out,
+        }
 
     async def get_status(self):
         ms = market_status()

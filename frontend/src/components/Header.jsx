@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2 } from "lucide-react";
+import { Activity, KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
@@ -8,6 +8,7 @@ export default function Header({
   status,
   current,
   onOpenCreds,
+  onOpenMorningRefresh,
   onOpenSettings,
   onDownloadCsv,
   onOpenSounds,
@@ -154,6 +155,16 @@ export default function Header({
             title="Alert settings"
           >
             <Settings2 className="w-4 h-4" />
+          </Button>
+          <Button
+            data-testid="btn-morning-refresh"
+            size="sm"
+            onClick={onOpenMorningRefresh}
+            className="rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+            title="Morning Kite token refresh (one-tap)"
+          >
+            <RefreshCw className="w-4 h-4 mr-1.5" />
+            Refresh Kite
           </Button>
           <Button
             data-testid="btn-open-credentials"

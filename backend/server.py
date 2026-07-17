@@ -492,6 +492,45 @@ async def telegram_test():
     return {"ok": True, "sent": True}
 
 
+class HugeShiftIn(BaseModel):
+    index: str
+    side: str          # 'CE' or 'PE'
+    value: float
+    direction: str     # 'build' or 'unwind'
+    window: int
+    price: Optional[float] = None
+    atm: Optional[float] = None
+    contributing: Optional[List[dict]] = None
+
+
+@api_router.post("/telegram/huge-shift")
+async def telegram_huge_shift(payload: HugeShiftIn):
+    """Called by the frontend when the HugeShiftModal fires — forwards to Telegram."""
+    if not _notifier.is_configured():
+        return {"ok": False, "reason": "telegram_not_configured"}
+    try:
+        await _notifier.alert_huge_shift(payload.model_dump())
+    except Exception as e:
+        raise HTTPException(502, f"Telegram send failed: {e}")
+    return {"ok": True}
+
+
+@api_router.post("/telegram/digest/preview")
+async def telegram_digest_preview():
+    """Build (but do NOT send) today's digest — for UI preview / testing."""
+    return await tracker.build_daily_digest()
+
+
+@api_router.post("/telegram/digest/send")
+async def telegram_digest_send():
+    """Manually send today's digest to Telegram now (useful for testing or if auto-send missed)."""
+    if not _notifier.is_configured():
+        raise HTTPException(400, "Telegram not configured.")
+    digest = await tracker.build_daily_digest()
+    ok = await _notifier.send_daily_digest(digest)
+    return {"ok": True, "sent": ok, "digest": digest}
+
+
 @api_router.get("/market/status")
 async def market_status_endpoint():
     return _market_status()
