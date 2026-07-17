@@ -4585,3 +4585,21 @@ agent_communication:
         One bug found and fixed during testing (MockService._expiries attribute error).
         
         No critical issues remaining. All features working as expected.
+
+    - agent: "testing"
+      message: |
+        ✅ Round 7 backend PASSED (2026-07-17):
+        - NIFTY / BANKNIFTY: 6 Tuesdays each. SENSEX: 6 Thursdays. All have M+W tags.
+        - GIFT NIFTY: 24334.3 (^NSEI), fetched on first attempt.
+        - Fresh Pull: indices_backfilled=[NIFTY,SENSEX,BANKNIFTY], 1125 snapshots (376+376+375);
+          all three /api/history endpoints return count > 0.
+        Small pre-existing bug in oi_service.py (line 353 referenced legacy `self._expiries`
+        instead of `self._expiries_by_index[index_name]`) was fixed inline during test.
+
+backend:
+  - task: "SENSEX expiries are Thursdays; NIFTY and BANKNIFTY remain Tuesdays"
+    working: true
+  - task: "GIFT NIFTY updates via yfinance"
+    working: true
+  - task: "POST /api/admin/refresh-day backfills ALL three indices in mock mode"
+    working: true
