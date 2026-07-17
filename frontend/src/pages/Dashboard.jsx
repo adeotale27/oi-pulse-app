@@ -7,6 +7,7 @@ import AlertsPanel from "@/components/AlertsPanel";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
+import TelegramPrefsModal from "@/components/TelegramPrefsModal";
 import SettingsModal from "@/components/SettingsModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import SentimentBar from "@/components/SentimentBar";
@@ -113,6 +114,7 @@ export default function Dashboard() {
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
   const [credsOpen, setCredsOpen] = useState(false);
   const [morningRefreshOpen, setMorningRefreshOpen] = useState(false);
+  const [telegramPrefsOpen, setTelegramPrefsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -769,6 +771,7 @@ export default function Dashboard() {
         current={current}
         onOpenCreds={() => setCredsOpen(true)}
         onOpenMorningRefresh={() => setMorningRefreshOpen(true)}
+        onOpenTelegramPrefs={() => setTelegramPrefsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSounds={() => setSoundsOpen(true)}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
@@ -1282,6 +1285,11 @@ export default function Dashboard() {
         onOpenChange={setMorningRefreshOpen}
         onRefreshed={loadStatus}
         onNeedFullSetup={() => setCredsOpen(true)}
+      />
+
+      <TelegramPrefsModal
+        open={telegramPrefsOpen}
+        onOpenChange={setTelegramPrefsOpen}
       />
 
       <SettingsModal

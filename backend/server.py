@@ -38,6 +38,10 @@ api_router = APIRouter(prefix="/api")
 
 tracker = OITracker(db)
 
+# Give notifier a handle to the db so it can read/write prefs
+import notifier as _notifier_boot
+_notifier_boot.set_db(db)
+
 
 # ------------------- Models -------------------
 class CredentialsIn(BaseModel):
@@ -480,6 +484,74 @@ from market_hours import market_status as _market_status
 @api_router.get("/telegram/status")
 async def telegram_status():
     return {"configured": _notifier.is_configured()}
+
+
+@api_router.get("/telegram/prefs")
+async def telegram_prefs_get():
+    return await _notifier.get_prefs()
+
+
+class TelegramPrefsIn(BaseModel):
+    enabled: Optional[bool] = None
+    indices: Optional[dict] = None
+    types: Optional[dict] = None
+    quiet_hours: Optional[dict] = None
+    major_abs_threshold: Optional[float] = None
+
+
+@api_router.post("/telegram/prefs")
+async def telegram_prefs_set(payload: TelegramPrefsIn):
+    return await _notifier.save_prefs(payload.model_dump(exclude_none=True))
+
+
+# Quick-preset endpoints (POST for idempotence + rate-limit friendliness)
+_PRESETS = {
+    "everything": {
+        "enabled": True,
+        "indices": {"NIFTY": True, "SENSEX": True, "BANKNIFTY": True},
+        "types": {"oi_reversal": True, "huge_shift": True, "huge_shift_major_only": False,
+                  "market_open": True, "market_close": True, "daily_digest": True,
+                  "tracker_errors": True, "kite_token": True},
+        "quiet_hours": {"enabled": False, "start": "09:00", "end": "10:30"},
+    },
+    "nifty_only": {
+        "enabled": True,
+        "indices": {"NIFTY": True, "SENSEX": False, "BANKNIFTY": False},
+    },
+    "sensex_only": {
+        "enabled": True,
+        "indices": {"NIFTY": False, "SENSEX": True, "BANKNIFTY": False},
+    },
+    "banknifty_only": {
+        "enabled": True,
+        "indices": {"NIFTY": False, "SENSEX": False, "BANKNIFTY": True},
+    },
+    "morning_only": {
+        "enabled": True,
+        "quiet_hours": {"enabled": True, "start": "09:00", "end": "10:30"},
+    },
+    "digest_only": {
+        "enabled": True,
+        "types": {"oi_reversal": False, "huge_shift": False, "market_open": False,
+                  "market_close": True, "daily_digest": True, "tracker_errors": True,
+                  "kite_token": True, "huge_shift_major_only": True},
+    },
+    "major_shifts_only": {
+        "enabled": True,
+        "types": {"oi_reversal": False, "huge_shift": True, "huge_shift_major_only": True,
+                  "market_open": False, "market_close": False, "daily_digest": True,
+                  "tracker_errors": True, "kite_token": True},
+    },
+    "off": {"enabled": False},
+}
+
+
+@api_router.post("/telegram/prefs/preset/{name}")
+async def telegram_prefs_preset(name: str):
+    preset = _PRESETS.get(name)
+    if not preset:
+        raise HTTPException(400, f"Unknown preset '{name}'. Available: {list(_PRESETS.keys())}")
+    return await _notifier.save_prefs(preset)
 
 
 @api_router.post("/telegram/test")

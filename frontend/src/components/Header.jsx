@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw } from "lucide-react";
+import { Activity, KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
@@ -9,6 +9,7 @@ export default function Header({
   current,
   onOpenCreds,
   onOpenMorningRefresh,
+  onOpenTelegramPrefs,
   onOpenSettings,
   onDownloadCsv,
   onOpenSounds,
@@ -165,6 +166,16 @@ export default function Header({
           >
             <RefreshCw className="w-4 h-4 mr-1.5" />
             Refresh Kite
+          </Button>
+          <Button
+            data-testid="btn-open-telegram-prefs"
+            variant="outline" size="sm"
+            className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            onClick={onOpenTelegramPrefs}
+            title="Telegram alert preferences"
+          >
+            <Send className="w-4 h-4 mr-1.5" />
+            Telegram
           </Button>
           <Button
             data-testid="btn-open-credentials"
