@@ -5,6 +5,7 @@ import OIChart from "@/components/OIChart";
 import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import GuestBanner from "@/components/GuestBanner";
+import MarketStatusBanner from "@/components/MarketStatusBanner";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
@@ -779,6 +780,7 @@ export default function Dashboard() {
           adminName={authState.admin_display_name}
         />
       )}
+      <MarketStatusBanner market={status?.market} lastPulledAt={lastPulledAt} />
       <Header
         status={status}
         current={current}

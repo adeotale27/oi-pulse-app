@@ -18,6 +18,7 @@ from datetime import datetime, timezone, timedelta
 from oi_tracker import OITracker, INDICES
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
+from market_hours import is_market_open
 from cryptography.fernet import Fernet
 import base64, hashlib
 
@@ -343,16 +344,27 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
     if expiry:
         tracker.set_expiry(idx, expiry)
     snap = tracker.last_snapshot.get(idx)
-    # if expiry mismatch or no snap, fetch on-demand
+    # if expiry mismatch or no snap, fetch on-demand (only when market is open)
     if not snap or (expiry and snap.get("expiry") != expiry):
-        try:
-            svc = tracker._get_service()
-            snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
-            if snap:
-                snap["mode"] = tracker.mode
-                tracker.last_snapshot[idx] = snap
-        except Exception as e:
-            raise HTTPException(500, str(e))
+        if not is_market_open():
+            # Market closed → serve latest from DB, don't hit Kite.
+            doc = await db.oi_snapshots.find_one(
+                {"index": idx, **({"expiry": expiry} if expiry else {})},
+                sort=[("created_at", -1)],
+                projection={"_id": 0},
+            )
+            if doc:
+                snap = doc
+                tracker.last_snapshot[idx] = doc
+        else:
+            try:
+                svc = tracker._get_service()
+                snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                if snap:
+                    snap["mode"] = tracker.mode
+                    tracker.last_snapshot[idx] = snap
+            except Exception as e:
+                raise HTTPException(500, str(e))
     if not snap:
         raise HTTPException(503, "No data yet")
     return snap
@@ -423,32 +435,53 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
             is_stale = True
 
     if (not current) or is_stale or (expiry and current.get("expiry") != expiry):
-        try:
-            svc = tracker._get_service()
-            fresh = await asyncio.wait_for(
-                asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
-                timeout=10.0,
-            )
-            if fresh:
-                fresh["mode"] = tracker.mode
-                tracker.last_snapshot[idx] = fresh
-                current = fresh
-            elif not current:
-                # No cache AND fresh returned None
-                raise HTTPException(503, f"No data available for {idx}")
-            else:
-                # Keep stale as fallback but log
-                logger.warning(f"/change: fresh get_snapshot({idx}) returned None; using stale cache.")
-        except asyncio.TimeoutError:
-            logger.error(f"/change: get_snapshot({idx}) timed out after 10s; using stale cache if any.")
+        # Respect market hours: once the market is closed, we STOP pulling
+        # fresh ticks and simply serve the last snapshot from memory / DB.
+        # This satisfies the "9:15 AM – 3:30 PM only" polling requirement
+        # and keeps the UI stable overnight / on weekends / on holidays.
+        market_is_open = is_market_open()
+        if not market_is_open:
             if not current:
-                raise HTTPException(504, f"Snapshot fetch timed out for {idx}")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.exception(f"/change inline refresh failed for {idx}: {e}")
-            if not current:
-                raise HTTPException(500, str(e))
+                # No in-memory cache — try DB for the most recent snapshot for this index.
+                doc = await db.oi_snapshots.find_one(
+                    {"index": idx, **({"expiry": expiry} if expiry else {})},
+                    sort=[("created_at", -1)],
+                    projection={"_id": 0},
+                )
+                if doc:
+                    current = doc
+                    tracker.last_snapshot[idx] = doc
+                else:
+                    raise HTTPException(503, f"No data available for {idx} — market is closed and no cached snapshot yet.")
+            # else: keep the stale cached snapshot untouched — this IS the "last
+            # data held in DB" that the user should see after market close.
+        else:
+            try:
+                svc = tracker._get_service()
+                fresh = await asyncio.wait_for(
+                    asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
+                    timeout=10.0,
+                )
+                if fresh:
+                    fresh["mode"] = tracker.mode
+                    tracker.last_snapshot[idx] = fresh
+                    current = fresh
+                elif not current:
+                    # No cache AND fresh returned None
+                    raise HTTPException(503, f"No data available for {idx}")
+                else:
+                    # Keep stale as fallback but log
+                    logger.warning(f"/change: fresh get_snapshot({idx}) returned None; using stale cache.")
+            except asyncio.TimeoutError:
+                logger.error(f"/change: get_snapshot({idx}) timed out after 10s; using stale cache if any.")
+                if not current:
+                    raise HTTPException(504, f"Snapshot fetch timed out for {idx}")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception(f"/change inline refresh failed for {idx}: {e}")
+                if not current:
+                    raise HTTPException(500, str(e))
     if not current:
         raise HTTPException(503, "No current data")
 

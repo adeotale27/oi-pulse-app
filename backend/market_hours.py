@@ -9,8 +9,8 @@ from datetime import datetime, timedelta, time as dtime, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-MARKET_OPEN = dtime(9, 0)     # start polling early so 15-min history is ready by 9:15
-MARKET_CLOSE = dtime(15, 30)
+MARKET_OPEN = dtime(9, 14)    # start polling 1 min pre-open so 15-min compare works from 9:15
+MARKET_CLOSE = dtime(15, 31)  # keep one snapshot after 3:30 close for the last-bar view
 
 # NSE trading holidays 2026 (equity & derivatives). Update yearly.
 NSE_HOLIDAYS_2026 = {
@@ -79,11 +79,40 @@ def seconds_until_next_open(dt: datetime = None) -> int:
 def market_status() -> dict:
     dt = now_ist()
     open_ = is_market_open(dt)
+    t = dt.time()
+
+    # Phase classification for a professional status banner in the UI.
+    if is_weekend(dt):
+        phase = "weekend"
+        banner_title = "Markets closed for the weekend"
+        banner_detail = "NSE trading resumes on the next business day at 9:15 AM IST. Displaying the most recent snapshot from our database."
+    elif is_holiday(dt):
+        phase = "holiday"
+        banner_title = "Markets closed — NSE holiday"
+        banner_detail = "Trading is suspended today. Displaying the most recent snapshot from our database."
+    elif open_:
+        phase = "open"
+        banner_title = None
+        banner_detail = None
+    elif t < MARKET_OPEN:
+        phase = "pre_open"
+        banner_title = "Markets have not opened yet"
+        banner_detail = "NSE opens at 9:15 AM IST. Live Open Interest polling will begin shortly. Displaying the most recent snapshot from our database."
+    else:
+        phase = "post_close"
+        banner_title = "Markets closed for the day"
+        banner_detail = "NSE closed at 3:30 PM IST. Displaying today's final snapshot from our database — data will resume at 9:15 AM IST on the next trading day."
+
     return {
         "is_market_open": open_,
+        "phase": phase,
+        "banner_title": banner_title,
+        "banner_detail": banner_detail,
         "now_ist": dt.isoformat(),
-        "market_open_ist": "09:00",
-        "market_close_ist": "15:30",
+        "market_open_ist": "09:14",
+        "market_close_ist": "15:31",
+        "display_open_ist": "09:15",
+        "display_close_ist": "15:30",
         "is_weekend": is_weekend(dt),
         "is_holiday": is_holiday(dt),
         "next_market_open_ist": next_market_open(dt).isoformat() if not open_ else None,
