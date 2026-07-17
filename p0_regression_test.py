@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 # Backend URL from frontend/.env
-BASE_URL = "https://stale-snapshot-cache.preview.emergentagent.com/api"
+BASE_URL = "https://deploy-guide-97.preview.emergentagent.com/api"
 TIMEOUT = 15  # 15 second timeout for API calls
 
 class Colors:
