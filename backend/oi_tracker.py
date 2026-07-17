@@ -261,7 +261,14 @@ class OITracker:
         self.last_updated_at = datetime.now(timezone.utc).isoformat()
 
     async def _evaluate_alerts(self, index_name: str, current: Dict[str, Any]):
-        """Compare current OI vs snapshot ~N minutes ago and detect reversal spikes."""
+        """Compare current OI vs snapshot ~N minutes ago and detect reversal spikes.
+
+        Only runs when the NSE market is currently OPEN. Prevents "market closed"
+        stale-data alerts from firing during pre-open / post-close / weekend / holiday
+        windows — the user was seeing bullish/bearish alerts long after 3:30 PM.
+        """
+        if not (FORCE_ALWAYS_POLL or is_market_open()):
+            return
         cutoff_min = int(self.settings.get("compare_minutes", 3))
         threshold_pct = float(self.settings.get("threshold_pct", 15.0))
         cooldown = int(self.settings.get("cooldown_seconds", 120))

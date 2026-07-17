@@ -254,7 +254,10 @@ export default function Dashboard() {
       setPrevious(data.previous);
       setHistoryReady(data.history_ready !== false);
       setAvailableHistoryMin(Number(data.available_history_minutes || 0));
-      setLastPulledAt(new Date().toISOString());
+      // `lastPulledAt` reflects the ACTUAL market-tick timestamp of the snapshot,
+      // not client wall-clock — so once the market closes at 3:30 PM IST it stays
+      // pinned to the final tick (which is what the user wants).
+      setLastPulledAt(data.current?.timestamp || new Date().toISOString());
       // Visual "just pulled" pulse on the chart card so users can see the
       // bars refresh at each 30-second cycle.
       setPulsePull(true);

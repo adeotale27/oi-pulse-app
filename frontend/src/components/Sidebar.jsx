@@ -45,23 +45,28 @@ function StepperInput({ testId, value, step, onChange }) {
         type="button"
         data-testid={`${testId}-dec`}
         onClick={dec}
-        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95"
+        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95 shrink-0"
         aria-label="Decrement"
       >
         <Minus className="w-3.5 h-3.5" />
       </button>
       <Input
         data-testid={testId}
-        type="number"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
         value={value ?? ""}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-8 flex-1 rounded-md font-mono-data text-sm text-center"
+        onChange={(e) => {
+          const digits = e.target.value.replace(/[^0-9]/g, "");
+          onChange(digits === "" ? "" : Number(digits));
+        }}
+        className="h-8 min-w-0 flex-1 rounded-md font-mono-data text-sm text-center px-1"
       />
       <button
         type="button"
         data-testid={`${testId}-inc`}
         onClick={inc}
-        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95"
+        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95 shrink-0"
         aria-label="Increment"
       >
         <Plus className="w-3.5 h-3.5" />

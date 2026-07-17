@@ -3867,3 +3867,121 @@ backend:
     working: true
   - task: "current.pcr still present in /api/oi/{index}/change"
     working: true
+
+
+#====================================================================================================
+# 2026-07-17 (4th round) — Alerts gated by market hours + admin route + compact banner
+#====================================================================================================
+
+backend:
+  - task: "Alerts do NOT fire when market is closed"
+    implemented: true
+    working: true
+    file: "/app/backend/oi_tracker.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added an early-return in OITracker._evaluate_alerts() that skips evaluation when is_market_open() is False (and FORCE_ALWAYS_POLL is not set). This fixes the bug where bullish/bearish alerts kept triggering after 3:30 PM IST. Verify: (a) GET /api/alerts before waiting; (b) leave app for 60s; (c) GET /api/alerts again — count must be unchanged when phase != 'open'."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ VERIFIED - Alerts correctly frozen when market is closed
+          
+          Test date: 2026-07-17 at 13:10 UTC
+          Test file: /app/backend_test_round4.py
+          
+          TEST PROCEDURE:
+          1. GET /api/status → Market phase: post_close (closed market ✓)
+          2. GET /api/alerts?limit=50 → count_before: 30, latest_before: 2026-07-17T10:33:43.274412+00:00
+          3. Sleep 90 seconds (exceeds 60s closed-market sleep interval)
+          4. GET /api/alerts?limit=50 → count_after: 30, latest_after: 2026-07-17T10:33:43.274412+00:00
+          
+          ASSERTIONS (all passed):
+          ✓ Assertion 1: Alert count unchanged (30 → 30)
+          ✓ Assertion 2: Latest alert timestamp unchanged (2026-07-17T10:33:43.274412+00:00)
+          ✓ Assertion 3: Latest alert is 9493.2s old (> 90s, created before test started)
+          
+          VERDICT: The fix is working correctly. Alerts are NOT firing when market is closed.
+          The early-return in OITracker._evaluate_alerts() successfully prevents alert 
+          evaluation when is_market_open() returns False. No new alerts were created during 
+          the 90-second test window when market phase was post_close.
+
+frontend:
+  - task: "/admin dedicated login page"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/pages/AdminLogin.jsx, /app/frontend/src/App.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "New /admin route serves an admin-only login page (AdminLogin.jsx). No guest flow. Uses POST /api/auth/login and stores token in localStorage. Backend endpoint unchanged — this is purely a frontend UX addition, testing not needed on backend for this task."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.6"
+  test_sequence: 6
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Only one backend regression to verify this round:
+
+        1. Alerts must NOT fire when market is closed.
+           - GET /api/alerts?limit=50 → capture count_before.
+           - Sleep 90 seconds (this is longer than the tracker's 60s closed-market
+             sleep interval — a full "would-have-polled" cycle).
+           - GET /api/alerts?limit=50 again → capture count_after.
+           - If /api/status.market.phase != "open" (which will be the case in this
+             test env), assert count_before == count_after.
+           - Also inspect the top document (if any) — its `created_at` should NOT be
+             within the last 90 seconds when phase != "open".
+
+        Constraints (unchanged): no password change, no vault mutation, ≤5 login attempts.
+    - agent: "testing"
+      message: |
+        ✅ BACKEND REGRESSION TEST COMPLETE - ROUND 4 (2026-07-17)
+        
+        Test date: 2026-07-17 at 13:10 UTC
+        Test file: /app/backend_test_round4.py
+        Backend URL: https://06809b2f-6889-48e8-a120-619601eb6da3.preview.emergentagent.com/api
+        
+        ========================================
+        SUMMARY: TEST PASSED ✅
+        ========================================
+        
+        Task: "Alerts do NOT fire when market is closed" - WORKING ✅
+        
+        TEST RESULTS:
+        - Market phase: post_close (closed market as expected)
+        - Alert count before: 30
+        - Alert count after: 30 (unchanged ✓)
+        - Latest alert before: 2026-07-17T10:33:43.274412+00:00
+        - Latest alert after: 2026-07-17T10:33:43.274412+00:00 (unchanged ✓)
+        - Latest alert age: 9493.2 seconds (> 90s, created before test started ✓)
+        
+        ALL 3 ASSERTIONS PASSED:
+        ✓ Assertion 1: Alert count unchanged (30 → 30)
+        ✓ Assertion 2: Latest alert timestamp unchanged
+        ✓ Assertion 3: Latest alert is 9493.2s old (> 90s, created before test started)
+        
+        VERDICT:
+        The fix is working correctly. Alerts are NOT firing when market is closed.
+        The early-return in OITracker._evaluate_alerts() successfully prevents alert
+        evaluation when is_market_open() returns False. No new alerts were created
+        during the 90-second test window when market phase was post_close.
+        
+        No critical issues found. The backend task is production-ready.
+
