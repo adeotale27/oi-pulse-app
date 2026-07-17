@@ -5113,3 +5113,19 @@ agent_communication:
         The backend is production-ready. No issues found.
         
         YOU MUST ASK USER BEFORE DOING FRONTEND TESTING
+
+    - agent: "testing"
+      message: |
+        ✅ Round 9 backend PASSED (2026-07-17) — DB refresh (Fresh Pull) verified exhaustively:
+        - POST /api/admin/refresh-day (kite mode): deleted 1128, backfilled 1128
+          (NIFTY=376, SENSEX=376, BANKNIFTY=376). All 3 indices have >=375 history rows.
+        - /api/oi/NIFTY/change for M in {5,10,15,30,60,375}: all six return DISTINCT
+          previous.timestamps at exact 5/10/15/30/60/375-min offsets, history_ready=true.
+        - available_history_minutes exact for M=5,60,375 (5.0, 60.0, 375.0).
+        - 32/32 assertions passed.
+
+backend:
+  - task: "POST /api/admin/refresh-day backfills ALL 3 indices in BOTH mock and kite modes"
+    working: true
+  - task: "GET /api/oi/{idx}/change?minutes=N returns distinct previous per timeframe"
+    working: true
