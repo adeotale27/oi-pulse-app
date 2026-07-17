@@ -4820,3 +4820,18 @@ agent_communication:
            explanatory note about weekly expiries being discontinued.
         
         No critical issues found. All features working as expected.
+
+    - agent: "testing"
+      message: |
+        ✅ Round 8 backend PASSED (2026-07-17):
+        - VIX populated on boot: 13.15 (^INDIAVIX). GIFT NIFTY 24334.3 (^NSEI).
+        - Server time 19:42 IST (past 15:30) → VIX visible outside polling window.
+        - NIFTY: 8 exp, W+M mix, note null.
+        - SENSEX: 8 exp, W+M mix, note null.
+        - BANKNIFTY: 6 exp, ALL M, note explains "weekly … discontinued".
+
+backend:
+  - task: "VIX populates on startup regardless of polling window"
+    working: true
+  - task: "GET /api/expiries/{index} capped to 8 nearest; BANKNIFTY has 'note' field"
+    working: true
