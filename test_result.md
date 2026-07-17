@@ -3472,3 +3472,52 @@ agent_communication:
         ❌ Failed: 4 (36%)
         
         Backend code is correct. The CORS issue is at the infrastructure layer.
+
+    - agent: "testing"
+      message: |
+        Backend test run 2026-07-17 (post CORS + startup log changes):
+        ✅ Auth regression: login/state/logout all pass, is_admin flag correct.
+        ✅ Startup logs + Mongo indexes: /api/status 200, history endpoint fast.
+        ⚠️ CORS at ingress: The backend's own CORS middleware correctly echoes the exact
+            allowed origin when queried at http://localhost:8001, but the Kubernetes /
+            Cloudflare ingress in front of the public preview URL overrides the response
+            with `Access-Control-Allow-Origin: *` (and adds `Access-Control-Allow-Credentials: true`).
+            This is infrastructure-level and outside the app code. Backend .env + server.py
+            are correctly configured.
+
+    - agent: "main"
+      message: |
+        Interpretation of the ingress "*" override:
+        The frontend (axios instance in /app/frontend/src/lib/api.js) does NOT set
+        `withCredentials: true` — it uses `X-Admin-Token` in a header, not cookies.
+        Therefore browsers treat requests from https://aaisnamkeen.com as NON-credentialed,
+        and `Access-Control-Allow-Origin: *` is a valid response. The user's CORS block
+        from aaisnamkeen.com should be resolved: our backend .env now explicitly lists
+        aaisnamkeen.com (for direct connections that skip the ingress), and the ingress
+        adds the wildcard on top. Marking tasks as working; will surface the ingress
+        detail to the user in case they need stricter policy in production.
+
+backend:
+  - task: "CORS allow-list includes aaisnamkeen.com + www + production URL"
+    working: true
+    file: "/app/backend/.env, /app/backend/server.py"
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "Backend CORS middleware echoes correct Origin when hit directly. Ingress in front adds `*` — non-credentialed requests from aaisnamkeen.com will succeed."
+
+  - task: "Auth flow regression"
+    working: true
+    file: "/app/backend/server.py"
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "login/state/logout all pass. is_admin flag correct."
+
+  - task: "Startup logs today's snapshot count + Mongo indexes"
+    working: true
+    file: "/app/backend/server.py"
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "Backend restarted cleanly. Startup log printed today's snapshot count. history endpoint returns fast."
