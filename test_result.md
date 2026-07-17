@@ -3704,3 +3704,21 @@ agent_communication:
         - OI endpoints serve cached data when market is closed (no fresh API calls)
         
         No critical issues found. All regression tests passed.
+
+    - agent: "testing"
+      message: |
+        ✅ All 3 market-hours enforcement tasks PASSED (2026-07-17):
+        - GET /api/status returns market.phase="post_close", banner_title/detail non-empty,
+          display_open_ist=09:15, display_close_ist=15:30.
+        - /api/history/NIFTY counts identical over 20s → tracker no longer polls outside window.
+        - /api/oi/NIFTY/change returns identical `current.timestamp` on two calls 5s apart →
+          endpoints serve cache/DB, no fresh Kite/mock fetches while market is closed.
+        Constraints respected: no auth changes, no data mutations.
+
+backend:
+  - task: "Market hours window locked to 09:14–15:31 IST; polling stops outside window"
+    working: true
+  - task: "GET /api/status returns market phase + banner text"
+    working: true
+  - task: "OI endpoints serve last DB snapshot when market is closed"
+    working: true
