@@ -79,9 +79,6 @@ export default function Header({
             <div className="text-sm font-semibold tracking-tight dark:text-slate-100 bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
               OI Pulse
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">
-              NSE OI Tracker
-            </div>
           </div>
         </div>
 

@@ -1,10 +1,8 @@
 /**
- * OI-Pulse logo — clean, geometric, high-contrast.
- * Composition:
- *   • Rounded emerald-to-sky-blue square backdrop
- *   • Sharp candle-and-wick "market" glyph
- *   • Upward arrow tip in the top-right (pulse indicator)
- * No blur / no filter → renders crisp at every size.
+ * OI-Pulse logo — minimalist, geometric, high-contrast.
+ * A single continuous pulse/heart-beat wave over a soft gradient tile,
+ * flanked by a small upward tick — reading as "live signal + market pulse".
+ * SVG only. No filters. Crisp at every size.
  */
 export default function OiPulseLogo({ className = "w-6 h-6" }) {
   const gid = "oi-grad-" + Math.random().toString(36).slice(2, 8);
@@ -19,42 +17,41 @@ export default function OiPulseLogo({ className = "w-6 h-6" }) {
     >
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#059669" />
-          <stop offset="55%" stopColor="#047857" />
-          <stop offset="100%" stopColor="#0284c7" />
+          <stop offset="0%" stopColor="#10B981" />
+          <stop offset="60%" stopColor="#059669" />
+          <stop offset="100%" stopColor="#0284C7" />
         </linearGradient>
       </defs>
 
       {/* Rounded-square backdrop */}
-      <rect x="2" y="2" width="44" height="44" rx="11" ry="11" fill={`url(#${gid})`} />
-      <rect x="2" y="2" width="44" height="44" rx="11" ry="11" fill="none"
-            stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
+      <rect x="2" y="2" width="44" height="44" rx="12" ry="12" fill={`url(#${gid})`} />
 
-      {/* Baseline */}
-      <line x1="9" y1="34" x2="39" y2="34" stroke="rgba(255,255,255,0.32)" strokeWidth="1.2" />
-
-      {/* Candles (bearish red left, bullish green right — using white with opacity for clean look) */}
-      {/* Left small candle */}
-      <line x1="13" y1="19" x2="13" y2="31" stroke="rgba(255,255,255,0.85)" strokeWidth="1.4" strokeLinecap="round" />
-      <rect x="11.4" y="22" width="3.2" height="7" rx="0.6" fill="rgba(255,255,255,0.85)" />
-
-      {/* Middle taller bullish candle */}
-      <line x1="20" y1="12" x2="20" y2="32" stroke="#ffffff" strokeWidth="1.6" strokeLinecap="round" />
-      <rect x="18" y="15" width="4" height="14" rx="0.7" fill="#ffffff" />
-
-      {/* Right growing candle */}
-      <line x1="27" y1="16" x2="27" y2="30" stroke="rgba(255,255,255,0.9)" strokeWidth="1.5" strokeLinecap="round" />
-      <rect x="25.2" y="18" width="3.6" height="9" rx="0.6" fill="rgba(255,255,255,0.9)" />
-
-      {/* Upward arrow (pulse) — from candle top to top-right corner */}
-      <path
-        d="M31 20 L39 12"
-        stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round"
+      {/* Subtle inner highlight */}
+      <rect
+        x="2.5"
+        y="2.5"
+        width="43"
+        height="43"
+        rx="11.5"
+        ry="11.5"
+        fill="none"
+        stroke="rgba(255,255,255,0.18)"
+        strokeWidth="1"
       />
+
+      {/* Single clean pulse wave — ─┘¯└─ */}
       <path
-        d="M39 12 L39 17 M39 12 L34 12"
-        stroke="#ffffff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none"
+        d="M8 26 L17 26 L20 18 L24 34 L28 22 L31 26 L40 26"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
+
+      {/* Live dot at end of wave */}
+      <circle cx="40" cy="26" r="2.4" fill="#FFFFFF" />
+      <circle cx="40" cy="26" r="4" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1" />
     </svg>
   );
 }

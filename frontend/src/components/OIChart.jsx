@@ -26,6 +26,7 @@ function formatTime(iso) {
 
 export default function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap }) {
   // Build merged strike -> { pe_now, pe_prev, ce_now, ce_prev }
+  const spotPrice = current?.price ?? null;
   const data = useMemo(() => {
     if (!current) return [];
     const prevMap = new Map();
@@ -112,13 +113,17 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
           {atm && (
             <ReferenceLine
               x={atm}
-              stroke="#94A3B8"
+              stroke="#0F172A"
               strokeDasharray="4 4"
+              strokeWidth={1.2}
               label={{
-                value: `ATM ${atm}`,
+                value: spotPrice
+                  ? `ATM ${atm}  ·  ₹${Number(spotPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                  : `ATM ${atm}`,
                 position: "top",
-                fill: "#475569",
+                fill: "#0F172A",
                 fontSize: 11,
+                fontWeight: 600,
                 fontFamily: "JetBrains Mono",
               }}
             />

@@ -43,7 +43,7 @@ import { Play, HelpCircle } from "lucide-react";
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 const INDEX_STEP = { NIFTY: 50, SENSEX: 100, BANKNIFTY: 100 };
 const POLL_OPTIONS = [15000, 30000, 60000];
-const DEFAULT_POLL_MS = 30000;
+const DEFAULT_POLL_MS = 15000;
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;

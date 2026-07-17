@@ -1143,10 +1143,34 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def _startup():
+    # Ensure indexes for fast history / retention queries.
+    try:
+        await db.oi_snapshots.create_index([("index", 1), ("created_at", 1)])
+        await db.oi_snapshots.create_index("created_at")
+        await db.alerts.create_index([("index", 1), ("created_at", -1)])
+    except Exception as e:
+        logger.warning(f"index creation warn: {e}")
+
     await tracker.load_credentials()
     await tracker.load_settings()
     await tracker.start()
-    logger.info(f"OI Tracker started in {tracker.mode} mode")
+
+    # Report how much of today's session data we already have so operators
+    # can immediately see whether continuity was preserved across a restart.
+    try:
+        from market_hours import IST
+        today_ist = datetime.now(IST).date()
+        start_utc = datetime.combine(today_ist, datetime.min.time()).replace(tzinfo=IST).astimezone(timezone.utc)
+        today_count = await db.oi_snapshots.count_documents(
+            {"created_at": {"$gte": start_utc.isoformat()}}
+        )
+        logger.info(
+            f"OI Tracker started in {tracker.mode} mode | "
+            f"today's snapshots already stored: {today_count} "
+            f"(polling resumes immediately)"
+        )
+    except Exception:
+        logger.info(f"OI Tracker started in {tracker.mode} mode")
 
 
 @app.on_event("shutdown")

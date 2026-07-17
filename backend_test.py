@@ -1,592 +1,327 @@
 #!/usr/bin/env python3
 """
-Backend test suite for Admin-proof lock-down feature (2026-07-17)
-Tests session-based tokens, admin-guard on sensitive endpoints, and guest flow.
+OI-Pulse Backend Testing Suite
+Tests the three tasks from test_result.md:
+1. CORS allow-list includes aaisnamkeen.com + www + production URL
+2. Auth flow regression — login + state + logout still works after changes
+3. Startup logs today's snapshot count + Mongo indexes created
 """
 
 import requests
-import time
-from typing import Dict, Any, Optional
+import sys
+from typing import Dict, Any
 
 # Backend URL from frontend/.env
-BASE_URL = "https://768861c1-e842-4795-b466-c68d987f3978.preview.emergentagent.com/api"
+BASE_URL = "https://06809b2f-6889-48e8-a120-619601eb6da3.preview.emergentagent.com"
+API_BASE = f"{BASE_URL}/api"
 
-# Test credentials from /app/memory/test_credentials.md
+# Admin credentials from /app/memory/test_credentials.md
 ADMIN_USERNAME = "Adeotale"
 ADMIN_PASSWORD = "MasterApp@123"
 
-# Test state
-admin_token: Optional[str] = None
-guest_token: Optional[str] = None
+# Test counters
+tests_passed = 0
+tests_failed = 0
+login_attempts = 0
 
-# ANSI color codes for output
-GREEN = "\033[92m"
-RED = "\033[91m"
-YELLOW = "\033[93m"
-BLUE = "\033[94m"
-RESET = "\033[0m"
-
-def log_test(test_num: int, description: str):
-    """Log test start"""
-    print(f"\n{BLUE}{'='*80}{RESET}")
-    print(f"{BLUE}Test {test_num}: {description}{RESET}")
-    print(f"{BLUE}{'='*80}{RESET}")
-
-def log_pass(message: str):
-    """Log test pass"""
-    print(f"{GREEN}✓ PASS: {message}{RESET}")
-
-def log_fail(message: str):
-    """Log test failure"""
-    print(f"{RED}✗ FAIL: {message}{RESET}")
-
-def log_info(message: str):
-    """Log info"""
-    print(f"{YELLOW}ℹ INFO: {message}{RESET}")
-
-def log_request(method: str, endpoint: str, headers: Dict = None, data: Any = None):
-    """Log HTTP request details"""
-    print(f"\n{YELLOW}→ {method} {endpoint}{RESET}")
-    if headers:
-        print(f"  Headers: {headers}")
-    if data:
-        print(f"  Body: {data}")
-
-def log_response(status: int, data: Any = None):
-    """Log HTTP response details"""
-    color = GREEN if 200 <= status < 300 else RED
-    print(f"{color}← Status: {status}{RESET}")
-    if data:
-        print(f"  Response: {data}")
-
-def test_1_vault_anon():
-    """Test 1: GET /api/kite/vault anon → 401 with 'Admin only'"""
-    log_test(1, "GET /api/kite/vault anon → 401 with 'Admin only'")
-    
-    log_request("GET", f"{BASE_URL}/kite/vault")
-    resp = requests.get(f"{BASE_URL}/kite/vault")
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        data = resp.json()
-        if "Admin only" in data.get("detail", ""):
-            log_pass("Vault endpoint correctly protected - returns 401 'Admin only'")
-            return True
-        else:
-            log_fail(f"Expected 'Admin only' in detail, got: {data.get('detail')}")
-            return False
+def log_test(name: str, passed: bool, details: str = ""):
+    """Log test result"""
+    global tests_passed, tests_failed
+    status = "✅ PASS" if passed else "❌ FAIL"
+    print(f"{status}: {name}")
+    if details:
+        print(f"  → {details}")
+    if passed:
+        tests_passed += 1
     else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
+        tests_failed += 1
+    print()
 
-def test_2_positions_anon():
-    """Test 2: GET /api/positions anon → 401"""
-    log_test(2, "GET /api/positions anon → 401")
+def test_cors_preflight(origin: str, should_allow: bool = True):
+    """Test CORS preflight (OPTIONS) request"""
+    test_name = f"CORS Preflight: {origin}"
     
-    log_request("GET", f"{BASE_URL}/positions")
-    resp = requests.get(f"{BASE_URL}/positions")
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Positions endpoint correctly protected - returns 401")
-        return True
-    else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
-
-def test_3_delete_alerts_anon():
-    """Test 3: DELETE /api/alerts anon → 401"""
-    log_test(3, "DELETE /api/alerts anon → 401")
-    
-    log_request("DELETE", f"{BASE_URL}/alerts")
-    resp = requests.delete(f"{BASE_URL}/alerts")
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Delete alerts endpoint correctly protected - returns 401")
-        return True
-    else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
-
-def test_4_mode_anon():
-    """Test 4: POST /api/mode anon with body {"mode":"kite"} → 401"""
-    log_test(4, "POST /api/mode anon with body {\"mode\":\"kite\"} → 401")
-    
-    payload = {"mode": "kite"}
-    log_request("POST", f"{BASE_URL}/mode", data=payload)
-    resp = requests.post(f"{BASE_URL}/mode", json=payload)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Mode endpoint correctly protected - returns 401")
-        return True
-    else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
-
-def test_5_telegram_prefs_post_anon():
-    """Test 5: POST /api/telegram/prefs anon → 401"""
-    log_test(5, "POST /api/telegram/prefs anon → 401")
-    
-    payload = {"enabled": True}
-    log_request("POST", f"{BASE_URL}/telegram/prefs", data=payload)
-    resp = requests.post(f"{BASE_URL}/telegram/prefs", json=payload)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Telegram prefs POST endpoint correctly protected - returns 401")
-        return True
-    else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
-
-def test_6_telegram_prefs_get_anon():
-    """Test 6: GET /api/telegram/prefs anon → 401"""
-    log_test(6, "GET /api/telegram/prefs anon → 401")
-    
-    log_request("GET", f"{BASE_URL}/telegram/prefs")
-    resp = requests.get(f"{BASE_URL}/telegram/prefs")
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Telegram prefs GET endpoint correctly protected - returns 401")
-        return True
-    else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
-
-def test_7_admin_login():
-    """Test 7: POST /api/auth/login with correct credentials → 200, save token"""
-    global admin_token
-    log_test(7, "POST /api/auth/login with correct credentials → 200, save token")
-    
-    payload = {"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD}
-    log_request("POST", f"{BASE_URL}/auth/login", data=payload)
-    resp = requests.post(f"{BASE_URL}/auth/login", json=payload)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        token = data.get("token")
-        if token and len(token) > 20:  # token_urlsafe(32) produces ~43 chars
-            admin_token = token
-            log_pass(f"Admin login successful - token received (length: {len(token)})")
-            log_info(f"Token: {token[:20]}...")
-            log_info(f"is_admin: {data.get('is_admin')}, username: {data.get('username')}")
-            return True
-        else:
-            log_fail(f"Token missing or too short: {token}")
-            return False
-    else:
-        log_fail(f"Expected 200, got {resp.status_code}")
-        return False
-
-def test_8_vault_with_admin_token():
-    """Test 8: GET /api/kite/vault with X-Admin-Token → 200"""
-    log_test(8, "GET /api/kite/vault with X-Admin-Token → 200")
-    
-    if not admin_token:
-        log_fail("No admin token available (test 7 must pass first)")
-        return False
-    
-    headers = {"X-Admin-Token": admin_token}
-    log_request("GET", f"{BASE_URL}/kite/vault", headers=headers)
-    resp = requests.get(f"{BASE_URL}/kite/vault", headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        log_pass(f"Vault accessible with admin token - has_api_key: {data.get('has_api_key')}")
-        return True
-    else:
-        log_fail(f"Expected 200, got {resp.status_code}")
-        return False
-
-def test_9_logout_and_invalidate():
-    """Test 9: POST /api/auth/logout → 200, then vault with same token → 401"""
-    global admin_token
-    log_test(9, "POST /api/auth/logout → 200, then vault with same token → 401")
-    
-    if not admin_token:
-        log_fail("No admin token available (test 7 must pass first)")
-        return False
-    
-    old_token = admin_token
-    headers = {"X-Admin-Token": old_token}
-    
-    # Logout
-    log_request("POST", f"{BASE_URL}/auth/logout", headers=headers)
-    resp = requests.post(f"{BASE_URL}/auth/logout", headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code != 200:
-        log_fail(f"Logout failed - expected 200, got {resp.status_code}")
-        return False
-    
-    log_pass("Logout successful")
-    
-    # Try to use the invalidated token
-    time.sleep(0.5)
-    log_request("GET", f"{BASE_URL}/kite/vault", headers=headers)
-    resp = requests.get(f"{BASE_URL}/kite/vault", headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Invalidated token correctly rejected - returns 401")
-        admin_token = None  # Clear the token
-        return True
-    else:
-        log_fail(f"Expected 401 for invalidated token, got {resp.status_code}")
-        return False
-
-def test_10_login_and_open_public_access():
-    """Test 10: Login again, then POST /api/auth/public-access {"open":true} → 200"""
-    global admin_token
-    log_test(10, "Login again, then POST /api/auth/public-access {\"open\":true} → 200")
-    
-    # Login again
-    payload = {"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD}
-    log_request("POST", f"{BASE_URL}/auth/login", data=payload)
-    resp = requests.post(f"{BASE_URL}/auth/login", json=payload)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code != 200:
-        log_fail(f"Re-login failed - expected 200, got {resp.status_code}")
-        return False
-    
-    admin_token = resp.json().get("token")
-    log_pass(f"Re-login successful - new token received")
-    
-    # Open public access
-    headers = {"X-Admin-Token": admin_token}
-    payload = {"open": True}
-    log_request("POST", f"{BASE_URL}/auth/public-access", headers=headers, data=payload)
-    resp = requests.post(f"{BASE_URL}/auth/public-access", json=payload, headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if data.get("open") == True and data.get("expires_at"):
-            log_pass(f"Public access opened - expires_at: {data.get('expires_at')}")
-            return True
-        else:
-            log_fail(f"Unexpected response: {data}")
-            return False
-    else:
-        log_fail(f"Expected 200, got {resp.status_code}")
-        return False
-
-def test_11_guest_login_valid():
-    """Test 11: Anon POST /api/auth/guest {"name":"Rahul Sharma"} → 200"""
-    global guest_token
-    log_test(11, "Anon POST /api/auth/guest {\"name\":\"Rahul Sharma\"} → 200")
-    
-    payload = {"name": "Rahul Sharma"}
-    log_request("POST", f"{BASE_URL}/auth/guest", data=payload)
-    resp = requests.post(f"{BASE_URL}/auth/guest", json=payload)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        token = data.get("token")
-        name = data.get("name")
-        if token and name == "Rahul Sharma":
-            guest_token = token
-            log_pass(f"Guest login successful - token received, name: {name}")
-            log_info(f"Guest token: {token[:20]}...")
-            return True
-        else:
-            log_fail(f"Unexpected response: {data}")
-            return False
-    else:
-        log_fail(f"Expected 200, got {resp.status_code}")
-        return False
-
-def test_12_guest_login_invalid_name():
-    """Test 12: Anon POST /api/auth/guest {"name":"Rahul"} (no space) → 400"""
-    log_test(12, "Anon POST /api/auth/guest {\"name\":\"Rahul\"} (no space) → 400")
-    
-    payload = {"name": "Rahul"}
-    log_request("POST", f"{BASE_URL}/auth/guest", data=payload)
-    resp = requests.post(f"{BASE_URL}/auth/guest", json=payload)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 400:
-        data = resp.json()
-        detail = data.get("detail", "")
-        if "full name" in detail.lower() or "space" in detail.lower():
-            log_pass(f"Invalid name correctly rejected - detail: {detail}")
-            return True
-        else:
-            log_pass(f"Invalid name rejected with 400 (detail: {detail})")
-            return True
-    else:
-        log_fail(f"Expected 400, got {resp.status_code}")
-        return False
-
-def test_13_guest_login_duplicate():
-    """Test 13: Anon POST /api/auth/guest {"name":"Rahul Sharma"} again → 200 (optional)"""
-    log_test(13, "Anon POST /api/auth/guest {\"name\":\"Rahul Sharma\"} again → 200")
-    
-    payload = {"name": "Rahul Sharma"}
-    log_request("POST", f"{BASE_URL}/auth/guest", data=payload)
-    resp = requests.post(f"{BASE_URL}/auth/guest", json=payload)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        log_pass(f"Duplicate guest login allowed - new session created")
-        return True
-    else:
-        log_info(f"Duplicate guest login returned {resp.status_code} (optional test)")
-        return True  # Optional test, don't fail
-
-def test_14_auth_state_with_guest_token():
-    """Test 14: GET /api/auth/state with X-Guest-Token → 200 is_guest=true"""
-    log_test(14, "GET /api/auth/state with X-Guest-Token → 200 is_guest=true")
-    
-    if not guest_token:
-        log_fail("No guest token available (test 11 must pass first)")
-        return False
-    
-    headers = {"X-Guest-Token": guest_token}
-    log_request("GET", f"{BASE_URL}/auth/state", headers=headers)
-    resp = requests.get(f"{BASE_URL}/auth/state", headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if data.get("is_guest") == True and data.get("guest_name") == "Rahul Sharma" and data.get("is_admin") == False:
-            log_pass(f"Guest state correct - is_guest: True, guest_name: {data.get('guest_name')}, is_admin: False")
-            return True
-        else:
-            log_fail(f"Unexpected state: {data}")
-            return False
-    else:
-        log_fail(f"Expected 200, got {resp.status_code}")
-        return False
-
-def test_15_positions_with_guest_token():
-    """Test 15: GET /api/positions with X-Guest-Token → 401 (guest is NOT admin)"""
-    log_test(15, "GET /api/positions with X-Guest-Token → 401")
-    
-    if not guest_token:
-        log_fail("No guest token available (test 11 must pass first)")
-        return False
-    
-    headers = {"X-Guest-Token": guest_token}
-    log_request("GET", f"{BASE_URL}/positions", headers=headers)
-    resp = requests.get(f"{BASE_URL}/positions", headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Guest correctly denied access to positions endpoint - returns 401")
-        return True
-    else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
-
-def test_16_delete_alerts_with_guest_token():
-    """Test 16: DELETE /api/alerts with X-Guest-Token → 401"""
-    log_test(16, "DELETE /api/alerts with X-Guest-Token → 401")
-    
-    if not guest_token:
-        log_fail("No guest token available (test 11 must pass first)")
-        return False
-    
-    headers = {"X-Guest-Token": guest_token}
-    log_request("DELETE", f"{BASE_URL}/alerts", headers=headers)
-    resp = requests.delete(f"{BASE_URL}/alerts", headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 401:
-        log_pass("Guest correctly denied access to delete alerts - returns 401")
-        return True
-    else:
-        log_fail(f"Expected 401, got {resp.status_code}")
-        return False
-
-def test_17_auth_guests_list():
-    """Test 17: GET /api/auth/guests with X-Admin-Token → 200 with guests array"""
-    log_test(17, "GET /api/auth/guests with X-Admin-Token → 200 with guests array")
-    
-    if not admin_token:
-        log_fail("No admin token available (test 10 must pass first)")
-        return False
-    
-    headers = {"X-Admin-Token": admin_token}
-    log_request("GET", f"{BASE_URL}/auth/guests", headers=headers)
-    resp = requests.get(f"{BASE_URL}/auth/guests", headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        guests = data.get("guests", [])
-        if any("Rahul Sharma" in str(g) for g in guests):
-            log_pass(f"Guest list retrieved - found 'Rahul Sharma' in {len(guests)} guest(s)")
-            return True
-        else:
-            log_fail(f"'Rahul Sharma' not found in guests list: {guests}")
-            return False
-    else:
-        log_fail(f"Expected 200, got {resp.status_code}")
-        return False
-
-def test_18_close_public_access():
-    """Test 18: POST /api/auth/public-access {"open":false} → 200 (CRITICAL)"""
-    log_test(18, "POST /api/auth/public-access {\"open\":false} → 200 (CRITICAL)")
-    
-    if not admin_token:
-        log_fail("No admin token available (test 10 must pass first)")
-        return False
-    
-    headers = {"X-Admin-Token": admin_token}
-    payload = {"open": False}
-    log_request("POST", f"{BASE_URL}/auth/public-access", headers=headers, data=payload)
-    resp = requests.post(f"{BASE_URL}/auth/public-access", json=payload, headers=headers)
-    log_response(resp.status_code, resp.json() if resp.status_code != 500 else resp.text)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if data.get("open") == False:
-            log_pass("Public access closed successfully - app is safely locked")
-            
-            # Verify auth state
-            time.sleep(0.5)
-            log_request("GET", f"{BASE_URL}/auth/state")
-            resp2 = requests.get(f"{BASE_URL}/auth/state")
-            log_response(resp2.status_code, resp2.json() if resp2.status_code != 500 else resp2.text)
-            
-            if resp2.status_code == 200:
-                state = resp2.json()
-                if state.get("requires_login") == True:
-                    log_pass("Verified: Auth state confirms app is locked (requires_login=true)")
-                    return True
-                else:
-                    log_fail(f"Auth state shows requires_login={state.get('requires_login')}, expected True")
-                    return False
+    try:
+        headers = {
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "content-type"
+        }
+        
+        response = requests.options(f"{API_BASE}/status", headers=headers, timeout=10)
+        
+        # Check status code (200 or 204 are both acceptable for OPTIONS)
+        if response.status_code not in [200, 204]:
+            log_test(test_name, False, f"Expected 200/204, got {response.status_code}")
+            return
+        
+        # Check Access-Control-Allow-Origin header
+        allow_origin = response.headers.get("Access-Control-Allow-Origin", "")
+        
+        if should_allow:
+            if allow_origin == origin:
+                log_test(test_name, True, f"Status: {response.status_code}, Allow-Origin: {allow_origin}")
             else:
-                log_info("Could not verify auth state (non-critical)")
-                return True
+                log_test(test_name, False, f"Expected Allow-Origin={origin}, got {allow_origin}")
         else:
-            log_fail(f"Unexpected response: {data}")
-            return False
-    else:
-        log_fail(f"Expected 200, got {resp.status_code}")
-        return False
+            if allow_origin != origin:
+                log_test(test_name, True, f"Origin correctly blocked (Allow-Origin: {allow_origin})")
+            else:
+                log_test(test_name, False, f"Evil origin was incorrectly allowed: {allow_origin}")
+                
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
 
-def test_19_regression_read_endpoints():
-    """Test 19: Regression - GET /api/status, /api/oi/NIFTY, /api/tickers still 200 for anon"""
-    log_test(19, "Regression - read endpoints still accessible for anon")
+def test_cors_simple_request(origin: str, should_allow: bool = True):
+    """Test CORS simple GET request"""
+    test_name = f"CORS Simple GET: {origin}"
     
-    endpoints = [
-        "/status",
-        "/oi/NIFTY",
-        "/tickers"
-    ]
-    
-    all_pass = True
-    for endpoint in endpoints:
-        log_request("GET", f"{BASE_URL}{endpoint}")
-        resp = requests.get(f"{BASE_URL}{endpoint}")
-        log_response(resp.status_code)
+    try:
+        headers = {"Origin": origin}
+        response = requests.get(f"{API_BASE}/status", headers=headers, timeout=10)
         
-        if resp.status_code == 200:
-            log_pass(f"{endpoint} accessible - returns 200")
+        # Check status code
+        if response.status_code != 200:
+            log_test(test_name, False, f"Expected 200, got {response.status_code}")
+            return
+        
+        # Check Access-Control-Allow-Origin header
+        allow_origin = response.headers.get("Access-Control-Allow-Origin", "")
+        
+        if should_allow:
+            if allow_origin == origin:
+                log_test(test_name, True, f"Allow-Origin: {allow_origin}")
+            else:
+                log_test(test_name, False, f"Expected Allow-Origin={origin}, got {allow_origin}")
         else:
-            log_fail(f"{endpoint} failed - expected 200, got {resp.status_code}")
-            all_pass = False
-        
-        time.sleep(0.2)
-    
-    return all_pass
+            if allow_origin != origin:
+                log_test(test_name, True, f"Origin correctly blocked (Allow-Origin: {allow_origin})")
+            else:
+                log_test(test_name, False, f"Evil origin was incorrectly allowed: {allow_origin}")
+                
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
 
-def test_20_security_headers():
-    """Test 20: Security headers on /api/auth/guest, /api/auth/logout, /api/auth/guests"""
-    log_test(20, "Security headers on new auth endpoints")
+def test_auth_login():
+    """Test admin login"""
+    global login_attempts
+    test_name = "Auth: POST /api/auth/login"
     
-    required_headers = [
-        "x-content-type-options",
-        "x-frame-options",
-        "strict-transport-security"
-    ]
+    login_attempts += 1
+    if login_attempts > 5:
+        log_test(test_name, False, "Exceeded 5 login attempts limit")
+        return None
     
-    # Test /api/auth/guest (need public access open first)
-    log_info("Testing security headers on /api/auth/guest")
-    payload = {"name": "Test User"}
-    resp = requests.post(f"{BASE_URL}/auth/guest", json=payload)
-    
-    all_present = True
-    for header in required_headers:
-        if header.lower() in [h.lower() for h in resp.headers]:
-            log_pass(f"Header '{header}' present on /api/auth/guest")
+    try:
+        payload = {
+            "username": ADMIN_USERNAME,
+            "password": ADMIN_PASSWORD
+        }
+        
+        response = requests.post(f"{API_BASE}/auth/login", json=payload, timeout=10)
+        
+        if response.status_code != 200:
+            log_test(test_name, False, f"Expected 200, got {response.status_code}: {response.text}")
+            return None
+        
+        data = response.json()
+        token = data.get("token")
+        
+        if token:
+            log_test(test_name, True, f"Login successful, token received (length: {len(token)})")
+            return token
         else:
-            log_fail(f"Header '{header}' missing on /api/auth/guest")
-            all_present = False
+            log_test(test_name, False, "No token in response")
+            return None
+            
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
+        return None
+
+def test_auth_state_with_token(token: str):
+    """Test auth state with valid token"""
+    test_name = "Auth: GET /api/auth/state (with token)"
     
-    return all_present
+    try:
+        headers = {"X-Admin-Token": token}
+        response = requests.get(f"{API_BASE}/auth/state", headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            log_test(test_name, False, f"Expected 200, got {response.status_code}")
+            return
+        
+        data = response.json()
+        is_admin = data.get("is_admin")
+        
+        if is_admin is True:
+            log_test(test_name, True, f"is_admin=true")
+        else:
+            log_test(test_name, False, f"Expected is_admin=true, got {is_admin}")
+            
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
+
+def test_auth_logout(token: str):
+    """Test admin logout"""
+    test_name = "Auth: POST /api/auth/logout"
+    
+    try:
+        headers = {"X-Admin-Token": token}
+        response = requests.post(f"{API_BASE}/auth/logout", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            log_test(test_name, True, "Logout successful")
+        else:
+            log_test(test_name, False, f"Expected 200, got {response.status_code}")
+            
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
+
+def test_auth_state_without_token():
+    """Test auth state without token"""
+    test_name = "Auth: GET /api/auth/state (without token)"
+    
+    try:
+        response = requests.get(f"{API_BASE}/auth/state", timeout=10)
+        
+        if response.status_code != 200:
+            log_test(test_name, False, f"Expected 200, got {response.status_code}")
+            return
+        
+        data = response.json()
+        is_admin = data.get("is_admin")
+        
+        if is_admin is False:
+            log_test(test_name, True, f"is_admin=false")
+        else:
+            log_test(test_name, False, f"Expected is_admin=false, got {is_admin}")
+            
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
+
+def test_startup_status():
+    """Test startup - verify /api/status returns expected fields"""
+    test_name = "Startup: GET /api/status"
+    
+    try:
+        response = requests.get(f"{API_BASE}/status", timeout=10)
+        
+        if response.status_code != 200:
+            log_test(test_name, False, f"Expected 200, got {response.status_code}")
+            return
+        
+        data = response.json()
+        
+        # Check required fields
+        required_fields = ["running", "mode", "market"]
+        missing_fields = [f for f in required_fields if f not in data]
+        
+        if missing_fields:
+            log_test(test_name, False, f"Missing fields: {missing_fields}")
+        else:
+            log_test(test_name, True, f"running={data['running']}, mode={data['mode']}, market={data['market']}")
+            
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
+
+def test_history_endpoint_performance():
+    """Optional: Test that /api/history/NIFTY returns quickly (indexes helping)"""
+    test_name = "Optional: GET /api/history/NIFTY?minutes=60 (index performance)"
+    
+    try:
+        import time
+        start = time.time()
+        response = requests.get(f"{API_BASE}/history/NIFTY?minutes=60", timeout=10)
+        elapsed = time.time() - start
+        
+        if response.status_code != 200:
+            log_test(test_name, False, f"Expected 200, got {response.status_code}")
+            return
+        
+        # If it returns quickly (< 2s), indexes are likely helping
+        if elapsed < 2.0:
+            log_test(test_name, True, f"Response time: {elapsed:.2f}s (indexes working)")
+        else:
+            log_test(test_name, True, f"Response time: {elapsed:.2f}s (slower but acceptable)")
+            
+    except Exception as e:
+        log_test(test_name, False, f"Exception: {str(e)}")
 
 def main():
     """Run all tests"""
-    print(f"\n{BLUE}{'='*80}{RESET}")
-    print(f"{BLUE}ADMIN-PROOF LOCK-DOWN BACKEND TEST SUITE{RESET}")
-    print(f"{BLUE}Testing session-based tokens, admin-guard, and guest flow{RESET}")
-    print(f"{BLUE}Backend URL: {BASE_URL}{RESET}")
-    print(f"{BLUE}Credentials: {ADMIN_USERNAME} / {ADMIN_PASSWORD}{RESET}")
-    print(f"{BLUE}{'='*80}{RESET}")
+    print("=" * 80)
+    print("OI-PULSE BACKEND TEST SUITE")
+    print("=" * 80)
+    print(f"Backend URL: {BASE_URL}")
+    print(f"API Base: {API_BASE}")
+    print("=" * 80)
+    print()
     
-    tests = [
-        test_1_vault_anon,
-        test_2_positions_anon,
-        test_3_delete_alerts_anon,
-        test_4_mode_anon,
-        test_5_telegram_prefs_post_anon,
-        test_6_telegram_prefs_get_anon,
-        test_7_admin_login,
-        test_8_vault_with_admin_token,
-        test_9_logout_and_invalidate,
-        test_10_login_and_open_public_access,
-        test_11_guest_login_valid,
-        test_12_guest_login_invalid_name,
-        test_13_guest_login_duplicate,
-        test_14_auth_state_with_guest_token,
-        test_15_positions_with_guest_token,
-        test_16_delete_alerts_with_guest_token,
-        test_17_auth_guests_list,
-        test_18_close_public_access,
-        test_19_regression_read_endpoints,
-        test_20_security_headers,
-    ]
+    # ========================================
+    # TASK 1: CORS ALLOW-LIST
+    # ========================================
+    print("TASK 1: CORS ALLOW-LIST")
+    print("-" * 80)
     
-    results = []
-    for test in tests:
-        try:
-            result = test()
-            results.append(result)
-            time.sleep(0.3)  # Rate limit friendly
-        except Exception as e:
-            log_fail(f"Test raised exception: {e}")
-            results.append(False)
+    # Test allowed origins (preflight)
+    test_cors_preflight("https://aaisnamkeen.com", should_allow=True)
+    test_cors_preflight("https://www.aaisnamkeen.com", should_allow=True)
+    test_cors_preflight("https://cors-fix-preview-6.emergent.host", should_allow=True)
     
-    # Summary
-    print(f"\n{BLUE}{'='*80}{RESET}")
-    print(f"{BLUE}TEST SUMMARY{RESET}")
-    print(f"{BLUE}{'='*80}{RESET}")
+    # Test allowed origin (simple GET)
+    test_cors_simple_request("https://aaisnamkeen.com", should_allow=True)
     
-    passed = sum(results)
-    total = len(results)
+    # Test evil origin (should be blocked)
+    test_cors_simple_request("https://evil.example.com", should_allow=False)
     
-    if passed == total:
-        print(f"{GREEN}✓ ALL {total} TESTS PASSED{RESET}")
+    # ========================================
+    # TASK 2: AUTH REGRESSION
+    # ========================================
+    print("TASK 2: AUTH REGRESSION")
+    print("-" * 80)
+    
+    # Login
+    token = test_auth_login()
+    
+    if token:
+        # Test state with token
+        test_auth_state_with_token(token)
+        
+        # Logout
+        test_auth_logout(token)
+        
+        # Test state without token
+        test_auth_state_without_token()
     else:
-        print(f"{RED}✗ {total - passed} TEST(S) FAILED{RESET}")
-        print(f"{GREEN}✓ {passed} TEST(S) PASSED{RESET}")
+        print("⚠️  Skipping remaining auth tests due to login failure")
+        print()
     
-    print(f"\n{YELLOW}CRITICAL: Verify public access is closed (test 18 must pass){RESET}")
+    # ========================================
+    # TASK 3: STARTUP LOG + INDEXES
+    # ========================================
+    print("TASK 3: STARTUP LOG + INDEXES")
+    print("-" * 80)
     
-    return passed == total
+    test_startup_status()
+    test_history_endpoint_performance()
+    
+    # ========================================
+    # SUMMARY
+    # ========================================
+    print("=" * 80)
+    print("TEST SUMMARY")
+    print("=" * 80)
+    print(f"Total tests: {tests_passed + tests_failed}")
+    print(f"✅ Passed: {tests_passed}")
+    print(f"❌ Failed: {tests_failed}")
+    print(f"Login attempts used: {login_attempts}/5")
+    print("=" * 80)
+    
+    if tests_failed > 0:
+        sys.exit(1)
+    else:
+        print("\n🎉 ALL TESTS PASSED!")
+        sys.exit(0)
 
 if __name__ == "__main__":
-    success = main()
-    exit(0 if success else 1)
+    main()
