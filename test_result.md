@@ -3985,3 +3985,13 @@ agent_communication:
         
         No critical issues found. The backend task is production-ready.
 
+
+    - agent: "testing"
+      message: |
+        ✅ 2026-07-17 Round 4: Alerts NO longer fire when market is closed.
+        - phase=post_close; alert count and latest timestamp UNCHANGED across 90s.
+        - Latest alert is 9493s old (predates the test) — no new documents inserted.
+
+backend:
+  - task: "Alerts do NOT fire when market is closed"
+    working: true
