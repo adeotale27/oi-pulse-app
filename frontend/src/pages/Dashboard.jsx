@@ -122,6 +122,7 @@ export default function Dashboard() {
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [flash, setFlash] = useState(false);
   const [expiries, setExpiries] = useState([]);
+  const [expiriesMeta, setExpiriesMeta] = useState([]);
   const [selectedExpiry, setSelectedExpiry] = useState(null);
   const [replayFrame, setReplayFrame] = useState(null);
   const [showOI, setShowOI] = useState(true);
@@ -269,7 +270,9 @@ export default function Dashboard() {
     api.get(`/expiries/${activeIndex}`).then((r) => {
       if (cancelled) return;
       const list = r.data.expiries || [];
+      const meta = r.data.expiries_meta || [];
       setExpiries(list);
+      setExpiriesMeta(meta);
       // reset selected expiry when switching index
       setSelectedExpiry(list[0] || null);
     }).catch((e) => console.error("loadExpiries failed", e));
@@ -819,6 +822,7 @@ export default function Dashboard() {
             onChangeStrikeRange={setStrikeRange}
             onReset={handleReset}
             expiries={expiries}
+            expiriesMeta={expiriesMeta}
             selectedExpiry={selectedExpiry}
             onChangeExpiry={handleChangeExpiry}
           />
@@ -1047,8 +1051,31 @@ export default function Dashboard() {
                     {(
                       <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-[auto_1fr_1fr] gap-6 items-start text-base" data-testid="change-summary">
                         <div className="space-y-2">
-                          <div className="inline-flex items-center px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm font-medium" data-testid="change-summary-title">
-                            Change on {formatDayLabel(current?.timestamp)}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="inline-flex items-center px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm font-medium" data-testid="change-summary-title">
+                              Change on {formatDayLabel(current?.timestamp)}
+                            </div>
+                            {typeof current?.pcr === "number" && current.pcr > 0 && (
+                              <div
+                                data-testid="pcr-pill"
+                                title={`Put/Call OI Ratio for ${activeIndex}${selectedExpiry ? " · expiry " + selectedExpiry : ""} · > 1 = bullish (more puts), < 1 = bearish (more calls)`}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-mono-data ${
+                                  current.pcr > 1
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-rose-50 text-rose-700 border-rose-200"
+                                }`}
+                              >
+                                <span className="uppercase tracking-widest text-[9px] opacity-70">
+                                  {activeIndex} PCR
+                                </span>
+                                <span className="text-sm font-semibold">
+                                  {current.pcr.toFixed(2)}
+                                </span>
+                                <span className="text-[10px]">
+                                  {current.pcr > 1 ? "▲" : "▼"}
+                                </span>
+                              </div>
+                            )}
                           </div>
                           {lastPullChange && (
                             <div className="text-xs text-slate-500 font-mono-data leading-tight" data-testid="last-pull-change">

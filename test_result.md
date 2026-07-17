@@ -3722,3 +3722,135 @@ backend:
     working: true
   - task: "OI endpoints serve last DB snapshot when market is closed"
     working: true
+
+
+#====================================================================================================
+# 2026-07-17 (3rd round) — Expiry W/M tags + step size + PCR relocation
+#====================================================================================================
+
+backend:
+  - task: "GET /api/expiries/{index} returns W/M tagged expiries_meta"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/oi_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Enriched /api/expiries/{index} response to include `expiries_meta` — a list of objects {date, tag('W'|'M'), type('weekly'|'monthly'), days_to_expiry, label}. Backward-compatible: original `expiries` array of ISO strings preserved. Also extended the mock service to emit 6 expiries so at least one Monthly (M) is present. Verify for NIFTY, SENSEX, BANKNIFTY: response has expiries_meta with correct shape, at least one W and one M tag."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ VERIFIED - All requirements met for all 3 indices (NIFTY, SENSEX, BANKNIFTY).
+          
+          Test results:
+          - NIFTY: 6 expiries, 6 expiries_meta, 3 Weekly (W), 3 Monthly (M) ✓
+          - SENSEX: 6 expiries, 6 expiries_meta, 3 Weekly (W), 3 Monthly (M) ✓
+          - BANKNIFTY: 6 expiries, 6 expiries_meta, 3 Weekly (W), 3 Monthly (M) ✓
+          
+          All validation checks passed:
+          ✓ Response has `expiries` (list of ISO date strings, non-empty)
+          ✓ Response has `expiries_meta` (list of dicts) with SAME length as `expiries`
+          ✓ Each item in expiries_meta has all required keys: date (str), tag (W/M), type (weekly/monthly), days_to_expiry (int), label (str)
+          ✓ At least ONE item has tag == "M" and at least ONE has tag == "W"
+          ✓ Dates in expiries_meta match dates in expiries exactly (order preserved)
+          
+          No issues found. Feature working correctly.
+
+  - task: "current.pcr still present in /api/oi/{index}/change"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/oi_service.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "No code change — just verify /api/oi/NIFTY/change returns current.pcr as a positive float (frontend PCR pill depends on this). Regression check only."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ VERIFIED - PCR field present and valid.
+          
+          Test: GET /api/oi/NIFTY/change?minutes=15
+          Result: HTTP 200
+          
+          Validation checks passed:
+          ✓ response.current.pcr = 0.9900 (number > 0) ✓
+          ✓ response.current.atm = 23800 (number > 0) ✓
+          ✓ response.current.price = 23808.28 (number > 0) ✓
+          
+          No issues found. PCR field working correctly for frontend consumption.
+
+metadata:
+  created_by: "main_agent"
+  version: "1.5"
+  test_sequence: 5
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "GET /api/expiries/{index} returns W/M tagged expiries_meta"
+    - "current.pcr still present in /api/oi/{index}/change"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Please verify:
+
+        1. GET /api/expiries/NIFTY (also SENSEX, BANKNIFTY) → 200 with:
+           - `expiries` (list[str], ISO dates, non-empty)
+           - `expiries_meta` (list[dict], same length as `expiries`)
+             Each item MUST have: date (ISO str), tag ('W' or 'M'), type ('weekly' or 'monthly'),
+             days_to_expiry (int), label (str like '30 Jul').
+           - At least ONE entry with tag='M' and at least ONE with tag='W'.
+
+        2. GET /api/oi/NIFTY/change?minutes=15 → 200 with current.pcr as a positive float.
+
+        Constraints (unchanged):
+        - No admin password change
+        - No public-access toggling
+        - No credential / vault mutation
+        - ≤5 login attempts
+    - agent: "testing"
+      message: |
+        ✅ BACKEND REGRESSION TEST COMPLETE - ALL TESTS PASSED (2026-07-17)
+        
+        Executed comprehensive backend test suite for Round 3 changes.
+        Test file: /app/backend_test_round3.py
+        Test date: 2026-07-17
+        
+        ========================================
+        SUMMARY: BOTH TASKS PASSED ✅
+        ========================================
+        
+        TASK 1: GET /api/expiries/{index} returns W/M tagged expiries_meta ✅
+        - Tested all 3 indices: NIFTY, SENSEX, BANKNIFTY
+        - All returned HTTP 200 with valid structure
+        - Each response has 6 expiries and 6 expiries_meta (same length)
+        - Each has 3 Weekly (W) tags and 3 Monthly (M) tags
+        - All required fields present and valid: date, tag, type, days_to_expiry, label
+        - Dates in expiries_meta match dates in expiries exactly
+        
+        TASK 2: current.pcr still present in /api/oi/NIFTY/change ✅
+        - GET /api/oi/NIFTY/change?minutes=15 → HTTP 200
+        - current.pcr = 0.9900 (valid number > 0)
+        - current.atm = 23800 (valid number > 0)
+        - current.price = 23808.28 (valid number > 0)
+        - PCR field working correctly for frontend consumption
+        
+        ========================================
+        TEST RESULTS
+        ========================================
+        Total tests: 4
+        ✅ Passed: 4
+        ❌ Failed: 0
+        
+        No critical issues found. All requirements met.
+        Both tasks are production-ready.

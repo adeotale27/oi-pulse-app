@@ -375,7 +375,47 @@ async def get_expiries(index_name: str):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
-    return {"index": idx, "expiries": tracker.list_expiries(idx), "selected": tracker.selected_expiry.get(idx)}
+    dates = tracker.list_expiries(idx)
+
+    # Annotate each date as weekly / monthly. Heuristic: an expiry is "monthly"
+    # if it is the LAST expiry falling within that calendar month & year in the
+    # returned list. Everything else is "weekly".
+    from datetime import date as _date, datetime as _datetime
+    parsed = []
+    for d in dates:
+        try:
+            parsed.append(_datetime.fromisoformat(d).date() if "T" in d else _date.fromisoformat(d))
+        except Exception:
+            continue
+    by_month = {}
+    for p in parsed:
+        by_month.setdefault((p.year, p.month), []).append(p)
+    monthly_dates = set()
+    for _, lst in by_month.items():
+        monthly_dates.add(max(lst))
+
+    today = _date.today()
+    meta = []
+    for p in parsed:
+        iso = p.isoformat()
+        is_monthly = p in monthly_dates
+        days = (p - today).days
+        # Friendly label like "21 Jul"
+        label = p.strftime("%d %b").lstrip("0")
+        meta.append({
+            "date": iso,
+            "tag": "M" if is_monthly else "W",
+            "type": "monthly" if is_monthly else "weekly",
+            "days_to_expiry": days,
+            "label": label,
+        })
+
+    return {
+        "index": idx,
+        "expiries": dates,           # backward-compatible: array of ISO strings
+        "expiries_meta": meta,       # new enriched shape (date, tag, days, label)
+        "selected": tracker.selected_expiry.get(idx),
+    }
 
 
 @api_router.post("/expiries/{index_name}")

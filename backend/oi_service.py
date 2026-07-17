@@ -222,10 +222,25 @@ class MockService:
         from datetime import date
         today = date.today()
         # weekly Thursday for NFO, Tuesday for BFO — but we just use 7-day rolls
-        self._expiries = [
+        # Generate 6 upcoming expiries: 4 consecutive weeklies followed by 2
+        # monthly-ish rolls, so the frontend has both weekly (W) and monthly (M)
+        # badges to render.
+        weekly = [
             (today + timedelta(days=(((3 - today.weekday()) % 7) or 7) + 7 * k)).isoformat()
             for k in range(4)
         ]
+        # Add "last Thursday of month+1" and "last Thursday of month+2"
+        from calendar import monthrange
+        def _last_thu(year: int, month: int) -> str:
+            last_day = monthrange(year, month)[1]
+            d = date(year, month, last_day)
+            offset = (d.weekday() - 3) % 7  # 3=Thursday
+            return (d - timedelta(days=offset)).isoformat()
+        yr, mo = today.year, today.month
+        m1_y, m1_m = (yr, mo + 1) if mo < 12 else (yr + 1, 1)
+        m2_y, m2_m = (m1_y, m1_m + 1) if m1_m < 12 else (m1_y + 1, 1)
+        monthly_more = [_last_thu(m1_y, m1_m), _last_thu(m2_y, m2_m)]
+        self._expiries = sorted(list({*weekly, *monthly_more}))
         for idx in ("NIFTY", "SENSEX", "BANKNIFTY"):
             self._init_index(idx)
 
@@ -239,7 +254,9 @@ class MockService:
         # Seed OI per expiry - farther expiries have less OI
         by_expiry = {}
         for ei, exp in enumerate(self._expiries):
-            multiplier = [1.0, 0.55, 0.28, 0.15][ei]
+            # Farther expiries have less OI. Extend beyond 4 items.
+            _mults = [1.0, 0.55, 0.28, 0.15, 0.09, 0.06, 0.04, 0.03]
+            multiplier = _mults[ei] if ei < len(_mults) else 0.03
             strike_map = {}
             for st in strikes:
                 distance = abs(st - atm) / step

@@ -84,7 +84,6 @@ export default function Header({
 
         <div className="hidden md:flex items-center gap-4 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
           <Metric label="ATM" value={atm.toLocaleString()} />
-          <Metric label="PCR" value={pcr.toFixed(2)} tone={pcr > 1 ? "green" : "red"} />
           <VixMetric value={vix} sessionOpen={vixSessionOpen} />
         </div>
 

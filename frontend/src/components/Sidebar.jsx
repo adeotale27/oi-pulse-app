@@ -1,7 +1,6 @@
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RotateCcw, TrendingUp, TrendingDown } from "lucide-react";
+import { RotateCcw, TrendingUp, TrendingDown, Plus, Minus } from "lucide-react";
 
 const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
 
@@ -21,10 +20,72 @@ const INDEX_THEME = {
   BANKNIFTY: {
     label: "BANK",
     activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-transparent shadow-lg shadow-teal-500/25 ring-2 ring-emerald-300/60",
-    idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-teal-100",
+    idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-emerald-100",
     dot:         "bg-emerald-500",
   },
 };
+
+/**
+ * Strike-range step size per index (as per user requirement):
+ *   • NIFTY: 50 pts per ± click
+ *   • SENSEX / BANKNIFTY: 100 pts per ± click
+ */
+const STRIKE_STEP = {
+  NIFTY: 50,
+  SENSEX: 100,
+  BANKNIFTY: 100,
+};
+
+function StepperInput({ testId, value, step, onChange }) {
+  const dec = () => onChange(Math.max(0, (Number(value) || 0) - step));
+  const inc = () => onChange((Number(value) || 0) + step);
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        data-testid={`${testId}-dec`}
+        onClick={dec}
+        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95"
+        aria-label="Decrement"
+      >
+        <Minus className="w-3.5 h-3.5" />
+      </button>
+      <Input
+        data-testid={testId}
+        type="number"
+        value={value ?? ""}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-8 flex-1 rounded-md font-mono-data text-sm text-center"
+      />
+      <button
+        type="button"
+        data-testid={`${testId}-inc`}
+        onClick={inc}
+        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95"
+        aria-label="Increment"
+      >
+        <Plus className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function ExpiryBadge({ tag }) {
+  const isWeekly = tag === "W";
+  return (
+    <span
+      data-testid={`expiry-tag-${tag}`}
+      className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold leading-none border ${
+        isWeekly
+          ? "bg-sky-100 text-sky-700 border-sky-200"
+          : "bg-amber-100 text-amber-700 border-amber-300"
+      }`}
+      title={isWeekly ? "Weekly expiry" : "Monthly expiry"}
+    >
+      {tag}
+    </span>
+  );
+}
 
 export default function Sidebar({
   indices,
@@ -37,10 +98,23 @@ export default function Sidebar({
   onChangeStrikeRange,
   onReset,
   expiries,
+  expiriesMeta,
   selectedExpiry,
   onChangeExpiry,
 }) {
   const price = current?.price ?? 0;
+  // Resolve meta by ISO date so downstream operations stay by-date.
+  const metaByDate = new Map(
+    (expiriesMeta || []).map((m) => [m.date, m])
+  );
+  // If no meta provided, fall back to plain expiries with W tag.
+  const orderedExpiries =
+    expiriesMeta && expiriesMeta.length
+      ? expiriesMeta
+      : (expiries || []).map((d) => ({ date: d, tag: "W", type: "weekly", days_to_expiry: null, label: d }));
+
+  const step = STRIKE_STEP[activeIndex] || 50;
+
   return (
     <aside
       data-testid="sidebar"
@@ -86,21 +160,23 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Expiry */}
+      {/* Expiry list — with W (Weekly) / M (Monthly) tags */}
       <div className="p-4 border-b border-slate-200">
         <Label className="text-[10px] uppercase tracking-widest text-slate-500">Expiries Included</Label>
         <div
           className="mt-2 space-y-1 pr-1 overflow-y-auto sidebar-expiries"
-          style={{ maxHeight: "168px" }}
+          style={{ maxHeight: "220px" }}
           data-testid="expiries-list"
         >
-          {(expiries || []).map((exp, i) => {
-            const active = selectedExpiry ? selectedExpiry === exp : i === 0;
+          {orderedExpiries.map((exp, i) => {
+            const active = selectedExpiry ? selectedExpiry === exp.date : i === 0;
+            const daysLabel =
+              exp.days_to_expiry != null ? `${exp.days_to_expiry} days` : null;
             return (
               <button
-                key={exp + i}
-                data-testid={`expiry-${exp}`}
-                onClick={() => onChangeExpiry?.(exp)}
+                key={exp.date + i}
+                data-testid={`expiry-${exp.date}`}
+                onClick={() => onChangeExpiry?.(exp.date)}
                 className={`w-full expiry-row flex items-center gap-2 py-1.5 px-2 rounded-md text-left transition-colors ${
                   active
                     ? "bg-gradient-to-r from-indigo-600 to-sky-600 text-white shadow-sm"
@@ -108,22 +184,25 @@ export default function Sidebar({
                 }`}
               >
                 <span className={`w-3 h-3 rounded-sm border ${active ? "bg-white border-white" : "border-slate-400"}`} />
-                <span className="text-sm font-mono-data">{exp}</span>
-                {i === 0 && (
-                  <span className={`text-[9px] uppercase ml-auto ${active ? "text-white/80" : "text-slate-400"}`}>
-                    nearest
-                  </span>
-                )}
+                <span className="text-sm font-mono-data flex-1">
+                  {exp.label || exp.date}
+                  {daysLabel && (
+                    <span className={`ml-1 text-[11px] ${active ? "text-white/80" : "text-slate-500"}`}>
+                      ({daysLabel})
+                    </span>
+                  )}
+                </span>
+                <ExpiryBadge tag={exp.tag || "W"} />
               </button>
             );
           })}
-          {(!expiries || expiries.length === 0) && (
+          {(!orderedExpiries || orderedExpiries.length === 0) && (
             <p className="text-[11px] text-slate-400 italic pl-1">Loading expiries…</p>
           )}
         </div>
       </div>
 
-      {/* Strike range */}
+      {/* Strike range with stepper (index-aware step: NIFTY 50, SENSEX/BANK 100) */}
       <div className="p-4 border-b border-slate-200">
         <div className="flex items-center justify-between">
           <Label className="text-[10px] uppercase tracking-widest text-slate-500">Strike Range</Label>
@@ -135,27 +214,28 @@ export default function Sidebar({
             <RotateCcw className="w-3 h-3" /> Reset
           </button>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-3">
           <div>
             <div className="text-[10px] text-slate-500 mb-1">Min</div>
-            <Input
-              data-testid="input-strike-min"
-              type="number"
-              value={strikeRange.min ?? ""}
-              onChange={(e) => onChangeStrikeRange({ ...strikeRange, min: Number(e.target.value) })}
-              className="h-8 rounded-sm font-mono-data text-sm"
+            <StepperInput
+              testId="input-strike-min"
+              value={strikeRange.min}
+              step={step}
+              onChange={(v) => onChangeStrikeRange({ ...strikeRange, min: v })}
             />
           </div>
           <div>
             <div className="text-[10px] text-slate-500 mb-1">Max</div>
-            <Input
-              data-testid="input-strike-max"
-              type="number"
-              value={strikeRange.max ?? ""}
-              onChange={(e) => onChangeStrikeRange({ ...strikeRange, max: Number(e.target.value) })}
-              className="h-8 rounded-sm font-mono-data text-sm"
+            <StepperInput
+              testId="input-strike-max"
+              value={strikeRange.max}
+              step={step}
+              onChange={(v) => onChangeStrikeRange({ ...strikeRange, max: v })}
             />
           </div>
+        </div>
+        <div className="mt-2 text-[10px] text-slate-400 font-mono-data">
+          Step: {step} pts ({activeIndex})
         </div>
       </div>
 
