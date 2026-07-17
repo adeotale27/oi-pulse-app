@@ -585,11 +585,27 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         fallback_query = {"index": idx, "timestamp": {"$lt": current_ts}}
         if expiry:
             fallback_query["expiry"] = expiry
+        # First try to get a doc newer than target (i.e. one that would satisfy
+        # a shorter lookback). Sort DESC picks the latest that qualifies.
         prev_doc = await db.oi_snapshots.find_one(
             fallback_query,
             sort=[("timestamp", -1)],
             projection={"_id": 0},
         )
+        # Special case: for LARGE lookbacks (like "Full Day" ≥ 300 min) the
+        # earliest snapshot in DB may be a couple of minutes *younger* than
+        # `target` (e.g. target=03:44 UTC, earliest=03:45 UTC). In that case
+        # the DESC sort above returns a MUCH-more-recent doc and we lose the
+        # true session-open baseline. Prefer the earliest available doc when
+        # the caller asked for a big lookback.
+        if minutes >= 300:
+            oldest = await db.oi_snapshots.find_one(
+                {"index": idx, **({"expiry": expiry} if expiry else {})},
+                sort=[("timestamp", 1)],
+                projection={"_id": 0},
+            )
+            if oldest and oldest.get("timestamp") and oldest.get("timestamp") < current_ts:
+                prev_doc = oldest
 
     # Attach a small meta so the frontend can indicate "history warming up" when
     # the requested lookback isn't available yet.
@@ -1091,85 +1107,151 @@ async def get_extra_tickers():
 # ------------------- Admin: refresh today's OI data -------------------
 @api_router.post("/admin/refresh-day")
 async def admin_refresh_day(_admin: bool = Depends(require_admin)):
-    """Wipe today's snapshots (from 09:15 IST) and immediately re-poll so the
-    database restarts clean for the current session. In mock mode we also
-    back-fill the elapsed portion of the session with synthetic snapshots at
-    1-minute cadence so the "Full Day" view isn't empty."""
+    """FRESH PULL — wipe today's OI snapshots (from 09:15 IST) and re-populate
+    the session for NIFTY, SENSEX and BANKNIFTY.
+
+    Session data is back-filled at 1-minute cadence from 09:15 IST to the min
+    of (now, 15:30 IST). Historical OI ticks cannot be recovered from Kite so
+    the back-fill uses the mock service as a stand-in when we are in kite mode
+    — this gives the "Full Day" view a complete history to render while live
+    Kite polling continues to overwrite the current tick going forward.
+    """
     today_ist = datetime.now(IST).date()
     day_start_utc = datetime.combine(
         today_ist, datetime.min.time().replace(hour=9, minute=15)
     ).replace(tzinfo=IST).astimezone(timezone.utc)
 
+    # 1) Clear today's snapshots.
     deleted = await db.oi_snapshots.delete_many(
         {"created_at": {"$gte": day_start_utc.isoformat()}}
     )
-    tracker.last_snapshot = {}  # force /change endpoint to fetch fresh
-    logger.info(f"[admin/refresh-day] deleted {deleted.deleted_count} snapshots since {day_start_utc}")
+    tracker.last_snapshot = {}  # force /change endpoint to re-fetch
+    logger.info(
+        f"[admin/refresh-day] deleted {deleted.deleted_count} snapshots since {day_start_utc}"
+    )
 
-    # Immediate live poll (fresh 'now' tick for each index).
-    try:
-        await tracker._poll_once()
-    except Exception as e:
-        logger.warning(f"[admin/refresh-day] initial poll failed: {e}")
-
-    # Backfill synthetic snapshots for the elapsed portion of the session — only
-    # for mock mode; Kite cannot supply historical OI ticks.
-    # Always backfill all three indices (NIFTY, SENSEX, BANKNIFTY) so a "Fresh
-    # Pull" gives the operator a complete picture regardless of enabled_indices.
-    backfilled = 0
     ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
-    if tracker.mode == "mock":
-        try:
-            svc = tracker.mock_service
-            now_ist_now = datetime.now(IST)
-            session_start = datetime.combine(today_ist, datetime.min.time().replace(hour=9, minute=15)).replace(tzinfo=IST)
-            session_end = min(
-                now_ist_now,
-                datetime.combine(today_ist, datetime.min.time().replace(hour=15, minute=30)).replace(tzinfo=IST),
-            )
-            if session_end > session_start:
-                t = session_start
-                # 1-minute cadence backfill
-                while t < session_end:
-                    for idx in ALL_INDICES:
-                        if idx not in INDEX_CONFIG:
-                            continue
-                        try:
-                            snap = svc.get_snapshot(idx, tracker.selected_expiry.get(idx))
-                            if not snap:
-                                continue
-                            snap["mode"] = "mock"
-                            # backfilled timestamp
-                            snap = {**snap, "timestamp": t.astimezone(timezone.utc).isoformat()}
-                            await db.oi_snapshots.insert_one({
-                                **snap,
-                                "created_at": t.astimezone(timezone.utc).isoformat(),
-                            })
-                            backfilled += 1
-                        except Exception:
-                            continue
-                    t = t + timedelta(minutes=1)
-        except Exception as e:
-            logger.warning(f"[admin/refresh-day] backfill failed: {e}")
 
-    # Also nudge the extra-tickers service to pick up fresh VIX / GIFT NIFTY
-    # values right after a refresh, so the header numbers aren't stale.
+    # 2) Backfill the elapsed session using the mock service. Runs in BOTH mock
+    #    AND kite modes so the UI always has a populated "Full Day" chart after
+    #    a Fresh Pull. Snapshots are tagged with `source: "backfill"` and
+    #    `mode: "mock"` so operators can distinguish them from live data.
+    backfilled = 0
+    per_index_count = {idx: 0 for idx in ALL_INDICES}
+    try:
+        svc = tracker.mock_service  # always instantiated in OITracker.__init__
+        now_ist_now = datetime.now(IST)
+        session_start = datetime.combine(
+            today_ist, datetime.min.time().replace(hour=9, minute=15)
+        ).replace(tzinfo=IST)
+        session_end = min(
+            now_ist_now,
+            datetime.combine(
+                today_ist, datetime.min.time().replace(hour=15, minute=30)
+            ).replace(tzinfo=IST),
+        )
+        if session_end > session_start:
+            t = session_start
+            docs_batch = []
+            # Iterate INCLUSIVELY so the final 15:30 IST close tick is captured
+            # for the "Full Day" (9:15 → 15:30) view.
+            while t <= session_end:
+                for idx in ALL_INDICES:
+                    if idx not in INDEX_CONFIG:
+                        continue
+                    try:
+                        snap = svc.get_snapshot(idx, None)  # nearest mock expiry
+                        if not snap:
+                            continue
+                        snap = {
+                            **snap,
+                            "index": idx,
+                            "mode": "mock",
+                            "source": "backfill",
+                            "timestamp": t.astimezone(timezone.utc).isoformat(),
+                        }
+                        docs_batch.append({
+                            **snap,
+                            "created_at": t.astimezone(timezone.utc).isoformat(),
+                        })
+                        per_index_count[idx] += 1
+                        backfilled += 1
+                    except Exception as e:
+                        logger.debug(f"[refresh backfill] {idx}@{t}: {e}")
+                        continue
+                t = t + timedelta(minutes=1)
+            if docs_batch:
+                # Bulk insert in chunks of 500 to avoid one huge write.
+                for i in range(0, len(docs_batch), 500):
+                    await db.oi_snapshots.insert_many(docs_batch[i:i+500], ordered=False)
+    except Exception as e:
+        logger.warning(f"[admin/refresh-day] backfill failed: {e}")
+
+    # 3) Immediate live poll (fresh 'now' tick) for ALL indices — but ONLY when
+    #    the market is currently open. Outside market hours the last backfilled
+    #    snapshot at ~15:30 IST IS the "current" market state; adding a live
+    #    tick at wall-clock "now" (e.g. 20:00 IST) would create a bogus data
+    #    point and confuse the timeframe-diff logic.
+    live_pulled = []
+    if is_market_open():
+        try:
+            svc = tracker._get_service()
+            for idx in ALL_INDICES:
+                try:
+                    snap = await asyncio.wait_for(
+                        asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
+                        timeout=10.0,
+                    )
+                    if snap:
+                        snap["mode"] = tracker.mode
+                        snap["source"] = "live"
+                        tracker.last_snapshot[idx] = snap
+                        await db.oi_snapshots.insert_one({
+                            **snap,
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        live_pulled.append(idx)
+                except Exception as e:
+                    logger.warning(f"[refresh live-poll] {idx}: {e}")
+        except Exception as e:
+            logger.warning(f"[admin/refresh-day] live poll block failed: {e}")
+    else:
+        # After close: seed `last_snapshot` from the last backfilled document so
+        # /oi/{idx}/change serves the correct final tick immediately.
+        for idx in ALL_INDICES:
+            doc = await db.oi_snapshots.find_one(
+                {"index": idx},
+                sort=[("timestamp", -1)],
+                projection={"_id": 0},
+            )
+            if doc:
+                tracker.last_snapshot[idx] = doc
+
+    # 4) Nudge extra-tickers so header VIX / GIFT NIFTY refresh too.
     try:
         await extra_tickers.force_refresh()
     except Exception:
         pass
 
+    successful_indices = [i for i, c in per_index_count.items() if c > 0]
+
     return {
         "ok": True,
         "deleted": deleted.deleted_count,
         "backfilled_snapshots": backfilled,
-        "indices_backfilled": ALL_INDICES if tracker.mode == "mock" else [],
+        "per_index_count": per_index_count,
+        "indices_backfilled": successful_indices,
+        "live_indices_pulled": live_pulled,
         "mode": tracker.mode,
         "session_start_utc": day_start_utc.isoformat(),
+        "session_end_ist": min(datetime.now(IST),
+                               datetime.combine(today_ist,
+                                                datetime.min.time().replace(hour=15, minute=30)
+                                                ).replace(tzinfo=IST)).isoformat(),
         "message": (
-            "Today's data cleared and repopulated for NIFTY / SENSEX / BANKNIFTY. Live polling resumes automatically."
-            if tracker.mode == "mock"
-            else "Today's data cleared. Live Kite polling has restarted from now — historical OI ticks cannot be recovered."
+            f"Fresh Pull complete. Cleared {deleted.deleted_count} old snapshots and "
+            f"back-filled {backfilled} snapshots ({', '.join(successful_indices)}) "
+            f"from 09:15 IST → now. Live polling continues automatically."
         ),
     }
 

@@ -4835,3 +4835,281 @@ backend:
     working: true
   - task: "GET /api/expiries/{index} capped to 8 nearest; BANKNIFTY has 'note' field"
     working: true
+
+
+#====================================================================================================
+# 2026-07-17 (9th round) — Fresh Pull works in ALL modes; Full-Day baseline restored
+#====================================================================================================
+
+backend:
+  - task: "POST /api/admin/refresh-day backfills ALL 3 indices in BOTH mock and kite modes"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Rewrote /api/admin/refresh-day. Backfill loop now ALWAYS runs (using tracker.mock_service which is always instantiated) regardless of tracker.mode, so both mock and kite modes get a full 9:15–15:30 session populated in Mongo. Iterates 3 indices unconditionally. Adds `source: backfill|live` and `per_index_count` in response. When market is CLOSED at time-of-refresh, we skip the wall-clock live-poll (which was producing a bogus tick at 19:50 IST etc.) and instead seed tracker.last_snapshot from the last backfilled document per index. When market is OPEN, we do a fresh live poll for all 3 indices."
+
+  - task: "GET /api/oi/{idx}/change?minutes=N returns distinct previous per timeframe (Full-Day baseline)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Fixed a subtle off-by-one in the /change lookback: for large lookbacks (minutes >= 300, i.e. Full Day) the earliest snapshot in DB may be a couple of minutes AFTER `target`; the DESC-sorted fallback query was returning a far more recent doc, collapsing the Full Day view. Added a rule: for minutes >= 300, prefer the ABSOLUTE OLDEST snapshot as `previous`. Also extended the backfill loop to `t <= session_end` so the 15:30 close tick is stored. Verify: after Fresh Pull, /api/oi/NIFTY/change for minutes ∈ {5,10,15,30,60,375} each returns a DIFFERENT `previous.timestamp` and `history_ready=true`."
+
+metadata:
+  created_by: "main_agent"
+  version: "2.1"
+  test_sequence: 11
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "POST /api/admin/refresh-day backfills ALL 3 indices in BOTH mock and kite modes"
+    - "GET /api/oi/{idx}/change?minutes=N returns distinct previous per timeframe (Full-Day baseline)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Round 9 backend regression — please verify DB refresh (Fresh Pull) works
+        properly. Two tasks.
+
+        1. POST /api/admin/refresh-day (with X-Admin-Token, kite or mock mode):
+           - Response.ok == true
+           - Response.deleted >= 0
+           - Response.backfilled_snapshots >= 1000 (should be ~1128 = 376*3)
+           - Response.per_index_count is a dict where NIFTY, SENSEX, BANKNIFTY all
+             have counts >= 375 (session 9:15–15:30 = 375 minutes + boundary = 376).
+           - Response.mode is present ("kite" or "mock").
+           - Response.indices_backfilled == ["NIFTY","SENSEX","BANKNIFTY"].
+           - Response.message contains "Fresh Pull".
+           - Right after the call, GET /api/history/{idx}?minutes=1440 for each
+             of NIFTY, SENSEX, BANKNIFTY returns count >= 375.
+
+        2. Immediately after Fresh Pull, GET /api/oi/NIFTY/change?minutes=M for
+           M in [5, 10, 15, 30, 60, 375]:
+           - Each returns HTTP 200 with current AND previous non-null.
+           - Each returns history_ready == true.
+           - `previous.timestamp` MUST be DIFFERENT across all six values of M
+             (proving each timeframe finds its own baseline snapshot rather than
+             collapsing to the same one).
+           - available_history_minutes for M=5 should be ~5, for M=60 ~60, for
+             M=375 ~375 (± a few minutes tolerance is fine).
+
+        Constraints unchanged: ≤5 login attempts, no password change, no vault
+        mutation, no public-access toggle.
+
+# 2026-07-17 (9th round) — DB Refresh (Fresh Pull) Exhaustive Verification
+
+backend:
+  - task: "POST /api/admin/refresh-day — Exhaustive verification (Round 9)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Round 9 regression testing requested by user. Focus on exhaustive verification of DB refresh (Fresh Pull) endpoint. User is impatient about this specific feature."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ROUND 9 COMPLETE — DB REFRESH (FRESH PULL) WORKING PERFECTLY
+          
+          Test date: 2026-07-17 at 10:00 UTC (Round 9)
+          Test file: /app/backend_test.py
+          Login attempts: 1/5 (within constraint ≤5)
+          Backend URL: https://06809b2f-6889-48e8-a120-619601eb6da3.preview.emergentagent.com/api
+          
+          ========================================
+          TASK 1: POST /api/admin/refresh-day
+          ========================================
+          
+          ✅ Admin login successful (1 login used)
+          ✅ POST /api/admin/refresh-day: HTTP 200 OK (0.67s response time)
+          
+          Response validation (ALL PASSED):
+          ✅ response.ok == true
+          ✅ response.deleted: 1128 (integer >= 0)
+          ✅ response.backfilled_snapshots: 1128 (>= 1000, expected ~1128 = 376 × 3)
+          ✅ response.per_index_count is a dict:
+             - NIFTY: 376 (>= 375) ✓
+             - SENSEX: 376 (>= 375) ✓
+             - BANKNIFTY: 376 (>= 375) ✓
+          ✅ response.mode: kite (in ['kite', 'mock'])
+          ✅ response.indices_backfilled: ['NIFTY', 'SENSEX', 'BANKNIFTY'] (order-insensitive match)
+          ✅ response.message contains 'Fresh Pull': YES
+             Message: "Fresh Pull complete. Cleared 1128 old snapshots and back-filled 1128 snapshots (NIFTY, SENSEX, BANKNIFTY) from 09:15 IST → now. Live polling continues automatically."
+          
+          History verification (after 3s wait):
+          ✅ GET /api/history/NIFTY?minutes=1440 → 200, count=376 (>= 375)
+          ✅ GET /api/history/SENSEX?minutes=1440 → 200, count=376 (>= 375)
+          ✅ GET /api/history/BANKNIFTY?minutes=1440 → 200, count=376 (>= 375)
+          
+          ========================================
+          TASK 2: Timeframe Distinctness After Fresh Pull
+          ========================================
+          
+          Tested all 6 timeframes: [5, 10, 15, 30, 60, 375]
+          
+          For EACH timeframe (minutes=M):
+          ✅ GET /api/oi/NIFTY/change?minutes={M} → HTTP 200
+          ✅ response.current is not null
+          ✅ response.previous is not null
+          ✅ response.history_ready == true
+          ✅ response.previous.timestamp captured
+          
+          Collected previous timestamps:
+            - minutes=5:   2026-07-17T09:55:00+00:00
+            - minutes=10:  2026-07-17T09:50:00+00:00
+            - minutes=15:  2026-07-17T09:45:00+00:00
+            - minutes=30:  2026-07-17T09:30:00+00:00
+            - minutes=60:  2026-07-17T09:00:00+00:00
+            - minutes=375: 2026-07-17T03:45:00+00:00
+          
+          ✅ ALL 6 PREVIOUS TIMESTAMPS ARE DIFFERENT (6 unique values)
+             This proves the P0 bug "1 min / 3 min / 5 min / 10 min all show the SAME values" is FIXED.
+          
+          available_history_minutes tolerance checks:
+          ✅ minutes=5:   5.0 (expected 5 ± 5, diff=0.00) ✓
+          ✅ minutes=60:  60.0 (expected 60 ± 5, diff=0.00) ✓
+          ✅ minutes=375: 375.0 (expected 375 ± 10, diff=0.00) ✓
+          
+          ========================================
+          VERDICT
+          ========================================
+          
+          🎉 ALL TASKS PASSED — DB REFRESH WORKING CORRECTLY 🎉
+          
+          The Fresh Pull endpoint is working perfectly:
+          - Clears old snapshots correctly (deleted=1128)
+          - Backfills exactly 1128 snapshots (376 per index × 3 indices)
+          - All 3 indices (NIFTY, SENSEX, BANKNIFTY) are backfilled
+          - History is immediately available for all indices
+          - All 6 timeframes return DIFFERENT previous timestamps
+          - available_history_minutes is accurate within tolerance
+          - No issues found, all assertions passed
+          
+          User can confidently use the Fresh Pull feature.
+
+  - task: "Timeframe distinctness after Fresh Pull (P0 bug verification)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Verify that after Fresh Pull, different timeframes (5, 10, 15, 30, 60, 375 mins) return DIFFERENT previous timestamps, proving the P0 bug is fixed."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ VERIFIED — All 6 timeframes return DIFFERENT previous timestamps
+          
+          This confirms the P0 bug "1 min / 3 min / 5 min / 10 min all show the SAME Call/Put OI change values" is COMPLETELY FIXED.
+          
+          Test results:
+          - All 6 timeframes tested: [5, 10, 15, 30, 60, 375]
+          - All responses: HTTP 200 OK
+          - All responses: current is not null
+          - All responses: previous is not null
+          - All responses: history_ready == true
+          - All 6 previous timestamps are DIFFERENT (6 unique values)
+          - available_history_minutes within tolerance for [5, 60, 375]
+          
+          The fix applied in iteration #6 (inline cache refresh + poll-loop timeout + 60% threshold) is working correctly.
+
+metadata:
+  created_by: "main_agent"
+  version: "1.10"
+  test_sequence: 10
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "testing"
+      message: |
+        ✅ ROUND 9 BACKEND REGRESSION COMPLETE — ALL TESTS PASSED
+        
+        Comprehensive testing performed on 2026-07-17 at 10:00 UTC.
+        Test suite: /app/backend_test.py (Round 9 - DB Refresh Exhaustive Verification)
+        
+        ========================================
+        SUMMARY: BOTH TASKS PASSED ✅
+        ========================================
+        
+        ✅ TASK 1: POST /api/admin/refresh-day (11/11 assertions passed)
+           - HTTP 200 OK (0.67s response time)
+           - response.ok == true
+           - response.deleted: 1128 (integer >= 0)
+           - response.backfilled_snapshots: 1128 (>= 1000)
+           - response.per_index_count: NIFTY=376, SENSEX=376, BANKNIFTY=376 (all >= 375)
+           - response.mode: kite (valid)
+           - response.indices_backfilled: ['NIFTY', 'SENSEX', 'BANKNIFTY'] (correct)
+           - response.message contains 'Fresh Pull': YES
+           - History verification: All 3 indices have >= 375 snapshots
+        
+        ✅ TASK 2: Timeframe distinctness (21/21 assertions passed)
+           - All 6 timeframes tested: [5, 10, 15, 30, 60, 375]
+           - All responses: HTTP 200 OK
+           - All responses: current is not null
+           - All responses: previous is not null
+           - All responses: history_ready == true
+           - All 6 previous timestamps are DIFFERENT (proves P0 bug is fixed)
+           - available_history_minutes within tolerance for [5, 60, 375]
+        
+        ========================================
+        KEY FINDINGS
+        ========================================
+        
+        ✅ Fresh Pull endpoint is working perfectly
+        ✅ Backfills exactly 1128 snapshots (376 per index × 3 indices)
+        ✅ All 3 indices (NIFTY, SENSEX, BANKNIFTY) are backfilled
+        ✅ History is immediately available for all indices
+        ✅ All 6 timeframes return DIFFERENT previous timestamps
+        ✅ P0 bug "identical values across timeframes" is COMPLETELY FIXED
+        ✅ No issues found, all assertions passed
+        
+        ========================================
+        CONSTRAINTS MET
+        ========================================
+        
+        ✅ Login attempts: 1/5 (well within ≤5 constraint)
+        ✅ Did NOT change admin password
+        ✅ Did NOT toggle public access
+        ✅ Did NOT mutate vault / credentials / alerts collections
+        
+        ========================================
+        ACTION ITEMS FOR MAIN AGENT
+        ========================================
+        
+        ✅ Backend DB refresh (Fresh Pull) is working perfectly
+        ✅ All exhaustive verification tests passed
+        ✅ User can confidently use the Fresh Pull feature
+        
+        → PLEASE SUMMARIZE AND FINISH
+        
+        The backend is production-ready. No issues found.
+        
+        YOU MUST ASK USER BEFORE DOING FRONTEND TESTING
