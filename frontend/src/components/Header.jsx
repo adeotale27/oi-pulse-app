@@ -74,7 +74,7 @@ export default function Header({
       {/* --- Single row: brand, secondary metrics, tickers, clock, actions --- */}
       <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 shrink-0">
-          <OiPulseLogo className="w-9 h-9 drop-shadow-sm" withGlow />
+          <OiPulseLogo className="w-9 h-9 drop-shadow-sm" />
           <div>
             <div className="text-sm font-semibold tracking-tight dark:text-slate-100 bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
               OI Pulse

@@ -48,14 +48,42 @@ import secrets
 import hmac
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Adeotale")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "MasterApp@123")
+_ADMIN_PASSWORD_FALLBACK = os.environ.get("ADMIN_PASSWORD", "MasterApp@123")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
 if not ADMIN_TOKEN:
-    ADMIN_TOKEN = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}:oi-pulse".encode()).hexdigest()
+    ADMIN_TOKEN = hashlib.sha256(f"{ADMIN_USERNAME}:{_ADMIN_PASSWORD_FALLBACK}:oi-pulse".encode()).hexdigest()
 
 # 8-hour idle timeout for admin sessions.
 ADMIN_SESSION_TTL_SECONDS = int(os.environ.get("ADMIN_SESSION_TTL_SECONDS", str(8 * 3600)))
 GUEST_SESSION_TTL_SECONDS = int(os.environ.get("GUEST_SESSION_TTL_SECONDS", str(12 * 3600)))
+
+
+def _pw_hash(password: str, salt: bytes) -> str:
+    """Deterministic salted password hash (PBKDF2-HMAC-SHA256, 120k iters)."""
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
+    return dk.hex()
+
+
+async def _verify_admin_password(password: str) -> bool:
+    """Check password against DB-stored hash if it exists, else fall back to env."""
+    doc = await db.settings.find_one({"_id": "admin_credentials"})
+    if doc and doc.get("password_hash") and doc.get("salt_hex"):
+        salt = bytes.fromhex(doc["salt_hex"])
+        return hmac.compare_digest(_pw_hash(password, salt), doc["password_hash"])
+    return hmac.compare_digest(password, _ADMIN_PASSWORD_FALLBACK)
+
+
+async def _store_admin_password(new_password: str):
+    salt = secrets.token_bytes(16)
+    await db.settings.update_one(
+        {"_id": "admin_credentials"},
+        {"$set": {
+            "password_hash": _pw_hash(new_password, salt),
+            "salt_hex": salt.hex(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
 
 
 def _extract_bearer(request: Request, header: str) -> str:
@@ -117,6 +145,14 @@ async def _guest_from_request(request: Request):
         except Exception:
             pass
         return None
+    # Touch last_seen_at
+    try:
+        await db.guest_sessions.update_one(
+            {"_id": tok},
+            {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    except Exception:
+        pass
     return sess
 
 
@@ -593,8 +629,8 @@ class LoginIn(BaseModel):
 
 @api_router.post("/auth/login")
 async def auth_login(payload: LoginIn, request: Request):
-    if not (hmac.compare_digest(payload.username, ADMIN_USERNAME) and
-            hmac.compare_digest(payload.password, ADMIN_PASSWORD)):
+    if not hmac.compare_digest(payload.username, ADMIN_USERNAME) or \
+       not await _verify_admin_password(payload.password):
         raise HTTPException(401, "Invalid credentials")
     # Rotate a fresh session token, store with created_at → allows 8h expiry.
     token = secrets.token_urlsafe(32)
@@ -609,6 +645,34 @@ async def auth_login(payload: LoginIn, request: Request):
         "ok": True, "token": token, "is_admin": True, "username": ADMIN_USERNAME,
         "expires_in_seconds": ADMIN_SESSION_TTL_SECONDS,
     }
+
+
+class ChangePasswordIn(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@api_router.post("/auth/change-password")
+async def auth_change_password(payload: ChangePasswordIn, request: Request,
+                               _admin: bool = Depends(require_admin)):
+    if not await _verify_admin_password(payload.old_password):
+        raise HTTPException(401, "Current password is incorrect")
+    new_pw = (payload.new_password or "")
+    if len(new_pw) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+    if new_pw == payload.old_password:
+        raise HTTPException(400, "New password must differ from current password")
+    await _store_admin_password(new_pw)
+    # Invalidate ALL admin sessions except the caller so any other logged-in device is signed out.
+    tok = _extract_bearer(request, "x-admin-token")
+    try:
+        if tok:
+            await db.admin_sessions.delete_many({"_id": {"$ne": tok}})
+        else:
+            await db.admin_sessions.delete_many({})
+    except Exception:
+        pass
+    return {"ok": True, "message": "Password changed. Other devices have been signed out."}
 
 
 @api_router.post("/auth/logout")
@@ -708,12 +772,25 @@ async def auth_toggle_public(payload: PublicAccessIn, request: Request):
 
 
 @api_router.get("/auth/guests")
-async def auth_list_guests(request: Request):
-    """Admin-only: list current+recent guest sessions with their names."""
-    if not await _is_admin_request(request):
-        raise HTTPException(401, "Admin only")
-    docs = await db.guest_sessions.find({}, {"_id": 0}).sort("started_at", -1).to_list(length=500)
-    return {"guests": docs, "count": len(docs)}
+async def auth_list_guests(request: Request, since_hours: int = Query(24, ge=1, le=168),
+                           _admin: bool = Depends(require_admin)):
+    """Admin-only: list guests active in the last N hours (default 24h)."""
+    since_dt = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    docs = await db.guest_sessions.find(
+        {"started_at": {"$gte": since_dt.isoformat()}},
+        {"_id": 0}
+    ).sort("started_at", -1).to_list(length=500)
+    # Also compute "active in last 5 min" flag.
+    now = datetime.now(timezone.utc)
+    for d in docs:
+        try:
+            ls = datetime.fromisoformat(d.get("last_seen_at") or d.get("started_at"))
+            d["active"] = (now - ls).total_seconds() < 300
+            d["idle_seconds"] = int((now - ls).total_seconds())
+        except Exception:
+            d["active"] = False
+            d["idle_seconds"] = None
+    return {"guests": docs, "count": len(docs), "since_hours": since_hours}
 
 
 # ------------------- Telegram notifications -------------------
