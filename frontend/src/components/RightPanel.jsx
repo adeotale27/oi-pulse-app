@@ -6,6 +6,7 @@ import BuildupTable from "@/components/BuildupTable";
 import ActivityFeed from "@/components/ActivityFeed";
 import PositionsPanel from "@/components/PositionsPanel";
 import OIChart from "@/components/OIChart";
+import EventRiskWidget from "@/components/EventRiskWidget";
 
 // Content picker options for the right (side-by-side) panel.
 export const RIGHT_PANEL_VIEWS = [
@@ -15,6 +16,7 @@ export const RIGHT_PANEL_VIEWS = [
   { key: "activity", label: "Activity Feed" },
   { key: "positions", label: "Positions" },
   { key: "oichart", label: "OI Chart (mini)" },
+  { key: "index-events", label: "Index Event Risk" },
 ];
 
 export default function RightPanel({
@@ -123,6 +125,9 @@ export default function RightPanel({
             currentTime={current?.timestamp}
             prevTime={previous?.timestamp}
           />
+        )}
+        {view === "index-events" && (
+          <EventRiskWidget activeIndex={activeIndex} />
         )}
       </div>
       {/* Persistent suggestion block — stays regardless of the selected view.

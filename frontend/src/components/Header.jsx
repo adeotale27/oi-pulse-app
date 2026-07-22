@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send, Database } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send, Database, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
@@ -17,6 +17,7 @@ export default function Header({
   onOpenSettings,
   onDownloadCsv,
   onOpenSounds,
+  onOpenUpload,
   notifEnabled,
   onToggleNotif,
   onOpenHolidays,
@@ -235,6 +236,16 @@ export default function Header({
           >
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh Pull"}
+          </Button>
+          <Button
+            data-testid="btn-open-upload"
+            size="sm"
+            onClick={onOpenUpload}
+            className={`rounded-sm bg-sky-600 hover:bg-sky-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
+            title="Upload Nifty50 / Bank Nifty / Sensex constituents or NSE event calendar"
+          >
+            <UploadCloud className="w-4 h-4 mr-1.5" />
+            Upload
           </Button>
           <Button
             data-testid="btn-open-telegram-prefs"

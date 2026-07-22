@@ -20,6 +20,8 @@ from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
 from market_hours import is_market_open, IST
 from gift_vix_service import extra_tickers
+import event_risk_service as ers
+from fastapi import UploadFile, File, Form
 from cryptography.fernet import Fernet
 import base64, hashlib
 
@@ -116,7 +118,28 @@ async def _admin_from_request(request: Request):
         except Exception:
             pass
         return None
+    # Additional cap: force auto-logout at the next 3:30 PM IST after login.
+    market_exp = _session_market_expiry_utc(created_at)
+    if datetime.now(timezone.utc) >= market_exp:
+        try:
+            await db.admin_sessions.delete_one({"_id": tok})
+        except Exception:
+            pass
+        return None
     return sess
+
+
+def _session_market_expiry_utc(created_at_utc: datetime) -> datetime:
+    """
+    Return the UTC datetime at which this admin session must auto-expire due
+    to the "3:30 PM IST" rule. If login happened at/after 15:30 IST today,
+    expiry is 15:30 IST tomorrow.
+    """
+    created_ist = created_at_utc.astimezone(IST)
+    close_ist = created_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+    if created_ist >= close_ist:
+        close_ist = close_ist + timedelta(days=1)
+    return close_ist.astimezone(timezone.utc)
 
 
 async def _is_admin_request(request: Request) -> bool:
@@ -741,15 +764,33 @@ async def auth_login(payload: LoginIn, request: Request):
     # Rotate a fresh session token, store with created_at → allows 8h expiry.
     token = secrets.token_urlsafe(32)
     ip = request.client.host if request.client else None
+    now_utc = datetime.now(timezone.utc)
     await db.admin_sessions.insert_one({
         "_id": token,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now_utc.isoformat(),
         "ip": ip,
         "user_agent": request.headers.get("user-agent", "")[:200],
     })
+    # When admin logs in, if public access is currently open → close it
+    # (so guests get kicked and admin has full control).
+    try:
+        open_, _ = await _get_public_access_state()
+        if open_:
+            await db.settings.update_one(
+                {"_id": "public_access"},
+                {"$set": {"open": False, "expires_at": None}},
+                upsert=True,
+            )
+            await db.guest_sessions.delete_many({})
+            logger.info("Admin logged in — public access auto-closed.")
+    except Exception as e:
+        logger.warning(f"Could not auto-close public access on admin login: {e}")
+
+    market_exp = _session_market_expiry_utc(now_utc)
     return {
         "ok": True, "token": token, "is_admin": True, "username": ADMIN_USERNAME,
         "expires_in_seconds": ADMIN_SESSION_TTL_SECONDS,
+        "session_expires_at": market_exp.isoformat(),
     }
 
 
@@ -833,6 +874,13 @@ async def auth_state(request: Request):
     guest_name = guest_sess.get("name") if is_guest else None
     needs_guest_name = open_ and not is_admin and not is_guest
     requires_login = (not open_) and (not is_admin)
+    admin_session_expires_at = None
+    if is_admin and admin_sess:
+        try:
+            created = datetime.fromisoformat(admin_sess["created_at"])
+            admin_session_expires_at = _session_market_expiry_utc(created).isoformat()
+        except Exception:
+            admin_session_expires_at = None
     return {
         "requires_login": requires_login,
         "public_access_open": open_,
@@ -844,6 +892,7 @@ async def auth_state(request: Request):
         "admin_name": admin_name,
         "admin_display_name": ADMIN_USERNAME,   # shown in "Guest access via <name>" banner
         "session_ttl_seconds": ADMIN_SESSION_TTL_SECONDS,
+        "admin_session_expires_at": admin_session_expires_at,
     }
 
 
@@ -1134,90 +1183,65 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
 
     ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
 
-    # 2a) When in kite mode, fetch TODAY's real snapshot once per index. We use
-    #     it as a template so the back-filled history reflects today's actual
-    #     spot price, ATM strike and strike-list — NOT the MockService's hard-
-    #     coded ~year-old prices (which the user was seeing as "yesterday's
-    #     data" after Fresh Pull).
-    import random as _random
-    kite_templates: Dict[str, Dict[str, Any]] = {}
-    if tracker.mode == "kite" and tracker.kite_service:
-        try:
-            ksvc = tracker.kite_service
-            for idx in ALL_INDICES:
-                try:
-                    snap = await asyncio.wait_for(
-                        asyncio.to_thread(ksvc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
-                        timeout=10.0,
-                    )
-                    if snap:
-                        kite_templates[idx] = snap
-                except Exception as e:
-                    logger.warning(f"[refresh template fetch] {idx}: {e}")
-        except Exception as e:
-            logger.warning(f"[refresh template block] {e}")
-
-    def _synthetic_from_template(template: Dict[str, Any], t_ist: datetime,
-                                 t_start: datetime, t_end: datetime) -> Dict[str, Any]:
-        """Build a historical snapshot for time `t_ist` by taking today's real
-        template snapshot and applying a small, time-progressive noise so the
-        OI numbers 'grow into' the current values by end-of-session while the
-        price / ATM / strike list stay ANCHORED to today's actual market.
-        """
-        total = max(1.0, (t_end - t_start).total_seconds())
-        progress = max(0.0, min(1.0, (t_ist - t_start).total_seconds() / total))
-        # OI early in the day is ~65% of current; approach 100% by session close.
-        oi_factor = 0.65 + 0.35 * progress
-        # Price also drifts (±0.3% band) so the intraday chart isn't a flat line.
-        px_wobble = 1.0 + (_random.uniform(-0.003, 0.003) * (1.0 - progress * 0.7))
-        new_strikes = []
-        for s in template.get("strikes", []) or []:
-            new_strikes.append({
-                **s,
-                "ce_oi": max(0, int((s.get("ce_oi") or 0) * oi_factor * _random.uniform(0.92, 1.08))),
-                "pe_oi": max(0, int((s.get("pe_oi") or 0) * oi_factor * _random.uniform(0.92, 1.08))),
-            })
-        return {
-            **template,
-            "price": round(float(template.get("price") or 0) * px_wobble, 2),
-            "strikes": new_strikes,
-            "timestamp": t_ist.astimezone(timezone.utc).isoformat(),
-        }
-
-    # 2b) Backfill loop — uses today's kite template per index when available;
-    #     falls back to MockService only when kite failed (or in mock mode).
+    # 2) Backfill strategy depends on whether Kite credentials are present:
+    #    • KITE MODE  → NO synthetic backfill. Kite only supplies live ticks,
+    #                   so fabricating history would show FAKE OI values that
+    #                   don't match reality. Instead we take ONE live Kite
+    #                   snapshot per index at "now" and rely on the tracker's
+    #                   normal 15-second poll to fill in the rest going
+    #                   forward. This is the "real data only" behaviour the
+    #                   user wants when Kite is connected.
+    #    • MOCK MODE  → generate a synthetic 1-minute-cadence day (mock's own
+    #                   base prices) so demos have a populated Full-Day chart.
     backfilled = 0
     per_index_count = {idx: 0 for idx in ALL_INDICES}
-    try:
-        mock_svc = tracker.mock_service  # always instantiated in OITracker.__init__
-        now_ist_now = datetime.now(IST)
-        session_start = datetime.combine(
-            today_ist, datetime.min.time().replace(hour=9, minute=15)
-        ).replace(tzinfo=IST)
-        session_end = min(
-            now_ist_now,
-            datetime.combine(
-                today_ist, datetime.min.time().replace(hour=15, minute=30)
-            ).replace(tzinfo=IST),
-        )
-        if session_end > session_start:
-            t = session_start
-            docs_batch = []
-            while t <= session_end:
-                for idx in ALL_INDICES:
-                    if idx not in INDEX_CONFIG:
-                        continue
-                    try:
-                        template = kite_templates.get(idx)
-                        if template:
-                            snap = _synthetic_from_template(template, t, session_start, session_end)
-                            snap = {
-                                **snap,
-                                "index": idx,
-                                "mode": "kite",           # anchored on real today's data
-                                "source": "backfill",
-                            }
-                        else:
+    live_pulled: List[str] = []
+    now_ist_now = datetime.now(IST)
+    session_start = datetime.combine(
+        today_ist, datetime.min.time().replace(hour=9, minute=15)
+    ).replace(tzinfo=IST)
+    session_end = min(
+        now_ist_now,
+        datetime.combine(
+            today_ist, datetime.min.time().replace(hour=15, minute=30)
+        ).replace(tzinfo=IST),
+    )
+
+    if tracker.mode == "kite" and tracker.kite_service:
+        # Real-data-only: one live poll per index; live poller continues from
+        # here every 15s. No synthetic history is written.
+        ksvc = tracker.kite_service
+        for idx in ALL_INDICES:
+            try:
+                snap = await asyncio.wait_for(
+                    asyncio.to_thread(ksvc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
+                    timeout=10.0,
+                )
+                if snap:
+                    snap["mode"] = "kite"
+                    snap["source"] = "live"
+                    tracker.last_snapshot[idx] = snap
+                    await db.oi_snapshots.insert_one({
+                        **snap,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    per_index_count[idx] += 1
+                    backfilled += 1
+                    live_pulled.append(idx)
+            except Exception as e:
+                logger.warning(f"[refresh kite-live] {idx}: {e}")
+    else:
+        # Mock mode: synthetic 1-minute cadence day using MockService prices.
+        try:
+            mock_svc = tracker.mock_service
+            if session_end > session_start:
+                t = session_start
+                docs_batch = []
+                while t <= session_end:
+                    for idx in ALL_INDICES:
+                        if idx not in INDEX_CONFIG:
+                            continue
+                        try:
                             m = mock_svc.get_snapshot(idx, None)
                             if not m:
                                 continue
@@ -1228,22 +1252,20 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
                                 "source": "backfill",
                                 "timestamp": t.astimezone(timezone.utc).isoformat(),
                             }
-                        docs_batch.append({
-                            **snap,
-                            "created_at": t.astimezone(timezone.utc).isoformat(),
-                        })
-                        per_index_count[idx] += 1
-                        backfilled += 1
-                    except Exception as e:
-                        logger.debug(f"[refresh backfill] {idx}@{t}: {e}")
-                        continue
-                t = t + timedelta(minutes=1)
-            if docs_batch:
-                # Bulk insert in chunks of 500 to avoid one huge write.
-                for i in range(0, len(docs_batch), 500):
-                    await db.oi_snapshots.insert_many(docs_batch[i:i+500], ordered=False)
-    except Exception as e:
-        logger.warning(f"[admin/refresh-day] backfill failed: {e}")
+                            docs_batch.append({
+                                **snap,
+                                "created_at": t.astimezone(timezone.utc).isoformat(),
+                            })
+                            per_index_count[idx] += 1
+                            backfilled += 1
+                        except Exception as e:
+                            logger.debug(f"[refresh mock backfill] {idx}@{t}: {e}")
+                    t = t + timedelta(minutes=1)
+                if docs_batch:
+                    for i in range(0, len(docs_batch), 500):
+                        await db.oi_snapshots.insert_many(docs_batch[i:i+500], ordered=False)
+        except Exception as e:
+            logger.warning(f"[admin/refresh-day] mock backfill failed: {e}")
 
     # 3) Immediate live poll (fresh 'now' tick) for ALL indices — but ONLY when
     #    the market is currently open. Outside market hours the last backfilled
@@ -1381,6 +1403,122 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             if snap:
                 idx_spot[idx] = {"price": snap.get("price"), "atm": snap.get("atm")}
     return {"mode": tracker.mode, "positions": out, "spot": idx_spot}
+
+
+# ================================================================
+# Index Event Risk Dashboard endpoints (admin upload + read APIs)
+# ================================================================
+
+_UPLOAD_TYPE_TO_INDEX = {
+    "nifty50": "NIFTY",
+    "banknifty": "BANKNIFTY",
+    "sensex": "SENSEX",
+}
+
+_ACTIVE_INDEX_ALIASES = {
+    "NIFTY": "NIFTY",
+    "NIFTY50": "NIFTY",
+    "NIFTY_50": "NIFTY",
+    "SENSEX": "SENSEX",
+    "BANK": "BANKNIFTY",
+    "BANKNIFTY": "BANKNIFTY",
+    "BANK_NIFTY": "BANKNIFTY",
+}
+
+
+@api_router.post("/admin/upload/constituents")
+async def upload_constituents(
+    upload_type: str = Form(...),
+    file: UploadFile = File(...),
+    _admin: bool = Depends(require_admin),
+):
+    """Admin-only. upload_type ∈ {'nifty50','banknifty','sensex'}."""
+    key = (upload_type or "").strip().lower().replace("-", "").replace(" ", "")
+    idx_code = _UPLOAD_TYPE_TO_INDEX.get(key)
+    if not idx_code:
+        raise HTTPException(400, f"Unknown upload_type '{upload_type}'. Expected one of {list(_UPLOAD_TYPE_TO_INDEX)}")
+    try:
+        raw = await file.read()
+    except Exception as e:
+        raise HTTPException(400, f"Could not read uploaded file: {e}")
+    if not raw:
+        raise HTTPException(400, "Uploaded file is empty.")
+    try:
+        df = ers.read_upload_bytes(raw, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    rows, errors = ers.parse_constituents(df, idx_code)
+    if errors:
+        return {
+            "ok": False,
+            "index": idx_code,
+            "errors": errors,
+            "row_count": 0,
+        }
+    res = await ers.save_constituents(db, idx_code, rows)
+    return {
+        "ok": True,
+        "index": idx_code,
+        "rows_saved": res["rows_saved"],
+        "filename": file.filename,
+    }
+
+
+@api_router.post("/admin/upload/events")
+async def upload_events(
+    file: UploadFile = File(...),
+    _admin: bool = Depends(require_admin),
+):
+    """Admin-only. Uploads a 1-month NSE event calendar (CSV or XLSX)."""
+    try:
+        raw = await file.read()
+    except Exception as e:
+        raise HTTPException(400, f"Could not read uploaded file: {e}")
+    if not raw:
+        raise HTTPException(400, "Uploaded file is empty.")
+    try:
+        df = ers.read_upload_bytes(raw, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    rows, errors = ers.parse_events(df)
+    if errors:
+        return {"ok": False, "errors": errors, "row_count": 0}
+    res = await ers.save_events(db, rows, source_filename=file.filename or "")
+    return {"ok": True, "rows_saved": res["rows_saved"], "filename": file.filename}
+
+
+@api_router.get("/events/{index}")
+async def get_index_events(index: str):
+    """
+    Return the joined event list for the given index. Only events whose
+    company is a current constituent of that index are returned.
+    """
+    key = (index or "").strip().upper()
+    idx_code = _ACTIVE_INDEX_ALIASES.get(key)
+    if not idx_code:
+        raise HTTPException(400, f"Unknown index '{index}'")
+    events = await ers.fetch_events_for_index(db, idx_code)
+    # Uploaded_at meta so the UI can show "last refreshed" etc.
+    meta = await db.settings.find_one({"_id": "nse_events_meta"}) or {}
+    return {
+        "index": idx_code,
+        "count": len(events),
+        "events": events,
+        "events_uploaded_at": meta.get("uploaded_at"),
+        "events_source_filename": meta.get("source_filename"),
+    }
+
+
+@api_router.get("/constituents/{index}")
+async def get_index_constituents(index: str):
+    key = (index or "").strip().upper()
+    idx_code = _ACTIVE_INDEX_ALIASES.get(key)
+    if not idx_code:
+        raise HTTPException(400, f"Unknown index '{index}'")
+    docs = await db.index_constituents.find(
+        {"index": idx_code}, {"_id": 0}
+    ).sort("weightage", -1).to_list(length=500)
+    return {"index": idx_code, "count": len(docs), "constituents": docs}
 
 
 # ------------------- Lifecycle -------------------

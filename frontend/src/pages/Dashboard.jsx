@@ -22,6 +22,9 @@ import RightPanel from "@/components/RightPanel";
 import HolidayBadge from "@/components/HolidayBadge";
 import MarketEventsBadge from "@/components/MarketEventsBadge";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
+import UploadModal from "@/components/UploadModal";
+import EventRiskWidget from "@/components/EventRiskWidget";
+import MarketImpactBadge from "@/components/MarketImpactBadge";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
@@ -154,6 +157,7 @@ export default function Dashboard() {
     try { return localStorage.getItem("compact") === "1"; } catch { return false; }
   });
   const [soundsOpen, setSoundsOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
     try { return localStorage.getItem("rightPanelOpen") !== "0"; } catch { return true; }
   });
@@ -813,6 +817,7 @@ export default function Dashboard() {
         onOpenTelegramPrefs={() => setTelegramPrefsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSounds={() => setSoundsOpen(true)}
+        onOpenUpload={() => setUploadOpen(true)}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
         notifEnabled={notifEnabled}
         onToggleNotif={handleToggleNotif}
@@ -864,6 +869,7 @@ export default function Dashboard() {
                   { v: "alerts", l: "Alerts" },
                   { v: "activity", l: "Activity" },
                   { v: "holidays", l: "Events" },
+                  { v: "index-events", l: "Index Risk" },
                 ].filter((t) => !t.adminOnly || authState.is_admin).map((t) => (
                   <TabsTrigger
                     key={t.v}
@@ -882,6 +888,12 @@ export default function Dashboard() {
                 </div>
                 <div className="w-60">
                   <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
+                </div>
+                <div className="w-64">
+                  <MarketImpactBadge
+                    activeIndex={activeIndex}
+                    onOpenIndexEvents={() => setActiveTab("index-events")}
+                  />
                 </div>
               </div>
             </div>
@@ -1258,6 +1270,10 @@ export default function Dashboard() {
                   <TabsContent value="holidays" className="mt-0">
                     <HolidaysTab />
                   </TabsContent>
+
+                  <TabsContent value="index-events" className="mt-0">
+                    <EventRiskWidget activeIndex={activeIndex} />
+                  </TabsContent>
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-md p-3 text-xs text-slate-600 flex items-center justify-between">
@@ -1367,6 +1383,7 @@ export default function Dashboard() {
       <HugeShiftModal shift={hugeShift} onClose={dismissHugeShift} />
 
       <SoundSettingsModal open={soundsOpen} onOpenChange={setSoundsOpen} />
+      <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
     </div>
   );
 }

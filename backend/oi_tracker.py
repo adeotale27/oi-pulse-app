@@ -35,7 +35,7 @@ DEFAULT_SETTINGS = {
     "threshold_pct": 15.0,      # % OI change to trigger alert
     "cooldown_seconds": 120,    # per-index alert cooldown
     "compare_minutes": 3,       # compare with snapshot from N minutes ago
-    "enabled_indices": ["NIFTY", "SENSEX"],  # which indices to poll (BANKNIFTY optional)
+    "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"],  # which indices to poll (BANKNIFTY optional)
 }
 
 

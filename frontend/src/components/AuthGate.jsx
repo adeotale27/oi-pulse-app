@@ -65,6 +65,27 @@ export default function AuthGate({ children }) {
     return () => clearInterval(check);
   }, [state.is_admin, state.session_ttl_seconds]);
 
+  // Hard auto-logout for admin at 3:30 PM IST (backend also enforces this).
+  useEffect(() => {
+    if (!state.is_admin || !state.admin_session_expires_at) return;
+    const expMs = Date.parse(state.admin_session_expires_at);
+    if (Number.isNaN(expMs)) return;
+    const now = Date.now();
+    if (expMs <= now) {
+      toast.info("Signed out — market closed (3:30 PM IST).");
+      localStorage.removeItem("oi_admin_token");
+      window.location.reload();
+      return;
+    }
+    // Schedule + safety-net poll every minute (backend rejects if expired).
+    const timer = setTimeout(() => {
+      toast.info("Signed out — market closed (3:30 PM IST).");
+      localStorage.removeItem("oi_admin_token");
+      window.location.reload();
+    }, Math.min(expMs - now, 2147483000)); // clamp for 32-bit setTimeout
+    return () => clearTimeout(timer);
+  }, [state.is_admin, state.admin_session_expires_at]);
+
   const doLogin = async (e) => {
     e?.preventDefault();
     if (!username.trim() || !password) {

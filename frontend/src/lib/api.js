@@ -1,6 +1,15 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// Backend URL resolution:
+// 1. Use REACT_APP_BACKEND_URL if provided at build time (Emergent preview).
+// 2. Otherwise fall back to the current window origin. This lets the app work
+//    on custom domains (e.g. https://www.aaisnamkeen.com) without a rebuild,
+//    provided the domain proxies `/api/*` to the FastAPI backend.
+const _envBackend = (process.env.REACT_APP_BACKEND_URL || "").trim();
+const _hasEnvBackend = _envBackend && _envBackend !== "undefined" && _envBackend !== "null";
+const BACKEND_URL = _hasEnvBackend
+  ? _envBackend
+  : (typeof window !== "undefined" ? window.location.origin : "");
 export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({ baseURL: API, timeout: 20000 });
