@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Request, Depends
+from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -41,6 +42,9 @@ app = FastAPI(title="NSE OI Tracker")
 api_router = APIRouter(prefix="/api")
 
 tracker = OITracker(db)
+
+# Straddle sample retention (hours)
+STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
 
 # Give notifier a handle to the db so it can read/write prefs
 import notifier as _notifier_boot
@@ -728,6 +732,243 @@ async def get_vrp(index_name: str, days: int = Query(30, ge=5, le=90)):
         }
 
     return await compute_vrp(tracker.kite_service, db, idx, iv_pct, days=days)
+
+
+@api_router.get("/straddle/{index_name}")
+async def get_straddle(index_name: str, expiry: Optional[str] = None, position: str = Query("long"), qty: int = Query(1, ge=1), span_steps: Optional[int] = Query(None, ge=4), points: int = Query(81, ge=5, le=801)):
+    """Return a straddle payoff series for the ATM strike.
+
+    - `position`: "long" or "short"
+    - `qty`: multiplier for the payoff
+    - `span_steps`: optional number of strike steps each side to include (defaults to ~20)
+    - `points`: number of points in the price grid (default 81)
+    """
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(404, "Unknown index")
+
+    # Fetch a fresh snapshot if we don't have one cached
+    snap = tracker.last_snapshot.get(idx)
+    if not snap or (expiry and snap.get("expiry") != expiry):
+        try:
+            svc = tracker._get_service()
+            snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
+            if snap:
+                snap["mode"] = tracker.mode
+                tracker.last_snapshot[idx] = snap
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    if not snap:
+        raise HTTPException(503, "No data yet for straddle calculation")
+
+    atm = int(snap.get("atm") or 0)
+    price = float(snap.get("price") or 0.0)
+    step = INDEX_CONFIG[idx]["step"]
+    # default span: 20 strikes on each side
+    steps = span_steps if span_steps is not None else 20
+    left = atm - steps * step
+    right = atm + steps * step
+
+    # find best matching strike in snapshot (fallback to atm)
+    strike_obj = None
+    for s in snap.get("strikes", []):
+        if int(s.get("strike")) == atm:
+            strike_obj = s
+            break
+    if not strike_obj:
+        # pick the closest available strike
+        strikes_list = sorted([int(s.get("strike")) for s in snap.get("strikes", [])])
+        if strikes_list:
+            closest = min(strikes_list, key=lambda x: abs(x - atm))
+            for s in snap.get("strikes", []):
+                if int(s.get("strike")) == closest:
+                    strike_obj = s
+                    atm = closest
+                    break
+
+    ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
+    pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+    premium = ce_p + pe_p
+
+    # build price grid
+    start = max(0.0, left)
+    end = right
+    series = []
+    for i in range(points):
+        p = start + (end - start) * (i / (points - 1))
+        # payoff for long straddle = max(p-K,0) + max(K-p,0) - premium
+        intrinsic = max(p - atm, 0.0) + max(atm - p, 0.0)
+        pnl_per = intrinsic - premium
+        if position == "short":
+            pnl_per = -pnl_per
+        pnl = pnl_per * qty
+        series.append({"price": round(p, 2), "pnl": round(pnl, 2)})
+
+    return {
+        "index": idx,
+        "atm": atm,
+        "underlying": round(price, 2),
+        "strike": atm,
+        "ce_ltp": round(ce_p, 2),
+        "pe_ltp": round(pe_p, 2),
+        "premium": round(premium, 2),
+        "position": position,
+        "qty": qty,
+        "series": series,
+    }
+
+
+@api_router.get("/straddle/{index_name}/history")
+async def get_straddle_history(index_name: str, minutes: int = Query(60, ge=1, le=24*60), expiry: Optional[str] = None):
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(404, "Unknown index")
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    query = {"index": idx, "created_at": {"$gte": cutoff}}
+    if expiry:
+        query["expiry"] = expiry
+    docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=minutes * 120)
+    return {"index": idx, "count": len(docs), "history": docs}
+
+
+@api_router.websocket("/ws/straddle/{index_name}")
+async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[str] = None, position: str = Query("long"), qty: int = Query(1)):
+    """WebSocket that streams latest straddle premium every 1s as JSON.
+
+    Message format: { ts: ISO, premium: float, underlying: float, atm: int, ce_ltp: float, pe_ltp: float }
+    """
+    await websocket.accept()
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        await websocket.close(code=1003)
+        return
+
+    # Authenticate via admin token passed as query param or header
+    def _get_token_from_scope() -> str:
+        # WebSocket headers are available on websocket.scope["headers"] as list of (k,v)
+        try:
+            # try header first
+            for k, v in websocket.scope.get("headers", []):
+                if k.decode().lower() in ("x-admin-token", "authorization"):
+                    s = v.decode()
+                    if k.decode().lower() == "authorization" and s.lower().startswith("bearer "):
+                        return s[7:].strip()
+                    return s.strip()
+        except Exception:
+            pass
+        # fallback to query params
+        try:
+            qs = websocket.scope.get("query_string", b"").decode()
+            params = dict((pair.split("=", 1) if "=" in pair else (pair, "")) for pair in qs.split("&") if pair)
+            return params.get("admin_token") or params.get("token") or ""
+        except Exception:
+            return ""
+
+    token = _get_token_from_scope()
+    if not token:
+        await websocket.close(code=4401)
+        return
+
+    # validate session
+    try:
+        sess = await db.admin_sessions.find_one({"_id": token})
+        if not sess:
+            await websocket.close(code=4401)
+            return
+        # check expiry similarly to _admin_from_request
+        try:
+            created_at = datetime.fromisoformat(sess.get("created_at"))
+        except Exception:
+            await websocket.close(code=4401)
+            return
+        age = (datetime.now(timezone.utc) - created_at).total_seconds()
+        if age > ADMIN_SESSION_TTL_SECONDS:
+            try:
+                await db.admin_sessions.delete_one({"_id": token})
+            except Exception:
+                pass
+            await websocket.close(code=4401)
+            return
+        # session ok — proceed
+    except Exception:
+        await websocket.close(code=4401)
+        return
+
+    try:
+        while True:
+            try:
+                
+                svc = tracker._get_service()
+                snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
+                if snap:
+                    atm = int(snap.get("atm") or 0)
+                    price = float(snap.get("price") or 0.0)
+                    # find ATM strike object
+                    strike_obj = None
+                    for s in snap.get("strikes", []):
+                        if int(s.get("strike")) == atm:
+                            strike_obj = s
+                            break
+                    if not strike_obj and snap.get("strikes"):
+                        # fallback to closest
+                        strikes_list = sorted([int(s.get("strike")) for s in snap.get("strikes", [])])
+                        closest = min(strikes_list, key=lambda x: abs(x - atm))
+                        for s in snap.get("strikes", []):
+                            if int(s.get("strike")) == closest:
+                                strike_obj = s
+                                atm = closest
+                                break
+
+                    ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
+                    pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+                    premium = ce_p + pe_p
+                    payload = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "premium": round(premium, 2),
+                        "underlying": round(price, 2),
+                        "atm": atm,
+                        "ce_ltp": round(ce_p, 2),
+                        "pe_ltp": round(pe_p, 2),
+                    }
+                    # persist sample to DB
+                    try:
+                        await db.straddle_samples.insert_one({
+                            "index": idx,
+                            "expiry": snap.get("expiry"),
+                            "ts": payload["ts"],
+                            "premium": payload["premium"],
+                            "underlying": payload["underlying"],
+                            "atm": payload["atm"],
+                            "ce_ltp": payload["ce_ltp"],
+                            "pe_ltp": payload["pe_ltp"],
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        # prune old samples:
+                        #  - keep samples for contracts until their expiry day (IST).
+                        #  - for samples without expiry, fall back to time-based retention.
+                        try:
+                            # delete any samples for this index whose expiry date is BEFORE today (IST)
+                            today_ist = datetime.now(IST).date().isoformat()
+                            await db.straddle_samples.delete_many({"index": idx, "expiry": {"$lt": today_ist}})
+                            # delete samples without an expiry older than the retention window
+                            cutoff = (datetime.now(timezone.utc) - timedelta(hours=STRADDLE_RETENTION_HOURS)).isoformat()
+                            await db.straddle_samples.delete_many({"index": idx, "expiry": {"$exists": False}, "created_at": {"$lt": cutoff}})
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    await websocket.send_json(payload)
+                else:
+                    await websocket.send_json({"error": "no_snapshot"})
+            except Exception as e:
+                try:
+                    await websocket.send_json({"error": str(e)})
+                except Exception:
+                    pass
+            await asyncio.sleep(30)
+    except WebSocketDisconnect:
+        return
 
 
 @api_router.get("/alerts")

@@ -217,7 +217,7 @@ export default function Header({
             <Settings2 className="w-4 h-4" />
           </Button>
           <Button
-            data-testid="btn-morning-refresh"
+            data-testid="btn-straddle-chart"
             size="sm"
             onClick={onOpenMorningRefresh}
             className={`rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}

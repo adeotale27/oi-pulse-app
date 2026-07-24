@@ -49,6 +49,10 @@ export const fetchOIChange = (idx, minutes) =>
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);
+export const fetchStraddle = (idx, opts = {}) =>
+  api.get(`/straddle/${idx}`, { params: opts }).then((r) => r.data);
+export const fetchStraddleHistory = (idx, minutes = 60, opts = {}) =>
+  api.get(`/straddle/${idx}/history`, { params: { minutes, ...opts } }).then((r) => r.data);
 export const clearAlerts = () => api.delete("/alerts").then((r) => r.data);
 export const saveCredentials = (api_key, access_token) =>
   api.post("/credentials", { api_key, access_token }).then((r) => r.data);

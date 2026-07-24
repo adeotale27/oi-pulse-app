@@ -7,6 +7,7 @@ import ActivityFeed from "@/components/ActivityFeed";
 import PositionsPanel from "@/components/PositionsPanel";
 import OIChart from "@/components/OIChart";
 import EventRiskWidget from "@/components/EventRiskWidget";
+import StraddleChart from "@/components/StraddleChart";
 
 // Content picker options for the right (side-by-side) panel.
 export const RIGHT_PANEL_VIEWS = [
@@ -16,6 +17,7 @@ export const RIGHT_PANEL_VIEWS = [
   { key: "activity", label: "Activity Feed" },
   { key: "positions", label: "Positions" },
   { key: "oichart", label: "OI Chart (mini)" },
+  { key: "straddle", label: "Straddle" },
   { key: "index-events", label: "Index Event Risk" },
 ];
 
@@ -125,6 +127,11 @@ export default function RightPanel({
             currentTime={current?.timestamp}
             prevTime={previous?.timestamp}
           />
+        )}
+        {view === "straddle" && (
+          <div className="p-3">
+            <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={1000} />
+          </div>
         )}
         {view === "index-events" && (
           <EventRiskWidget activeIndex={activeIndex} />

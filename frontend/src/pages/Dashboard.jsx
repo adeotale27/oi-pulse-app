@@ -24,6 +24,7 @@ import MarketEventsBadge from "@/components/MarketEventsBadge";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
 import UploadModal from "@/components/UploadModal";
 import EventRiskWidget from "@/components/EventRiskWidget";
+import StraddleChart from "@/components/StraddleChart";
 import MarketImpactBadge from "@/components/MarketImpactBadge";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
@@ -869,6 +870,7 @@ export default function Dashboard() {
                   { v: "alerts", l: "Alerts" },
                   { v: "activity", l: "Activity" },
                   { v: "holidays", l: "Events" },
+                  { v: "straddle", l: "Straddle" },
                   { v: "index-events", l: "Index Risk" },
                 ].filter((t) => !t.adminOnly || authState.is_admin).map((t) => (
                   <TabsTrigger
@@ -1269,6 +1271,19 @@ export default function Dashboard() {
 
                   <TabsContent value="holidays" className="mt-0">
                     <HolidaysTab />
+                  </TabsContent>
+
+                  <TabsContent value="straddle" className="mt-0">
+                    <div className="text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
+                    <StraddleChart
+                      index={activeIndex}
+                      expiry={selectedExpiry}
+                      position="long"
+                      qty={1}
+                      pollMs={1000}
+                      maxPoints={7200}
+                      useWs={true}
+                    />
                   </TabsContent>
 
                   <TabsContent value="index-events" className="mt-0">
