@@ -352,6 +352,24 @@ export default function Dashboard() {
     try { localStorage.setItem("oiPollMs", String(pollMs)); } catch { /* noop */ }
   }, [pollMs]);
 
+  // ---- Straddle poll interval (from API settings) ----
+  const [straddlePollMs, setStraddlePollMs] = useState(60000); // default 1 minute
+  useEffect(() => {
+    const fetchStraddleSettings = async () => {
+      try {
+        const res = await api.get("/settings");
+        if (res.data && res.data.straddle_poll_interval_seconds) {
+          setStraddlePollMs(res.data.straddle_poll_interval_seconds * 1000);
+        }
+      } catch (e) {
+        console.error("Failed to fetch straddle poll interval", e);
+      }
+    };
+    fetchStraddleSettings();
+    const id = setInterval(fetchStraddleSettings, 60000); // refresh every minute
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     loadStatus();
     loadOI();
@@ -1280,7 +1298,7 @@ export default function Dashboard() {
                       expiry={selectedExpiry}
                       position="long"
                       qty={1}
-                      pollMs={1000}
+                      pollMs={straddlePollMs}
                       maxPoints={7200}
                       useWs={true}
                     />

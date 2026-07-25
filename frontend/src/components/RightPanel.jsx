@@ -130,7 +130,7 @@ export default function RightPanel({
         )}
         {view === "straddle" && (
           <div className="p-3">
-            <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={1000} />
+            <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={30000} />
           </div>
         )}
         {view === "index-events" && (

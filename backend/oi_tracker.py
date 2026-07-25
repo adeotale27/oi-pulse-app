@@ -24,6 +24,7 @@ INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
 # Data retention: keep 24 hours so a full trading day (9:00–15:30 = 6.5h)
 # plus overnight review is always available.
 SNAPSHOT_RETENTION_HOURS = int(os.environ.get("SNAPSHOT_RETENTION_HOURS", "24"))
+STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "48"))
 
 # When true, poll 24/7 (dev / mock). When false, poll only inside NSE hours.
 FORCE_ALWAYS_POLL = os.environ.get("FORCE_ALWAYS_POLL", "false").lower() == "true"
@@ -36,6 +37,9 @@ DEFAULT_SETTINGS = {
     "cooldown_seconds": 120,    # per-index alert cooldown
     "compare_minutes": 3,       # compare with snapshot from N minutes ago
     "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"],  # which indices to poll (BANKNIFTY optional)
+    "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
+    "straddle_poll_interval_seconds": 60,  # Straddle data pull interval (default 60 = 1 minute)
+    "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
 }
 
 
@@ -59,7 +63,8 @@ class OITracker:
             self.settings.update({k: v for k, v in doc.items() if k != "_id"})
 
     async def save_settings(self, patch: Dict[str, Any]):
-        allowed = {"threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices"}
+        allowed = {"threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices", 
+                   "oi_poll_interval_seconds", "straddle_poll_interval_seconds", "straddle_enabled_indices"}
         clean = {k: v for k, v in patch.items() if k in allowed}
         self.settings.update(clean)
         await self.db.settings.update_one(
@@ -256,9 +261,60 @@ class OITracker:
             # keep only last SNAPSHOT_RETENTION_HOURS (default 24) so full day session is preserved
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
             await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
+            # persist straddle samples for the chosen expiry
+            await self._store_straddle_sample(idx, snap)
             # evaluate alerts
             await self._evaluate_alerts(idx, snap)
         self.last_updated_at = datetime.now(timezone.utc).isoformat()
+
+    async def _store_straddle_sample(self, index_name: str, snap: Dict[str, Any]):
+        try:
+            atm = int(snap.get("atm") or 0)
+            price = float(snap.get("price") or 0.0)
+            strikes = snap.get("strikes", [])
+            strike_obj = None
+            for s in strikes:
+                if int(s.get("strike")) == atm:
+                    strike_obj = s
+                    break
+            if not strike_obj and strikes:
+                strikes_list = sorted([int(s.get("strike")) for s in strikes if s.get("strike") is not None])
+                if strikes_list:
+                    closest = min(strikes_list, key=lambda x: abs(x - atm))
+                    for s in strikes:
+                        if int(s.get("strike")) == closest:
+                            strike_obj = s
+                            atm = closest
+                            break
+            ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
+            pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+            premium = round(ce_p + pe_p, 2)
+            now_utc = datetime.now(timezone.utc)
+            trade_date = now_ist().date().isoformat()
+            await self.db.straddle_samples.insert_one({
+                "index": index_name,
+                "expiry": snap.get("expiry"),
+                "trade_date": trade_date,
+                "ts": snap.get("timestamp") or now_utc.isoformat(),
+                "premium": premium,
+                "underlying": round(price, 2),
+                "atm": atm,
+                "ce_ltp": round(ce_p, 2),
+                "pe_ltp": round(pe_p, 2),
+                "created_at": now_utc.isoformat(),
+            })
+            await self._prune_straddle_history(index_name)
+        except Exception as e:
+            logger.debug(f"[_store_straddle_sample] failed for {index_name}: {e}")
+
+    async def _prune_straddle_history(self, index_name: str):
+        try:
+            today_ist = now_ist().date().isoformat()
+            await self.db.straddle_samples.delete_many({"index": index_name, "expiry": {"$lt": today_ist}})
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=STRADDLE_RETENTION_HOURS)).isoformat()
+            await self.db.straddle_samples.delete_many({"index": index_name, "expiry": {"$exists": False}, "created_at": {"$lt": cutoff}})
+        except Exception as e:
+            logger.debug(f"[_prune_straddle_history] failed for {index_name}: {e}")
 
     async def _evaluate_alerts(self, index_name: str, current: Dict[str, Any]):
         """Compare current OI vs snapshot ~N minutes ago and detect reversal spikes.

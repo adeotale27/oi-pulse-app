@@ -40,6 +40,13 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
     setSettings({ ...settings, enabled_indices: Array.from(cur) });
   };
 
+  const toggleStraddleIndex = (idx) => {
+    const cur = new Set(settings.straddle_enabled_indices || []);
+    if (cur.has(idx)) cur.delete(idx);
+    else cur.add(idx);
+    setSettings({ ...settings, straddle_enabled_indices: Array.from(cur) });
+  };
+
   const setLocalField = (k, v) => setLocal((prev) => ({ ...prev, [k]: v }));
   const setLot = (idx, v) => setLocal((prev) => ({ ...prev, lotSize: { ...prev.lotSize, [idx]: v } }));
 
@@ -181,7 +188,77 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
             </div>
           </section>
 
-          {/* ------------- Huge OI shift popup ------------- */}
+          {/* ------------- Data Collection Poll Intervals ------------- */}
+          <section className="space-y-4 pt-2 border-t border-slate-200">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+              Data Collection (Admin Only)
+            </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
+                OI Data Pull Interval
+                <InfoTip title="OI Poll Interval">
+                  How frequently to pull OI data from the market. Options: 15s (frequent), 30s (balanced), 60s (conservative).
+                </InfoTip>
+              </Label>
+              <div className="flex gap-2">
+                {[15, 30, 60].map((val) => (
+                  <Button
+                    key={val}
+                    variant={settings.oi_poll_interval_seconds === val ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSettings({ ...settings, oi_poll_interval_seconds: val })}
+                    className="flex-1 text-xs"
+                  >
+                    {val}s
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
+                Straddle Data Pull Interval
+                <InfoTip title="Straddle Poll Interval">
+                  How frequently to pull straddle premium data. Default 60s (1 minute).
+                </InfoTip>
+              </Label>
+              <div className="flex gap-2">
+                {[30, 60, 120].map((val) => (
+                  <Button
+                    key={val}
+                    variant={settings.straddle_poll_interval_seconds === val ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSettings({ ...settings, straddle_poll_interval_seconds: val })}
+                    className="flex-1 text-xs"
+                  >
+                    {val}s
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">
+                Straddle Data — Tracked Indices
+              </Label>
+              <div className="space-y-1.5">
+                {ALL_INDICES.map((idx) => (
+                  <label
+                    key={idx}
+                    className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Checkbox
+                      data-testid={`straddle-enabled-${idx}`}
+                      checked={settings.straddle_enabled_indices?.includes(idx)}
+                      onCheckedChange={() => toggleStraddleIndex(idx)}
+                    />
+                    <span className="text-sm font-medium">{idx}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </section>
           <section className="space-y-3 pt-2 border-t border-slate-200">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               Huge OI shift popup (ATM ± 1 strikes)

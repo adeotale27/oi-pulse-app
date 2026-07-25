@@ -14,12 +14,12 @@ from collections import defaultdict, deque
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 
 from oi_tracker import OITracker, INDICES
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
-from market_hours import is_market_open, IST
+from market_hours import is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend
 from gift_vix_service import extra_tickers
 import event_risk_service as ers
 from fastapi import UploadFile, File, Form
@@ -45,6 +45,8 @@ tracker = OITracker(db)
 
 # Straddle sample retention (hours)
 STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
+STRADDLE_SAMPLE_INTERVAL_SECONDS = int(os.environ.get("STRADDLE_SAMPLE_INTERVAL_SECONDS", "30"))
+STRADDLE_INDICES = ["NIFTY", "SENSEX"]
 
 # Give notifier a handle to the db so it can read/write prefs
 import notifier as _notifier_boot
@@ -157,6 +159,74 @@ async def require_admin(request: Request):
     return True
 
 
+async def _persist_straddle_sample(index_name: str, snap: dict):
+    try:
+        atm = int(snap.get("atm") or 0)
+        price = float(snap.get("price") or 0.0)
+        strikes = snap.get("strikes", [])
+        strike_obj = None
+        for s in strikes:
+            if int(s.get("strike")) == atm:
+                strike_obj = s
+                break
+        if not strike_obj and strikes:
+            strikes_list = sorted([int(s.get("strike")) for s in strikes if s.get("strike") is not None])
+            if strikes_list:
+                closest = min(strikes_list, key=lambda x: abs(x - atm))
+                for s in strikes:
+                    if int(s.get("strike")) == closest:
+                        strike_obj = s
+                        atm = closest
+                        break
+        ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
+        pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+        premium = round(ce_p + pe_p, 2)
+        now_utc = datetime.now(timezone.utc)
+        await db.straddle_samples.insert_one({
+            "index": index_name,
+            "expiry": snap.get("expiry"),
+            "trade_date": datetime.now(IST).date().isoformat(),
+            "ts": snap.get("timestamp") or now_utc.isoformat(),
+            "premium": premium,
+            "underlying": round(price, 2),
+            "atm": atm,
+            "ce_ltp": round(ce_p, 2),
+            "pe_ltp": round(pe_p, 2),
+            "created_at": now_utc.isoformat(),
+        })
+        today_ist = datetime.now(IST).date().isoformat()
+        await db.straddle_samples.delete_many({"index": index_name, "expiry": {"$lt": today_ist}})
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=STRADDLE_RETENTION_HOURS)).isoformat()
+        await db.straddle_samples.delete_many({"index": index_name, "expiry": {"$exists": False}, "created_at": {"$lt": cutoff}})
+    except Exception:
+        pass
+
+
+async def _straddle_sampler():
+    while True:
+        try:
+            if is_market_open():
+                svc = tracker._get_service()
+                for idx in STRADDLE_INDICES:
+                    if idx not in INDEX_CONFIG:
+                        continue
+                    try:
+                        snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                        if not snap:
+                            continue
+                        await _persist_straddle_sample(idx, snap)
+                    except Exception as e:
+                        logger.warning(f"straddle sampler failed for {idx}: {e}")
+                await asyncio.sleep(STRADDLE_SAMPLE_INTERVAL_SECONDS)
+            else:
+                await asyncio.sleep(min(STRADDLE_SAMPLE_INTERVAL_SECONDS, 60))
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.exception(f"straddle sampler loop error: {e}")
+            await asyncio.sleep(STRADDLE_SAMPLE_INTERVAL_SECONDS)
+
+
 async def _guest_from_request(request: Request):
     tok = _extract_bearer(request, "x-guest-token")
     if not tok:
@@ -229,6 +299,9 @@ class SettingsIn(BaseModel):
     cooldown_seconds: Optional[int] = None
     compare_minutes: Optional[int] = None
     enabled_indices: Optional[List[str]] = None
+    oi_poll_interval_seconds: Optional[int] = None  # OI data pull interval (15/30/60)
+    straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
+    straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
 
 
 class ExpiryIn(BaseModel):
@@ -819,17 +892,46 @@ async def get_straddle(index_name: str, expiry: Optional[str] = None, position: 
     }
 
 
+def _previous_trading_day(now_ist: datetime) -> date:
+    candidate = (now_ist - timedelta(days=1)).date()
+    while is_weekend(datetime.combine(candidate, datetime.min.time(), IST)) or is_holiday(datetime.combine(candidate, datetime.min.time(), IST)):
+        candidate = (datetime.combine(candidate, datetime.min.time(), IST) - timedelta(days=1)).date()
+    return candidate
+
+
+def _resolve_straddle_trade_date(requested_date: Optional[str] = None) -> date:
+    now_ist = datetime.now(IST)
+    if requested_date and requested_date not in ("auto", "latest"):
+        try:
+            return date.fromisoformat(requested_date)
+        except ValueError:
+            raise HTTPException(400, "Invalid date format for trade_date; expected YYYY-MM-DD")
+    if now_ist.time() < MARKET_OPEN:
+        return _previous_trading_day(now_ist)
+    return now_ist.date()
+
+
 @api_router.get("/straddle/{index_name}/history")
-async def get_straddle_history(index_name: str, minutes: int = Query(60, ge=1, le=24*60), expiry: Optional[str] = None):
+async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(None, ge=1, le=24*60), expiry: Optional[str] = None, date: Optional[str] = None):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
-    query = {"index": idx, "created_at": {"$gte": cutoff}}
+    target_date = _resolve_straddle_trade_date(date)
+    query = {"index": idx, "trade_date": target_date.isoformat()}
     if expiry:
         query["expiry"] = expiry
-    docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=minutes * 120)
-    return {"index": idx, "count": len(docs), "history": docs}
+    if minutes is not None and minutes < 24 * 60 and not (date is None and datetime.now(IST).time() < MARKET_OPEN):
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+        query["created_at"] = {"$gte": cutoff}
+    docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=(minutes * 120) if minutes else 5000)
+
+    if not docs and date is None and datetime.now(IST).time() < MARKET_OPEN:
+        previous_date = _previous_trading_day(datetime.now(IST))
+        query["trade_date"] = previous_date.isoformat()
+        query.pop("created_at", None)
+        docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=5000)
+
+    return {"index": idx, "trade_date": query["trade_date"], "count": len(docs), "history": docs}
 
 
 @api_router.websocket("/ws/straddle/{index_name}")
@@ -896,8 +998,18 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
         return
 
     try:
+        # Load poll interval from settings (default to 30s)
+        poll_interval_seconds = tracker.settings.get("straddle_poll_interval_seconds", 30)
+        
         while True:
             try:
+                # Only fetch new data during market hours (9:15 AM - 3:30 PM IST, Mon-Fri)
+                from market_hours import is_market_open as is_market_open_fn
+                if not is_market_open_fn(datetime.now(IST)):
+                    # Market closed, return last known data or empty
+                    await websocket.send_json({"status": "market_closed"})
+                    await asyncio.sleep(60)
+                    continue
                 
                 svc = tracker._get_service()
                 snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
@@ -936,6 +1048,7 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
                         await db.straddle_samples.insert_one({
                             "index": idx,
                             "expiry": snap.get("expiry"),
+                            "trade_date": datetime.now(IST).date().isoformat(),
                             "ts": payload["ts"],
                             "premium": payload["premium"],
                             "underlying": payload["underlying"],
@@ -966,7 +1079,7 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
                     await websocket.send_json({"error": str(e)})
                 except Exception:
                     pass
-            await asyncio.sleep(30)
+            await asyncio.sleep(poll_interval_seconds)
     except WebSocketDisconnect:
         return
 
@@ -1846,6 +1959,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
+straddle_sampler_task = None
+
 @app.on_event("startup")
 async def _startup():
     # Ensure indexes for fast history / retention queries.
@@ -1853,6 +1968,9 @@ async def _startup():
         await db.oi_snapshots.create_index([("index", 1), ("created_at", 1)])
         await db.oi_snapshots.create_index("created_at")
         await db.alerts.create_index([("index", 1), ("created_at", -1)])
+        await db.straddle_samples.create_index([("index", 1), ("trade_date", 1), ("expiry", 1)])
+        await db.straddle_samples.create_index([("index", 1), ("ts", 1)])
+        await db.straddle_samples.create_index("created_at")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 
@@ -1861,6 +1979,8 @@ async def _startup():
     await tracker.start()
     extra_tickers.attach_db(db)
     await extra_tickers.start()
+    global straddle_sampler_task
+    straddle_sampler_task = asyncio.create_task(_straddle_sampler())
 
     # Report how much of today's session data we already have so operators
     # can immediately see whether continuity was preserved across a restart.
