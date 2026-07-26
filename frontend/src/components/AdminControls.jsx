@@ -11,7 +11,7 @@ import ChangePasswordModal from "@/components/ChangePasswordModal";
  * AdminControls — compact widget shown in the header (admin only).
  *  - Public Access toggle (auto-off at 3:30 PM IST server-side)
  *  - Admin menu: Guest Directory, Change Password, Sign out
- *  - Auto logout after 420 minutes (also disables public access)
+ *  - Auto logout after 420 minutes
  */
 export default function AdminControls() {
   const [state, setState] = useState(null);
@@ -41,20 +41,13 @@ export default function AdminControls() {
 
     const logoutTimer = setTimeout(async () => {
       try {
-        // Disable public access first
-        await api.post("/auth/public-access", { open: false });
-      } catch (_) {
-        // ignore
-      }
-
-      try {
         await api.post("/auth/logout");
       } catch (_) {
         // ignore
       }
 
       localStorage.removeItem("oi_admin_token");
-      toast.info("Admin session expired. Public access disabled.");
+      toast.info("Admin session expired. Signed out.");
       window.location.reload();
     }, 420 * 60 * 1000); // 420 minutes
 
@@ -101,20 +94,13 @@ export default function AdminControls() {
 
   const logout = async () => {
     try {
-      // Disable public access first
-      await api.post("/auth/public-access", { open: false });
-    } catch (_) {
-      // ignore
-    }
-
-    try {
       await api.post("/auth/logout");
     } catch (_) {
       // ignore
     }
 
     localStorage.removeItem("oi_admin_token");
-    toast.success("Signed out. Public access disabled.");
+    toast.success("Signed out.");
     window.location.reload();
   };
 

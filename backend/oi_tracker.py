@@ -40,6 +40,7 @@ DEFAULT_SETTINGS = {
     "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
     "straddle_poll_interval_seconds": 60,  # Straddle data pull interval (default 60 = 1 minute)
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
+    "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "alerts", "activity", "holidays", "straddle", "index-events"],
 }
 
 
@@ -64,7 +65,7 @@ class OITracker:
 
     async def save_settings(self, patch: Dict[str, Any]):
         allowed = {"threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices", 
-                   "oi_poll_interval_seconds", "straddle_poll_interval_seconds", "straddle_enabled_indices"}
+                   "oi_poll_interval_seconds", "straddle_poll_interval_seconds", "straddle_enabled_indices", "visible_pages"}
         clean = {k: v for k, v in patch.items() if k in allowed}
         self.settings.update(clean)
         await self.db.settings.update_one(
@@ -330,9 +331,9 @@ class OITracker:
         cooldown = int(self.settings.get("cooldown_seconds", 120))
         target = datetime.now(timezone.utc) - timedelta(minutes=cutoff_min)
         cursor = self.db.oi_snapshots.find(
-            {"index": index_name, "created_at": {"$lte": target.isoformat()}},
+            {"index": index_name, "timestamp": {"$lte": target.isoformat()}},
             {"_id": 0}
-        ).sort("created_at", -1).limit(1)
+        ).sort("timestamp", -1).limit(1)
         prev_list = await cursor.to_list(length=1)
         if not prev_list:
             return

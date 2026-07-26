@@ -12,8 +12,21 @@ import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSet
 import InfoTip from "@/components/InfoTip";
 
 const ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+const DASHBOARD_PAGES = [
+  { id: "oi-change", label: "OI Change" },
+  { id: "open-interest", label: "Open Interest" },
+  { id: "strike-table", label: "Strike Table" },
+  { id: "sell-candidates", label: "Sell Candidates" },
+  { id: "buildup", label: "Build-up" },
+  { id: "positions", label: "Positions" },
+  { id: "alerts", label: "Alerts" },
+  { id: "activity", label: "Activity" },
+  { id: "holidays", label: "Events" },
+  { id: "straddle", label: "Straddle" },
+  { id: "index-events", label: "Index Risk" },
+];
 
-export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSaved }) {
+export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSaved, isAdmin = false }) {
   const [settings, setSettings] = useState(null);
   const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
@@ -28,7 +41,13 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
       .catch((e) => {
         setLoadError(e?.response?.data?.detail || e.message || "Failed to load settings");
         // Provide sensible defaults so the modal is still usable.
-        setSettings({ threshold_pct: 15, compare_minutes: 3, cooldown_seconds: 120, enabled_indices: ["NIFTY", "SENSEX"] });
+        setSettings({
+          threshold_pct: 15,
+          compare_minutes: 3,
+          cooldown_seconds: 120,
+          enabled_indices: ["NIFTY", "SENSEX"],
+          visible_pages: DASHBOARD_PAGES.map((p) => p.id),
+        });
       });
     setLocal(loadOISettings());
   }, [open]);
@@ -45,6 +64,13 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
     if (cur.has(idx)) cur.delete(idx);
     else cur.add(idx);
     setSettings({ ...settings, straddle_enabled_indices: Array.from(cur) });
+  };
+
+  const toggleVisiblePage = (pageId) => {
+    const cur = new Set(Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id));
+    if (cur.has(pageId)) cur.delete(pageId);
+    else cur.add(pageId);
+    setSettings({ ...settings, visible_pages: Array.from(cur) });
   };
 
   const setLocalField = (k, v) => setLocal((prev) => ({ ...prev, [k]: v }));
@@ -77,10 +103,10 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="w-4 h-4" />
-            Alert Settings
+              {isAdmin ? "Admin Settings" : "Settings"}
           </DialogTitle>
           <DialogDescription>
-            Configure reversal alerts, huge-shift popup, velocity badges, gamma wall and institutional detector.
+              Configure your alert thresholds and, if you are an admin, backend polling and public page visibility.
           </DialogDescription>
         </DialogHeader>
 
@@ -189,76 +215,109 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           </section>
 
           {/* ------------- Data Collection Poll Intervals ------------- */}
-          <section className="space-y-4 pt-2 border-t border-slate-200">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
-              Data Collection (Admin Only)
-            </div>
+          {isAdmin && (
+            <>
+              <section className="space-y-4 pt-2 border-t border-slate-200">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+                  Data Collection (Admin Only)
+                </div>
 
-            <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
-                OI Data Pull Interval
-                <InfoTip title="OI Poll Interval">
-                  How frequently to pull OI data from the market. Options: 15s (frequent), 30s (balanced), 60s (conservative).
-                </InfoTip>
-              </Label>
-              <div className="flex gap-2">
-                {[15, 30, 60].map((val) => (
-                  <Button
-                    key={val}
-                    variant={settings.oi_poll_interval_seconds === val ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSettings({ ...settings, oi_poll_interval_seconds: val })}
-                    className="flex-1 text-xs"
-                  >
-                    {val}s
-                  </Button>
-                ))}
-              </div>
-            </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
+                    OI Data Pull Interval
+                    <InfoTip title="OI Poll Interval">
+                      How frequently to pull OI data from the market. Options: 15s (frequent), 30s (balanced), 60s (conservative).
+                    </InfoTip>
+                  </Label>
+                  <div className="flex gap-2">
+                    {[15, 30, 60].map((val) => (
+                      <Button
+                        key={val}
+                        variant={settings.oi_poll_interval_seconds === val ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSettings({ ...settings, oi_poll_interval_seconds: val })}
+                        className="flex-1 text-xs"
+                      >
+                        {val}s
+                      </Button>
+                    ))}
+                  </div>
+                </div>
 
-            <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
-                Straddle Data Pull Interval
-                <InfoTip title="Straddle Poll Interval">
-                  How frequently to pull straddle premium data. Default 60s (1 minute).
-                </InfoTip>
-              </Label>
-              <div className="flex gap-2">
-                {[30, 60, 120].map((val) => (
-                  <Button
-                    key={val}
-                    variant={settings.straddle_poll_interval_seconds === val ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSettings({ ...settings, straddle_poll_interval_seconds: val })}
-                    className="flex-1 text-xs"
-                  >
-                    {val}s
-                  </Button>
-                ))}
-              </div>
-            </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
+                    Straddle Data Pull Interval
+                    <InfoTip title="Straddle Poll Interval">
+                      How frequently to pull straddle premium data. Default 60s (1 minute).
+                    </InfoTip>
+                  </Label>
+                  <div className="flex gap-2">
+                    {[30, 60, 120].map((val) => (
+                      <Button
+                        key={val}
+                        variant={settings.straddle_poll_interval_seconds === val ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSettings({ ...settings, straddle_poll_interval_seconds: val })}
+                        className="flex-1 text-xs"
+                      >
+                        {val}s
+                      </Button>
+                    ))}
+                  </div>
+                </div>
 
-            <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">
-                Straddle Data — Tracked Indices
-              </Label>
-              <div className="space-y-1.5">
-                {ALL_INDICES.map((idx) => (
-                  <label
-                    key={idx}
-                    className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
-                  >
-                    <Checkbox
-                      data-testid={`straddle-enabled-${idx}`}
-                      checked={settings.straddle_enabled_indices?.includes(idx)}
-                      onCheckedChange={() => toggleStraddleIndex(idx)}
-                    />
-                    <span className="text-sm font-medium">{idx}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </section>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">
+                    Straddle Data — Tracked Indices
+                  </Label>
+                  <div className="space-y-1.5">
+                    {ALL_INDICES.map((idx) => (
+                      <label
+                        key={idx}
+                        className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
+                      >
+                        <Checkbox
+                          data-testid={`straddle-enabled-${idx}`}
+                          checked={settings.straddle_enabled_indices?.includes(idx)}
+                          onCheckedChange={() => toggleStraddleIndex(idx)}
+                        />
+                        <span className="text-sm font-medium">{idx}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-4 pt-2 border-t border-slate-200">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+                  Public dashboard pages
+                </div>
+                <div className="text-xs text-slate-500">
+                  Choose which dashboard pages should be visible to public visitors. Admin users still see all pages.
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {DASHBOARD_PAGES.map((page) => (
+                    <label
+                      key={page.id}
+                      className="flex items-center gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                    >
+                      <Checkbox
+                        data-testid={`visible-page-${page.id}`}
+                        checked={(Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id)).includes(page.id)}
+                        onCheckedChange={() => toggleVisiblePage(page.id)}
+                      />
+                      <div>
+                        <div className="text-sm font-medium">{page.label}</div>
+                        {page.id === "sell-candidates" || page.id === "positions" ? (
+                          <div className="text-[10px] text-slate-500">Admin-only page</div>
+                        ) : null}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
           <section className="space-y-3 pt-2 border-t border-slate-200">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               Huge OI shift popup (ATM ± 1 strikes)

@@ -37,6 +37,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api } from "@/lib/api";
+import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
@@ -49,6 +50,20 @@ const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 const INDEX_STEP = { NIFTY: 50, SENSEX: 100, BANKNIFTY: 100 };
 const POLL_OPTIONS = [15000, 30000, 60000];
 const DEFAULT_POLL_MS = 15000;
+const DASHBOARD_PAGES = [
+  { v: "oi-change", l: "OI Change" },
+  { v: "open-interest", l: "Open Interest" },
+  { v: "strike-table", l: "Strike Table" },
+  { v: "sell-candidates", l: "Sell Candidates", adminOnly: true },
+  { v: "buildup", l: "Build-up" },
+  { v: "positions", l: "Positions", adminOnly: true },
+  { v: "alerts", l: "Alerts" },
+  { v: "activity", l: "Activity" },
+  { v: "holidays", l: "Events" },
+  { v: "straddle", l: "Straddle" },
+  { v: "index-events", l: "Index Risk" },
+];
+const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES.filter((page) => !page.adminOnly).map((page) => page.v);
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
@@ -146,6 +161,7 @@ export default function Dashboard() {
   const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
   const [pulsePull, setPulsePull] = useState(false); // green flash on each fresh pull
   const [oiSettings, setOiSettings] = useState(loadOISettings());
+  const [visiblePages, setVisiblePages] = useState(PUBLIC_DEFAULT_PAGES);
   const [hugeShift, setHugeShift] = useState(null);   // currently shown modal
   const hugeShiftQueueRef = useRef([]);                // queued shifts if multiple fire back-to-back
   const [activity, setActivity] = useState([]);       // unusual activity feed events
@@ -176,6 +192,12 @@ export default function Dashboard() {
     } catch { return null; }
   });
   const seenActivityRef = useRef(new Set());          // dedupe key set per session
+  const activeIndexRef = useRef(activeIndex);
+  const [liveSpotPrices, setLiveSpotPrices] = useState({});
+
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
 
   // Force Sell Candidates panel to recompute every minute so scores stay fresh
   // even if the underlying OI snapshot only ticks every 30s.
@@ -214,6 +236,39 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem("rightPanelView", rightPanelView); } catch (_) { /* noop */ }
   }, [rightPanelView]);
+
+  useEffect(() => {
+    const conn = connectSpotWS((message) => {
+      if (message?.type !== "spot" || !Array.isArray(message.tickers)) return;
+      const nextPrices = {};
+      message.tickers.forEach((ticker) => {
+        if (ticker?.index) nextPrices[ticker.index] = ticker.price;
+      });
+      setLiveSpotPrices(nextPrices);
+      const match = message.tickers.find((ticker) => ticker.index === activeIndexRef.current);
+      if (!match) return;
+      setCurrent((prevCurrent) => {
+        if (!prevCurrent) return prevCurrent;
+        return {
+          ...prevCurrent,
+          price: match.price != null ? match.price : prevCurrent.price,
+          atm: match.atm != null ? match.atm : prevCurrent.atm,
+          timestamp: match.timestamp || prevCurrent.timestamp,
+        };
+      });
+    });
+    return () => conn.stop();
+  }, []);
+
+  useEffect(() => {
+    if (authState.is_admin) return;
+    const allowedTabs = DASHBOARD_PAGES.filter((page) => !page.adminOnly && visiblePages.includes(page.v)).map((page) => page.v);
+    if (allowedTabs.length === 0) return;
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0]);
+    }
+  }, [authState.is_admin, activeTab, visiblePages]);
+
   // Dark mode -> toggle html.dark class + persist
   useEffect(() => {
     const el = document.documentElement;
@@ -355,32 +410,44 @@ export default function Dashboard() {
   // ---- Straddle poll interval (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(60000); // default 1 minute
   useEffect(() => {
-    const fetchStraddleSettings = async () => {
+    const fetchSettings = async () => {
       try {
         const res = await api.get("/settings");
-        if (res.data && res.data.straddle_poll_interval_seconds) {
-          setStraddlePollMs(res.data.straddle_poll_interval_seconds * 1000);
+        if (res.data) {
+          if (typeof res.data.oi_poll_interval_seconds === "number") {
+            setPollMs(res.data.oi_poll_interval_seconds * 1000);
+          }
+          if (res.data.straddle_poll_interval_seconds) {
+            setStraddlePollMs(res.data.straddle_poll_interval_seconds * 1000);
+          }
+          if (Array.isArray(res.data.visible_pages)) {
+            setVisiblePages(res.data.visible_pages);
+          }
         }
       } catch (e) {
-        console.error("Failed to fetch straddle poll interval", e);
+        console.error("Failed to fetch settings", e);
       }
     };
-    fetchStraddleSettings();
-    const id = setInterval(fetchStraddleSettings, 60000); // refresh every minute
+    fetchSettings();
+    const id = setInterval(fetchSettings, 60000); // refresh every minute
     return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
     loadStatus();
     loadOI();
-    loadAlerts();
+    const shouldLoadAlerts = authState.is_admin || visiblePages.includes("alerts");
+    if (shouldLoadAlerts) {
+      loadAlerts();
+    }
     const id1 = setInterval(loadOI, pollMs);
     const id2 = setInterval(loadStatus, pollMs);
-    const id3 = setInterval(loadAlerts, 5000);
+    const id3 = shouldLoadAlerts ? setInterval(loadAlerts, 5000) : null;
     return () => {
-      clearInterval(id1); clearInterval(id2); clearInterval(id3);
+      clearInterval(id1); clearInterval(id2);
+      if (id3) clearInterval(id3);
     };
-  }, [loadOI, loadStatus, loadAlerts, pollMs]);
+  }, [loadOI, loadStatus, loadAlerts, pollMs, authState.is_admin, visiblePages]);
 
   // When index changes, immediately clear current/previous & strike range so
   // filters from the previous index don't hide the new index's strikes.
@@ -850,8 +917,7 @@ export default function Dashboard() {
         onToggleDark={() => setDarkMode((v) => !v)}
         compact={compact}
         onToggleCompact={() => setCompact((v) => !v)}
-        pollMs={pollMs}
-        onChangePollMs={setPollMs}
+        spotPrices={liveSpotPrices}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -878,19 +944,7 @@ export default function Dashboard() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
               <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 dark:border-slate-700 rounded-none justify-start">
-                {[
-                  { v: "oi-change", l: "OI Change" },
-                  { v: "open-interest", l: "Open Interest" },
-                  { v: "strike-table", l: "Strike Table" },
-                  { v: "sell-candidates", l: "Sell Candidates", adminOnly: true },
-                  { v: "buildup", l: "Build-up" },
-                  { v: "positions", l: "Positions", adminOnly: true },
-                  { v: "alerts", l: "Alerts" },
-                  { v: "activity", l: "Activity" },
-                  { v: "holidays", l: "Events" },
-                  { v: "straddle", l: "Straddle" },
-                  { v: "index-events", l: "Index Risk" },
-                ].filter((t) => !t.adminOnly || authState.is_admin).map((t) => (
+                {DASHBOARD_PAGES.filter((t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))).map((t) => (
                   <TabsTrigger
                     key={t.v}
                     value={t.v}
@@ -909,12 +963,14 @@ export default function Dashboard() {
                 <div className="w-60">
                   <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
                 </div>
-                <div className="w-64">
-                  <MarketImpactBadge
-                    activeIndex={activeIndex}
-                    onOpenIndexEvents={() => setActiveTab("index-events")}
-                  />
-                </div>
+                {(authState.is_admin || visiblePages.includes("index-events")) && (
+                  <div className="w-64">
+                    <MarketImpactBadge
+                      activeIndex={activeIndex}
+                      onOpenIndexEvents={() => setActiveTab("index-events")}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -963,8 +1019,9 @@ export default function Dashboard() {
                       : undefined
                   }
                 >
-                  <TabsContent value="oi-change" className="mt-0">
-                    <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                  {(authState.is_admin || visiblePages.includes("oi-change")) && (
+                    <TabsContent value="oi-change" className="mt-0">
+                      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
                       <div className="flex items-center gap-4 flex-wrap">
                         <div className="text-base font-semibold text-slate-900">
                           OI Change on {formatDayLabel(current?.timestamp)}
@@ -1186,9 +1243,11 @@ export default function Dashboard() {
                       </div>
                     )}
                   </TabsContent>
+                )}
 
-                  <TabsContent value="open-interest" className="mt-0">
-                    <div className="text-sm font-semibold mb-2">{activeIndex} Absolute Open Interest</div>
+                  {(authState.is_admin || visiblePages.includes("open-interest")) && (
+                    <TabsContent value="open-interest" className="mt-0">
+                      <div className="text-sm font-semibold mb-2">{activeIndex} Absolute Open Interest</div>
                     <OIChart
                       current={filteredCurrent}
                       previous={null}
@@ -1196,8 +1255,10 @@ export default function Dashboard() {
                       mode={status?.mode}
                     />
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="strike-table" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("strike-table")) && (
+                    <TabsContent value="strike-table" className="mt-0">
                     <div className="text-sm font-semibold mb-2">{activeIndex} Strike-wise OI Table</div>
                     <StrikeTable
                       current={filteredCurrent}
@@ -1213,8 +1274,10 @@ export default function Dashboard() {
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                     </div>
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="sell-candidates" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("sell-candidates")) && (
+                    <TabsContent value="sell-candidates" className="mt-0">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm font-semibold">{activeIndex} Sell Candidates — safest strikes to short</div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -1235,8 +1298,10 @@ export default function Dashboard() {
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                     </div>
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="buildup" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("buildup")) && (
+                    <TabsContent value="buildup" className="mt-0">
                     <div className="text-sm font-semibold mb-2">{activeIndex} Long / Short Build-up</div>
                     <BuildupTable
                       current={filteredCurrent}
@@ -1248,8 +1313,10 @@ export default function Dashboard() {
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                     </div>
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="positions" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("positions")) && (
+                    <TabsContent value="positions" className="mt-0">
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
                       isKiteMode={status?.mode === "kite"}
@@ -1270,13 +1337,17 @@ export default function Dashboard() {
                       }}
                     />
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="alerts" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("alerts")) && (
+                    <TabsContent value="alerts" className="mt-0">
                     <div className="text-sm font-semibold mb-2">All Alerts</div>
                     <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} canClear={authState.is_admin} />
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="activity" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("activity")) && (
+                    <TabsContent value="activity" className="mt-0">
                     <div className="text-sm font-semibold mb-2">Unusual Activity Feed</div>
                     <ActivityFeed
                       events={activity.filter((e) => e.index === activeIndex)}
@@ -1286,12 +1357,16 @@ export default function Dashboard() {
                       onSetFilter={setActivityFilter}
                     />
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="holidays" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("holidays")) && (
+                    <TabsContent value="holidays" className="mt-0">
                     <HolidaysTab />
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="straddle" className="mt-0">
+                  {(authState.is_admin || visiblePages.includes("straddle")) && (
+                    <TabsContent value="straddle" className="mt-0">
                     <div className="text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
                     <StraddleChart
                       index={activeIndex}
@@ -1303,10 +1378,13 @@ export default function Dashboard() {
                       useWs={true}
                     />
                   </TabsContent>
+                  )}
 
-                  <TabsContent value="index-events" className="mt-0">
-                    <EventRiskWidget activeIndex={activeIndex} />
-                  </TabsContent>
+                  {(authState.is_admin || visiblePages.includes("index-events")) && (
+                    <TabsContent value="index-events" className="mt-0">
+                      <EventRiskWidget activeIndex={activeIndex} />
+                    </TabsContent>
+                  )}
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-md p-3 text-xs text-slate-600 flex items-center justify-between">
@@ -1337,6 +1415,8 @@ export default function Dashboard() {
                       view={rightPanelView}
                       onChangeView={setRightPanelView}
                       onClose={() => setRightPanelOpen(false)}
+                      visiblePages={visiblePages}
+                      isAdmin={authState.is_admin}
                       alerts={alerts}
                       onClearAlerts={handleClearAlerts}
                       canClearAlerts={authState.is_admin}
@@ -1409,7 +1489,13 @@ export default function Dashboard() {
       <SettingsModal
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
-        onSaved={loadStatus}
+        isAdmin={authState.is_admin}
+        onSaved={(settings) => {
+          loadStatus();
+          if (Array.isArray(settings.visible_pages)) {
+            setVisiblePages(settings.visible_pages);
+          }
+        }}
         onLocalSaved={setOiSettings}
       />
 

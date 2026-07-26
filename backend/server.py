@@ -294,6 +294,12 @@ class ModeIn(BaseModel):
     mode: str  # "kite" | "mock"
 
 
+DASHBOARD_PAGE_KEYS = {
+    "oi-change", "open-interest", "strike-table", "sell-candidates",
+    "buildup", "positions", "alerts", "activity", "holidays",
+    "straddle", "index-events",
+}
+
 class SettingsIn(BaseModel):
     threshold_pct: Optional[float] = None
     cooldown_seconds: Optional[int] = None
@@ -302,6 +308,7 @@ class SettingsIn(BaseModel):
     oi_poll_interval_seconds: Optional[int] = None  # OI data pull interval (15/30/60)
     straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
+    visible_pages: Optional[List[str]] = None
 
 
 class ExpiryIn(BaseModel):
@@ -555,12 +562,16 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         for i in patch["enabled_indices"]:
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown index: {i}")
+    if "visible_pages" in patch:
+        for p in patch["visible_pages"]:
+            if p not in DASHBOARD_PAGE_KEYS:
+                raise HTTPException(400, f"Unknown dashboard page: {p}")
     return await tracker.save_settings(patch)
 
 
 @api_router.get("/oi/{index_name}/change")
 async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440), expiry: Optional[str] = None):
-    """Return current snapshot plus 'previous' snapshot from N minutes ago for diffing."""
+    """Return current snapshot plus a time-based baseline snapshot for diffing."""
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
@@ -600,9 +611,10 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         if not market_is_open:
             if not current:
                 # No in-memory cache — try DB for the most recent snapshot for this index.
+                # Use the actual tick timestamp, not insert time, to keep lookups time-based.
                 doc = await db.oi_snapshots.find_one(
                     {"index": idx, **({"expiry": expiry} if expiry else {})},
-                    sort=[("created_at", -1)],
+                    sort=[("timestamp", -1)],
                     projection={"_id": 0},
                 )
                 if doc:
@@ -668,36 +680,35 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         anchor = datetime.now(timezone.utc)
     target = anchor - timedelta(minutes=minutes)
     # Query on the snapshot's own `timestamp` field (also indexed) so we look
-    # for OI data that was actually recorded ~N minutes before `current`.
-    query = {"index": idx, "timestamp": {"$lt": current_ts, "$lte": target.isoformat()}} if current_ts else {"index": idx, "created_at": {"$lte": target.isoformat()}}
-    if expiry:
-        query["expiry"] = expiry
-    prev_doc = await db.oi_snapshots.find_one(
-        query,
-        sort=[("timestamp", -1)],
-        projection={"_id": 0},
-    )
+    # for OI data that was actually recorded within the requested window.
+    prev_doc = None
+    if current_ts:
+        window_query = {
+            "index": idx,
+            "timestamp": {"$gte": target.isoformat(), "$lt": current_ts},
+        }
+        if expiry:
+            window_query["expiry"] = expiry
+        prev_doc = await db.oi_snapshots.find_one(
+            window_query,
+            sort=[("timestamp", 1)],
+            projection={"_id": 0},
+        )
 
-    # If we don't have a snapshot exactly `minutes` old yet, take the closest
-    # older snapshot (still strictly older than current) so users see *some*
-    # diff instead of a blank window — and flag history_ready=False.
+    # If the requested window contains no snapshot yet, fall back to the closest
+    # available historical snapshot before the current tick.
     if not prev_doc and current_ts:
         fallback_query = {"index": idx, "timestamp": {"$lt": current_ts}}
         if expiry:
             fallback_query["expiry"] = expiry
-        # First try to get a doc newer than target (i.e. one that would satisfy
-        # a shorter lookback). Sort DESC picks the latest that qualifies.
         prev_doc = await db.oi_snapshots.find_one(
             fallback_query,
             sort=[("timestamp", -1)],
             projection={"_id": 0},
         )
-        # Special case: for LARGE lookbacks (like "Full Day" ≥ 300 min) the
-        # earliest snapshot in DB may be a couple of minutes *younger* than
-        # `target` (e.g. target=03:44 UTC, earliest=03:45 UTC). In that case
-        # the DESC sort above returns a MUCH-more-recent doc and we lose the
-        # true session-open baseline. Prefer the earliest available doc when
-        # the caller asked for a big lookback.
+        # For long lookbacks, prefer the earliest available snapshot in the DB
+        # rather than a much younger fallback that would misrepresent a full-
+        # session window.
         if minutes >= 300:
             oldest = await db.oi_snapshots.find_one(
                 {"index": idx, **({"expiry": expiry} if expiry else {})},
@@ -757,9 +768,9 @@ async def get_history(index_name: str, minutes: int = Query(60, ge=1, le=1440)):
         raise HTTPException(404, "Unknown index")
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
     docs = await db.oi_snapshots.find(
-        {"index": idx, "created_at": {"$gte": cutoff}},
+        {"index": idx, "timestamp": {"$gte": cutoff, "$lte": datetime.now(timezone.utc).isoformat()}},
         {"_id": 0}
-    ).sort("created_at", 1).to_list(length=5000)
+    ).sort("timestamp", 1).to_list(length=5000)
     return {"index": idx, "count": len(docs), "history": docs}
 
 
@@ -1080,6 +1091,53 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
                 except Exception:
                     pass
             await asyncio.sleep(poll_interval_seconds)
+    except WebSocketDisconnect:
+        return
+
+
+@api_router.websocket("/ws/spot")
+async def ws_spot(websocket: WebSocket):
+    """WebSocket stream for live spot prices of the main indices.
+
+    Streams the latest live underlying price for NIFTY, SENSEX and BANKNIFTY
+    once per second while the market is open.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            from market_hours import is_market_open as is_market_open_fn
+
+            if not is_market_open_fn(datetime.now(IST)):
+                await websocket.send_json({"type": "status", "status": "market_closed"})
+                await asyncio.sleep(1)
+                continue
+
+            svc = tracker._get_service()
+            payload = {
+                "type": "spot",
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "tickers": [],
+            }
+            for idx in INDICES:
+                try:
+                    snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                except Exception:
+                    snap = None
+                if not snap:
+                    continue
+                try:
+                    payload["tickers"].append({
+                        "index": idx,
+                        "price": round(float(snap.get("price") or 0.0), 2),
+                        "atm": int(snap.get("atm") or 0),
+                        "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                        "mode": snap.get("mode"),
+                    })
+                except Exception:
+                    continue
+            if payload["tickers"]:
+                await websocket.send_json(payload)
+            await asyncio.sleep(1)
     except WebSocketDisconnect:
         return
 

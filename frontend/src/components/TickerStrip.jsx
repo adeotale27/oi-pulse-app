@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -15,23 +15,33 @@ const INDEX_STYLE = {
   BANKNIFTY: { label: "BANK NIFTY", gradient: "from-emerald-500/10 to-teal-500/10",   ring: "ring-emerald-300", dot: "bg-emerald-500" },
 };
 
-export default function TickerStrip({ onSelectIndex, activeIndex }) {
+export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {} }) {
   const [tickers, setTickers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    async function tick() {
+    async function fetchTickers() {
       try {
         const { data } = await api.get("/tickers");
         if (!cancelled) setTickers(data.tickers || []);
       } catch (_e) { /* silent */ }
       finally { if (!cancelled) setLoading(false); }
     }
-    tick();
-    const id = setInterval(tick, 15000); // refresh every 15s
+    fetchTickers();
+    const id = setInterval(fetchTickers, 300000); // refresh metadata every 5m
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  const displayTickers = useMemo(() => {
+    return tickers.map((t) => {
+      const ltp = spotPrices[t.index] ?? t.ltp;
+      const prevClose = t.prev_close || t.ltp || 0;
+      const change = ltp != null && prevClose != null ? ltp - prevClose : 0;
+      const change_pct = prevClose ? (change / prevClose) * 100 : 0;
+      return { ...t, ltp, change, change_pct };
+    });
+  }, [tickers, spotPrices]);
 
   if (loading && !tickers.length) {
     return (
@@ -41,7 +51,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex }) {
 
   return (
     <div className="flex items-stretch gap-2 flex-wrap" data-testid="ticker-strip">
-      {tickers.map((t) => {
+      {displayTickers.map((t) => {
         const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
         const up = t.change > 0;
         const flat = Math.abs(t.change) < 0.01;

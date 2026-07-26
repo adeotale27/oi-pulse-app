@@ -25,14 +25,13 @@ export default function Header({
   vixSessionOpen,
   activeIndex,
   onSelectIndex,
+  spotPrices,
   tickerData,
   lastPulledAt,
   darkMode,
   onToggleDark,
   compact,
   onToggleCompact,
-  pollMs,
-  onChangePollMs,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -132,7 +131,7 @@ export default function Header({
 
         {/* Ticker cards inline beside VIX */}
         <div className="flex items-stretch gap-1.5 flex-1 min-w-0 pl-3 border-l border-slate-200 dark:border-slate-700 flex-wrap">
-          <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} />
+          <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} spotPrices={spotPrices} />
         </div>
 
         <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -140,21 +139,6 @@ export default function Header({
             <div className="hidden lg:flex items-center gap-1 text-[10px] font-mono-data text-slate-500 dark:text-slate-400 leading-tight" data-testid="oi-last-pulled-top">
               <span className="uppercase tracking-widest text-slate-400 dark:text-slate-500">OI pulled</span>
               <span className="text-slate-700 dark:text-slate-200">{new Date(lastPulledAt).toLocaleTimeString()}</span>
-            </div>
-          )}
-          {onChangePollMs && (
-            <div className="hidden lg:flex items-center gap-1 text-[10px]" title="How often OI data is refreshed">
-              <span className="uppercase tracking-widest text-slate-400 dark:text-slate-500">Every</span>
-              <select
-                data-testid="poll-interval-select"
-                value={pollMs || 30000}
-                onChange={(e) => onChangePollMs(parseInt(e.target.value, 10))}
-                className="text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-1.5 py-0.5"
-              >
-                <option value={15000}>15s</option>
-                <option value={30000}>30s</option>
-                <option value={60000}>60s</option>
-              </select>
             </div>
           )}
           <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono-data" data-testid="last-updated">
@@ -208,14 +192,16 @@ export default function Header({
           >
             <Download className="w-4 h-4" />
           </Button>
-          <Button
-            data-testid="btn-open-settings"
-            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
-            onClick={onOpenSettings}
-            title="Alert settings"
-          >
-            <Settings2 className="w-4 h-4" />
-          </Button>
+          {isAdmin && (
+            <Button
+              data-testid="btn-open-settings"
+              variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+              onClick={onOpenSettings}
+              title="Alert settings"
+            >
+              <Settings2 className="w-4 h-4" />
+            </Button>
+          )}
           <Button
             data-testid="btn-straddle-chart"
             size="sm"
