@@ -244,18 +244,12 @@ export default function Dashboard() {
       message.tickers.forEach((ticker) => {
         if (ticker?.index) nextPrices[ticker.index] = ticker.price;
       });
+      // Update live spot prices only. Do NOT mutate the OI snapshot (`current`) on every tick
+      // — that causes the OI chart to re-render each WS update. The OI snapshot updates when
+      // a new OI pull arrives via the loadOI() polling mechanism.
       setLiveSpotPrices(nextPrices);
-      const match = message.tickers.find((ticker) => ticker.index === activeIndexRef.current);
-      if (!match) return;
-      setCurrent((prevCurrent) => {
-        if (!prevCurrent) return prevCurrent;
-        return {
-          ...prevCurrent,
-          price: match.price != null ? match.price : prevCurrent.price,
-          atm: match.atm != null ? match.atm : prevCurrent.atm,
-          timestamp: match.timestamp || prevCurrent.timestamp,
-        };
-      });
+      // If desired, other UI pieces can read liveSpotPrices to show LTP. Avoid updating
+      // `current` here to keep chart refreshes tied to OI data pulls.
     });
     return () => conn.stop();
   }, []);
@@ -963,6 +957,11 @@ export default function Dashboard() {
                 <div className="w-60">
                   <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
                 </div>
+                {/* OI pulled tile is optional — commented out so it can be re-enabled later if desired */}
+                { /* <div className="w-44">
+                  <OIPulledBadge lastPulledAt={lastPulledAt} isMarketOpen={status?.market?.is_market_open} nowIso={new Date().toISOString()} onClick={() => setActiveTab("oi-change")} />
+                </div> */ }
+                
                 {(authState.is_admin || visiblePages.includes("index-events")) && (
                   <div className="w-64">
                     <MarketImpactBadge

@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import BigClock from "@/components/BigClock";
 import { Label } from "@/components/ui/label";
 import { RotateCcw, TrendingUp, TrendingDown, Plus, Minus } from "lucide-react";
 
@@ -285,6 +286,11 @@ export default function Sidebar({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Big IST clock tile */}
+      <div className="mt-auto">
+        <BigClock />
       </div>
     </aside>
   );

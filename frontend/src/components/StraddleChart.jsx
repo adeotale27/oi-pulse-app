@@ -7,14 +7,16 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  ReferenceDot,
 } from "recharts";
 import { fetchStraddle, fetchStraddleHistory } from "../lib/api";
-
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
+// Use Intl with explicit IST timezone to avoid manual offset math which caused double-shifting
 function formatTimeShort(ts) {
   try {
-    return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const millis = Number(ts);
+    if (Number.isNaN(millis)) return "-";
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(millis));
   } catch {
     return "-";
   }
@@ -27,14 +29,47 @@ function formatNumber(v) {
 function StraddleTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
+  const timeStr = (() => {
+    try {
+      const millis = Number(label);
+      if (Number.isNaN(millis)) return "-";
+      // Format using explicit Asia/Kolkata timezone so the tooltip always shows IST
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Kolkata',
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+      }).format(new Date(millis));
+    } catch {
+      return "-";
+    }
+  })();
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white/95 p-3 text-left text-sm text-slate-900 shadow-xl">
-      <div className="font-semibold text-slate-900 mb-2">{formatTimeShort(label)}</div>
-      <div className="text-slate-700">Straddle price: <span className="font-semibold text-slate-900">{formatNumber(point.premium)}</span></div>
-      <div className="text-slate-700">Index spot: <span className="font-semibold text-slate-900">{formatNumber(point.underlying)}</span></div>
-      <div className="text-slate-700">Synthetic future: <span className="font-semibold text-slate-900">{formatNumber(point.synthetic)}</span></div>
-      <div className="text-slate-700">Strike / CE / PE: <span className="font-semibold text-slate-900">{point.strike || "—"} / {formatNumber(point.ce_ltp)} / {formatNumber(point.pe_ltp)}</span></div>
+    <div className="rounded-xl border border-slate-200 bg-white/95 p-3 text-left text-sm text-slate-900 shadow-xl dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
+      <div className="font-semibold text-slate-900 mb-2 dark:text-slate-100">{formatTimeShort(label)}</div>
+      <div className="text-slate-700 dark:text-slate-200">Straddle price: <span className="font-semibold text-slate-900 dark:text-slate-100">{formatNumber(point.premium)}</span></div>
+      <div className="text-slate-700 dark:text-slate-200">Index spot: <span className="font-semibold text-slate-900 dark:text-slate-100">{formatNumber(point.underlying)}</span></div>
+      <div className="text-slate-700 dark:text-slate-200">Synthetic future: <span className="font-semibold text-slate-900 dark:text-slate-100">{formatNumber(point.synthetic)}</span></div>
+      <div className="text-slate-700 dark:text-slate-200">Strike / CE / PE: <span className="font-semibold text-slate-900 dark:text-slate-100">{point.strike || "—"} / {formatNumber(point.ce_ltp)} / {formatNumber(point.pe_ltp)}</span></div>
+      <div className="text-slate-500 mt-2 text-xs">Time: <span className="font-medium text-slate-700 dark:text-slate-300">{timeStr}</span></div>
     </div>
+  );
+}
+
+// Small SVG badge used for marking current price on the chart
+function Badge({ x, y, value }) {
+  if (x == null || y == null || value == null) return null;
+  const w = 56;
+  const h = 22;
+  const rx = 6;
+  // position slightly to the right
+  const tx = x + 8;
+  const ty = y - h / 2;
+  return (
+    <g>
+      <rect x={tx} y={ty} rx={rx} ry={rx} width={w} height={h} fill="#06b6d4" stroke="#0b5660" />
+      <text x={tx + w / 2} y={ty + h / 2 + 4} textAnchor="middle" fontFamily="sans-serif" fontSize="12" fill="#022" fontWeight={700}>{Number(value).toFixed(2)}</text>
+    </g>
   );
 }
 
@@ -56,6 +91,14 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
   const [points, setPoints] = useState([]); // {ts, premium, underlying}
   const [meta, setMeta] = useState(null);
   const wsRef = useRef(null);
+
+  // keep a lightweight clock so the chart's right edge can advance even when no
+  // new market data arrives. Update every 5s to balance responsiveness and render cost.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
 
   const isMarketOpen = () => {
     const now = new Date();
@@ -172,64 +215,163 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
     return {
       start: istDateToUtcMs(tradeDate, 9, 15),
       end: istDateToUtcMs(tradeDate, 15, 30),
-      label: "09:15 – 15:30 IST",
     };
   }, [points]);
 
-  const xAxisTickFormatter = (ts) => {
-    const date = new Date(ts);
-    const minutes = date.getMinutes();
-    // Show label only if minutes is close to 0, 45
-    if (Math.abs(minutes - 0) < 2 || Math.abs(minutes - 45) < 2) {
-      return formatTimeShort(ts);
+  // Determine the visible chart end: use current time during market hours, otherwise use market close (15:30 IST).
+  // Use the lightweight clock (nowMs) to advance even when no new data arrives.
+  const viewEnd = useMemo(() => {
+    try {
+      const now = nowMs || Date.now();
+      return now < chartDate.end ? now : chartDate.end;
+    } catch {
+      return chartDate.end;
     }
-    return "";
-  };
+  }, [chartDate, meta, points, nowMs]);
+
+  // Chart label that reflects visible range (09:15 to visible end)
+  const chartLabel = useMemo(() => {
+    try {
+      const startLabel = formatTimeShort(istDateToUtcMs(toIstDateString(points.length ? points[0].ts : Date.now()), 9, 15));
+      const endLabel = formatTimeShort(viewEnd || istDateToUtcMs(toIstDateString(Date.now()), 15, 30));
+      return `${startLabel} – ${endLabel} IST`;
+    } catch {
+      return "09:15 – 15:30 IST";
+    }
+  }, [viewEnd, points]);
+
+  // Generate X ticks starting from 09:15 and then every 45 minutes until market close.
+  // Only expose a tick after the clock has passed that tick by 30 minutes (to avoid clutter)
+  // Always include the 09:15 start tick and the current viewEnd as the last tick.
+  const xTicks = useMemo(() => {
+    const ticks = [];
+    if (!chartDate) return ticks;
+    const step = 45 * 60 * 1000; // 45 minutes in ms
+    const start = chartDate.start;
+    const end = chartDate.end;
+    const revealDelay = 30 * 60 * 1000; // 30 minutes in ms
+    if (!start || !end) return ticks;
+
+    // always show start
+    ticks.push(start);
+
+    for (let t = start + step; t <= end; t += step) {
+      // include this tick only if the visible end has progressed past t + revealDelay
+      if (viewEnd >= (t + revealDelay)) ticks.push(t);
+      if (ticks.length > 100) break;
+    }
+
+    // ensure the viewEnd (current time or market close) is visible as the last tick
+    if (viewEnd && (ticks.length === 0 || ticks[ticks.length - 1] < viewEnd)) ticks.push(viewEnd);
+
+    return ticks;
+  }, [chartDate, viewEnd]);
+
+  // Prepare displayPoints so that the latest meta price is pinned to the chart end (viewEnd)
+  const displayPoints = useMemo(() => {
+    if (!points || !points.length) return points;
+    const arr = points.slice();
+    if (meta && meta.premium != null && viewEnd) {
+      const last = arr[arr.length - 1];
+      // If last point isn't already at viewEnd, append a synthetic point at viewEnd with latest premium
+      if (last.ts !== viewEnd) {
+        arr.push({
+          ts: viewEnd,
+          premium: meta.premium,
+          underlying: meta.underlying || (last.underlying || null),
+          atm: meta.atm || last.atm,
+          ce_ltp: meta.ce_ltp || last.ce_ltp,
+          pe_ltp: meta.pe_ltp || last.pe_ltp,
+          strike: meta.strike || last.strike,
+          synthetic: (meta.underlying != null)
+            ? meta.underlying + ((meta.ce_ltp || 0) - (meta.pe_ltp || 0))
+            : (last.synthetic || null),
+        });
+      }
+    }
+    return arr;
+  }, [points, meta, viewEnd]);
+
+  const xAxisTickFormatter = (ts) => {
+      // Always show a concise time label for ticks so bottom axis is readable
+      return formatTimeShort(ts);
+    };
 
   return (
     <div className="w-full" data-testid="straddle-chart">
-      <div className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 shadow-lg overflow-hidden">
+      <div className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 shadow-lg overflow-hidden dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{index}</div>
             <h2 className="text-xl font-bold text-slate-900">Straddle Premium</h2>
           </div>
           <div className="text-xs font-mono text-slate-600">
-            {meta ? new Date(meta.ts || Date.now()).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "Loading…"}
+            {meta ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(new Date(meta.ts || Date.now())) : "Loading…"}
           </div>
         </div>
 
         {/* Chart */}
-        <div className="px-6 py-4 h-[350px] bg-white">
+        <div className="px-6 py-4 h-[350px] bg-white dark:bg-slate-900">
           <ResponsiveContainer>
-            <LineChart data={points} margin={{ top: 8, right: 16, left: 0, bottom: 20 }}>
-              <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" vertical={false} />
+            <LineChart data={displayPoints} margin={{ top: 8, right: 72, left: 0, bottom: 20 }}>
+              <CartesianGrid stroke="rgba(148, 163, 184, 0.18)" vertical={false} />
               <XAxis
                 dataKey="ts"
                 type="number"
                 scale="time"
-                domain={[chartDate.start, chartDate.end]}
+                domain={[chartDate.start, viewEnd || chartDate.end]}
+                ticks={xTicks}
                 tickFormatter={xAxisTickFormatter}
                 tick={{ fontSize: 12, fill: "#64748b" }}
                 stroke="#cbd5e1"
                 axisLine={false}
                 tickLine={false}
-                tickCount={5}
-                interval="preserveStartEnd"
-                label={{ value: chartDate.label, position: "insideBottomRight", offset: -10, fill: "#64748b", fontSize: 12 }}
+                interval={0}
+                label={{ value: chartLabel, position: "insideBottomRight", offset: -10, fill: "#64748b", fontSize: 12 }}
               />
               <YAxis
                 tick={{ fontSize: 12, fill: "#64748b" }}
                 stroke="#cbd5e1"
                 axisLine={false}
                 tickLine={false}
-                domain={["auto", "auto"]}
+                // ensure y-axis includes latest price and adds a small padding
+                domain={[
+                  (dataMin) => {
+                    try {
+                      const minVal = Math.min(dataMin, (meta && meta.premium != null) ? meta.premium : dataMin);
+                      return Number((minVal * 0.98).toFixed(2));
+                    } catch {
+                      return dataMin;
+                    }
+                  },
+                  (dataMax) => {
+                    try {
+                      const maxVal = Math.max(dataMax, (meta && meta.premium != null) ? meta.premium : dataMax);
+                      return Number((maxVal * 1.02).toFixed(2));
+                    } catch {
+                      return dataMax;
+                    }
+                  },
+                ]}
               />
               <Tooltip
                 content={<StraddleTooltip />}
-                cursor={{ stroke: "rgba(15, 23, 42, 0.1)", strokeWidth: 2 }}
+                              cursor={{ stroke: "rgba(15, 23, 42, 0.08)", strokeWidth: 2 }}
               />
+
+                            {/* Current price marker on latest point */}
+                            {meta && meta.premium != null && chartDate && (
+                              // place marker at the view end (current time during market hours) so it pins to the extreme right
+                              <ReferenceDot
+                                x={viewEnd}
+                                y={meta.premium}
+                                r={4}
+                                fill="#06b6d4"
+                                stroke="#044"
+                                label={(props) => <Badge x={props.x} y={props.y} value={meta.premium} />}
+                              />
+                            )}
               <Line
                 type="monotone"
                 dataKey="premium"
@@ -244,7 +386,7 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 px-6 py-4 border-t border-slate-200 bg-white">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 px-6 py-4 border-t border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
           <div className="flex flex-col gap-1">
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Straddle</div>
             <div className="text-3xl font-bold text-cyan-600">

@@ -70,25 +70,29 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             type="button"
             onClick={() => onSelectIndex?.(t.index)}
             data-testid={`ticker-${t.index}`}
-            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-2.5 py-1.5 min-w-[130px] hover:brightness-95 transition-all ${
+            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-3 py-2 min-w-[120px] hover:brightness-95 transition-all ${
               isActive
                 ? `border-transparent ring-2 ${s.ring} shadow-sm`
                 : "border-slate-200"
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
           >
-            <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
-              <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-              {s.label}
+            <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                {s.label}
+              </div>
+              <div className={`text-[10px] font-mono-data ${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
+                {t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%
+              </div>
             </div>
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-sm font-mono-data font-semibold text-slate-900" data-testid={`ticker-${t.index}-ltp`}>
+            <div className="flex items-center justify-between mt-0.5">
+              <div className="text-sm font-mono-data font-semibold text-slate-900" data-testid={`ticker-${t.index}-ltp`}>
                 {fmtNum(t.ltp, 2)}
-              </span>
-              <span className={`text-[11px] font-mono-data inline-flex items-center gap-0.5 ${toneCls}`} data-testid={`ticker-${t.index}-chg`}>
-                {arrowIcon}
-                {t.change > 0 ? "+" : ""}{fmtNum(t.change, 2)} ({t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%)
-              </span>
+              </div>
+              <div className={`text-[11px] font-mono-data ${toneCls}`} data-testid={`ticker-${t.index}-chg`}>
+                {arrowIcon}{t.change > 0 ? "+" : ""}{fmtNum(t.change, 2)}
+              </div>
             </div>
           </button>
         );

@@ -35,7 +35,7 @@ POLL_SECONDS = 60
 
 # Yahoo symbols
 SYM_VIX  = "^INDIAVIX"
-SYM_GIFT_PRIMARY = "^NSEI"
+SYM_GIFT_CANDIDATES = ["^NSEI", "^NIFTY", "^NIFTY50", "NIFTY.NS"]
 
 
 def _in_window(now_ist: datetime, window) -> bool:
@@ -47,7 +47,7 @@ def _in_window(now_ist: datetime, window) -> bool:
 
 
 def _yf_last_price(symbol: str) -> Optional[Dict[str, Any]]:
-    """Return {last, prev_close, change, change_pct, ts} or None on failure."""
+    """Return {symbol, last, prev_close, change, change_pct, ts} or None on failure."""
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.fast_info
@@ -135,12 +135,15 @@ class ExtraTickers:
         return False
 
     async def _fetch_gift_and_persist(self):
-        g = await asyncio.to_thread(_yf_last_price, SYM_GIFT_PRIMARY)
-        if g:
-            g["label"] = "GIFT NIFTY"
-            self.gift = g
-            await self._persist("gift_nifty", g)
-            return True
+        for symbol in SYM_GIFT_CANDIDATES:
+            g = await asyncio.to_thread(_yf_last_price, symbol)
+            if g:
+                g["label"] = "GIFT NIFTY"
+                self.gift = g
+                await self._persist("gift_nifty", g)
+                if symbol != SYM_GIFT_CANDIDATES[0]:
+                    logger.info(f"GIFT NIFTY fetched using fallback symbol {symbol}")
+                return True
         return False
 
     async def force_refresh(self) -> Dict[str, Any]:

@@ -35,21 +35,26 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
       const p = prevMap.get(s.strike) || {};
       const peNow = s.pe_oi, peP = p.pe_oi ?? s.pe_oi;
       const ceNow = s.ce_oi, ceP = p.ce_oi ?? s.ce_oi;
+      // If showOI is false, zero out the base values so Recharts doesn't remap stacks
+      const peBase = showOI ? peP : 0;
+      const ceBase = showOI ? ceP : 0;
       return {
         strike: s.strike,
         pe_now: peNow, pe_prev: peP,
         ce_now: ceNow, ce_prev: ceP,
-        pe_base: Math.min(peNow, peP),
-        pe_inc: Math.max(0, peNow - peP),   // striped on top => OI increased
-        pe_dec: Math.max(0, peP - peNow),   // hollow on top => writers exited
-        ce_base: Math.min(ceNow, ceP),
+        // Base shows the previous snapshot's OI (so the solid bar represents prior OI)
+        // and the increase/decrease stacks show the delta to the current snapshot.
+        pe_base: peBase,
+        pe_inc: Math.max(0, peNow - peP),   // striped on top => OI increased since previous
+        pe_dec: Math.max(0, peP - peNow),   // hollow on top => OI decreased since previous
+        ce_base: ceBase,
         ce_inc: Math.max(0, ceNow - ceP),
         ce_dec: Math.max(0, ceP - ceNow),
         pe_delta: peNow - peP,
         ce_delta: ceNow - ceP,
       };
     });
-  }, [current, previous]);
+  }, [current, previous, showOI]);
 
   if (!current) {
     return (
@@ -129,13 +134,13 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
             />
           )}
           {/* PUT stack: base (previous OI, solid), inc (striped on top), dec (hollow on top) */}
-          {showOI && <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} />}
-          <Bar dataKey="pe_inc" stackId="pe" name="Put Increase" fill="url(#pe-inc-pat)" radius={[2, 2, 0, 0]} />
-          <Bar dataKey="pe_dec" stackId="pe" name="Put Decrease" fill="transparent" stroke={PUT_GREEN} strokeWidth={1.4} radius={[2, 2, 0, 0]} />
+          <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+          <Bar dataKey="pe_inc" stackId="pe" name="Put Increase" fill="url(#pe-inc-pat)" radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+          <Bar dataKey="pe_dec" stackId="pe" name="Put Decrease" fill="transparent" stroke={PUT_GREEN} strokeWidth={1.4} radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
           {/* CALL stack */}
-          {showOI && <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} />}
-          <Bar dataKey="ce_inc" stackId="ce" name="Call Increase" fill="url(#ce-inc-pat)" radius={[2, 2, 0, 0]} />
-          <Bar dataKey="ce_dec" stackId="ce" name="Call Decrease" fill="transparent" stroke={CALL_RED} strokeWidth={1.4} radius={[2, 2, 0, 0]} />
+          <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+          <Bar dataKey="ce_inc" stackId="ce" name="Call Increase" fill="url(#ce-inc-pat)" radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+          <Bar dataKey="ce_dec" stackId="ce" name="Call Decrease" fill="transparent" stroke={CALL_RED} strokeWidth={1.4} radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
         </BarChart>
       </ResponsiveContainer>
       </div>
@@ -240,13 +245,16 @@ function CustomLegend({ showOI }) {
     { label: "Decrease", swatch: <SwatchOutline color={CALL_RED} /> },
   ];
   return (
-    <div className="flex items-center justify-center gap-x-5 gap-y-2 flex-wrap pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
-      {items.map((it, i) => (
-        <div key={i} className="flex items-center gap-1.5">
-          {it.swatch}
-          <span>{it.label}</span>
-        </div>
-      ))}
+    <div className="pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
+      <div className="text-center text-slate-500 mb-2">Legend: <span className="font-medium text-slate-700">Solid = previous OI</span> · <span className="font-medium text-slate-700">Striped = increase</span> · <span className="font-medium text-slate-700">Outline = decrease</span></div>
+      <div className="flex items-center justify-center gap-x-5 gap-y-2 flex-wrap">
+        {items.map((it, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            {it.swatch}
+            <span>{it.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
