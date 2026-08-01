@@ -8,8 +8,8 @@ import { toast } from "sonner";
 export default function GuestBanner({ guestName, adminName }) {
   const exit = () => {
     try {
-      localStorage.removeItem("oi_guest_token");
-      localStorage.removeItem("oi_guest_name");
+      sessionStorage.removeItem("oi_guest_token");
+      sessionStorage.removeItem("oi_guest_name");
     } catch (_) { /* ignore */ }
     toast.success("Exited guest session");
     window.location.reload();

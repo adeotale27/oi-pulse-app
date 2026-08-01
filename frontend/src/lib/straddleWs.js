@@ -18,9 +18,9 @@ export function connectStraddleWS(index, opts = {}, onMessage, onOpen, onClose) 
   if (opts.expiry) params.set("expiry", opts.expiry);
   if (opts.position) params.set("position", opts.position);
   if (opts.qty) params.set("qty", String(opts.qty));
-  // include admin token from localStorage if available
+  // include admin token from sessionStorage if available
   try {
-    const tok = localStorage.getItem("oi_admin_token");
+    const tok = sessionStorage.getItem("oi_admin_token");
     if (tok) params.set("admin_token", tok);
   } catch (_) {}
 

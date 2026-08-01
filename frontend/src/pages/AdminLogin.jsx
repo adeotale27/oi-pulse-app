@@ -38,10 +38,10 @@ export default function AdminLogin() {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/login", { username: username.trim(), password });
-      localStorage.setItem("oi_admin_token", data.token);
+      sessionStorage.setItem("oi_admin_token", data.token);
       // Also wipe any lingering guest token — admin route means admin session only.
-      localStorage.removeItem("oi_guest_token");
-      localStorage.removeItem("oi_guest_name");
+      sessionStorage.removeItem("oi_guest_token");
+      sessionStorage.removeItem("oi_guest_name");
       toast.success(`Welcome, ${data.username}`);
       navigate("/", { replace: true });
       // Reload so AuthGate + auth-state re-fetches with the new token.

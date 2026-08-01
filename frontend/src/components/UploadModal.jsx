@@ -57,7 +57,7 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
     }
 
     try {
-      const token = localStorage.getItem("oi_admin_token") || "";
+      const token = sessionStorage.getItem("oi_admin_token") || "";
       const url = `${API}${meta.endpoint}`;
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);

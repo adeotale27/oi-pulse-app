@@ -52,6 +52,8 @@ export default function RightPanel({
   status,
   showOI,
   suggestion,
+  // straddle poll interval (ms) supplied by parent/dashboard
+  straddlePollMs = 60000,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -153,7 +155,7 @@ export default function RightPanel({
         )}
         {view === "straddle" && (
           <div className="p-3">
-            <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={30000} />
+            <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={straddlePollMs} />
           </div>
         )}
         {view === "index-events" && (

@@ -58,7 +58,7 @@ export default function AuthGate({ children }) {
     const check = setInterval(() => {
       if (Date.now() - lastActivityRef.current > ttl) {
         toast.info("Signed out — session timed out.");
-        localStorage.removeItem("oi_admin_token");
+        sessionStorage.removeItem("oi_admin_token");
         window.location.reload();
       }
     }, 60_000);
@@ -73,14 +73,14 @@ export default function AuthGate({ children }) {
     const now = Date.now();
     if (expMs <= now) {
       toast.info("Signed out — market closed (3:30 PM IST).");
-      localStorage.removeItem("oi_admin_token");
+      sessionStorage.removeItem("oi_admin_token");
       window.location.reload();
       return;
     }
     // Schedule + safety-net poll every minute (backend rejects if expired).
     const timer = setTimeout(() => {
       toast.info("Signed out — market closed (3:30 PM IST).");
-      localStorage.removeItem("oi_admin_token");
+      sessionStorage.removeItem("oi_admin_token");
       window.location.reload();
     }, Math.min(expMs - now, 2147483000)); // clamp for 32-bit setTimeout
     return () => clearTimeout(timer);
@@ -95,7 +95,7 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/login", { username: username.trim(), password });
-      localStorage.setItem("oi_admin_token", data.token);
+      sessionStorage.setItem("oi_admin_token", data.token);
       toast.success(`Welcome, ${data.username}`);
       await refresh();
     } catch (e) {
@@ -113,8 +113,8 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/guest", { name });
-      localStorage.setItem("oi_guest_token", data.token);
-      localStorage.setItem("oi_guest_name", data.name);
+      sessionStorage.setItem("oi_guest_token", data.token);
+      sessionStorage.setItem("oi_guest_name", data.name);
       toast.success(`Welcome, ${data.name}`);
       await refresh();
     } catch (e) {

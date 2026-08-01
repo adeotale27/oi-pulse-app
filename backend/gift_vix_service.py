@@ -7,7 +7,7 @@ plagues cloud IPs.
 
 Polling windows (IST, fixed by user):
   • India VIX     : 09:15 – 15:30  (Mon–Fri, non-holiday)
-  • GIFT NIFTY    : 06:30 – 23:30  (Mon–Fri, non-holiday)
+  • GIFT NIFTY    : 06:30 – 15:40 and 16:35 – 02:45  (Mon–Fri, non-holiday)
 
 Persistence:
   Values are persisted to MongoDB (`extra_tickers` collection) so a backend
@@ -20,34 +20,47 @@ import logging
 from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-import yfinance as yf
+# yfinance imported lazily inside functions to reduce startup memory/overhead.
 
 from market_hours import IST, is_holiday, is_weekend
 
 logger = logging.getLogger(__name__)
 
 # Fixed default polling windows (IST) — kept intentionally NON-configurable.
-VIX_WINDOW  = (dtime(9, 15),  dtime(15, 30))
-GIFT_WINDOW = (dtime(6, 30),  dtime(23, 30))
+VIX_WINDOW = (dtime(9, 15), dtime(15, 30))
+GIFT_WINDOWS = [
+    (dtime(6, 30), dtime(15, 40)),  # first GIFT session
+    (dtime(16, 35), dtime(2, 45)),  # second GIFT session spanning midnight
+]
 
 # Poll cadence (seconds). Yahoo rate-limits ~1 req/sec; two symbols → 60s cycle.
 POLL_SECONDS = 60
 
 # Yahoo symbols
 SYM_VIX  = "^INDIAVIX"
-SYM_GIFT_CANDIDATES = ["^NSEI", "^NIFTY", "^NIFTY50", "NIFTY.NS"]
+SYM_GIFT_PRIMARY = "^NSEI"
+
+
+def _time_in_range(t: dtime, start: dtime, end: dtime) -> bool:
+    if start <= end:
+        return start <= t <= end
+    return t >= start or t <= end
 
 
 def _in_window(now_ist: datetime, window) -> bool:
-    """window is (start_time, end_time). Weekend / holiday returns False."""
+    """window is a single (start_time, end_time) tuple or a list of tuples.
+    Weekend / holiday returns False."""
     if is_weekend(now_ist) or is_holiday(now_ist):
         return False
     t = now_ist.time()
-    return window[0] <= t <= window[1]
+    if isinstance(window, list) or isinstance(window, tuple) and isinstance(window[0], tuple):
+        return any(_time_in_range(t, start, end) for start, end in window)
+    return _time_in_range(t, window[0], window[1])
 
 
 def _yf_last_price(symbol: str) -> Optional[Dict[str, Any]]:
-    """Return {symbol, last, prev_close, change, change_pct, ts} or None on failure."""
+    import yfinance as yf
+    """Return {last, prev_close, change, change_pct, ts} or None on failure."""
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.fast_info
@@ -120,8 +133,20 @@ class ExtraTickers:
             "vix": self.vix,
             "gift_nifty": self.gift,
             "windows": {
-                "vix":   {"start_ist": "09:15", "end_ist": "15:30"},
-                "gift":  {"start_ist": "06:30", "end_ist": "23:30"},
+                "vix": {
+                    "start_ist": "09:15",
+                    "end_ist": "15:30",
+                    "display": "09:15–15:30",
+                },
+                "gift": {
+                    "start_ist": "06:30",
+                    "end_ist": "02:45",
+                    "display": "06:30–15:40 & 16:35–02:45",
+                    "sessions": [
+                        {"start_ist": "06:30", "end_ist": "15:40"},
+                        {"start_ist": "16:35", "end_ist": "02:45"},
+                    ],
+                },
             },
             "server_time_ist": datetime.now(IST).isoformat(),
         }
@@ -135,15 +160,12 @@ class ExtraTickers:
         return False
 
     async def _fetch_gift_and_persist(self):
-        for symbol in SYM_GIFT_CANDIDATES:
-            g = await asyncio.to_thread(_yf_last_price, symbol)
-            if g:
-                g["label"] = "GIFT NIFTY"
-                self.gift = g
-                await self._persist("gift_nifty", g)
-                if symbol != SYM_GIFT_CANDIDATES[0]:
-                    logger.info(f"GIFT NIFTY fetched using fallback symbol {symbol}")
-                return True
+        g = await asyncio.to_thread(_yf_last_price, SYM_GIFT_PRIMARY)
+        if g:
+            g["label"] = "GIFT NIFTY"
+            self.gift = g
+            await self._persist("gift_nifty", g)
+            return True
         return False
 
     async def force_refresh(self) -> Dict[str, Any]:
@@ -189,7 +211,7 @@ class ExtraTickers:
                     got_v = await self._fetch_vix_and_persist()
                     if not got_v:
                         ok = False
-                if _in_window(now_ist, GIFT_WINDOW):
+                if _in_window(now_ist, GIFT_WINDOWS):
                     got_g = await self._fetch_gift_and_persist()
                     if not got_g:
                         ok = False

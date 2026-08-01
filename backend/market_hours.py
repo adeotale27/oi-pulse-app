@@ -101,7 +101,31 @@ def market_status() -> dict:
     else:
         phase = "post_close"
         banner_title = "Markets closed for the day"
-        banner_detail = "NSE closed at 3:30 PM IST. Displaying today's final snapshot from our database — data will resume at 9:15 AM IST on the next trading day."
+        banner_detail = "NSE closed for the day. Displaying today's final snapshot from our database — data will resume at 9:15 AM IST on the next trading day."
+
+    # New closing rules effective 2026-08-03 (Closing Auction Session / CAS):
+    # - Stocks trading in the F&O segment: continuous trading stops at 15:15 (3:15 PM), followed by a Closing Auction Session (CAS)
+    # - All other stocks: trading closes at 15:30 (3:30 PM)
+    # - Index and stock F&O contracts: trading closes at 15:40 (3:40 PM)
+    # Auto square-off times (effective 2026-08-03):
+    # - Equity (stocks under CAS): 15:10
+    # - Equity (stocks not under CAS): 15:25
+    # - Index and stock F&O contracts: 15:25
+
+    fno_continuous_close_ist = "15:15"
+    equity_close_ist = "15:30"
+    index_fno_close_ist = "15:40"
+
+    auto_square_off_times = {
+        "equity_cas": "15:10",
+        "equity_non_cas": "15:25",
+        "index_and_stock_fno": "15:25",
+    }
+
+    closing_auction_note = (
+        "From 2026-08-03: Stocks in the F&O segment stop continuous trading at 15:15 IST followed by a Closing Auction Session; "
+        "other stocks close at 15:30 IST; index and stock F&O contracts close at 15:40 IST."
+    )
 
     return {
         "is_market_open": open_,
@@ -110,9 +134,14 @@ def market_status() -> dict:
         "banner_detail": banner_detail,
         "now_ist": dt.isoformat(),
         "market_open_ist": "09:14",
-        "market_close_ist": "15:31",
+        "market_close_ist": "15:31",  # legacy: one snapshot after the canonical 15:30 close
         "display_open_ist": "09:15",
-        "display_close_ist": "15:30",
+        "display_close_ist": equity_close_ist,  # legacy field kept for compatibility
+        # New fields to show precise closing / CAS / auto-squareoff times below the big clock
+        "fno_continuous_close_ist": fno_continuous_close_ist,
+        "index_fno_close_ist": index_fno_close_ist,
+        "closing_auction_note": closing_auction_note,
+        "auto_square_off_times": auto_square_off_times,
         "is_weekend": is_weekend(dt),
         "is_holiday": is_holiday(dt),
         "next_market_open_ist": next_market_open(dt).isoformat() if not open_ else None,

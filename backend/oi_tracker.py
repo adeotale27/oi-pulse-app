@@ -9,6 +9,8 @@ timeframe from 5 min – 4 h has data available.
 import asyncio
 import logging
 import os
+import base64
+import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
@@ -17,6 +19,29 @@ from market_hours import is_market_open, market_status, now_ist
 import notifier
 
 logger = logging.getLogger(__name__)
+
+
+def _fernet():
+    from cryptography.fernet import Fernet
+    seed = os.environ.get("MONGO_URL", "seed") + os.environ.get("DB_NAME", "db")
+    key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode()).digest())
+    return Fernet(key)
+
+
+def _encrypt_secret(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    return _fernet().encrypt(value.encode("utf-8")).decode("utf-8")
+
+
+def _decrypt_secret(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        return _fernet().decrypt(value.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return None
+
 
 POLL_INTERVAL_SECONDS = 15
 INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
@@ -87,9 +112,32 @@ class OITracker:
     async def load_credentials(self):
         """Load saved kite credentials from DB and initialize KiteService if present."""
         doc = await self.db.credentials.find_one({"_id": "kite"})
-        if doc and doc.get("api_key") and doc.get("access_token"):
+        api_key = _decrypt_secret(doc.get("api_key_enc")) if doc else None
+        access_token = _decrypt_secret(doc.get("access_token_enc")) if doc else None
+        if not api_key and doc and doc.get("api_key"):
+            api_key = doc.get("api_key")
+        if not access_token and doc and doc.get("access_token"):
+            access_token = doc.get("access_token")
+        if doc and (doc.get("api_key") or doc.get("access_token")) and not (doc.get("api_key_enc") and doc.get("access_token_enc")):
             try:
-                self.kite_service = KiteService(doc["api_key"], doc["access_token"])
+                await self.db.credentials.update_one(
+                    {"_id": "kite"},
+                    {
+                        "$set": {
+                            "api_key_enc": _encrypt_secret(api_key),
+                            "access_token_enc": _encrypt_secret(access_token),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                        "$unset": {"api_key": "", "access_token": ""},
+                    },
+                    upsert=True,
+                )
+                logger.warning("Migrated legacy plaintext Kite credentials to encrypted storage.")
+            except Exception as e:
+                logger.warning(f"Failed to migrate plaintext Kite credentials: {e}")
+        if api_key and access_token:
+            try:
+                self.kite_service = KiteService(api_key, access_token)
                 self.mode = "kite"
                 self.last_error = None
                 logger.info("KiteService initialized from stored credentials.")
@@ -121,8 +169,11 @@ class OITracker:
             raise RuntimeError(f"{type(e).__name__}: {e}{hint}")
         await self.db.credentials.update_one(
             {"_id": "kite"},
-            {"$set": {"api_key": api_key, "access_token": access_token,
-                      "updated_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {
+                "api_key_enc": _encrypt_secret(api_key),
+                "access_token_enc": _encrypt_secret(access_token),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, "$unset": {"api_key": "", "access_token": ""}},
             upsert=True,
         )
         self.kite_service = svc
@@ -158,25 +209,47 @@ class OITracker:
                 pass
         logger.info("OI tracker stopped")
 
+    def _seconds_until_next_poll_boundary(self, interval_seconds: int) -> float:
+        """Return the fractional delay to the next aligned poll boundary.
+
+        Examples for a 15s poll interval:
+          - at 09:46:47 → sleep until 09:47:00 (13s)
+          - at 09:47:00 → sleep until 09:47:15 (15s)
+        """
+        now = datetime.now()
+        now_seconds = now.second + (now.microsecond / 1_000_000.0)
+        remainder = now_seconds % interval_seconds
+        wait = interval_seconds - remainder
+        if wait >= interval_seconds:
+            wait = interval_seconds
+        return max(0.0, wait)
+
     async def _loop(self):
         """
         Main polling loop.
 
         Behavior:
-          * If FORCE_ALWAYS_POLL=true → poll every POLL_INTERVAL_SECONDS regardless of time.
+          * If FORCE_ALWAYS_POLL=true → poll every configured OI interval regardless of time.
           * Else → poll only during NSE market hours (9:00–15:30 IST Mon–Fri, excl. holidays);
             outside the window, sleep 60s and re-check. Announce open/close to Telegram once/day.
+          * Polls are aligned to the selected cadence (15/30/60s) so each sample lands on the
+            next clock boundary rather than drifting after the previous request finishes.
         """
         was_open = False
         while self.running:
             try:
+                poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
                 if FORCE_ALWAYS_POLL or is_market_open():
                     if not was_open:
                         logger.info("Market OPEN — starting polling.")
                         await notifier.alert_market_open()
                         was_open = True
+                    await asyncio.sleep(self._seconds_until_next_poll_boundary(poll_interval_seconds))
+                    if not self.running:
+                        break
+                    if not (FORCE_ALWAYS_POLL or is_market_open()):
+                        continue
                     await self._poll_once()
-                    await asyncio.sleep(POLL_INTERVAL_SECONDS)
                 else:
                     if was_open:
                         logger.info("Market CLOSED — pausing polling.")
@@ -191,14 +264,14 @@ class OITracker:
                         was_open = False
                     # opportunistic pre-market check: warn if kite creds seem stale
                     await self._premarket_check()
-                    await asyncio.sleep(CLOSED_MARKET_SLEEP_SECONDS)
+                    await asyncio.sleep(min(poll_interval_seconds, CLOSED_MARKET_SLEEP_SECONDS))
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.exception("loop error: %s", e)
                 self.last_error = str(e)
                 await notifier.alert_tracker_error(str(e))
-                await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                await asyncio.sleep(max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS))))
 
     async def _premarket_check(self):
         """Between 8:45 and 9:00 IST on trading days, verify Kite is usable.
@@ -257,8 +330,19 @@ class OITracker:
                 continue
             snap["mode"] = self.mode
             self.last_snapshot[idx] = snap
-            # store
-            await self.db.oi_snapshots.insert_one({**snap, "created_at": datetime.now(timezone.utc).isoformat()})
+            # store idempotently so the DB never accumulates duplicate rows for
+            # the same market tick if the same snapshot is re-served during a
+            # refresh or inline /change request.
+            snapshot_doc = {**snap, "created_at": datetime.now(timezone.utc).isoformat()}
+            await self.db.oi_snapshots.update_one(
+                {
+                    "index": idx,
+                    "timestamp": snapshot_doc.get("timestamp"),
+                    "expiry": snapshot_doc.get("expiry"),
+                },
+                {"$set": snapshot_doc},
+                upsert=True,
+            )
             # keep only last SNAPSHOT_RETENTION_HOURS (default 24) so full day session is preserved
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
             await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
@@ -449,13 +533,14 @@ class OITracker:
 
     async def get_status(self):
         ms = market_status()
+        poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
         return {
             "running": self.running,
             "mode": self.mode,
             "last_updated_at": self.last_updated_at,
             "last_error": self.last_error,
             "has_kite_credentials": self.kite_service is not None,
-            "poll_interval_seconds": POLL_INTERVAL_SECONDS,
+            "poll_interval_seconds": poll_interval_seconds,
             "market": ms,
             "telegram_configured": notifier.is_configured(),
             "retention_hours": SNAPSHOT_RETENTION_HOURS,

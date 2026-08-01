@@ -12,30 +12,44 @@ const BACKEND_URL = _hasEnvBackend
   : (typeof window !== "undefined" ? window.location.origin : "");
 export const API = `${BACKEND_URL}/api`;
 
-export const api = axios.create({ baseURL: API, timeout: 20000 });
+export const api = axios.create({ baseURL: API, timeout: 20000, withCredentials: true });
+
+const authStorage = {
+  get(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch (_) {
+      return null;
+    }
+  },
+  set(key, value) {
+    try { sessionStorage.setItem(key, value); } catch (_) {}
+  },
+  remove(key) {
+    try { sessionStorage.removeItem(key); } catch (_) {}
+  },
+};
 
 // Attach admin & guest tokens (if any) to every request.
 api.interceptors.request.use((config) => {
   try {
-    const at = localStorage.getItem("oi_admin_token");
+    const at = authStorage.get("oi_admin_token");
     if (at) config.headers["X-Admin-Token"] = at;
-    const gt = localStorage.getItem("oi_guest_token");
+    const gt = authStorage.get("oi_guest_token");
     if (gt) config.headers["X-Guest-Token"] = gt;
   } catch (_) { /* ignore */ }
   return config;
 });
 
-// Global 401 handler — session likely expired; clear tokens so AuthGate re-prompts.
+// Global 401 handler — session likely expired; clear any auth tokens so the auth gate re-prompts.
 api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401) {
       try {
-        // Only wipe admin token on auth-state failures; keep vault etc. untouched otherwise.
-        const url = (err.config?.url) || "";
-        if (url.includes("/auth/state")) {
-          localStorage.removeItem("oi_admin_token");
-        }
+        authStorage.remove("oi_admin_token");
+        authStorage.remove("oi_guest_token");
+        authStorage.remove("oi_guest_name");
       } catch (_) { /* ignore */ }
     }
     return Promise.reject(err);

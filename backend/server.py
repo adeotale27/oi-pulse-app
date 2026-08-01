@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import asyncio
 import logging
@@ -16,6 +15,9 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta, date
 
+# Delay motor client creation until startup to avoid heavy connection objects during import.
+from motor.motor_asyncio import AsyncIOMotorClient
+
 from oi_tracker import OITracker, INDICES
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
@@ -23,10 +25,13 @@ from market_hours import is_market_open, IST, MARKET_OPEN, is_holiday, is_weeken
 from gift_vix_service import extra_tickers
 import event_risk_service as ers
 from fastapi import UploadFile, File, Form
-from cryptography.fernet import Fernet
+
+# cryptography import deferred inside _fernet() to reduce startup import cost
 import base64, hashlib
 
 def _fernet():
+    # Import inside function so cryptography is loaded only when vault operations are used.
+    from cryptography.fernet import Fernet
     seed = os.environ.get('MONGO_URL', 'seed') + os.environ.get('DB_NAME', 'db')
     key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode()).digest())
     return Fernet(key)
@@ -34,23 +39,22 @@ def _fernet():
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# Create Mongo client and db during startup event to keep import-time footprint low.
+client = None
+db = None
 
 app = FastAPI(title="NSE OI Tracker")
 api_router = APIRouter(prefix="/api")
 
-tracker = OITracker(db)
+tracker = None
 
 # Straddle sample retention (hours)
 STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
 STRADDLE_SAMPLE_INTERVAL_SECONDS = int(os.environ.get("STRADDLE_SAMPLE_INTERVAL_SECONDS", "30"))
 STRADDLE_INDICES = ["NIFTY", "SENSEX"]
 
-# Give notifier a handle to the db so it can read/write prefs
+# notifier DB will be attached during startup
 import notifier as _notifier_boot
-_notifier_boot.set_db(db)
 
 
 # ------------------- Auth helpers (must be defined before endpoints that Depends on them) -------------------
@@ -58,10 +62,10 @@ import secrets
 import hmac
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Adeotale")
-_ADMIN_PASSWORD_FALLBACK = os.environ.get("ADMIN_PASSWORD", "MasterApp@123")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "").strip()
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
-if not ADMIN_TOKEN:
-    ADMIN_TOKEN = hashlib.sha256(f"{ADMIN_USERNAME}:{_ADMIN_PASSWORD_FALLBACK}:oi-pulse".encode()).hexdigest()
+if not ADMIN_TOKEN and ADMIN_PASSWORD:
+    ADMIN_TOKEN = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}:oi-pulse".encode()).hexdigest()
 
 # 8-hour idle timeout for admin sessions.
 ADMIN_SESSION_TTL_SECONDS = int(os.environ.get("ADMIN_SESSION_TTL_SECONDS", str(8 * 3600)))
@@ -75,12 +79,14 @@ def _pw_hash(password: str, salt: bytes) -> str:
 
 
 async def _verify_admin_password(password: str) -> bool:
-    """Check password against DB-stored hash if it exists, else fall back to env."""
+    """Check password against DB-stored hash if it exists, else env-provided override."""
     doc = await db.settings.find_one({"_id": "admin_credentials"})
     if doc and doc.get("password_hash") and doc.get("salt_hex"):
         salt = bytes.fromhex(doc["salt_hex"])
         return hmac.compare_digest(_pw_hash(password, salt), doc["password_hash"])
-    return hmac.compare_digest(password, _ADMIN_PASSWORD_FALLBACK)
+    if ADMIN_PASSWORD:
+        return hmac.compare_digest(password, ADMIN_PASSWORD)
+    return False
 
 
 async def _store_admin_password(new_password: str):
@@ -159,6 +165,29 @@ async def require_admin(request: Request):
     return True
 
 
+async def _store_oi_snapshot(snapshot: Dict[str, Any], *, index_name: Optional[str] = None) -> None:
+    """Persist one OI snapshot idempotently per (index, timestamp, expiry).
+
+    Using an upsert keeps history clean when the same tick is re-served by the
+    /change path or a refresh operation, which avoids duplicate rows for the
+    same market timestamp.
+    """
+    doc = dict(snapshot or {})
+    if index_name:
+        doc.setdefault("index", index_name)
+    doc["timestamp"] = doc.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.oi_snapshots.update_one(
+        {
+            "index": doc.get("index"),
+            "timestamp": doc.get("timestamp"),
+            "expiry": doc.get("expiry"),
+        },
+        {"$set": doc},
+        upsert=True,
+    )
+
+
 async def _persist_straddle_sample(index_name: str, snap: dict):
     try:
         atm = int(snap.get("atm") or 0)
@@ -205,6 +234,12 @@ async def _persist_straddle_sample(index_name: str, snap: dict):
 async def _straddle_sampler():
     while True:
         try:
+            # Read poll interval from runtime settings so admin changes take effect without restart.
+            try:
+                poll_interval_seconds = int(tracker.settings.get("straddle_poll_interval_seconds", STRADDLE_SAMPLE_INTERVAL_SECONDS))
+            except Exception:
+                poll_interval_seconds = STRADDLE_SAMPLE_INTERVAL_SECONDS
+
             if is_market_open():
                 svc = tracker._get_service()
                 for idx in STRADDLE_INDICES:
@@ -217,14 +252,17 @@ async def _straddle_sampler():
                         await _persist_straddle_sample(idx, snap)
                     except Exception as e:
                         logger.warning(f"straddle sampler failed for {idx}: {e}")
-                await asyncio.sleep(STRADDLE_SAMPLE_INTERVAL_SECONDS)
+                await asyncio.sleep(poll_interval_seconds)
             else:
-                await asyncio.sleep(min(STRADDLE_SAMPLE_INTERVAL_SECONDS, 60))
+                await asyncio.sleep(min(poll_interval_seconds, 60))
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.exception(f"straddle sampler loop error: {e}")
-            await asyncio.sleep(STRADDLE_SAMPLE_INTERVAL_SECONDS)
+            try:
+                await asyncio.sleep(poll_interval_seconds)
+            except Exception:
+                await asyncio.sleep(STRADDLE_SAMPLE_INTERVAL_SECONDS)
 
 
 async def _guest_from_request(request: Request):
@@ -234,15 +272,13 @@ async def _guest_from_request(request: Request):
     sess = await db.guest_sessions.find_one({"_id": tok})
     if not sess:
         return None
+    if sess.get("revoked_at"):
+        return None
     try:
         started = datetime.fromisoformat(sess.get("started_at"))
     except Exception:
         return None
     if (datetime.now(timezone.utc) - started).total_seconds() > GUEST_SESSION_TTL_SECONDS:
-        try:
-            await db.guest_sessions.delete_one({"_id": tok})
-        except Exception:
-            pass
         return None
     # Touch last_seen_at
     try:
@@ -282,6 +318,16 @@ async def _get_public_access_state():
         except Exception:
             open_ = False
     return open_, expires_at_iso
+
+
+async def _revoke_guest_sessions(reason: Optional[str] = None):
+    update = {"revoked_at": datetime.now(timezone.utc).isoformat()}
+    if reason:
+        update["revoked_reason"] = reason
+    try:
+        await db.guest_sessions.update_many({"revoked_at": {"$exists": False}}, {"$set": update})
+    except Exception:
+        pass
 
 
 # ------------------- Models -------------------
@@ -370,16 +416,25 @@ async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(requ
             {"$set": {"api_secret_enc": enc}},
             upsert=True,
         )
-    return {"ok": True, "mode": tracker.mode, "access_token": access_token, "user_id": data.get("user_id"), "remembered": bool(payload.remember)}
+    return {"ok": True, "mode": tracker.mode, "user_id": data.get("user_id"), "remembered": bool(payload.remember)}
 
 
 @api_router.get("/kite/vault")
 async def vault_status(_admin: bool = Depends(require_admin)):
-    doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key": 1, "api_secret_enc": 1})
+    doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key_enc": 1, "api_secret_enc": 1, "api_key": 1})
+    api_key = None
+    if doc:
+        try:
+            if doc.get("api_key_enc"):
+                api_key = _fernet().decrypt(doc["api_key_enc"].encode()).decode()
+            else:
+                api_key = doc.get("api_key")
+        except Exception:
+            api_key = None
     return {
-        "has_api_key": bool(doc and doc.get("api_key")),
+        "has_api_key": bool(api_key),
         "has_api_secret": bool(doc and doc.get("api_secret_enc")),
-        "api_key_hint": (doc.get("api_key")[:4] + "***") if (doc and doc.get("api_key")) else None,
+        "api_key_hint": (api_key[:4] + "***") if api_key else None,
     }
 
 
@@ -387,7 +442,15 @@ async def vault_status(_admin: bool = Depends(require_admin)):
 async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_admin)):
     """One-click daily refresh: uses stored api_key + encrypted api_secret + given request_token."""
     doc = await db.credentials.find_one({"_id": "kite"})
-    if not doc or not doc.get("api_key") or not doc.get("api_secret_enc"):
+    api_key = None
+    try:
+        if doc and doc.get("api_key_enc"):
+            api_key = _fernet().decrypt(doc["api_key_enc"].encode()).decode()
+        elif doc and doc.get("api_key"):
+            api_key = doc.get("api_key")
+    except Exception:
+        api_key = None
+    if not doc or not api_key or not doc.get("api_secret_enc"):
         raise HTTPException(400, "No stored api_key/api_secret — use Generate flow first with 'remember' enabled.")
     try:
         api_secret = _fernet().decrypt(doc["api_secret_enc"].encode()).decode()
@@ -395,13 +458,13 @@ async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_a
         raise HTTPException(400, f"Vault decrypt failed: {e}")
     try:
         from kiteconnect import KiteConnect
-        kc = KiteConnect(api_key=doc["api_key"])
+        kc = KiteConnect(api_key=api_key)
         data = kc.generate_session(payload.request_token, api_secret=api_secret)
         access_token = data.get("access_token")
     except Exception as e:
         raise HTTPException(400, f"{type(e).__name__}: {e}")
     try:
-        await tracker.set_credentials(doc["api_key"], access_token)
+        await tracker.set_credentials(api_key, access_token)
     except Exception as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "mode": tracker.mode, "user_id": data.get("user_id")}
@@ -409,16 +472,28 @@ async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_a
 
 @api_router.delete("/kite/vault")
 async def clear_vault(_admin: bool = Depends(require_admin)):
-    await db.credentials.update_one({"_id": "kite"}, {"$unset": {"api_secret_enc": ""}})
+    await db.credentials.update_one(
+        {"_id": "kite"},
+        {"$unset": {"api_key_enc": "", "access_token_enc": "", "api_secret_enc": "", "api_key": "", "access_token": ""}},
+    )
     return {"ok": True}
 
 
 @api_router.get("/credentials/status")
 async def credentials_status(_admin: bool = Depends(require_admin)):
-    doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key": 1, "updated_at": 1})
+    doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key_enc": 1, "api_key": 1, "updated_at": 1})
+    api_key = None
+    if doc:
+        try:
+            if doc.get("api_key_enc"):
+                api_key = _fernet().decrypt(doc["api_key_enc"].encode()).decode()
+            else:
+                api_key = doc.get("api_key")
+        except Exception:
+            api_key = None
     return {
-        "configured": bool(doc),
-        "api_key_hint": (doc.get("api_key")[:4] + "***" if doc else None),
+        "configured": bool(doc and (doc.get("api_key_enc") or doc.get("api_key"))),
+        "api_key_hint": (api_key[:4] + "***") if api_key else None,
         "updated_at": doc.get("updated_at") if doc else None,
     }
 
@@ -656,17 +731,12 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
 
     # Always persist the freshly-served `current` snapshot to Mongo so the
     # /change endpoint keeps history current even if the background tracker
-    # thread stalls. Upsert on (index, timestamp) so we don't create duplicates
-    # for the same market tick.
+    # thread stalls. Upsert on (index, timestamp, expiry) so we don't create
+    # duplicate rows for the same market tick.
     current_ts = current.get("timestamp")
     if current_ts:
         try:
-            await db.oi_snapshots.update_one(
-                {"index": idx, "timestamp": current_ts, "expiry": current.get("expiry")},
-                {"$setOnInsert": {**{k: v for k, v in current.items() if k != "_id"},
-                                    "created_at": datetime.now(timezone.utc).isoformat()}},
-                upsert=True,
-            )
+            await _store_oi_snapshot(current, index_name=idx)
         except Exception as _e:
             logger.warning(f"/change upsert failed for {idx}: {_e}")
 
@@ -680,7 +750,9 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         anchor = datetime.now(timezone.utc)
     target = anchor - timedelta(minutes=minutes)
     # Query on the snapshot's own `timestamp` field (also indexed) so we look
-    # for OI data that was actually recorded within the requested window.
+    # for OI data that was actually recorded within the exact requested window.
+    # This is the strict behavior you requested: the baseline must be the nearest
+    # prior stored snapshot inside the lookback window, not any older fallback.
     prev_doc = None
     if current_ts:
         window_query = {
@@ -691,32 +763,9 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
             window_query["expiry"] = expiry
         prev_doc = await db.oi_snapshots.find_one(
             window_query,
-            sort=[("timestamp", 1)],
-            projection={"_id": 0},
-        )
-
-    # If the requested window contains no snapshot yet, fall back to the closest
-    # available historical snapshot before the current tick.
-    if not prev_doc and current_ts:
-        fallback_query = {"index": idx, "timestamp": {"$lt": current_ts}}
-        if expiry:
-            fallback_query["expiry"] = expiry
-        prev_doc = await db.oi_snapshots.find_one(
-            fallback_query,
             sort=[("timestamp", -1)],
             projection={"_id": 0},
         )
-        # For long lookbacks, prefer the earliest available snapshot in the DB
-        # rather than a much younger fallback that would misrepresent a full-
-        # session window.
-        if minutes >= 300:
-            oldest = await db.oi_snapshots.find_one(
-                {"index": idx, **({"expiry": expiry} if expiry else {})},
-                sort=[("timestamp", 1)],
-                projection={"_id": 0},
-            )
-            if oldest and oldest.get("timestamp") and oldest.get("timestamp") < current_ts:
-                prev_doc = oldest
 
     # Attach a small meta so the frontend can indicate "history warming up" when
     # the requested lookback isn't available yet.
@@ -736,20 +785,10 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
     elif not prev_doc:
         history_ready = False
 
-    # ------------------------------------------------------------------ #
-    # P0 FIX (round 2): Suppress the fallback snapshot when it is FAR too
-    # young for the requested lookback. Otherwise multiple longer
-    # timeframes (10/15/30 min etc.) would all resolve to the SAME
-    # "oldest available" doc and display identical CE/PE change values,
-    # which is what the user reported as the bug.
-    #
-    # Rule: if the available baseline is < 60 % of the requested minutes,
-    # drop `previous` (return null) so the UI can honestly show "not
-    # enough history yet" instead of misleading identical numbers.
-    # ------------------------------------------------------------------ #
-    if prev_doc and elapsed_min_val is not None and elapsed_min_val < 0.6 * minutes:
-        prev_doc = None
-        history_ready = False
+    # Strict window rule: a baseline is only valid if it exists inside the
+    # exact requested lookback window. If the window has no prior snapshot,
+    # we leave `previous` as null and mark history as not-ready so the UI can
+    # stay honest instead of showing misleading identical deltas.
 
     return {
         "index": idx,
@@ -1156,7 +1195,8 @@ async def clear_alerts(_admin: bool = Depends(require_admin)):
 
 @api_router.get("/config")
 async def get_config():
-    return {"indices": INDEX_CONFIG, "poll_interval_seconds": 15}
+    poll_interval_seconds = max(1, int(tracker.settings.get("oi_poll_interval_seconds", 15)))
+    return {"indices": INDEX_CONFIG, "poll_interval_seconds": poll_interval_seconds}
 
 
 # ------------------- Simple Admin Auth + Public Access Toggle -------------------
@@ -1184,7 +1224,8 @@ async def auth_login(payload: LoginIn, request: Request):
         "user_agent": request.headers.get("user-agent", "")[:200],
     })
     # When admin logs in, if public access is currently open → close it
-    # (so guests get kicked and admin has full control).
+    # (so guests get kicked and admin has full control). Preserve guest login
+    # records for later audit by revoking instead of deleting them.
     try:
         open_, _ = await _get_public_access_state()
         if open_:
@@ -1193,8 +1234,8 @@ async def auth_login(payload: LoginIn, request: Request):
                 {"$set": {"open": False, "expires_at": None}},
                 upsert=True,
             )
-            await db.guest_sessions.delete_many({})
-            logger.info("Admin logged in — public access auto-closed.")
+            await _revoke_guest_sessions("admin_login_public_close")
+            logger.info("Admin logged in — public access auto-closed and guest sessions revoked.")
     except Exception as e:
         logger.warning(f"Could not auto-close public access on admin login: {e}")
 
@@ -1330,11 +1371,9 @@ async def auth_toggle_public(payload: PublicAccessIn, request: Request):
             {"$set": {"open": False, "expires_at": None}},
             upsert=True,
         )
-        # Also drop all guest sessions so nobody remains authenticated after close.
-        try:
-            await db.guest_sessions.delete_many({})
-        except Exception:
-            pass
+        # Revoke all guest sessions so nobody remains authenticated after close,
+        # but keep login records for later auditing.
+        await _revoke_guest_sessions("public_access_closed")
         return {"ok": True, "open": False, "expires_at": None}
 
 
@@ -1352,7 +1391,7 @@ async def auth_list_guests(request: Request, since_hours: int = Query(24, ge=1, 
     for d in docs:
         try:
             ls = datetime.fromisoformat(d.get("last_seen_at") or d.get("started_at"))
-            d["active"] = (now - ls).total_seconds() < 300
+            d["active"] = not bool(d.get("revoked_at")) and (now - ls).total_seconds() < 300
             d["idle_seconds"] = int((now - ls).total_seconds())
         except Exception:
             d["active"] = False
@@ -1494,6 +1533,40 @@ async def market_status_endpoint():
     return _market_status()
 
 
+# ------------------- Sidebar admin note (public GET, admin POST/DELETE) -------------------
+class SidebarNoteIn(BaseModel):
+    text: Optional[str] = None
+
+
+@api_router.get("/sidebar/note")
+async def get_sidebar_note():
+    """Public: return the stored sidebar note (text + updated_at)."""
+    try:
+        doc = await db.settings.find_one({"_id": "sidebar_note"}, {"_id": 0})
+        if not doc:
+            return {"text": "", "updated_at": None}
+        return doc
+    except Exception:
+        return {"text": "", "updated_at": None}
+
+
+@api_router.post("/sidebar/note")
+async def save_sidebar_note(payload: SidebarNoteIn, _admin: bool = Depends(require_admin)):
+    """Admin: save or update the sidebar note."""
+    text = (payload.text or "").strip()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.settings.update_one({"_id": "sidebar_note"}, {"$set": {"text": text, "updated_at": now_iso}}, upsert=True)
+    doc = await db.settings.find_one({"_id": "sidebar_note"}, {"_id": 0})
+    return {"ok": True, "note": doc}
+
+
+@api_router.delete("/sidebar/note")
+async def delete_sidebar_note(_admin: bool = Depends(require_admin)):
+    """Admin: delete the stored sidebar note."""
+    await db.settings.delete_one({"_id": "sidebar_note"})
+    return {"ok": True}
+
+
 # ------------------- Multi-index quote for header ticker -------------------
 @api_router.get("/tickers")
 async def get_tickers():
@@ -1559,9 +1632,10 @@ async def get_tickers():
 @api_router.get("/tickers/extras")
 async def get_extra_tickers():
     """Live snapshot of India VIX + GIFT NIFTY, refreshed by the background
-    `extra_tickers` service on its own schedule (VIX 09:15–15:30, GIFT NIFTY
-    06:30–23:30 IST, Mon–Fri). Returns last-known values outside those windows.
-    """
+    `extra_tickers` service on its own schedule:
+    - VIX: 09:15–15:30 IST
+    - GIFT NIFTY: 06:30–15:40 IST and 16:35–02:45 IST
+    Mon–Fri. Returns last-known values outside those windows."""
     return extra_tickers.snapshot()
 
 
@@ -1633,10 +1707,7 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
                     snap["mode"] = "kite"
                     snap["source"] = "live"
                     tracker.last_snapshot[idx] = snap
-                    await db.oi_snapshots.insert_one({
-                        **snap,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    })
+                    await _store_oi_snapshot(snap, index_name=idx)
                     per_index_count[idx] += 1
                     backfilled += 1
                     live_pulled.append(idx)
@@ -1698,10 +1769,7 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
                         snap["mode"] = tracker.mode
                         snap["source"] = "live"
                         tracker.last_snapshot[idx] = snap
-                        await db.oi_snapshots.insert_one({
-                            **snap,
-                            "created_at": datetime.now(timezone.utc).isoformat(),
-                        })
+                        await _store_oi_snapshot(snap, index_name=idx)
                         live_pulled.append(idx)
                 except Exception as e:
                     logger.warning(f"[refresh live-poll] {idx}: {e}")
@@ -2021,8 +2089,19 @@ straddle_sampler_task = None
 
 @app.on_event("startup")
 async def _startup():
+    # Initialize MongoDB client and db here to avoid creating connection objects at import time.
+    global client, db
+    try:
+        mongo_url = os.environ['MONGO_URL']
+        client = AsyncIOMotorClient(mongo_url)
+        db = client[os.environ['DB_NAME']]
+    except Exception as e:
+        logger.exception(f"Failed to initialize MongoDB client: {e}")
+        raise
+
     # Ensure indexes for fast history / retention queries.
     try:
+        await db.oi_snapshots.create_index([("index", 1), ("timestamp", 1), ("expiry", 1)])
         await db.oi_snapshots.create_index([("index", 1), ("created_at", 1)])
         await db.oi_snapshots.create_index("created_at")
         await db.alerts.create_index([("index", 1), ("created_at", -1)])
@@ -2031,6 +2110,10 @@ async def _startup():
         await db.straddle_samples.create_index("created_at")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
+
+    global tracker
+    _notifier_boot.set_db(db)
+    tracker = OITracker(db)
 
     await tracker.load_credentials()
     await tracker.load_settings()
@@ -2062,4 +2145,8 @@ async def _startup():
 async def _shutdown():
     await tracker.stop()
     await extra_tickers.stop()
-    client.close()
+    try:
+        if client:
+            client.close()
+    except Exception:
+        pass

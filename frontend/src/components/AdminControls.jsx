@@ -46,7 +46,7 @@ export default function AdminControls() {
         // ignore
       }
 
-      localStorage.removeItem("oi_admin_token");
+      sessionStorage.removeItem("oi_admin_token");
       toast.info("Admin session expired. Signed out.");
       window.location.reload();
     }, 420 * 60 * 1000); // 420 minutes
@@ -99,7 +99,7 @@ export default function AdminControls() {
       // ignore
     }
 
-    localStorage.removeItem("oi_admin_token");
+    sessionStorage.removeItem("oi_admin_token");
     toast.success("Signed out.");
     window.location.reload();
   };

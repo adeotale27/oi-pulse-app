@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
-import BigClock from "@/components/BigClock";
 import { Label } from "@/components/ui/label";
+import BigClock from "@/components/BigClock";
 import { RotateCcw, TrendingUp, TrendingDown, Plus, Minus } from "lucide-react";
 
 const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
@@ -110,6 +111,70 @@ export default function Sidebar({
   onChangeExpiry,
 }) {
   const price = current?.price ?? 0;
+  // Admin note section state (below the big clock). Publicly visible; editable by admin.
+  const [note, setNote] = useState("");
+  const [editText, setEditText] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [noteUpdatedAt, setNoteUpdatedAt] = useState(null);
+  const [loadingNote, setLoadingNote] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const api = (await import('@/lib/api')).api;
+        const [noteResp, authResp] = await Promise.all([
+          api.get('/sidebar/note').catch(() => ({ data: { text: "", updated_at: null } })),
+          api.get('/auth/state').catch(() => ({ data: { is_admin: false } })),
+        ]);
+        if (!alive) return;
+        const text = noteResp.data?.text || "";
+        setNote(text);
+        setEditText(text);
+        setNoteUpdatedAt(noteResp.data?.updated_at || null);
+        setIsAdmin(Boolean(authResp.data?.is_admin));
+        if (Boolean(authResp.data?.is_admin)) {
+          setIsEditing(!text);
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        if (alive) setLoadingNote(false);
+      }
+    };
+    load();
+    return () => { alive = false; };
+  }, []);
+
+  const saveNote = async () => {
+    try {
+      const api = (await import('@/lib/api')).api;
+      await api.post('/sidebar/note', { text: editText });
+      setNote(editText);
+      setNoteUpdatedAt(new Date().toISOString());
+      setIsEditing(false);
+    } catch (e) {
+      console.error(e);
+      alert('Save failed');
+    }
+  };
+
+  const eraseNote = async () => {
+    try {
+      if (!window.confirm('Erase the note? This cannot be undone.')) return;
+      const api = (await import('@/lib/api')).api;
+      await api.delete('/sidebar/note');
+      setNote("");
+      setEditText("");
+      setNoteUpdatedAt(null);
+      setIsEditing(true);
+    } catch (e) {
+      console.error(e);
+      alert('Erase failed');
+    }
+  };
+
   // Resolve meta by ISO date so downstream operations stay by-date.
   const metaByDate = new Map(
     (expiriesMeta || []).map((m) => [m.date, m])
@@ -289,8 +354,55 @@ export default function Sidebar({
       </div>
 
       {/* Big IST clock tile */}
-      <div className="mt-auto">
+      <div className="border-t border-slate-200 bg-white">
         <BigClock />
+      </div>
+      {/* Admin note section below the big clock */}
+      <div className="p-4 border-t border-slate-200 bg-white">
+        <Label className="text-[10px] uppercase tracking-widest text-slate-500">Note</Label>
+        <div className="mt-2">
+          {loadingNote ? (
+            <p className="text-sm text-slate-400">Loading…</p>
+          ) : (
+            <>
+              {!isAdmin && !note && (
+                <p className="text-sm text-slate-500 italic">No note available.</p>
+              )}
+              {!isAdmin && note && (
+                <div className="text-sm text-slate-700 whitespace-pre-wrap">{note}</div>
+              )}
+              {isAdmin && (
+                <div>
+                  {isEditing ? (
+                    <>
+                      <textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        className="w-full min-h-[6rem] p-2 border rounded mt-2 text-sm font-sans"
+                        placeholder="Write a short sidebar note. When saved, this becomes a tile visible to all users."
+                      />
+                      <div className="mt-2 flex gap-2 flex-wrap">
+                        <button type="button" onClick={saveNote} className="px-3 py-1 text-sm rounded bg-sky-600 text-white">Save</button>
+                        <button type="button" onClick={eraseNote} className="px-3 py-1 text-sm rounded border text-slate-700">Erase</button>
+                        <button type="button" onClick={() => { setEditText(note); setIsEditing(false); }} className="px-3 py-1 text-sm rounded border text-slate-700">Cancel</button>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">Saved at: {noteUpdatedAt ? new Date(noteUpdatedAt).toLocaleString() : '—'}</div>
+                    </>
+                  ) : (
+                    <div className="mt-2 p-3 border rounded bg-gray-50 shadow-sm relative">
+                      <div className="text-sm text-slate-700 whitespace-pre-wrap">{note}</div>
+                      <div className="mt-2 text-xs text-slate-500">Saved at: {noteUpdatedAt ? new Date(noteUpdatedAt).toLocaleString() : '—'}</div>
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <button type="button" onClick={() => setIsEditing(true)} title="Edit" className="px-2 py-1 text-xs rounded bg-white border">Edit</button>
+                        <button type="button" onClick={eraseNote} title="Erase" className="px-2 py-1 text-xs rounded bg-white border">Erase</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </aside>
   );

@@ -144,12 +144,12 @@ def test_tickers_extras():
         gift_start = gift_window.get("start_ist")
         gift_end = gift_window.get("end_ist")
         
-        if gift_start == "06:30" and gift_end == "23:30":
+        if gift_start == "06:30" and gift_end == "02:45":
             log_test("GIFT NIFTY window times correct", True, 
-                    f"start_ist=06:30, end_ist=23:30")
+                    f"start_ist=06:30, end_ist=02:45")
         else:
             log_test("GIFT NIFTY window times correct", False, 
-                    f"Expected start_ist=06:30, end_ist=23:30, got start_ist={gift_start}, end_ist={gift_end}")
+                    f"Expected start_ist=06:30, end_ist=02:45, got start_ist={gift_start}, end_ist={gift_end}")
         
         # Check VIX data shape (if not null)
         vix = data.get("vix")
