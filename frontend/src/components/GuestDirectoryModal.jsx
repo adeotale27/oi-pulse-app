@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
+import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Users } from "lucide-react";
@@ -39,13 +40,8 @@ export default function GuestDirectoryModal({ open, onOpenChange }) {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    if (open) {
-      load(sinceHours);
-      const iv = setInterval(() => load(sinceHours), 15_000);
-      return () => clearInterval(iv);
-    }
-  }, [open, sinceHours]);
+  // Quiescent-aware guest directory refresh
+  useQuiescentAwarePolling(() => load(sinceHours), 15_000, [open, sinceHours], { immediate: true });
 
   const activeCount = rows.filter((r) => r.active).length;
 

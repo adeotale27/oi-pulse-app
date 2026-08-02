@@ -37,10 +37,12 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api } from "@/lib/api";
+import { isMarketQuiescent } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
+import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert } from "@/lib/sounds";
@@ -210,20 +212,15 @@ export default function Dashboard() {
   // VRP (Volatility Risk Premium) — one per active index. Fetched on index
   // change and refreshed every 5 minutes (EOD data doesn't change intraday).
   const [vrp, setVrp] = useState(null);
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const data = await fetchVRP(activeIndex, 30);
-        if (!cancelled) setVrp(data);
-      } catch (e) {
-        console.error("fetchVRP failed", e);
-      }
-    };
-    load();
-    const iv = setInterval(load, 5 * 60_000);
-    return () => { cancelled = true; clearInterval(iv); };
+  const fetchVrp = useCallback(async () => {
+    try {
+      const data = await fetchVRP(activeIndex, 30);
+      setVrp(data);
+    } catch (e) {
+      console.error("fetchVRP failed", e);
+    }
   }, [activeIndex]);
+  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status });
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -238,6 +235,8 @@ export default function Dashboard() {
   }, [rightPanelView]);
 
   useEffect(() => {
+    // Connect WebSocket (spot). The WS wrapper will itself defer connects
+    // during quiescent periods and auto-reconnect on reopen.
     const conn = connectSpotWS((message) => {
       if (message?.type !== "spot" || !Array.isArray(message.tickers)) return;
       const nextPrices = {};
@@ -258,7 +257,7 @@ export default function Dashboard() {
       });
     });
     return () => conn.stop();
-  }, []);
+  }, [status]);
 
   useEffect(() => {
     if (authState.is_admin) return;
@@ -409,45 +408,40 @@ export default function Dashboard() {
 
   // ---- Straddle poll interval (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(60000); // default 1 minute
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const res = await api.get("/settings");
-        if (res.data) {
-          if (typeof res.data.oi_poll_interval_seconds === "number") {
-            setPollMs(res.data.oi_poll_interval_seconds * 1000);
-          }
-          if (res.data.straddle_poll_interval_seconds) {
-            setStraddlePollMs(res.data.straddle_poll_interval_seconds * 1000);
-          }
-          if (Array.isArray(res.data.visible_pages)) {
-            setVisiblePages(res.data.visible_pages);
-          }
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await api.get("/settings");
+      if (res.data) {
+        if (typeof res.data.oi_poll_interval_seconds === "number") {
+          setPollMs(res.data.oi_poll_interval_seconds * 1000);
         }
-      } catch (e) {
-        console.error("Failed to fetch settings", e);
+        if (res.data.straddle_poll_interval_seconds) {
+          setStraddlePollMs(res.data.straddle_poll_interval_seconds * 1000);
+        }
+        if (Array.isArray(res.data.visible_pages)) {
+          setVisiblePages(res.data.visible_pages);
+        }
       }
-    };
-    fetchSettings();
-    const id = setInterval(fetchSettings, 60000); // refresh every minute
-    return () => clearInterval(id);
+    } catch (e) {
+      console.error("Failed to fetch settings", e);
+    }
   }, []);
 
-  useEffect(() => {
-    loadStatus();
-    loadOI();
-    const shouldLoadAlerts = authState.is_admin || visiblePages.includes("alerts");
-    if (shouldLoadAlerts) {
-      loadAlerts();
-    }
-    const id1 = setInterval(loadOI, pollMs);
-    const id2 = setInterval(loadStatus, pollMs);
-    const id3 = shouldLoadAlerts ? setInterval(loadAlerts, 5000) : null;
-    return () => {
-      clearInterval(id1); clearInterval(id2);
-      if (id3) clearInterval(id3);
-    };
-  }, [loadOI, loadStatus, loadAlerts, pollMs, authState.is_admin, visiblePages]);
+  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status });
+
+  useQuiescentAwarePolling(loadStatus, pollMs, [loadStatus, pollMs, status?.market?.is_market_open], { status });
+  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status });
+  useQuiescentAwarePolling(
+    async () => {
+      if (authState.is_admin || visiblePages.includes("alerts")) {
+        await loadAlerts();
+      }
+    },
+    5000,
+    [loadAlerts, authState.is_admin, visiblePages, status?.market?.is_market_open],
+    { status },
+  );
 
   // When index changes, immediately clear current/previous & strike range so
   // filters from the previous index don't hide the new index's strikes.

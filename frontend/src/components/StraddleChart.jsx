@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { fetchStraddle, fetchStraddleHistory } from "../lib/api";
+import { isMarketQuiescent } from "@/lib/marketTimes";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -76,30 +77,46 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
     setPoints([]);
     setMeta(null);
     if (useWs && typeof window !== "undefined") {
-      // lazy import to avoid SSR issues
-      const { connectStraddleWS } = require("../lib/straddleWs");
-      wsRef.current = connectStraddleWS(index, { expiry, position, qty }, (msg) => {
-        if (stopped) return;
-        if (msg && msg.premium != null) {
-          const now = msg.ts ? Date.parse(msg.ts) : Date.now();
-          setMeta({ ts: now, atm: msg.atm, underlying: msg.underlying, strike: msg.atm, ce_ltp: msg.ce_ltp, pe_ltp: msg.pe_ltp, premium: msg.premium });
-          setPoints((prev) => {
-            const point = {
-              ts: now,
-              premium: msg.premium,
-              underlying: msg.underlying,
-              strike: msg.atm,
-              ce_ltp: msg.ce_ltp,
-              pe_ltp: msg.pe_ltp,
-              synthetic: msg.underlying + (msg.ce_ltp - msg.pe_ltp),
-            };
-            const next = prev.concat(point);
-            if (next.length > maxPoints) return next.slice(next.length - maxPoints);
-            return next;
-          });
+      // Only connect WS when market isn't quiescent. If quiescent, allow the
+      // wrapper to watch for reopen and auto-connect while we continue to
+      // run fallback history/polling logic below.
+      let conn = null;
+      try {
+        const closed = isMarketQuiescent();
+        // lazy import to avoid SSR issues
+        const { connectStraddleWS } = require("../lib/straddleWs");
+        conn = connectStraddleWS(index, { expiry, position, qty }, (msg) => {
+          if (stopped) return;
+          if (msg && msg.premium != null) {
+            const now = msg.ts ? Date.parse(msg.ts) : Date.now();
+            setMeta({ ts: now, atm: msg.atm, underlying: msg.underlying, strike: msg.atm, ce_ltp: msg.ce_ltp, pe_ltp: msg.pe_ltp, premium: msg.premium });
+            setPoints((prev) => {
+              const point = {
+                ts: now,
+                premium: msg.premium,
+                underlying: msg.underlying,
+                strike: msg.atm,
+                ce_ltp: msg.ce_ltp,
+                pe_ltp: msg.pe_ltp,
+                synthetic: msg.underlying + (msg.ce_ltp - msg.pe_ltp),
+              };
+              const next = prev.concat(point);
+              if (next.length > maxPoints) return next.slice(next.length - maxPoints);
+              return next;
+            });
+          }
+        });
+
+        // If the wrapper returned a connection that is already started, we can
+        // short-circuit and cleanup on unmount. If it deferred (isStarted false)
+        // then allow fallback polling/history load below.
+        if (conn && typeof conn.isStarted === "function" && conn.isStarted()) {
+          wsRef.current = conn;
+          return () => { stopped = true; wsRef.current && wsRef.current.stop && wsRef.current.stop(); };
         }
-      });
-      return () => { stopped = true; wsRef.current && wsRef.current.stop && wsRef.current.stop(); };
+      } catch (e) {
+        // fall back to polling
+      }
     }
 
     // fallback to polling
@@ -129,6 +146,14 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
         });
       } catch (e) { /* ignore */ }
     };
+    // If market quiescent (weekend/holiday), skip recurring polling to avoid unnecessary fetches
+    try {
+      const closed = isMarketQuiescent();
+      if (closed) return () => { running = false; stopped = true; };
+    } catch (e) {
+      // on error fall back to original behavior
+    }
+
     tick();
     const id = setInterval(() => { if (running) tick(); }, pollMs);
     return () => { running = false; stopped = true; clearInterval(id); };

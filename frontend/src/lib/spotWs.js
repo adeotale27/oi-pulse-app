@@ -1,5 +1,6 @@
 // Lightweight reconnection wrapper for live spot price WebSocket
-export function connectSpotWS(onMessage, onOpen, onClose) {
+export function connectSpotWS(onMessage, onOpen, onClose, options = {}) {
+  const { allowDuringQuiescent = false } = options;
   let urlOrigin = "";
   try {
     const backendUrl = process.env.REACT_APP_BACKEND_URL;
@@ -17,12 +18,51 @@ export function connectSpotWS(onMessage, onOpen, onClose) {
   let ws = null;
   let stopped = false;
   let backoff = 1000;
+  let started = false;
+
+  // If market is quiescent, avoid connecting unless explicitly allowed.
+  // But watch for market reopen and auto-connect when it does.
+  let watcherId = null;
+  if (!allowDuringQuiescent) {
+    try {
+      const { isMarketQuiescent } = require("@/lib/marketTimes");
+      if (isMarketQuiescent()) {
+        console.info("[Spot WS] Market quiescent: deferring WS connect and watching for reopen");
+        // periodically check for market reopening and start when ready
+        watcherId = setInterval(() => {
+          try {
+            if (!isMarketQuiescent()) {
+              clearInterval(watcherId);
+              watcherId = null;
+              start();
+            }
+          } catch (e) {
+            // ignore and keep watching
+          }
+        }, 30_000);
+        // return controller; start() will be invoked by watcher when market reopens
+        return {
+          stop: () => {
+            stopped = true;
+            if (watcherId) { clearInterval(watcherId); watcherId = null; }
+            try { ws && ws.close(); } catch (_e) {}
+            started = false;
+          },
+          isStarted: () => started,
+        };
+      }
+    } catch (e) {
+      // If marketTimes isn't available or errors, fall back to normal behavior
+      // and attempt to connect as before.
+    }
+  }
 
   function start() {
     stopped = false;
     try {
       ws = new WebSocket(wsUrl);
       ws.onopen = () => {
+        started = true;
         backoff = 1000;
         if (onOpen) onOpen();
       };
@@ -35,6 +75,7 @@ export function connectSpotWS(onMessage, onOpen, onClose) {
         }
       };
       ws.onclose = () => {
+        started = false;
         if (onClose) onClose();
         if (stopped) return;
         setTimeout(() => {
@@ -61,11 +102,13 @@ export function connectSpotWS(onMessage, onOpen, onClose) {
 
   function stop() {
     stopped = true;
+    started = false;
     try {
       ws && ws.close();
     } catch (_e) {}
+    if (watcherId) { clearInterval(watcherId); watcherId = null; }
   }
 
   start();
-  return { stop };
+  return { stop, isStarted: () => started };
 }

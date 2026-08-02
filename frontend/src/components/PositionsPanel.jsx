@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { RefreshCw, PlugZap, AlertTriangle, Building2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { yearsToExpiry, greeks, impliedVol } from "@/lib/blackScholes";
@@ -57,7 +58,9 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
 
   useEffect(() => {
     if (!isKiteMode) return;
+    const closed = isMarketQuiescent();
     load();
+    if (closed) return; // skip polling during weekend/holiday to avoid useless calls
     const id = setInterval(load, 30000);
     return () => clearInterval(id);
   }, [isKiteMode, load]);

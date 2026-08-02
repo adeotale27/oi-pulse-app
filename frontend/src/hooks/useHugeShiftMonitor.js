@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 
 // Polls /api/oi/{index}/change for each of the configured short windows
 // (default 1/3/5 min) every `pollMs` and computes the aggregate ΔOI on the
@@ -23,11 +24,10 @@ export function useHugeShiftMonitor({
   const onShiftRef = useRef(onShift);
   onShiftRef.current = onShift;
 
-  useEffect(() => {
-    if (!enabled || !index) return;
+  // Use centralized quiescent-aware polling hook to schedule `tick`.
+  function createTick() {
     let cancelled = false;
-
-    async function tick() {
+    return async function tick() {
       for (const w of windows) {
         try {
           const params = { minutes: w };
@@ -84,12 +84,13 @@ export function useHugeShiftMonitor({
         }
       }
       if (!cancelled) setLastCheckedAt(new Date().toISOString());
-    }
+    };
+  }
 
-    tick(); // immediate first tick
-    const id = setInterval(tick, pollMs);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [index, expiry, enabled, pollMs, cooldownMs, thresholdAbs, JSON.stringify(windows)]);
+  const tickFn = createTick();
+  useQuiescentAwarePolling(tickFn, pollMs, [index, expiry, enabled, pollMs, cooldownMs, thresholdAbs, JSON.stringify(windows)], {});
+
+  return { lastCheckedAt };
 
   return { lastCheckedAt };
 }

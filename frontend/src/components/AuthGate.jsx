@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { api } from "@/lib/api";
+import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,22 +35,21 @@ export default function AuthGate({ children }) {
     }
   };
 
+  // Attach activity listeners for idle-timeout independent of polling
   useEffect(() => {
-    refresh();
-    // Poll every 60s so the 3:30 PM auto-close kicks users back to login.
-    const iv = setInterval(refresh, 60_000);
-    // Track user activity for idle-timeout
     const bump = () => { lastActivityRef.current = Date.now(); };
     window.addEventListener("mousemove", bump);
     window.addEventListener("keydown", bump);
     window.addEventListener("click", bump);
     return () => {
-      clearInterval(iv);
       window.removeEventListener("mousemove", bump);
       window.removeEventListener("keydown", bump);
       window.removeEventListener("click", bump);
     };
   }, []);
+
+  // Quiescent-aware refresh of auth state
+  useQuiescentAwarePolling(refresh, 60_000, [], { immediate: true });
 
   // Client-side 8h idle-logout for admin (matches backend TTL).
   useEffect(() => {

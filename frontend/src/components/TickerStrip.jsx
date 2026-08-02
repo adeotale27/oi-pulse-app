@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { api } from "@/lib/api";
+import { isMarketQuiescent } from "@/lib/marketTimes";
 
 function fmtNum(v, dp = 2) {
   if (v == null) return "—";
@@ -28,9 +29,20 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
       } catch (_e) { /* silent */ }
       finally { if (!cancelled) setLoading(false); }
     }
-    fetchTickers();
-    const id = setInterval(fetchTickers, 300000); // refresh metadata every 5m
-    return () => { cancelled = true; clearInterval(id); };
+    // If market quiescent (weekend/holiday), fetch once and skip periodic refreshes
+    try {
+      const closed = isMarketQuiescent();
+      fetchTickers();
+      if (!closed) {
+        const id = setInterval(fetchTickers, 300000); // refresh metadata every 5m
+        return () => { cancelled = true; clearInterval(id); };
+      }
+    } catch (e) {
+      fetchTickers();
+      const id = setInterval(fetchTickers, 300000); // refresh metadata every 5m
+      return () => { cancelled = true; clearInterval(id); };
+    }
+    return () => { cancelled = true; };
   }, []);
 
   const displayTickers = useMemo(() => {

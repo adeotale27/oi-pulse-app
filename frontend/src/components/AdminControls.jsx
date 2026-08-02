@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Users, LogOut, KeyRound, ChevronDown } from "lucide-react";
@@ -29,11 +30,8 @@ export default function AdminControls() {
     }
   }, []);
 
-  useEffect(() => {
-    refresh();
-    const iv = setInterval(refresh, 60_000);
-    return () => clearInterval(iv);
-  }, [refresh]);
+  // Use quiescent-aware polling for admin state refresh
+  useQuiescentAwarePolling(refresh, 60_000, [refresh], { immediate: true });
 
   // Auto logout after 420 minutes
   useEffect(() => {

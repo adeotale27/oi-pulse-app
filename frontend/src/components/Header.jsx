@@ -7,8 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import OiPulseLogo from "@/components/OiPulseLogo";
-import { api } from "@/lib/api";
+import { api, fetchExtras, subscribeExtras, unsubscribeExtras } from "@/lib/api";
 import { toast } from "sonner";
+
+import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
+import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 
 export default function Header({
   status,
@@ -43,7 +46,8 @@ export default function Header({
 
   // Auth state — used to hide sensitive buttons from guests.
   const [authState, setAuthState] = useState({ is_admin: false });
-  useEffect(() => {
+  // Quiescent-aware auth state refresh
+  {
     let alive = true;
     const load = async () => {
       try {
@@ -51,44 +55,55 @@ export default function Header({
         if (alive) setAuthState(data);
       } catch (_) { /* ignore */ }
     };
-    load();
-    const iv = setInterval(load, 60_000);
-    return () => { alive = false; clearInterval(iv); };
-  }, []);
+    useQuiescentAwarePolling(load, 60_000, [], { immediate: true });
+    // ensure we don't set state after unmount
+    useEffect(() => () => { alive = false; }, []);
+  }
   const isAdmin = !!authState.is_admin;
 
-  // Extras (VIX + GIFT NIFTY) — independent poll cycle every 30s so they keep
-  // updating on their own schedules (VIX 09:15–15:30, GIFT 06:30–23:30 IST).
-  // These do NOT display an "OI pulled" timestamp; users are expected to know
-  // they update automatically per their own windows.
+  // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
+  // to avoid duplicate network requests across components.
   const [extras, setExtras] = useState({ vix: null, gift_nifty: null });
   useEffect(() => {
     let alive = true;
-    const load = async () => {
-      try {
-        const { data } = await api.get("/tickers/extras");
-        // store full payload so UI can access windows + server_time_ist for GIFT session info
-        if (alive) setExtras(data || { vix: null, gift_nifty: null, windows: null, server_time_ist: null });
-      } catch (_) { /* ignore */ }
+    const onExtras = (data, meta) => {
+      if (!alive || !data) return;
+      if (process.env.NODE_ENV !== 'production') {
+        try { console.debug('[Header] subscribeExtras notified', { source: meta?.source, vix_ts: data?.vix?.ts || data?.vix?.last, gift_ts: data?.gift_nifty?.ts || data?.gift_nifty?.last, server_time_ist: data?.server_time_ist }); } catch (_) {}
+      }
+      setExtras((prev) => {
+        const next = {
+          vix: data.vix ?? prev.vix,
+          gift_nifty: data.gift_nifty ?? prev.gift_nifty,
+          windows: data.windows ?? prev.windows,
+          server_time_ist: data.server_time_ist ?? prev.server_time_ist,
+        };
+        const sameVix = ((prev.vix?.ts || null) === (next.vix?.ts || null)) || ((prev.vix?.last || null) === (next.vix?.last || null));
+        const sameGift = ((prev.gift_nifty?.ts || null) === (next.gift_nifty?.ts || null)) || ((prev.gift_nifty?.last || null) === (next.gift_nifty?.last || null));
+        const sameServer = (prev.server_time_ist || null) === (next.server_time_ist || null);
+        if (sameVix && sameGift && sameServer) return prev;
+        return next;
+      });
     };
-    load();
-    const iv = setInterval(load, 30_000);
-    return () => { alive = false; clearInterval(iv); };
+    const unsub = subscribeExtras(onExtras, { immediate: true, pollMs: 30_000 });
+    return () => { alive = false; unsub(); };
   }, []);
 
-  // Normalize GIFT sessions payload so UI always receives an array of sessions
+  // Normalize GIFT sessions payload so UI always receives an array of sessions.
+  // Fall back to the known static GIFT schedule if the server payload is missing.
   const giftSessions = (() => {
     try {
       const g = extras?.windows?.gift;
-      if (!g) return null;
-      // If backend provides sessions array, use it
+      if (!g) return GIFT_SESSION_WINDOWS;
       if (Array.isArray(g.sessions) && g.sessions.length) return g.sessions;
-      // If backend provides a single window (start_ist/end_ist), wrap it
+      if (g.sessions && typeof g.sessions === "object" && !Array.isArray(g.sessions) && g.sessions.start_ist && g.sessions.end_ist) {
+        return [{ start_ist: g.sessions.start_ist, end_ist: g.sessions.end_ist }];
+      }
       if (g.start_ist && g.end_ist) return [{ start_ist: g.start_ist, end_ist: g.end_ist }];
       if (g.start && g.end) return [{ start_ist: g.start, end_ist: g.end }];
-      return null;
+      return GIFT_SESSION_WINDOWS;
     } catch {
-      return null;
+      return GIFT_SESSION_WINDOWS;
     }
   })();
 
@@ -332,14 +347,29 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions }) {
     const [hh, mm] = String(hm).split(":").map(Number);
     return (hh || 0) * 60 + (mm || 0);
   }
+
+  function getIstDate(input = new Date()) {
+    const dt = input instanceof Date ? input : new Date(input);
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(dt);
+    const get = (type) => Number(parts.find((p) => p.type === type)?.value || 0);
+    return new Date(Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second")));
+  }
+
   function getIstNow() {
     if (serverIst) {
-      // serverIst is expected to be an ISO timestamp in IST with offset (e.g. 2026-07-29T00:16:...+05:30)
       const d = new Date(serverIst);
-      if (!Number.isNaN(d.getTime())) return d;
+      if (!Number.isNaN(d.getTime())) return getIstDate(d);
     }
-    // fallback: construct a Date representing current time in Asia/Kolkata
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    return getIstDate(new Date());
   }
 
   function minutesToHuman(mins) {
@@ -354,33 +384,49 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions }) {
   function getSessionInfo() {
     if (!windows || !Array.isArray(windows) || windows.length === 0) return { activeIndex: -1, nextIndex: null, minsUntilNext: null };
     const now = getIstNow();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const nowDay = now.getUTCDay();
+    const minutesOfDay = nowMinutes;
+    const isWeekend = (nowDay === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || nowDay === 6 || nowDay === 0;
 
     let activeIndex = -1;
-    for (let i = 0; i < windows.length; i++) {
-      const s = windows[i];
-      const startM = parseHM(s.start_ist || s.start || '00:00');
-      const endM = parseHM(s.end_ist || s.end || '00:00');
-      if (startM <= endM) {
-        if (nowMinutes >= startM && nowMinutes <= endM) { activeIndex = i; break; }
-      } else {
-        // wrap-around (overnight)
-        if (nowMinutes >= startM || nowMinutes <= endM) { activeIndex = i; break; }
+    if (!isWeekend) {
+      for (let i = 0; i < windows.length; i++) {
+        const s = windows[i];
+        const startM = parseHM(s.start_ist || s.start || '00:00');
+        const endM = parseHM(s.end_ist || s.end || '00:00');
+        if (startM <= endM) {
+          if (nowMinutes >= startM && nowMinutes <= endM) { activeIndex = i; break; }
+        } else {
+          // wrap-around (overnight)
+          if (nowMinutes >= startM || nowMinutes <= endM) { activeIndex = i; break; }
+        }
       }
     }
 
     let nextIndex = null;
     let minsUntilNext = null;
     if (activeIndex === -1) {
-      let minDelta = 24 * 60 + 1;
-      for (let i = 0; i < windows.length; i++) {
-        const s = windows[i];
-        const startM = parseHM(s.start_ist || s.start || '00:00');
-        let delta = startM - nowMinutes;
-        if (delta <= 0) delta += 24 * 60;
-        if (delta < minDelta) { minDelta = delta; nextIndex = i; }
+      if (isWeekend) {
+        nextIndex = 0;
+        let daysUntilMonday;
+        if (nowDay === 5) daysUntilMonday = 3;
+        else if (nowDay === 6) daysUntilMonday = 2;
+        else daysUntilMonday = 1;
+        const nextMondayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 6, 30));
+        const nextMonday = new Date(nextMondayStart.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
+        minsUntilNext = Math.max(0, Math.round((nextMonday.getTime() - now.getTime()) / 60000));
+      } else {
+        let minDelta = 24 * 60 + 1;
+        for (let i = 0; i < windows.length; i++) {
+          const s = windows[i];
+          const startM = parseHM(s.start_ist || s.start || '00:00');
+          let delta = startM - nowMinutes;
+          if (delta <= 0) delta += 24 * 60;
+          if (delta < minDelta) { minDelta = delta; nextIndex = i; }
+        }
+        minsUntilNext = minDelta;
       }
-      minsUntilNext = minDelta;
     } else {
       const s = windows[activeIndex];
       const endM = parseHM(s.end_ist || s.end || '00:00');

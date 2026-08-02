@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from "@/lib/marketTimes";
 
 function parseHM(hm) {
   const [hh, mm] = String(hm).split(":").map(Number);
@@ -26,26 +27,35 @@ export default function GiftSessionsModal({ open, onOpenChange, windows = [], se
   // normalize windows: accept null, single-object, or array
   const sessions = (() => {
     try {
-      if (!windows) return [];
-      if (Array.isArray(windows)) return windows;
-      if (windows.sessions && Array.isArray(windows.sessions)) return windows.sessions;
-      // single object with start_ist/end_ist or start/end
+      if (!windows) return GIFT_SESSION_WINDOWS;
+      if (Array.isArray(windows)) return windows.length ? windows : GIFT_SESSION_WINDOWS;
+      if (windows.sessions && Array.isArray(windows.sessions) && windows.sessions.length) return windows.sessions;
+      if (windows.sessions && typeof windows.sessions === "object" && !Array.isArray(windows.sessions) && windows.sessions.start_ist && windows.sessions.end_ist) {
+        return [{ start_ist: windows.sessions.start_ist, end_ist: windows.sessions.end_ist }];
+      }
       if (windows.start_ist && windows.end_ist) return [{ start_ist: windows.start_ist, end_ist: windows.end_ist }];
       if (windows.start && windows.end) return [{ start_ist: windows.start, end_ist: windows.end }];
-      return [];
+      return GIFT_SESSION_WINDOWS;
     } catch {
-      return [];
+      return GIFT_SESSION_WINDOWS;
     }
   })();
 
-  // compute now (prefer serverIst)
-  const now = useMemo(() => {
-    if (serverIst) {
-      const d = new Date(serverIst);
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  }, [serverIst, open]);
+  function getIstDate(input = new Date()) {
+    const dt = input instanceof Date ? input : new Date(input);
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(dt);
+    const get = (type) => Number(parts.find((p) => p.type === type)?.value || 0);
+    return new Date(Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second")));
+  }
 
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -55,33 +65,49 @@ export default function GiftSessionsModal({ open, onOpenChange, windows = [], se
   }, [open]);
 
   const info = useMemo(() => {
-    const nowDate = serverIst ? new Date(serverIst) : new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    const nowMinutes = nowDate.getHours() * 60 + nowDate.getMinutes();
+    const nowDate = getIstDate(serverIst ? new Date(serverIst) : new Date());
+    const nowMinutes = nowDate.getUTCHours() * 60 + nowDate.getUTCMinutes();
+    const nowDay = nowDate.getUTCDay();
+    const minutesOfDay = nowMinutes;
+    const isWeekend = (nowDay === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || nowDay === 6 || nowDay === 0;
 
     let activeIndex = -1;
-    for (let i = 0; i < sessions.length; i++) {
-      const s = sessions[i];
-      const startM = parseHM(s.start_ist || s.start || "00:00");
-      const endM = parseHM(s.end_ist || s.end || "00:00");
-      if (startM <= endM) {
-        if (nowMinutes >= startM && nowMinutes <= endM) { activeIndex = i; break; }
-      } else {
-        if (nowMinutes >= startM || nowMinutes <= endM) { activeIndex = i; break; }
+    if (!isWeekend) {
+      for (let i = 0; i < sessions.length; i++) {
+        const s = sessions[i];
+        const startM = parseHM(s.start_ist || s.start || "00:00");
+        const endM = parseHM(s.end_ist || s.end || "00:00");
+        if (startM <= endM) {
+          if (nowMinutes >= startM && nowMinutes <= endM) { activeIndex = i; break; }
+        } else {
+          if (nowMinutes >= startM || nowMinutes <= endM) { activeIndex = i; break; }
+        }
       }
     }
 
     let nextIndex = null;
     let minsUntilNext = null;
     if (activeIndex === -1) {
-      let minDelta = 24 * 60 + 1;
-      for (let i = 0; i < sessions.length; i++) {
-        const s = sessions[i];
-        const startM = parseHM(s.start_ist || s.start || "00:00");
-        let delta = startM - nowMinutes;
-        if (delta <= 0) delta += 24 * 60;
-        if (delta < minDelta) { minDelta = delta; nextIndex = i; }
+      if (isWeekend) {
+        nextIndex = 0;
+        let daysUntilMonday;
+        if (nowDay === 5) daysUntilMonday = 3;
+        else if (nowDay === 6) daysUntilMonday = 2;
+        else daysUntilMonday = 1;
+        const nextMondayStart = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), nowDate.getUTCDate(), 6, 30));
+        const nextMonday = new Date(nextMondayStart.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
+        minsUntilNext = Math.max(0, Math.round((nextMonday.getTime() - nowDate.getTime()) / 60000));
+      } else {
+        let minDelta = 24 * 60 + 1;
+        for (let i = 0; i < sessions.length; i++) {
+          const s = sessions[i];
+          const startM = parseHM(s.start_ist || s.start || "00:00");
+          let delta = startM - nowMinutes;
+          if (delta <= 0) delta += 24 * 60;
+          if (delta < minDelta) { minDelta = delta; nextIndex = i; }
+        }
+        minsUntilNext = minDelta;
       }
-      minsUntilNext = minDelta;
     } else {
       const s = sessions[activeIndex];
       const endM = parseHM(s.end_ist || s.end || "00:00");
