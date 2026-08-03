@@ -69,6 +69,33 @@ Please verify these endpoints/behaviors against a running backend:
 ## agent_communication:
     - agent: main
       message: |
+        FOLLOW-UP #3 — user reported: "instead of oi change its showing Open Interest chart". Root cause: the
+        `showOI` state on Dashboard defaulted to `true`, making the OI Change tab open in absolute-OI mode
+        (visually identical to the Open Interest tab). User wants it to open in the CHANGE view — stacked
+        solid base + striped Increase / outlined Decrease overlays — matching the last two Sensibull
+        reference images.
+        Fix: `pages/Dashboard.jsx` — `useState(true)` → `useState(false)` for `showOI`. Toggle still works
+        so users can flip to absolute-OI view if they want.
+        User also asked to keep `X-Admin-Token` login flow intact. Confirming: it is untouched. The axios
+        request interceptor still attaches `X-Admin-Token: <token>` to every request from
+        sessionStorage/localStorage — no cookies involved. `withCredentials: false` only disables cookie
+        transmission (which we never used); custom headers are unaffected. Works identically on preview
+        and production.
+        Playwright browser verification confirms:
+          - Login POST /api/auth/login returns 200 with token
+          - Token is stored in sessionStorage under `oi_admin_token`
+          - Dashboard opens with OI Change tab active
+          - Chart renders in CHANGE view by default (data-testid `switch-show-oi` state = `unchecked`)
+          - Legend reads: "Solid = previous OI · Striped = increase · Outline = decrease · Put OI · Increase · Decrease · Call OI · Increase · Decrease"
+          - Custom Change Alert Toast fired for NIFTY: "PE OI ▼ 11.08% in 15 mins"
+        Please re-verify (backend only):
+          1. Login flow (public URL + localhost) still returns 200 + token.
+          2. Subsequent authed requests using the returned token in `X-Admin-Token` header succeed against admin-gated endpoints.
+          3. OI Change endpoint sort-fix still in place; all 3 indices still polling and stored.
+          4. No regression on `/api/status`, `/api/oi/{idx}`, `/api/oi/{idx}/change`, `/api/history/{idx}`.
+
+    - agent: main
+      message: |
         Backend now boots into LIVE Kite mode via env-var bootstrap in oi_tracker.load_credentials.
         Admin password is `MasterApp@123` (username `Adeotale`).
         DB is being populated with oi_snapshots for NIFTY, SENSEX and BANKNIFTY concurrently every poll cycle.
