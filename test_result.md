@@ -47,3 +47,15 @@ Please verify these endpoints/behaviors against a running backend:
         Admin password is `MasterApp@123` (username `Adeotale`).
         DB is being populated with oi_snapshots for NIFTY, SENSEX and BANKNIFTY concurrently every poll cycle.
         Please verify the endpoints listed above. DO NOT create any file-based tests inside /app/tests unless absolutely necessary — the user explicitly asked us not to add test files.
+
+    - agent: main
+      message: |
+        FOLLOW-UP: user reported Login failing in the deployed preview UI with browser console CORS errors:
+          "Access-Control-Allow-Origin header must not be the wildcard '*' when request's credentials mode is 'include'".
+        Root cause: `/app/frontend/src/lib/api.js` creates the axios instance with `withCredentials: true`, but backend was reading `CORS_ORIGINS=*` from env — the browser rejects wildcard + credentials.
+        Fix: `/app/backend/.env` now sets an empty `CORS_ORIGINS` and a `CORS_ORIGIN_REGEX` that matches any `*.emergentagent.com` preview subdomain plus `localhost` / `127.0.0.1`. Backend restarted.
+        Please retest:
+          1. Preflight OPTIONS `/api/auth/login` from `Origin: https://40650f96-1793-4424-b793-cbea46487c6f.preview.emergentagent.com` returns 200 with `Access-Control-Allow-Origin` echoed back to that exact origin and `Access-Control-Allow-Credentials: true`.
+          2. Actual `POST /api/auth/login` with the correct body and that Origin header returns 200 + valid token, and the response likewise carries the specific-origin `Access-Control-Allow-Origin` (not `*`).
+          3. Preflight/POST from a bogus origin like `https://evil.example.com` is rejected (no CORS headers, so the browser will block it).
+          4. Also re-verify remaining items 3–7 from the earlier list (status, all 3 OI indices live, /change endpoint sort fix, MongoDB snapshot growth, admin-gated auth, /history).
