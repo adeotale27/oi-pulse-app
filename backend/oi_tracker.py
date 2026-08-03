@@ -7,18 +7,90 @@ when FORCE_ALWAYS_POLL=false (default). Retains 24 h of snapshots so any
 timeframe from 5 min – 4 h has data available.
 """
 import asyncio
-import logging
-import os
 import base64
 import hashlib
+import json
+import logging
+import os
+from collections import Counter
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from oi_service import KiteService, MockService, INDEX_CONFIG
+from oi_service import INDEX_CONFIG, KiteService
+# Import MockService only in development when explicitly enabled so production
+# deployments never accidentally import demo generators.
+try:
+    if os.environ.get("ENABLE_DEV_MOCK", "false").lower() == "true":
+        from dev.mock_service import MockService
+    else:
+        MockService = None
+except Exception:
+    MockService = None
 from market_hours import is_market_open, market_status, now_ist
 import notifier
 
+
+class JsonLogFormatter(logging.Formatter):
+    """Structured JSON logger for OI tracker events."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        record_dict = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "func": record.funcName,
+            "line": record.lineno,
+        }
+        if record.exc_info:
+            record_dict["exception"] = self.formatException(record.exc_info)
+
+        for key, value in record.__dict__.items():
+            if key in {
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "message",
+                "level",
+                "timestamp",
+            }:
+                continue
+            if key.startswith("_"):
+                continue
+            if key not in record_dict:
+                try:
+                    json.dumps(value, default=str)
+                    record_dict[key] = value
+                except TypeError:
+                    record_dict[key] = str(value)
+
+        return json.dumps(record_dict, default=str)
+
+
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonLogFormatter())
+    logger.addHandler(handler)
+logger.propagate = False
 
 
 def _fernet():
@@ -73,8 +145,12 @@ class OITracker:
     def __init__(self, db):
         self.db = db
         self.kite_service: Optional[KiteService] = None
-        self.mock_service = MockService()
-        self.mode = "mock"  # "kite" or "mock"
+        # Do not enable demo/mock fallback in production. When no Kite
+        # credentials are present the tracker enters OFFLINE mode and serves
+        # historical DB snapshots only. This prevents synthetic/demo data being
+        # shown to end users accidentally.
+        self.mock_service = None
+        self.mode = "offline"  # 'kite' or 'offline'
         self.running = False
         self._task: Optional[asyncio.Task] = None
         self.last_error: Optional[str] = None
@@ -82,6 +158,17 @@ class OITracker:
         self.last_updated_at: Optional[str] = None
         self.settings: Dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.selected_expiry: Dict[str, Optional[str]] = {i: None for i in INDICES}
+        self.metrics = Counter({
+            "poll_cycles": 0,
+            "poll_timeouts": 0,
+            "snapshot_fetch_errors": 0,
+            "snapshot_missing_count": 0,
+            "snapshot_upsert_errors": 0,
+            "retention_prune_errors": 0,
+            "straddle_store_errors": 0,
+            "alert_eval_errors": 0,
+            "successful_snapshots": 0,
+        })
 
     async def load_settings(self):
         doc = await self.db.settings.find_one({"_id": "alerts"})
@@ -108,6 +195,34 @@ class OITracker:
 
     def set_expiry(self, index_name: str, expiry: Optional[str]):
         self.selected_expiry[index_name] = expiry
+
+    async def persist_snapshot(self, snapshot: Dict[str, Any], *, index_name: Optional[str] = None):
+        """Persist one OI snapshot idempotently per (index, timestamp, expiry)."""
+        doc = dict(snapshot or {})
+        if index_name:
+            doc.setdefault("index", index_name)
+        doc["timestamp"] = doc.get("timestamp") or datetime.now(timezone.utc).isoformat()
+        doc["created_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            await self.db.oi_snapshots.update_one(
+                {
+                    "index": doc.get("index"),
+                    "timestamp": doc.get("timestamp"),
+                    "expiry": doc.get("expiry"),
+                },
+                {"$set": doc},
+                upsert=True,
+            )
+        except Exception as e:
+            self.metrics["snapshot_upsert_errors"] += 1
+            logger.warning(
+                "[persist_snapshot] failed to upsert snapshot for %s: %s",
+                index_name or doc.get("index"),
+                e,
+                exc_info=True,
+                extra={"metrics": dict(self.metrics)},
+            )
+            raise
 
     async def load_credentials(self):
         """Load saved kite credentials from DB and initialize KiteService if present."""
@@ -145,10 +260,12 @@ class OITracker:
             except Exception as e:
                 self.last_error = f"Kite init failed: {e}"
                 self.kite_service = None
-                self.mode = "mock"
+                self.mode = "offline"
                 logger.error(self.last_error)
                 return False
-        self.mode = "mock"
+        # No credentials configured: go to OFFLINE mode. Do not enable a demo
+        # synthetic mode in production.
+        self.mode = "offline"
         return False
 
     async def set_credentials(self, api_key: str, access_token: str):
@@ -181,16 +298,19 @@ class OITracker:
         self.last_error = None
 
     async def set_mode(self, mode: str):
-        if mode not in ("kite", "mock"):
-            raise ValueError("mode must be 'kite' or 'mock'")
+        # Supported modes: 'kite' (live) and 'offline' (no live polling).
+        if mode not in ("kite", "offline"):
+            raise ValueError("mode must be 'kite' or 'offline'")
         if mode == "kite" and self.kite_service is None:
             raise RuntimeError("No Kite credentials configured")
         self.mode = mode
 
     def _get_service(self):
+        # Only return Kite service when in LIVE mode. Do not return a mock/demo
+        # service — production must not expose synthetic data to end users.
         if self.mode == "kite" and self.kite_service:
             return self.kite_service
-        return self.mock_service
+        return None
 
     async def start(self):
         if self.running:
@@ -284,7 +404,7 @@ class OITracker:
                 return
             if self.mode != "kite" or self.kite_service is None:
                 await notifier.alert_kite_token_issue(
-                    "Tracker is in MOCK mode — no Kite credentials configured."
+                    "Tracker is OFFLINE — no Kite credentials configured. Live polling will not run until credentials are provided."
                 )
                 return
             # Cheap validation: profile() call
@@ -301,55 +421,128 @@ class OITracker:
             logger.warning(f"premarket_check error: {e}")
 
     async def _poll_once(self):
+        """
+        Concurrently fetch snapshots for enabled indices with a per-index timeout.
+        This prevents a slow or stuck fetch for one index from serializing the whole
+        poll cycle. Results are then processed (cache, upsert, retention, straddle,
+        alerts) sequentially for simplicity and safety.
+        """
+        self.metrics["poll_cycles"] += 1
+
+        # If tracker is not configured for LIVE (kite) mode, do not attempt to
+        # poll Kite or use any demo/mock service. Instead, preserve existing
+        # DB-backed snapshots and return early so the system stays read-only.
+        if self.mode != "kite" or not self.kite_service:
+            logger.debug("[_poll_once] tracker offline: skipping live fetch cycle", extra={"metrics": dict(self.metrics)})
+            self.last_updated_at = datetime.now(timezone.utc).isoformat()
+            return
+
         svc = self._get_service()
         enabled = self.settings.get("enabled_indices", INDICES)
+        # Launch all snapshot fetches concurrently (in threadpool)
+        tasks = {}
         for idx in enabled:
             if idx not in INDICES:
                 continue
+            exp = self.selected_expiry.get(idx)
+            tasks[idx] = asyncio.create_task(asyncio.to_thread(svc.get_snapshot, idx, exp))
+
+        if not tasks:
+            self.last_updated_at = datetime.now(timezone.utc).isoformat()
+            return
+
+        # Wait up to 10s for all to complete; pending tasks will be cancelled.
+        done, pending = await asyncio.wait(tasks.values(), timeout=10.0)
+
+        # Cancel any pending tasks (they exceeded the timeout)
+        for p in pending:
             try:
-                exp = self.selected_expiry.get(idx)
-                # P0 FIX: wrap per-index fetch in a hard 10s timeout so that a
-                # silently-hanging quote() call on ONE index can never starve
-                # the entire poll loop (which was leaving other indices' caches
-                # stale — root cause of 1/3/5/10/15 min returning identical
-                # deltas).
-                snap = await asyncio.wait_for(
-                    asyncio.to_thread(svc.get_snapshot, idx, exp),
-                    timeout=10.0,
+                p.cancel()
+            except Exception:
+                pass
+
+        # Process results per-index (map back from tasks)
+        for idx, task in tasks.items():
+            if task in pending:
+                self.metrics["poll_timeouts"] += 1
+                logger.error(
+                    "[_poll_once] snapshot TIMEOUT for %s after 10s — skipping this tick.",
+                    idx,
+                    extra={"metrics": dict(self.metrics)},
                 )
-            except asyncio.TimeoutError:
-                logger.error(f"[_poll_once] snapshot TIMEOUT for {idx} after 10s — skipping this tick.")
                 self.last_error = f"snapshot timeout for {idx}"
                 continue
+            try:
+                snap = task.result()
             except Exception as e:
-                logger.error(f"[_poll_once] snapshot failed for {idx}: {type(e).__name__}: {e}")
+                self.metrics["snapshot_fetch_errors"] += 1
+                logger.error(
+                    "[_poll_once] snapshot failed for %s: %s",
+                    idx,
+                    f"{type(e).__name__}: {e}",
+                    extra={"metrics": dict(self.metrics)},
+                )
                 self.last_error = str(e)
                 continue
+
             if not snap:
-                logger.warning(f"[_poll_once] get_snapshot({idx}) returned None — see oi_service logs above for reason.")
+                self.metrics["snapshot_missing_count"] += 1
+                logger.warning(
+                    "[_poll_once] get_snapshot(%s) returned None — see oi_service logs above for reason.",
+                    idx,
+                    extra={"metrics": dict(self.metrics)},
+                )
                 continue
+
             snap["mode"] = self.mode
             self.last_snapshot[idx] = snap
+            self.metrics["successful_snapshots"] += 1
+
             # store idempotently so the DB never accumulates duplicate rows for
             # the same market tick if the same snapshot is re-served during a
             # refresh or inline /change request.
-            snapshot_doc = {**snap, "created_at": datetime.now(timezone.utc).isoformat()}
-            await self.db.oi_snapshots.update_one(
-                {
-                    "index": idx,
-                    "timestamp": snapshot_doc.get("timestamp"),
-                    "expiry": snapshot_doc.get("expiry"),
-                },
-                {"$set": snapshot_doc},
-                upsert=True,
-            )
+            try:
+                await self.persist_snapshot(snap, index_name=idx)
+            except Exception:
+                # The persist_snapshot helper already logs and updates metrics.
+                pass
+
             # keep only last SNAPSHOT_RETENTION_HOURS (default 24) so full day session is preserved
-            cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
-            await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
+            try:
+                cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
+                await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
+            except Exception as e:
+                self.metrics["retention_prune_errors"] += 1
+                logger.debug(
+                    "[_poll_once] retention prune failed: %s",
+                    e,
+                    exc_info=True,
+                    extra={"metrics": dict(self.metrics)},
+                )
+
             # persist straddle samples for the chosen expiry
-            await self._store_straddle_sample(idx, snap)
+            try:
+                await self._store_straddle_sample(idx, snap)
+            except Exception as e:
+                logger.debug(
+                    "[_poll_once] _store_straddle_sample failed: %s",
+                    e,
+                    exc_info=True,
+                    extra={"metrics": dict(self.metrics)},
+                )
+
             # evaluate alerts
-            await self._evaluate_alerts(idx, snap)
+            try:
+                await self._evaluate_alerts(idx, snap)
+            except Exception as e:
+                self.metrics["alert_eval_errors"] += 1
+                logger.debug(
+                    "[_poll_once] _evaluate_alerts failed: %s",
+                    e,
+                    exc_info=True,
+                    extra={"metrics": dict(self.metrics)},
+                )
+
         self.last_updated_at = datetime.now(timezone.utc).isoformat()
 
     async def _store_straddle_sample(self, index_name: str, snap: Dict[str, Any]):
@@ -390,7 +583,14 @@ class OITracker:
             })
             await self._prune_straddle_history(index_name)
         except Exception as e:
-            logger.debug(f"[_store_straddle_sample] failed for {index_name}: {e}")
+            self.metrics["straddle_store_errors"] += 1
+            logger.warning(
+                "[_store_straddle_sample] failed for %s: %s",
+                index_name,
+                e,
+                exc_info=True,
+                extra={"metrics": dict(self.metrics)},
+            )
 
     async def _prune_straddle_history(self, index_name: str):
         try:
@@ -545,4 +745,15 @@ class OITracker:
             "telegram_configured": notifier.is_configured(),
             "retention_hours": SNAPSHOT_RETENTION_HOURS,
             "always_poll": FORCE_ALWAYS_POLL,
+            "metrics": {
+                "poll_cycles": int(self.metrics.get("poll_cycles", 0)),
+                "poll_timeouts": int(self.metrics.get("poll_timeouts", 0)),
+                "snapshot_fetch_errors": int(self.metrics.get("snapshot_fetch_errors", 0)),
+                "snapshot_missing_count": int(self.metrics.get("snapshot_missing_count", 0)),
+                "snapshot_upsert_errors": int(self.metrics.get("snapshot_upsert_errors", 0)),
+                "retention_prune_errors": int(self.metrics.get("retention_prune_errors", 0)),
+                "straddle_store_errors": int(self.metrics.get("straddle_store_errors", 0)),
+                "alert_eval_errors": int(self.metrics.get("alert_eval_errors", 0)),
+                "successful_snapshots": int(self.metrics.get("successful_snapshots", 0)),
+            },
         }

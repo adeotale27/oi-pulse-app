@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta, date
 # Delay motor client creation until startup to avoid heavy connection objects during import.
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from oi_tracker import OITracker, INDICES
+from oi_tracker import OITracker, INDICES, JsonLogFormatter
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
 from market_hours import is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend
@@ -50,7 +50,7 @@ tracker = None
 
 # Straddle sample retention (hours)
 STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
-STRADDLE_SAMPLE_INTERVAL_SECONDS = int(os.environ.get("STRADDLE_SAMPLE_INTERVAL_SECONDS", "30"))
+STRADDLE_SAMPLE_INTERVAL_SECONDS = int(os.environ.get("STRADDLE_SAMPLE_INTERVAL_SECONDS", "60"))  # default 60s straddle sampling
 STRADDLE_INDICES = ["NIFTY", "SENSEX"]
 
 # notifier DB will be attached during startup
@@ -166,12 +166,15 @@ async def require_admin(request: Request):
 
 
 async def _store_oi_snapshot(snapshot: Dict[str, Any], *, index_name: Optional[str] = None) -> None:
-    """Persist one OI snapshot idempotently per (index, timestamp, expiry).
+    """Persist one OI snapshot idempotently per (index, timestamp, expiry)."""
+    if tracker:
+        try:
+            await tracker.persist_snapshot(snapshot, index_name=index_name)
+            return
+        except Exception:
+            # fall back to direct DB persisted snapshot if tracker helper fails
+            pass
 
-    Using an upsert keeps history clean when the same tick is re-served by the
-    /change path or a refresh operation, which avoids duplicate rows for the
-    same market timestamp.
-    """
     doc = dict(snapshot or {})
     if index_name:
         doc.setdefault("index", index_name)
@@ -189,45 +192,16 @@ async def _store_oi_snapshot(snapshot: Dict[str, Any], *, index_name: Optional[s
 
 
 async def _persist_straddle_sample(index_name: str, snap: dict):
+    """Delegate to tracker._store_straddle_sample if tracker is available.
+
+    This keeps persistence logic centralized in OITracker so behavior is
+    consistent between background sampler, WS streams and poll loop.
+    """
     try:
-        atm = int(snap.get("atm") or 0)
-        price = float(snap.get("price") or 0.0)
-        strikes = snap.get("strikes", [])
-        strike_obj = None
-        for s in strikes:
-            if int(s.get("strike")) == atm:
-                strike_obj = s
-                break
-        if not strike_obj and strikes:
-            strikes_list = sorted([int(s.get("strike")) for s in strikes if s.get("strike") is not None])
-            if strikes_list:
-                closest = min(strikes_list, key=lambda x: abs(x - atm))
-                for s in strikes:
-                    if int(s.get("strike")) == closest:
-                        strike_obj = s
-                        atm = closest
-                        break
-        ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
-        pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
-        premium = round(ce_p + pe_p, 2)
-        now_utc = datetime.now(timezone.utc)
-        await db.straddle_samples.insert_one({
-            "index": index_name,
-            "expiry": snap.get("expiry"),
-            "trade_date": datetime.now(IST).date().isoformat(),
-            "ts": snap.get("timestamp") or now_utc.isoformat(),
-            "premium": premium,
-            "underlying": round(price, 2),
-            "atm": atm,
-            "ce_ltp": round(ce_p, 2),
-            "pe_ltp": round(pe_p, 2),
-            "created_at": now_utc.isoformat(),
-        })
-        today_ist = datetime.now(IST).date().isoformat()
-        await db.straddle_samples.delete_many({"index": index_name, "expiry": {"$lt": today_ist}})
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=STRADDLE_RETENTION_HOURS)).isoformat()
-        await db.straddle_samples.delete_many({"index": index_name, "expiry": {"$exists": False}, "created_at": {"$lt": cutoff}})
+        if tracker:
+            await tracker._store_straddle_sample(index_name, snap)
     except Exception:
+        # Best-effort; don't raise from background sampler
         pass
 
 
@@ -337,7 +311,7 @@ class CredentialsIn(BaseModel):
 
 
 class ModeIn(BaseModel):
-    mode: str  # "kite" | "mock"
+    mode: str  # "kite" | "offline"
 
 
 DASHBOARD_PAGE_KEYS = {
@@ -542,10 +516,14 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
         else:
             try:
                 svc = tracker._get_service()
-                snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
-                if snap:
-                    snap["mode"] = tracker.mode
-                    tracker.last_snapshot[idx] = snap
+                if svc:
+                    snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                    if snap:
+                        snap["mode"] = tracker.mode
+                        tracker.last_snapshot[idx] = snap
+                else:
+                    # Offline: do not attempt Kite fetch; preserve last DB/cached snapshot.
+                    logger.info(f"get_current_oi: tracker offline, serving cached DB snapshot for {idx}")
             except Exception as e:
                 raise HTTPException(500, str(e))
     if not snap:
@@ -684,9 +662,10 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         # This satisfies the "9:15 AM – 3:30 PM only" polling requirement
         # and keeps the UI stable overnight / on weekends / on holidays.
         if not market_is_open:
-            if not current:
-                # No in-memory cache — try DB for the most recent snapshot for this index.
-                # Use the actual tick timestamp, not insert time, to keep lookups time-based.
+            # If the requested expiry differs from the cached snapshot, load the
+            # last matching expiry from DB rather than returning stale wrong-expiry data.
+            need_refresh = not current or (expiry and current.get("expiry") != expiry)
+            if need_refresh:
                 doc = await db.oi_snapshots.find_one(
                     {"index": idx, **({"expiry": expiry} if expiry else {})},
                     sort=[("timestamp", -1)],
@@ -695,27 +674,30 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
                 if doc:
                     current = doc
                     tracker.last_snapshot[idx] = doc
-                else:
+                elif not current or (expiry and current.get("expiry") != expiry):
                     raise HTTPException(503, f"No data available for {idx} — market is closed and no cached snapshot yet.")
-            # else: keep the stale cached snapshot untouched — this IS the "last
-            # data held in DB" that the user should see after market close.
         else:
             try:
+                # If tracker is not in LIVE mode, do not attempt an inline Kite fetch —
+                # serve DB/cached snapshot instead and mark the response as stale.
                 svc = tracker._get_service()
-                fresh = await asyncio.wait_for(
-                    asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
-                    timeout=10.0,
-                )
-                if fresh:
-                    fresh["mode"] = tracker.mode
-                    tracker.last_snapshot[idx] = fresh
-                    current = fresh
-                elif not current:
-                    # No cache AND fresh returned None
-                    raise HTTPException(503, f"No data available for {idx}")
+                if tracker.mode != "kite" or not svc:
+                    logger.warning(f"/change: tracker offline (mode={tracker.mode}) — skipping inline fetch for {idx}")
                 else:
-                    # Keep stale as fallback but log
-                    logger.warning(f"/change: fresh get_snapshot({idx}) returned None; using stale cache.")
+                    fresh = await asyncio.wait_for(
+                        asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
+                        timeout=10.0,
+                    )
+                    if fresh:
+                        fresh["mode"] = tracker.mode
+                        tracker.last_snapshot[idx] = fresh
+                        current = fresh
+                    elif not current:
+                        # No cache AND fresh returned None
+                        raise HTTPException(503, f"No data available for {idx}")
+                    else:
+                        # Keep stale as fallback but log
+                        logger.warning(f"/change: fresh get_snapshot({idx}) returned None; using stale cache.")
             except asyncio.TimeoutError:
                 logger.error(f"/change: get_snapshot({idx}) timed out after 10s; using stale cache if any.")
                 if not current:
@@ -797,6 +779,17 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         "minutes": minutes,
         "history_ready": history_ready,
         "available_history_minutes": round(elapsed_min_val, 2) if elapsed_min_val is not None else 0.0,
+        # Data status: whether this response represents a LIVE Kite pull or
+        # historical/stale DB data (e.g. when API keys are missing / not updated).
+        "data_status": (lambda: {
+            "is_live": True if tracker.mode == "kite" else False,
+            "stale_reason": (lambda:
+                ("missing_kite_credentials" if tracker.mode != "kite" else None)
+            )(),
+            "data_date": (lambda: (
+                (datetime.fromisoformat(current.get("timestamp")).astimezone(IST).date().isoformat()) if current.get("timestamp") else None
+            ))(),
+        })(),
     }
 
 
@@ -1093,34 +1086,15 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
                         "ce_ltp": round(ce_p, 2),
                         "pe_ltp": round(pe_p, 2),
                     }
-                    # persist sample to DB
+                    # Persist sample via the centralized tracker helper for consistent behavior.
                     try:
-                        await db.straddle_samples.insert_one({
-                            "index": idx,
-                            "expiry": snap.get("expiry"),
-                            "trade_date": datetime.now(IST).date().isoformat(),
-                            "ts": payload["ts"],
-                            "premium": payload["premium"],
-                            "underlying": payload["underlying"],
-                            "atm": payload["atm"],
-                            "ce_ltp": payload["ce_ltp"],
-                            "pe_ltp": payload["pe_ltp"],
-                            "created_at": datetime.now(timezone.utc).isoformat(),
-                        })
-                        # prune old samples:
-                        #  - keep samples for contracts until their expiry day (IST).
-                        #  - for samples without expiry, fall back to time-based retention.
-                        try:
-                            # delete any samples for this index whose expiry date is BEFORE today (IST)
-                            today_ist = datetime.now(IST).date().isoformat()
-                            await db.straddle_samples.delete_many({"index": idx, "expiry": {"$lt": today_ist}})
-                            # delete samples without an expiry older than the retention window
-                            cutoff = (datetime.now(timezone.utc) - timedelta(hours=STRADDLE_RETENTION_HOURS)).isoformat()
-                            await db.straddle_samples.delete_many({"index": idx, "expiry": {"$exists": False}, "created_at": {"$lt": cutoff}})
-                        except Exception:
-                            pass
+                        await _persist_straddle_sample(idx, snap)
                     except Exception:
-                        pass
+                        logger.warning(
+                            "ws_straddle: sample persistence failed for %s",
+                            idx,
+                            exc_info=True,
+                        )
                     await websocket.send_json(payload)
                 else:
                     await websocket.send_json({"error": "no_snapshot"})
@@ -1158,8 +1132,12 @@ async def ws_spot(websocket: WebSocket):
                 "tickers": [],
             }
             for idx in INDICES:
+                snap = None
                 try:
-                    snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                    if svc:
+                        snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                    else:
+                        snap = tracker.last_snapshot.get(idx)
                 except Exception:
                     snap = None
                 if not snap:
@@ -1623,7 +1601,7 @@ async def get_tickers():
             "day_open": round(prev, 2),
             "day_high": round(ltp * 1.003, 2), "day_low": round(ltp * 0.997, 2),
             "change": round(change, 2), "change_pct": round(change_pct, 3),
-            "source": "mock",
+            "source": "historical",
         })
     return {"mode": tracker.mode, "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
 
@@ -1714,41 +1692,13 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
             except Exception as e:
                 logger.warning(f"[refresh kite-live] {idx}: {e}")
     else:
-        # Mock mode: synthetic 1-minute cadence day using MockService prices.
-        try:
-            mock_svc = tracker.mock_service
-            if session_end > session_start:
-                t = session_start
-                docs_batch = []
-                while t <= session_end:
-                    for idx in ALL_INDICES:
-                        if idx not in INDEX_CONFIG:
-                            continue
-                        try:
-                            m = mock_svc.get_snapshot(idx, None)
-                            if not m:
-                                continue
-                            snap = {
-                                **m,
-                                "index": idx,
-                                "mode": "mock",
-                                "source": "backfill",
-                                "timestamp": t.astimezone(timezone.utc).isoformat(),
-                            }
-                            docs_batch.append({
-                                **snap,
-                                "created_at": t.astimezone(timezone.utc).isoformat(),
-                            })
-                            per_index_count[idx] += 1
-                            backfilled += 1
-                        except Exception as e:
-                            logger.debug(f"[refresh mock backfill] {idx}@{t}: {e}")
-                    t = t + timedelta(minutes=1)
-                if docs_batch:
-                    for i in range(0, len(docs_batch), 500):
-                        await db.oi_snapshots.insert_many(docs_batch[i:i+500], ordered=False)
-        except Exception as e:
-            logger.warning(f"[admin/refresh-day] mock backfill failed: {e}")
+        # OFFLINE mode (no Kite credentials): DO NOT synthesize or backfill
+        # mock/demo data. Creating synthetic history would expose fake values to
+        # end users which is unacceptable in production. Instead, simply leave
+        # the DB empty (we already cleared it above) and report that the
+        # backfill was skipped due to missing credentials.
+        logger.info("[admin/refresh-day] offline mode: skipping synthetic backfill (no Kite credentials configured)")
+        # backfilled remains 0
 
     # 3) Immediate live poll (fresh 'now' tick) for ALL indices — but ONLY when
     #    the market is currently open. Outside market hours the last backfilled
@@ -1757,24 +1707,28 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
     #    point and confuse the timeframe-diff logic.
     live_pulled = []
     if is_market_open():
-        try:
-            svc = tracker._get_service()
-            for idx in ALL_INDICES:
-                try:
-                    snap = await asyncio.wait_for(
-                        asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
-                        timeout=10.0,
-                    )
-                    if snap:
-                        snap["mode"] = tracker.mode
-                        snap["source"] = "live"
-                        tracker.last_snapshot[idx] = snap
-                        await _store_oi_snapshot(snap, index_name=idx)
-                        live_pulled.append(idx)
-                except Exception as e:
-                    logger.warning(f"[refresh live-poll] {idx}: {e}")
-        except Exception as e:
-            logger.warning(f"[admin/refresh-day] live poll block failed: {e}")
+        # Only attempt immediate live poll when tracker is in LIVE mode.
+        if tracker.mode == "kite" and tracker.kite_service:
+            try:
+                svc = tracker._get_service()
+                for idx in ALL_INDICES:
+                    try:
+                        snap = await asyncio.wait_for(
+                            asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
+                            timeout=10.0,
+                        )
+                        if snap:
+                            snap["mode"] = tracker.mode
+                            snap["source"] = "live"
+                            tracker.last_snapshot[idx] = snap
+                            await _store_oi_snapshot(snap, index_name=idx)
+                            live_pulled.append(idx)
+                    except Exception as e:
+                        logger.warning(f"[refresh live-poll] {idx}: {e}")
+            except Exception as e:
+                logger.warning(f"[admin/refresh-day] live poll block failed: {e}")
+        else:
+            logger.info("[admin/refresh-day] market open but tracker offline — skipping immediate live poll")
     else:
         # After close: seed `last_snapshot` from the last backfilled document so
         # /oi/{idx}/change serves the correct final tick immediately.
@@ -2083,6 +2037,11 @@ app.add_middleware(
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonLogFormatter())
+    logger.addHandler(handler)
+logger.propagate = False
 
 
 straddle_sampler_task = None

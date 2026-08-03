@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from "react";
+import { Navigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { api } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
@@ -113,8 +115,14 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/guest", { name });
-      sessionStorage.setItem("oi_guest_token", data.token);
-      sessionStorage.setItem("oi_guest_name", data.name);
+      // store guest token and name
+      try { sessionStorage.setItem("oi_guest_token", data.token); } catch (_) {}
+      try { sessionStorage.setItem("oi_guest_name", data.name); } catch (_) {}
+      // persist expiry timestamp so header can show remaining time
+      try {
+        const expiresMs = Date.now() + (Number(data.expires_in_seconds || 0) * 1000);
+        sessionStorage.setItem("oi_guest_expires_at", String(expiresMs));
+      } catch (_) {}
       toast.success(`Welcome, ${data.name}`);
       await refresh();
     } catch (e) {
@@ -133,93 +141,114 @@ export default function AuthGate({ children }) {
   // If authenticated (admin OR guest), render the app.
   if (state.is_admin || state.is_guest) return children;
 
-  // Public access open → prompt for guest full name
+  // Public access open → prompt for guest full name (polished user-facing UI)
   if (state.needs_guest_name || state.public_access_open) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-emerald-50 p-4">
-        <div className="w-full max-w-sm bg-white rounded-md shadow-md border border-slate-200 p-6">
-          <div className="flex items-center gap-2 mb-1">
-            <OiPulseLogo className="w-6 h-6" />
-            <h1 className="text-lg font-semibold tracking-tight">OI-Pulse</h1>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+
+            {/* Left marketing panel (large screens) */}
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }} className="hidden lg:flex flex-col gap-6">
+              <div className="text-white">
+                <div className="flex items-center gap-3 mb-4">
+                  <OiPulseLogo className="w-12 h-12 bg-white/5 rounded-full p-1" />
+                  <div>
+                    <h2 className="text-4xl font-extrabold tracking-tight">OI Pulse</h2>
+                    <p className="mt-1 text-slate-200">Real-time & reliable</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 bg-white/5 p-4 rounded-xl border border-white/6 shadow-sm">
+                  <div className="flex items-center justify-between text-sm text-slate-200 mb-2">
+                    <div>Realtime OI</div>
+                    <div className="font-semibold">Live</div>
+                  </div>
+                  <div className="h-44 flex items-end">
+                    <svg viewBox="0 0 200 40" className="w-full">
+                      <motion.path d="M0 30 L30 24 L60 14 L90 18 L120 10 L150 6 L180 14 L200 8" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 2 }} />
+                    </svg>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-3 text-xs text-slate-200">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">18</div>
+                      <div className="opacity-80">Strikes</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">3.2k</div>
+                      <div className="opacity-80">Snapshots</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">60s</div>
+                      <div className="opacity-80">Default Poll</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-3">
+                  <div className="bg-white/6 rounded-lg p-3">
+                    <h3 className="text-sm font-semibold text-white">Trusted & Secure</h3>
+                    <p className="text-xs text-slate-200 mt-1">Credentials are stored locally and can be cleared at any time.</p>
+                  </div>
+                  <div className="bg-white/6 rounded-lg p-3">
+                    <h3 className="text-sm font-semibold text-white">Tailored insights</h3>
+                    <p className="text-xs text-slate-200 mt-1">Choose timeframes and strikes to focus on what matters to you.</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Right: guest card */}
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="flex justify-center">
+              <div className={`w-full max-w-md bg-white/95 backdrop-blur-sm border border-slate-200 rounded-2xl shadow-2xl p-8`}> 
+
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <OiPulseLogo className="w-10 h-10" />
+                    <div>
+                      <h1 className="text-xl font-semibold">Open interest insights</h1>
+                      <p className="text-sm text-slate-500">Real-time OI — read-only guest access</p>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={doGuest} className="space-y-4" data-testid="guest-form">
+                  <div>
+                    <Label className="text-xs uppercase tracking-wider text-slate-500">Full name</Label>
+                    <Input data-testid="guest-name" value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="e.g. Rahul Sharma" autoFocus />
+                  </div>
+
+                  <Button data-testid="guest-submit" type="submit" className={`w-full rounded-lg py-3 bg-emerald-600 hover:bg-emerald-700`} disabled={busy}>
+                    <div className="flex items-center justify-center gap-2"><UserPlus className="w-4 h-4" /> <span>{busy ? 'Entering…' : 'Continue'}</span></div>
+                  </Button>
+
+                  <div className="mt-2 text-center text-xs text-slate-500">This view is read-only for guests.</div>
+                </form>
+
+                <div className="mt-6 grid grid-cols-3 gap-3 text-center">
+                  <div className="text-[11px] text-slate-600">
+                    <div className="text-2xl">⚡</div>
+                    <div className="mt-1">Real-time OI</div>
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    <div className="text-2xl">📈</div>
+                    <div className="mt-1">Clean charts</div>
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    <div className="text-2xl">🔔</div>
+                    <div className="mt-1">Alerts</div>
+                  </div>
+                </div>
+
+              </div>
+            </motion.div>
+
           </div>
-          <p className="text-xs text-slate-500 mb-5">
-            You&apos;ve been invited by <b>{state.admin_display_name || "the admin"}</b>. Please enter your full name to continue.
-          </p>
-          <form onSubmit={doGuest} className="space-y-3" data-testid="guest-form">
-            <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500">Full Name</Label>
-              <Input
-                data-testid="guest-name"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                placeholder="e.g. Rahul Sharma"
-                autoFocus
-              />
-            </div>
-            <Button
-              data-testid="guest-submit"
-              type="submit"
-              disabled={busy}
-              className="w-full rounded-sm bg-emerald-600 hover:bg-emerald-700 py-2.5"
-            >
-              <UserPlus className="w-4 h-4 mr-1.5" />
-              {busy ? "Entering…" : "Enter as Guest"}
-            </Button>
-          </form>
-          <p className="text-[11px] text-slate-400 mt-4 text-center">
-            This is a read-only view. Configuration is limited to the admin.
-          </p>
         </div>
       </div>
     );
   }
 
-  // Default → admin login
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-      <div className="w-full max-w-sm bg-white rounded-md shadow-md border border-slate-200 p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <OiPulseLogo className="w-6 h-6" />
-          <h1 className="text-lg font-semibold tracking-tight">OI-Pulse</h1>
-        </div>
-        <p className="text-xs text-slate-500 mb-5 flex items-center gap-1">
-          <ShieldCheck className="w-3 h-3" /> Input credentials only
-        </p>
-
-        <form onSubmit={doLogin} className="space-y-3" data-testid="login-form">
-          <div>
-            <Label className="text-xs uppercase tracking-wider text-slate-500">Login ID</Label>
-            <Input
-              data-testid="login-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Adeotale"
-              autoComplete="username"
-            />
-          </div>
-          <div>
-            <Label className="text-xs uppercase tracking-wider text-slate-500">Password</Label>
-            <Input
-              data-testid="login-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              autoFocus
-            />
-          </div>
-          <Button
-            data-testid="login-submit"
-            type="submit"
-            className="w-full rounded-sm bg-slate-900 hover:bg-slate-800 py-2.5"
-            disabled={busy}
-          >
-            <LogIn className="w-4 h-4 mr-1.5" />
-            {busy ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </div>
-    </div>
-  );
+  // Default → redirect to dedicated admin login page
+  return <Navigate to="/admin" replace />;
 }

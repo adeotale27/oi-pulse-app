@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { credentialsStatus, saveCredentials, setMode } from "@/lib/api";
+import { credentialsStatus, saveCredentials } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,16 +62,6 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
     }
   };
 
-  const useDemo = async () => {
-    try {
-      await setMode("mock");
-      toast.success("Switched to DEMO mode");
-      onSaved?.();
-      onOpenChange(false);
-    } catch (e) {
-      toast.error("Could not switch mode");
-    }
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -173,14 +163,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
           </a>
         </div>
         <div className="flex items-center justify-between pt-2">
-          <Button
-            data-testid="btn-use-demo"
-            variant="outline"
-            onClick={useDemo}
-            className="rounded-sm"
-          >
-            Use Demo data
-          </Button>
+          {/* Demo mode removed in production — only LIVE mode is supported */}
           <Button
             data-testid="btn-save-credentials"
             onClick={submit}

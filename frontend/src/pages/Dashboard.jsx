@@ -144,6 +144,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState(null);
   const [authState, setAuthState] = useState({ is_admin: false, is_guest: false, guest_name: null, admin_display_name: null });
   const [alerts, setAlerts] = useState([]);
+  const [dataStatus, setDataStatus] = useState(null);
   const [strikesAround, setStrikesAround] = useState(10);
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
   const [credsOpen, setCredsOpen] = useState(false);
@@ -324,6 +325,9 @@ export default function Dashboard() {
       setPrevious(data.previous);
       setHistoryReady(data.history_ready !== false);
       setAvailableHistoryMin(Number(data.available_history_minutes || 0));
+      // capture data_status from the API so the UI can display whether this is
+      // live data or historical/offline data (and show the date it's for).
+      setDataStatus(data.data_status || null);
       // `lastPulledAt` reflects the ACTUAL market-tick timestamp of the snapshot,
       // not client wall-clock — so once the market closes at 3:30 PM IST it stays
       // pinned to the final tick (which is what the user wants).
@@ -892,6 +896,7 @@ export default function Dashboard() {
       <Header
         status={status}
         current={current}
+        dataStatus={dataStatus}
         onOpenCreds={() => setCredsOpen(true)}
         onOpenMorningRefresh={() => setMorningRefreshOpen(true)}
         onOpenTelegramPrefs={() => setTelegramPrefsOpen(true)}
@@ -1395,7 +1400,7 @@ export default function Dashboard() {
                   <div className="text-slate-500">
                     Auto-refresh every 30s ·{" "}
                     <span className="font-mono-data">
-                      {status?.mode === "kite" ? "Live" : "Demo simulator"}
+                      {status?.mode === "kite" ? "Live" : "Offline / Historical data"}
                     </span>
                   </div>
                 </div>

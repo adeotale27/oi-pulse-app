@@ -131,9 +131,17 @@ export function unsubscribeExtras(cb) {
 const authStorage = {
   get(key) {
     try {
-      return sessionStorage.getItem(key);
+      // Prefer sessionStorage for ephemeral sessions, but fall back to localStorage
+      const s = sessionStorage.getItem(key);
+      if (s) return s;
+      try {
+        return localStorage.getItem(key);
+      } catch (_) {
+        return null;
+      }
     } catch (_) {
-      return null;
+      // sessionStorage may be unavailable in some contexts (e.g., third-party frames)
+      try { return localStorage.getItem(key); } catch (_) { return null; }
     }
   },
   set(key, value) {
@@ -141,6 +149,7 @@ const authStorage = {
   },
   remove(key) {
     try { sessionStorage.removeItem(key); } catch (_) {}
+    try { localStorage.removeItem(key); } catch (_) {}
   },
 };
 

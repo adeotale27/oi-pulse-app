@@ -16,6 +16,7 @@ import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 export default function Header({
   status,
   current,
+  dataStatus,
   onOpenCreds,
   onOpenMorningRefresh,
   onOpenTelegramPrefs,
@@ -42,7 +43,7 @@ export default function Header({
   const atm = current?.atm ?? 0;
   const pcr = current?.pcr ?? 0;
   const vix = current?.vix ?? 0;
-  const mode = status?.mode ?? "mock";
+  const mode = status?.mode ?? "offline";
 
   // Auth state — used to hide sensitive buttons from guests.
   const [authState, setAuthState] = useState({ is_admin: false });
@@ -52,14 +53,25 @@ export default function Header({
     const load = async () => {
       try {
         const { data } = await api.get("/auth/state");
-        if (alive) setAuthState(data);
-      } catch (_) { /* ignore */ }
+        if (alive) {
+          setAuthState(data);
+          try { console.debug('[Header] auth_state fetched', data); } catch (_) {}
+        }
+      } catch (err) { console.error('[Header] auth_state fetch failed', err); }
     };
     useQuiescentAwarePolling(load, 60_000, [], { immediate: true });
     // ensure we don't set state after unmount
     useEffect(() => () => { alive = false; }, []);
   }
-  const isAdmin = !!authState.is_admin;
+  // Dev override: allow forcing admin UI without X-Admin-Token for local debugging.
+  // Guard behind NODE_ENV !== 'production' so production builds are not affected.
+  const devForce = (typeof window !== 'undefined') && (process.env.NODE_ENV !== 'production') && (
+    localStorage.getItem('oi_dev_force_admin') === '1' || sessionStorage.getItem('oi_dev_force_admin') === '1'
+  );
+  const isAdmin = devForce || !!authState.is_admin;
+  if (devForce) {
+    try { console.warn('[Header] devForce admin UI enabled via oi_dev_force_admin'); } catch(_) {}
+  }
 
   // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
   // to avoid duplicate network requests across components.
@@ -113,7 +125,7 @@ export default function Header({
     if (!isAdmin) return;
     if (!window.confirm(
       "Fresh Pull: clear today's OI snapshots and re-populate from 9:15 AM to now (or 3:30 PM if the market has closed)?\n\n" +
-      "In DEMO/mock mode: synthetic data will be back-filled at 1-minute cadence for NIFTY, SENSEX and BANKNIFTY.\n" +
+      "Note: No synthetic/demo backfill will be created. If Kite credentials are not configured, the system will remain OFFLINE and only historical DB data (if any) will be served.\n" +
       "In LIVE (Kite) mode: history before 'now' cannot be recovered — live polling will simply restart from now."
     )) return;
     setRefreshing(true);
@@ -193,14 +205,57 @@ export default function Header({
                 <span className={`w-2 h-2 rounded-full ${status?.market && status.market.is_market_open ? "bg-emerald-500" : "bg-slate-300"}`} />
                 <span className={`font-semibold ${status?.market && status.market.is_market_open ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}>{nowLabel}</span>
               </div>
+              {/* If tracker is offline, show which date the displayed data is from */}
+              {dataStatus && !dataStatus.is_live && dataStatus.data_date && (
+                <div className="text-[10px] font-mono-data text-amber-600 dark:text-amber-400 mt-1">
+                  Showing historical data for: <span className="font-semibold">{dataStatus.data_date}</span> · API key required for live updates
+                </div>
+              )}
             </div>
           )}
           <Badge
             data-testid="mode-badge"
-            className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-amber-500 hover:bg-amber-500"}`}
+            className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
+            title={mode === "kite" ? "Live Kite mode" : "Offline: Kite API key required to fetch live data"}
           >
-            {mode === "kite" ? "LIVE" : "DEMO"}
+            {mode === "kite" ? "LIVE" : "OFFLINE"}
           </Badge>
+
+          {/* Guest profile pill in header: show guest name and remaining session time */}
+          {authState?.is_guest && !isAdmin && (
+            (() => {
+              const guestName = authState.guest_name || (typeof window !== 'undefined' ? sessionStorage.getItem('oi_guest_name') : null) || 'Guest';
+              const expiresAt = typeof window !== 'undefined' ? Number(sessionStorage.getItem('oi_guest_expires_at') || 0) : 0;
+              const remainingMs = expiresAt ? Math.max(0, expiresAt - Date.now()) : null;
+              function fmt(ms) {
+                if (!ms && ms !== 0) return '';
+                const s = Math.floor(ms / 1000);
+                if (s >= 3600) {
+                  const h = Math.floor(s / 3600);
+                  const m = Math.floor((s % 3600) / 60);
+                  return `${h}h ${m}m`;
+                }
+                if (s >= 60) return `${Math.floor(s/60)}m ${s%60}s`;
+                return `${s}s`;
+              }
+              const remainingLabel = remainingMs != null ? fmt(remainingMs) : '';
+              const exitGuest = () => {
+                try { sessionStorage.removeItem('oi_guest_token'); } catch(_){}
+                try { sessionStorage.removeItem('oi_guest_name'); } catch(_){}
+                try { sessionStorage.removeItem('oi_guest_expires_at'); } catch(_){}
+                // also inform server to revoke? For now just reload and clear client state
+                window.location.reload();
+              };
+              return (
+                <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-sm text-slate-800 dark:text-slate-100">
+                  <div className="font-medium">{guestName}</div>
+                  {remainingLabel && <div className="text-xs text-slate-500">· expires in {remainingLabel}</div>}
+                  <button onClick={exitGuest} className="text-xs text-rose-600 hover:underline ml-2">Exit</button>
+                </div>
+              );
+            })()
+          )}
+
           <AdminControls />
           <Button
             data-testid="btn-toggle-compact"
