@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
@@ -26,7 +26,7 @@ function formatTime(iso) {
   }
 }
 
-export default function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap }) {
+export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap }) {
   const spotPrice = current?.price ?? null;
   const data = useMemo(() => {
     if (!current) return [];
@@ -152,19 +152,17 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
             )}
             {showOI ? (
               <>
-                <Bar dataKey="pe_now" name="Put OI" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-                <Bar dataKey="ce_now" name="Call OI" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                <Bar dataKey="pe_now" name="Put OI" fill={PUT_GREEN} isAnimationActive={false} />
+                <Bar dataKey="ce_now" name="Call OI" fill={CALL_RED} isAnimationActive={false} />
               </>
             ) : (
               <>
-                {/* PE stacked: solid base (OI kept) + striped increase OR outlined decrease on top */}
-                <Bar dataKey="pe_base" stackId="pe" name="Put OI (base)" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-                {/* CE stacked */}
-                <Bar dataKey="ce_base" stackId="ce" name="Call OI (base)" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars.
+                    Positive = increase (bar goes UP), Negative = decrease (bar goes DOWN).
+                    Users flip the toggle to see current absolute OI bars. */}
+                <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1} />
+                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive={false} />
+                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive={false} />
               </>
             )}
           </BarChart>
@@ -191,7 +189,7 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
       )}
     </div>
   );
-}
+});
 
 function SignalIcon({ tag, side }) {
   const isCall = side === "CE";
@@ -275,12 +273,8 @@ function CustomLegend({ showOI }) {
         { label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
       ]
     : [
-        { label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
-        { label: "Increase", swatch: <SwatchStripe color={PUT_GREEN} light={PUT_LIGHT} /> },
-        { label: "Decrease", swatch: <SwatchOutline color={PUT_GREEN} /> },
-        { label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
-        { label: "Increase", swatch: <SwatchStripe color={CALL_RED} light={CALL_LIGHT} /> },
-        { label: "Decrease", swatch: <SwatchOutline color={CALL_RED} /> },
+        { label: "Put OI change", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
+        { label: "Call OI change", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
       ];
   return (
     <div className="pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
@@ -288,7 +282,7 @@ function CustomLegend({ showOI }) {
         {showOI ? (
           <span>Legend: <span className="font-medium text-slate-700">Absolute OI bars</span></span>
         ) : (
-          <span>Legend: <span className="font-medium text-slate-700">Solid = previous OI</span> · <span className="font-medium text-slate-700">Striped = increase</span> · <span className="font-medium text-slate-700">Outline = decrease</span></span>
+          <span>Legend: <span className="font-medium text-slate-700">OI change in selected timeframe</span> · bars above zero = increase · below zero = decrease</span>
         )}
       </div>
       <div className="flex items-center justify-center gap-x-5 gap-y-2 flex-wrap">

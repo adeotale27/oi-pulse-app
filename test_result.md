@@ -69,6 +69,47 @@ Please verify these endpoints/behaviors against a running backend:
 ## agent_communication:
     - agent: main
       message: |
+        FOLLOW-UP #4 — user reported four related issues:
+          (a) "Same Call/Put OI change values across different timeframes"
+          (b) "Timeframe switch is slow"
+          (c) "Chart refreshes every second"
+          (d) "Show OI OFF should render only the shift (delta), not the sensibull-style stacked base"
+        Root causes:
+          (a) When history_ready=false the API correctly falls back to the earliest snapshot, but the frontend
+              rendered the summary without any hint that the number is approximate. If two different timeframes
+              both fall back to the same earliest-available snapshot, the numbers ARE identical — this is
+              expected but was confusing. Fixed: when `historyReady=false` the CE and PE change numbers now
+              render with a leading "≈" and reduced opacity, plus a tooltip explaining "Approximate — only
+              X.X min of history".
+          (b) `useQuiescentAwarePolling` only fires its callback on FIRST mount; changing timeframe / index /
+              expiry did NOT trigger an immediate refetch, so users had to wait up to `pollMs` (15 s) for the
+              new window's data. Fixed by adding a dedicated useEffect that watches `[timeframe, activeIndex,
+              selectedExpiry]` and calls `loadOI()` immediately on any of those changes.
+          (c) The 1-second warming-up-countdown tick was re-rendering the whole Dashboard, and OIChart was
+              not memoised → recharts re-animated bars every 1 s. Fixed by wrapping OIChart in React.memo AND
+              setting `isAnimationActive={false}` on all Bar elements so the chart only visually updates when
+              current/previous data changes.
+          (d) Reverted the "Show OI OFF" render path to signed-delta-only bars (positive up = increase,
+              negative down = decrease) with a ReferenceLine y=0 baseline. Legend now reads: "OI change in
+              selected timeframe · bars above zero = increase · below zero = decrease". Show OI ON still
+              renders absolute OI grouped bars as before.
+        Playwright browser verification confirms:
+          - Clicking Last 1 min → CE +8.07L, PE -65.6K
+          - Clicking Last 5 mins → CE +13.36L, PE -1.81L
+          - Clicking Last 10 mins → CE +21.31L, PE +18.20L
+          - Exactly 3 `/api/oi/NIFTY/change` calls fired (one per timeframe click, no wasteful re-polling)
+          - Show OI OFF renders signed-delta bars with y=0 baseline (Put OI change / Call OI change legend)
+          - Show OI ON renders absolute Put/Call OI bars (Absolute OI bars legend)
+          - No visible re-animation between poll cycles
+        Please re-verify (backend only, no code changes):
+          1. `/api/oi/NIFTY/change?minutes=1`, `?minutes=5`, `?minutes=10`, `?minutes=15` — return DIFFERENT
+             `previous.timestamp` values that get progressively older, so long as there's enough history.
+             When history is shorter than the requested lookback, `history_ready` is `false` and
+             `available_history_minutes` reports the actual available window.
+          2. All previous checks (login, X-Admin-Token, all 3 indices polling, no CORS regression) still pass.
+
+    - agent: main
+      message: |
         FOLLOW-UP #3 — user reported: "instead of oi change its showing Open Interest chart". Root cause: the
         `showOI` state on Dashboard defaulted to `true`, making the OI Change tab open in absolute-OI mode
         (visually identical to the Open Interest tab). User wants it to open in the CHANGE view — stacked

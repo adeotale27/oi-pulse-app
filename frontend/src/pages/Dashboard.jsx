@@ -461,6 +461,17 @@ export default function Dashboard() {
 
   useQuiescentAwarePolling(loadStatus, pollMs, [loadStatus, pollMs, status?.market?.is_market_open], { status });
   useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status });
+  // Force an IMMEDIATE refetch whenever the user picks a different timeframe,
+  // index, or expiry. `useQuiescentAwarePolling` only fires the callback on
+  // the FIRST mount, so without this the chart would wait up to `pollMs`
+  // (15 s by default) before showing the new selection's data.
+  const oiCtxRef = useRef({ timeframe, activeIndex, selectedExpiry });
+  useEffect(() => {
+    const prev = oiCtxRef.current;
+    if (prev.timeframe === timeframe && prev.activeIndex === activeIndex && prev.selectedExpiry === selectedExpiry) return;
+    oiCtxRef.current = { timeframe, activeIndex, selectedExpiry };
+    loadOI();
+  }, [timeframe, activeIndex, selectedExpiry, loadOI]);
   useQuiescentAwarePolling(
     async () => {
       if (authState.is_admin || visiblePages.includes("alerts")) {
@@ -1316,14 +1327,14 @@ export default function Dashboard() {
                         <div className="space-y-2 font-mono-data">
                           <div className="flex items-center gap-3">
                             <span className="text-slate-500 w-32 text-sm">Call OI change:</span>
-                            <span className={`text-2xl leading-none ${changeSummary && changeSummary.ce >= 0 ? "text-rose-600 font-bold" : "text-emerald-600 font-bold"}`} data-testid="summary-ce-change">
-                              {changeSummary ? formatDelta(changeSummary.ce) : "—"}
+                            <span className={`text-2xl leading-none ${changeSummary && changeSummary.ce >= 0 ? "text-rose-600 font-bold" : "text-emerald-600 font-bold"} ${!historyReady && changeSummary ? "opacity-60" : ""}`} data-testid="summary-ce-change" title={!historyReady ? `Approximate — only ${availableHistoryMin.toFixed(1)} min of history` : undefined}>
+                              {changeSummary ? `${!historyReady ? "≈ " : ""}${formatDelta(changeSummary.ce)}` : "—"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-slate-500 w-32 text-sm">Put OI change:</span>
-                            <span className={`text-2xl leading-none ${changeSummary && changeSummary.pe >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}`} data-testid="summary-pe-change">
-                              {changeSummary ? formatDelta(changeSummary.pe) : "—"}
+                            <span className={`text-2xl leading-none ${changeSummary && changeSummary.pe >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"} ${!historyReady && changeSummary ? "opacity-60" : ""}`} data-testid="summary-pe-change" title={!historyReady ? `Approximate — only ${availableHistoryMin.toFixed(1)} min of history` : undefined}>
+                              {changeSummary ? `${!historyReady ? "≈ " : ""}${formatDelta(changeSummary.pe)}` : "—"}
                             </span>
                           </div>
                         </div>
