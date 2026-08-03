@@ -25,7 +25,6 @@ function formatTime(iso) {
 }
 
 export default function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap }) {
-  // Build merged strike -> { pe_now, pe_prev, ce_now, ce_prev }
   const spotPrice = current?.price ?? null;
   const data = useMemo(() => {
     if (!current) return [];
@@ -33,28 +32,21 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
     (previous?.strikes || []).forEach((s) => prevMap.set(s.strike, s));
     return current.strikes.map((s) => {
       const p = prevMap.get(s.strike) || {};
-      const peNow = s.pe_oi, peP = p.pe_oi ?? s.pe_oi;
-      const ceNow = s.ce_oi, ceP = p.ce_oi ?? s.ce_oi;
-      // If showOI is false, zero out the base values so Recharts doesn't remap stacks
-      const peBase = showOI ? peP : 0;
-      const ceBase = showOI ? ceP : 0;
+      const peNow = Number(s.pe_oi ?? 0);
+      const pePrev = Number(p.pe_oi ?? s.pe_oi ?? 0);
+      const ceNow = Number(s.ce_oi ?? 0);
+      const cePrev = Number(p.ce_oi ?? s.ce_oi ?? 0);
       return {
         strike: s.strike,
-        pe_now: peNow, pe_prev: peP,
-        ce_now: ceNow, ce_prev: ceP,
-        // Base shows the previous snapshot's OI (so the solid bar represents prior OI)
-        // and the increase/decrease stacks show the delta to the current snapshot.
-        pe_base: peBase,
-        pe_inc: Math.max(0, peNow - peP),   // striped on top => OI increased since previous
-        pe_dec: Math.max(0, peP - peNow),   // hollow on top => OI decreased since previous
-        ce_base: ceBase,
-        ce_inc: Math.max(0, ceNow - ceP),
-        ce_dec: Math.max(0, ceP - ceNow),
-        pe_delta: peNow - peP,
-        ce_delta: ceNow - ceP,
+        pe_now: peNow,
+        pe_prev: pePrev,
+        ce_now: ceNow,
+        ce_prev: cePrev,
+        pe_delta: peNow - pePrev,
+        ce_delta: ceNow - cePrev,
       };
     });
-  }, [current, previous, showOI]);
+  }, [current, previous]);
 
   if (!current) {
     return (
@@ -70,82 +62,73 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
   return (
     <div className="w-full" data-testid="oi-chart">
       <div className="w-full h-[440px]">
-        <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 20 }} barCategoryGap="18%">
-          <defs>
-            <pattern id="pe-inc-pat" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
-              <rect width="6" height="6" fill="#86EFAC" />
-              <line x1="0" y1="0" x2="0" y2="6" stroke="#16A34A" strokeWidth="2" />
-            </pattern>
-            <pattern id="ce-inc-pat" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
-              <rect width="6" height="6" fill="#FCA5A5" />
-              <line x1="0" y1="0" x2="0" y2="6" stroke="#DC2626" strokeWidth="2" />
-            </pattern>
-          </defs>
-          <CartesianGrid stroke="#E2E8F0" vertical={false} />
-          <XAxis
-            dataKey="strike"
-            tick={{ fontSize: 11, fill: "#475569" }}
-            axisLine={{ stroke: "#CBD5E1" }}
-            tickLine={false}
-            angle={-40}
-            textAnchor="end"
-            height={60}
-            interval={0}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fill: "#475569" }}
-            axisLine={{ stroke: "#CBD5E1" }}
-            tickLine={false}
-            tickFormatter={formatOI}
-            width={64}
-            label={{
-              value: "Call / Put OI",
-              angle: -90,
-              position: "insideLeft",
-              style: { fill: "#64748B", fontSize: 11, textAnchor: "middle" },
-              offset: 10,
-            }}
-          />
-          <Tooltip
-            cursor={{ fill: "rgba(148,163,184,0.12)" }}
-            content={<CustomTooltip mode={mode} atm={atm} currentTime={ct} prevTime={pt} />}
-          />
-          <Legend
-            verticalAlign="bottom"
-            content={<CustomLegend showOI={showOI} />}
-          />
-          {atm && (
-            <ReferenceLine
-              x={atm}
-              stroke="#0F172A"
-              strokeDasharray="4 4"
-              strokeWidth={1.2}
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 20 }} barCategoryGap="18%">
+            <CartesianGrid stroke="#E2E8F0" vertical={false} />
+            <XAxis
+              dataKey="strike"
+              tick={{ fontSize: 11, fill: "#475569" }}
+              axisLine={{ stroke: "#CBD5E1" }}
+              tickLine={false}
+              angle={-40}
+              textAnchor="end"
+              height={60}
+              interval={0}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#475569" }}
+              axisLine={{ stroke: "#CBD5E1" }}
+              tickLine={false}
+              tickFormatter={formatOI}
+              width={64}
               label={{
-                value: spotPrice
-                  ? `ATM ${atm}  ·  ₹${Number(spotPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-                  : `ATM ${atm}`,
-                position: "top",
-                fill: "#0F172A",
-                fontSize: 11,
-                fontWeight: 600,
-                fontFamily: "JetBrains Mono",
+                value: "Call / Put OI",
+                angle: -90,
+                position: "insideLeft",
+                style: { fill: "#64748B", fontSize: 11, textAnchor: "middle" },
+                offset: 10,
               }}
             />
-          )}
-          {/* PUT stack: base (previous OI, solid), inc (striped on top), dec (hollow on top) */}
-          <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-          <Bar dataKey="pe_inc" stackId="pe" name="Put Increase" fill="url(#pe-inc-pat)" radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-          <Bar dataKey="pe_dec" stackId="pe" name="Put Decrease" fill="transparent" stroke={PUT_GREEN} strokeWidth={1.4} radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-          {/* CALL stack */}
-          <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-          <Bar dataKey="ce_inc" stackId="ce" name="Call Increase" fill="url(#ce-inc-pat)" radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-          <Bar dataKey="ce_dec" stackId="ce" name="Call Decrease" fill="transparent" stroke={CALL_RED} strokeWidth={1.4} radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-        </BarChart>
-      </ResponsiveContainer>
+            <Tooltip
+              cursor={{ fill: "rgba(148,163,184,0.12)" }}
+              content={<CustomTooltip mode={mode} atm={atm} currentTime={ct} prevTime={pt} />}
+            />
+            <Legend
+              verticalAlign="bottom"
+              content={<CustomLegend showOI={showOI} />}
+            />
+            {atm && (
+              <ReferenceLine
+                x={atm}
+                stroke="#0F172A"
+                strokeDasharray="4 4"
+                strokeWidth={1.2}
+                label={{
+                  value: spotPrice
+                    ? `ATM ${atm}  ·  ₹${Number(spotPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                    : `ATM ${atm}`,
+                  position: "top",
+                  fill: "#0F172A",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  fontFamily: "JetBrains Mono",
+                }}
+              />
+            )}
+            {showOI ? (
+              <>
+                <Bar dataKey="pe_now" name="Put OI" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                <Bar dataKey="ce_now" name="Call OI" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+              </>
+            ) : (
+              <>
+                <Bar dataKey="pe_delta" name="Put Change" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                <Bar dataKey="ce_delta" name="Call Change" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+              </>
+            )}
+          </BarChart>
+        </ResponsiveContainer>
       </div>
-      {/* Signal strip — icons stacked under each strike bar for institution /
-          gamma-wall / velocity events detected in the current lookback window. */}
       {signalsMap && signalsMap.size > 0 && (
         <div className="w-full pl-[70px] pr-[20px] mt-1" data-testid="signal-strip">
           <div className="flex" style={{ gap: 0 }}>
@@ -188,7 +171,7 @@ function SignalIcon({ tag, side }) {
   );
 }
 
-function CustomTooltip({ active, payload, label, atm, currentTime, prevTime }) {
+function CustomTooltip({ active, payload, label, atm, currentTime, prevTime, showOI }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
@@ -201,13 +184,22 @@ function CustomTooltip({ active, payload, label, atm, currentTime, prevTime }) {
         Strike {label} {isAtm && <span className="text-[10px] text-amber-600 ml-1">ATM</span>}
       </div>
       <div className="space-y-1.5 font-mono-data">
-        <TipRow color={PUT_GREEN} label={`Put OI at ${ptLbl}`} value={formatOI(d.pe_prev)} />
-        <TipRow color={PUT_GREEN} label="Put OI chg" value={`${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`} deltaPositive={d.pe_delta >= 0} isDelta />
-        <TipRow color={PUT_GREEN} label={`Put OI at ${ctLbl}`} value={formatOI(d.pe_now)} muted />
-        <div className="h-px bg-slate-100 my-1" />
-        <TipRow color={CALL_RED} label={`Call OI at ${ptLbl}`} value={formatOI(d.ce_prev)} />
-        <TipRow color={CALL_RED} label="Call OI chg" value={`${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`} deltaPositive={d.ce_delta >= 0} isDelta />
-        <TipRow color={CALL_RED} label={`Call OI at ${ctLbl}`} value={formatOI(d.ce_now)} muted />
+        {showOI ? (
+          <>
+            <TipRow color={PUT_GREEN} label={`Put OI at ${ctLbl}`} value={formatOI(d.pe_now)} />
+            <TipRow color={CALL_RED} label={`Call OI at ${ctLbl}`} value={formatOI(d.ce_now)} />
+          </>
+        ) : (
+          <>
+            <TipRow color={PUT_GREEN} label={`Put OI at ${ptLbl}`} value={formatOI(d.pe_prev)} />
+            <TipRow color={PUT_GREEN} label="Put OI chg" value={`${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`} deltaPositive={d.pe_delta >= 0} isDelta />
+            <TipRow color={PUT_GREEN} label={`Put OI at ${ctLbl}`} value={formatOI(d.pe_now)} muted />
+            <div className="h-px bg-slate-100 my-1" />
+            <TipRow color={CALL_RED} label={`Call OI at ${ptLbl}`} value={formatOI(d.ce_prev)} />
+            <TipRow color={CALL_RED} label="Call OI chg" value={`${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`} deltaPositive={d.ce_delta >= 0} isDelta />
+            <TipRow color={CALL_RED} label={`Call OI at ${ctLbl}`} value={formatOI(d.ce_now)} muted />
+          </>
+        )}
       </div>
     </div>
   );
@@ -236,17 +228,28 @@ function TipRow({ color, label, value, muted, isDelta, deltaPositive }) {
 }
 
 function CustomLegend({ showOI }) {
-  const items = [
-    ...(showOI ? [{ label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> }] : []),
-    { label: "Increase", swatch: <SwatchStripe color={PUT_GREEN} light="#86EFAC" /> },
-    { label: "Decrease", swatch: <SwatchOutline color={PUT_GREEN} /> },
-    ...(showOI ? [{ label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> }] : []),
-    { label: "Increase", swatch: <SwatchStripe color={CALL_RED} light="#FCA5A5" /> },
-    { label: "Decrease", swatch: <SwatchOutline color={CALL_RED} /> },
-  ];
+  const items = showOI
+    ? [
+        { label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
+        { label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
+      ]
+    : [
+        { label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
+        { label: "Increase", swatch: <SwatchStripe color={PUT_GREEN} light="#86EFAC" /> },
+        { label: "Decrease", swatch: <SwatchOutline color={PUT_GREEN} /> },
+        { label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
+        { label: "Increase", swatch: <SwatchStripe color={CALL_RED} light="#FCA5A5" /> },
+        { label: "Decrease", swatch: <SwatchOutline color={CALL_RED} /> },
+      ];
   return (
     <div className="pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
-      <div className="text-center text-slate-500 mb-2">Legend: <span className="font-medium text-slate-700">Solid = previous OI</span> · <span className="font-medium text-slate-700">Striped = increase</span> · <span className="font-medium text-slate-700">Outline = decrease</span></div>
+      <div className="text-center text-slate-500 mb-2">
+        {showOI ? (
+          <span>Legend: <span className="font-medium text-slate-700">Absolute OI bars</span></span>
+        ) : (
+          <span>Legend: <span className="font-medium text-slate-700">Solid = previous OI</span> · <span className="font-medium text-slate-700">Striped = increase</span> · <span className="font-medium text-slate-700">Outline = decrease</span></span>
+        )}
+      </div>
       <div className="flex items-center justify-center gap-x-5 gap-y-2 flex-wrap">
         {items.map((it, i) => (
           <div key={i} className="flex items-center gap-1.5">
