@@ -152,14 +152,20 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
             )}
             {showOI ? (
               <>
-                <Bar dataKey="pe_now" name="Put OI" fill={PUT_GREEN} isAnimationActive={false} />
-                <Bar dataKey="ce_now" name="Call OI" fill={CALL_RED} isAnimationActive={false} />
+                {/* Show OI ON → Sensibull-style stacked bars: solid CURRENT (or PREVIOUS-if-smaller)
+                    base + a small "Increase" striped segment OR "Decrease" outlined segment on top.
+                    Total height = max(now, prev). Legend has 6 items (Put OI · Increase · Decrease · Call OI · Increase · Decrease). */}
+                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive={false} />
+                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive={false} />
+                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive={false} />
+                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive={false} />
+                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive={false} />
+                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive={false} />
               </>
             ) : (
               <>
-                {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars.
-                    Positive = increase (bar goes UP), Negative = decrease (bar goes DOWN).
-                    Users flip the toggle to see current absolute OI bars. */}
+                {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars. Positive = up = increase,
+                    Negative = down = decrease. y=0 baseline for clarity. */}
                 <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1} />
                 <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive={false} />
                 <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive={false} />
@@ -225,11 +231,7 @@ function CustomTooltip({ active, payload, label, atm, currentTime, prevTime, sho
       <div className="space-y-1.5 font-mono-data">
         {showOI ? (
           <>
-            <TipRow color={PUT_GREEN} label={`Put OI at ${ctLbl}`} value={formatOI(d.pe_now)} />
-            <TipRow color={CALL_RED} label={`Call OI at ${ctLbl}`} value={formatOI(d.ce_now)} />
-          </>
-        ) : (
-          <>
+            {/* Show OI ON → sensibull-style detail: previous OI + change + current OI on one row per side */}
             <TipRow color={PUT_GREEN} label={`Put OI at ${ptLbl}`} value={formatOI(d.pe_prev)} />
             <TipRow color={PUT_GREEN} label="Put OI chg" value={`${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`} deltaPositive={d.pe_delta >= 0} isDelta />
             <TipRow color={PUT_GREEN} label={`Put OI at ${ctLbl}`} value={formatOI(d.pe_now)} muted />
@@ -237,6 +239,12 @@ function CustomTooltip({ active, payload, label, atm, currentTime, prevTime, sho
             <TipRow color={CALL_RED} label={`Call OI at ${ptLbl}`} value={formatOI(d.ce_prev)} />
             <TipRow color={CALL_RED} label="Call OI chg" value={`${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`} deltaPositive={d.ce_delta >= 0} isDelta />
             <TipRow color={CALL_RED} label={`Call OI at ${ctLbl}`} value={formatOI(d.ce_now)} muted />
+          </>
+        ) : (
+          <>
+            {/* Show OI OFF → just the signed delta */}
+            <TipRow color={PUT_GREEN} label="Put OI chg" value={`${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`} deltaPositive={d.pe_delta >= 0} isDelta />
+            <TipRow color={CALL_RED} label="Call OI chg" value={`${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`} deltaPositive={d.ce_delta >= 0} isDelta />
           </>
         )}
       </div>
@@ -270,17 +278,21 @@ function CustomLegend({ showOI }) {
   const items = showOI
     ? [
         { label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
+        { label: "Increase", swatch: <SwatchStripe color={PUT_GREEN} light={PUT_LIGHT} /> },
+        { label: "Decrease", swatch: <SwatchOutline color={PUT_GREEN} /> },
         { label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
+        { label: "Increase", swatch: <SwatchStripe color={CALL_RED} light={CALL_LIGHT} /> },
+        { label: "Decrease", swatch: <SwatchOutline color={CALL_RED} /> },
       ]
     : [
-        { label: "Put OI change", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
-        { label: "Call OI change", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
+        { label: "Put OI chg", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
+        { label: "Call OI chg", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
       ];
   return (
     <div className="pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
       <div className="text-center text-slate-500 mb-2">
         {showOI ? (
-          <span>Legend: <span className="font-medium text-slate-700">Absolute OI bars</span></span>
+          <span>Legend: <span className="font-medium text-slate-700">Solid = OI kept</span> · <span className="font-medium text-slate-700">Striped = increase</span> · <span className="font-medium text-slate-700">Outline = decrease</span></span>
         ) : (
           <span>Legend: <span className="font-medium text-slate-700">OI change in selected timeframe</span> · bars above zero = increase · below zero = decrease</span>
         )}

@@ -194,22 +194,40 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
   const chartDate = useMemo(() => {
     const sourceTs = points.length ? points[0].ts : Date.now();
     const tradeDate = toIstDateString(sourceTs) || toIstDateString(Date.now());
+    const dayStart = istDateToUtcMs(tradeDate, 9, 15);
+    const dayEnd = istDateToUtcMs(tradeDate, 15, 30);
+    // X-axis EXPANDS with live data: right edge sits just past the newest tick
+    // (with a 60 s breathing pad so the last point isn't glued to the frame),
+    // capped at market close. When there's no data yet we show a 15-minute
+    // window starting at 9:15 so the axis doesn't collapse.
+    let end = dayStart + 15 * 60000;
+    if (points.length) {
+      end = Math.min(dayEnd, Math.max(end, points[points.length - 1].ts + 60000));
+    }
     return {
-      start: istDateToUtcMs(tradeDate, 9, 15),
-      end: istDateToUtcMs(tradeDate, 15, 30),
-      label: "09:15 – 15:30 IST",
+      start: dayStart,
+      end,
+      label: "09:15 IST → live",
     };
   }, [points]);
 
-  const xAxisTickFormatter = (ts) => {
-    const date = new Date(ts);
-    const minutes = date.getMinutes();
-    // Show label only if minutes is close to 0, 45
-    if (Math.abs(minutes - 0) < 2 || Math.abs(minutes - 45) < 2) {
-      return formatTimeShort(ts);
+  // Y-axis padded domain so the line doesn't hug the top / bottom edges.
+  const yDomain = useMemo(() => {
+    if (!points.length) return [0, 1];
+    let lo = Infinity, hi = -Infinity;
+    for (const p of points) {
+      const v = Number(p.premium);
+      if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
     }
-    return "";
-  };
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [0, 1];
+    const pad = Math.max(0.5, (hi - lo) * 0.15);
+    return [Math.max(0, lo - pad), hi + pad];
+  }, [points]);
+
+  // Show a time label on every tick recharts places. With ticks="preserveStartEnd"
+  // and tickCount, recharts spaces ticks nicely across the visible domain, so
+  // labelling all of them keeps the axis readable as it expands with data.
+  const xAxisTickFormatter = (ts) => formatTimeShort(ts);
 
   return (
     <div className="w-full" data-testid="straddle-chart">
@@ -240,7 +258,7 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
                 stroke="#cbd5e1"
                 axisLine={false}
                 tickLine={false}
-                tickCount={5}
+                tickCount={6}
                 interval="preserveStartEnd"
                 label={{ value: chartDate.label, position: "insideBottomRight", offset: -10, fill: "#64748b", fontSize: 12 }}
               />
@@ -249,7 +267,9 @@ export default function StraddleChart({ index = "SENSEX", expiry = null, positio
                 stroke="#cbd5e1"
                 axisLine={false}
                 tickLine={false}
-                domain={["auto", "auto"]}
+                domain={yDomain}
+                width={60}
+                tickFormatter={(v) => Number(v).toFixed(2)}
               />
               <Tooltip
                 content={<StraddleTooltip />}

@@ -169,10 +169,9 @@ export default function Dashboard() {
   const [expiriesNote, setExpiriesNote] = useState(null);
   const [selectedExpiry, setSelectedExpiry] = useState(null);
   const [replayFrame, setReplayFrame] = useState(null);
-  // OI Change tab defaults to the DELTA view (base + Increase / Decrease overlays)
-  // so it looks visually distinct from the "Open Interest" tab. Users can still
-  // flip the "Show OI" toggle to see absolute OI bars.
-  const [showOI, setShowOI] = useState(false);
+  // Show OI ON (default) → Sensibull-style stacked bars: solid base + striped increase / outlined
+  // decrease overlay. Flip to OFF to see ONLY the signed delta change bars around a y=0 baseline.
+  const [showOI, setShowOI] = useState(true);
   const [replayOpen, setReplayOpen] = useState(false);
   const [lastPulledAt, setLastPulledAt] = useState(null);
   const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
