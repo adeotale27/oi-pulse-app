@@ -11,7 +11,7 @@ import sys
 from typing import Dict, Any, List
 
 # Backend URL from review request
-BASE_URL = "https://06809b2f-6889-48e8-a120-619601eb6da3.preview.emergentagent.com"
+BASE_URL = "https://oi-api-trace.preview.emergentagent.com"
 API_BASE = f"{BASE_URL}/api"
 
 # Test counters

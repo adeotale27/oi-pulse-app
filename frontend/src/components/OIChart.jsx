@@ -4,7 +4,9 @@ import {
 } from "recharts";
 
 const PUT_GREEN = "#16A34A";
+const PUT_LIGHT = "#86EFAC";
 const CALL_RED = "#DC2626";
+const CALL_LIGHT = "#FCA5A5";
 
 function formatOI(v) {
   if (v == null) return "—";
@@ -36,14 +38,36 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
       const pePrev = Number(p.pe_oi ?? s.pe_oi ?? 0);
       const ceNow = Number(s.ce_oi ?? 0);
       const cePrev = Number(p.ce_oi ?? s.ce_oi ?? 0);
+      const peDelta = peNow - pePrev;
+      const ceDelta = ceNow - cePrev;
+
+      // For stacked-change visualization we split each side into three segments:
+      //   base    = min(prev, now)                    → solid bar (OI that stayed)
+      //   up      = max(0, now - prev)                → striped segment on top (fresh OI written)
+      //   down    = max(0, prev - now)                → outlined segment on top (OI unwound)
+      // Total stack height equals the LATER-OF (prev, now), matching Sensibull's
+      // "start-of-window bar overlayed with change" grouped-bar layout.
+      const peBase = Math.min(peNow, pePrev);
+      const peUp = peDelta > 0 ? peDelta : 0;
+      const peDown = peDelta < 0 ? -peDelta : 0;
+      const ceBase = Math.min(ceNow, cePrev);
+      const ceUp = ceDelta > 0 ? ceDelta : 0;
+      const ceDown = ceDelta < 0 ? -ceDelta : 0;
+
       return {
         strike: s.strike,
         pe_now: peNow,
         pe_prev: pePrev,
         ce_now: ceNow,
         ce_prev: cePrev,
-        pe_delta: peNow - pePrev,
-        ce_delta: ceNow - cePrev,
+        pe_delta: peDelta,
+        ce_delta: ceDelta,
+        pe_base: peBase,
+        pe_up: peUp,
+        pe_down: peDown,
+        ce_base: ceBase,
+        ce_up: ceUp,
+        ce_down: ceDown,
       };
     });
   }, [current, previous]);
@@ -64,6 +88,17 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
       <div className="w-full h-[440px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 20 }} barCategoryGap="18%">
+            {/* SVG patterns for the "increase" striped fills and the "decrease" outlined bars. */}
+            <defs>
+              <pattern id="pe-stripes" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+                <rect width="6" height="6" fill={PUT_LIGHT} />
+                <line x1="0" y1="0" x2="0" y2="6" stroke={PUT_GREEN} strokeWidth="3" />
+              </pattern>
+              <pattern id="ce-stripes" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+                <rect width="6" height="6" fill={CALL_LIGHT} />
+                <line x1="0" y1="0" x2="0" y2="6" stroke={CALL_RED} strokeWidth="3" />
+              </pattern>
+            </defs>
             <CartesianGrid stroke="#E2E8F0" vertical={false} />
             <XAxis
               dataKey="strike"
@@ -91,7 +126,7 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
             />
             <Tooltip
               cursor={{ fill: "rgba(148,163,184,0.12)" }}
-              content={<CustomTooltip mode={mode} atm={atm} currentTime={ct} prevTime={pt} />}
+              content={<CustomTooltip mode={mode} atm={atm} currentTime={ct} prevTime={pt} showOI={showOI} />}
             />
             <Legend
               verticalAlign="bottom"
@@ -122,8 +157,14 @@ export default function OIChart({ current, previous, mode, atm, showOI = true, c
               </>
             ) : (
               <>
-                <Bar dataKey="pe_delta" name="Put Change" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
-                <Bar dataKey="ce_delta" name="Call Change" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                {/* PE stacked: solid base (OI kept) + striped increase OR outlined decrease on top */}
+                <Bar dataKey="pe_base" stackId="pe" name="Put OI (base)" fill={PUT_GREEN} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                {/* CE stacked */}
+                <Bar dataKey="ce_base" stackId="ce" name="Call OI (base)" fill={CALL_RED} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
+                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive={true} animationDuration={450} animationEasing="ease-out" />
               </>
             )}
           </BarChart>
@@ -235,10 +276,10 @@ function CustomLegend({ showOI }) {
       ]
     : [
         { label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
-        { label: "Increase", swatch: <SwatchStripe color={PUT_GREEN} light="#86EFAC" /> },
+        { label: "Increase", swatch: <SwatchStripe color={PUT_GREEN} light={PUT_LIGHT} /> },
         { label: "Decrease", swatch: <SwatchOutline color={PUT_GREEN} /> },
         { label: "Call OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
-        { label: "Increase", swatch: <SwatchStripe color={CALL_RED} light="#FCA5A5" /> },
+        { label: "Increase", swatch: <SwatchStripe color={CALL_RED} light={CALL_LIGHT} /> },
         { label: "Decrease", swatch: <SwatchOutline color={CALL_RED} /> },
       ];
   return (

@@ -743,9 +743,16 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         }
         if expiry:
             window_query["expiry"] = expiry
+        # IMPORTANT: sort ASCENDING so we pick the EARLIEST snapshot inside
+        # [target, current_ts). That snapshot is the one closest to the
+        # requested "N minutes ago" boundary — which is what the OI-Change
+        # UI needs when the user asks for a 1 / 3 / 5 / 15 / 30 / … min delta.
+        # Sorting descending would return the snapshot closest to `now`
+        # (i.e. only one poll-interval old), collapsing every timeframe into
+        # a ~15-second delta and rendering the Call/Put OI change as 0.
         prev_doc = await db.oi_snapshots.find_one(
             window_query,
-            sort=[("timestamp", -1)],
+            sort=[("timestamp", 1)],
             projection={"_id": 0},
         )
 

@@ -70,6 +70,17 @@ const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES.filter((page) => !page.adminOnly).m
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
 const ALERT_COOLDOWN_MS = 60000;
+// User-configurable "OI change" toast threshold — fires when |PE change| OR
+// |CE change| exceeds this percentage of the previous OI in the selected
+// timeframe. Stored in localStorage so it survives reloads.
+const CHANGE_ALERT_PCT_KEY = "oiChangeAlertPct";
+const CHANGE_ALERT_PCT_DEFAULT = 5.0;
+function loadChangeAlertPct() {
+  try {
+    const v = parseFloat(localStorage.getItem(CHANGE_ALERT_PCT_KEY) || "");
+    return Number.isFinite(v) && v > 0 ? v : CHANGE_ALERT_PCT_DEFAULT;
+  } catch { return CHANGE_ALERT_PCT_DEFAULT; }
+}
 
 function formatDayLabel(iso) {
   const d = iso ? new Date(iso) : new Date();
@@ -315,6 +326,16 @@ export default function Dashboard() {
 
   const [historyReady, setHistoryReady] = useState(true);
   const [availableHistoryMin, setAvailableHistoryMin] = useState(0);
+  // Wall-clock timestamp of the last /change response — used together with a
+  // 1s ticker to render a LIVE countdown in the "warming up" banner so users
+  // can see the exact time remaining until a true N-min compare unlocks.
+  const availableFetchedAtRef = useRef(Date.now());
+  const [warmingTick, setWarmingTick] = useState(Date.now());
+  useEffect(() => {
+    if (historyReady) return undefined;
+    const id = setInterval(() => setWarmingTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [historyReady]);
   // Poll OI + previous for the active index
   const loadOI = useCallback(async () => {
     try {
@@ -325,6 +346,7 @@ export default function Dashboard() {
       setPrevious(data.previous);
       setHistoryReady(data.history_ready !== false);
       setAvailableHistoryMin(Number(data.available_history_minutes || 0));
+      availableFetchedAtRef.current = Date.now();
       // capture data_status from the API so the UI can display whether this is
       // live data or historical/offline data (and show the date it's for).
       setDataStatus(data.data_status || null);
@@ -529,7 +551,12 @@ export default function Dashboard() {
     const denom = (baseCE + basePE) || 1;
     const rawIntensity = Math.abs(pe - ce) / denom;
     const intensity = Math.min(1, rawIntensity * 20);
-    return { ce, pe, prevAt: previous?.timestamp, intensity, bullish: pe - ce >= 0 };
+    // Percentage change vs baseline for CE and PE separately — used by the
+    // configurable Change Alert toast so the user can set "notify me when CE
+    // or PE OI moves >= X %".
+    const cePct = baseCE > 0 ? (ce / baseCE) * 100 : 0;
+    const pePct = basePE > 0 ? (pe / basePE) * 100 : 0;
+    return { ce, pe, cePct, pePct, baseCE, basePE, prevAt: previous?.timestamp, intensity, bullish: pe - ce >= 0 };
   }, [filteredCurrent, previous]);
 
   // Frontend-side alert engine: fires a toast + browser notification whenever
@@ -625,6 +652,16 @@ export default function Dashboard() {
     };
   }, [filteredCurrent, previous, changeSummary]);
 
+  // Configurable "OI Change" toast threshold — user-editable in the warming-up
+  // banner (see below). Persisted in localStorage.
+  const [changeAlertPct, setChangeAlertPct] = useState(loadChangeAlertPct);
+  useEffect(() => {
+    try { localStorage.setItem(CHANGE_ALERT_PCT_KEY, String(changeAlertPct)); } catch { /* noop */ }
+  }, [changeAlertPct]);
+  // Track last-fired timestamp for the percentage-based toast so we don't spam
+  // the user on every 15-second pull while the same condition persists.
+  const lastPctAlertRef = useRef(0);
+
   useEffect(() => {
     if (!changeSummary || !lastPulledAt) return;
     // Update "last pull change" every time new data arrives so the UI can show
@@ -652,7 +689,32 @@ export default function Dashboard() {
       setFlash(true);
       setTimeout(() => setFlash(false), 1800);
     }
-  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push]);
+
+    // -------- Custom-threshold "Change Alert" toast --------
+    // Fires whenever |CE %| OR |PE %| change vs the previous-window baseline
+    // crosses the user-configured `changeAlertPct` value. Independent cooldown
+    // from the intensity-based alert above so both can coexist without spam.
+    const cePctAbs = Math.abs(changeSummary.cePct || 0);
+    const pePctAbs = Math.abs(changeSummary.pePct || 0);
+    const worstPct = Math.max(cePctAbs, pePctAbs);
+    if (
+      worstPct >= changeAlertPct &&
+      now - lastPctAlertRef.current > ALERT_COOLDOWN_MS &&
+      historyReady // don't fire during the warming-up window; the % is unreliable then
+    ) {
+      lastPctAlertRef.current = now;
+      const which = cePctAbs >= pePctAbs ? "CE" : "PE";
+      const pctVal = which === "CE" ? changeSummary.cePct : changeSummary.pePct;
+      const arrow = pctVal >= 0 ? "▲" : "▼";
+      const title = `${activeIndex} · ${which} OI ${arrow} ${Math.abs(pctVal).toFixed(2)}% in ${timeframeLabel}`;
+      const desc = `CE ${formatDelta(changeSummary.ce)} (${(changeSummary.cePct || 0).toFixed(2)}%) · PE ${formatDelta(changeSummary.pe)} (${(changeSummary.pePct || 0).toFixed(2)}%)`;
+      // Direction color: PE up = bullish (green); CE up = bearish (red).
+      const isBull = (which === "PE" && pctVal >= 0) || (which === "CE" && pctVal < 0);
+      if (isBull) toast.success(title, { description: desc, duration: 7000 });
+      else toast.error(title, { description: desc, duration: 7000 });
+      try { push(`OI Change Alert · ${activeIndex}`, title); } catch (_) { /* noop */ }
+    }
+  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push, changeAlertPct, historyReady, status?.market]);
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
   const pushActivity = useCallback((ev) => {
@@ -983,23 +1045,68 @@ export default function Dashboard() {
                     timeframeMin={timeframe}
                   />
                 )}
-                {!historyReady && (
-                  <div
-                    data-testid="history-warming-banner"
-                    className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-700 px-3 py-2 text-xs flex items-center gap-2"
-                  >
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    {previous ? (
-                      <span>
-                        History warming up — we only have {availableHistoryMin.toFixed(1)} min of snapshots so the {timeframeLabel} bars are approximate. Wait ~{Math.max(1, Math.ceil(resolveMinutes(timeframe) - availableHistoryMin))} more min for a true {timeframeLabel} comparison.
+                {!historyReady && (() => {
+                  // Live countdown: available minutes grows by (now - fetchedAt).
+                  const elapsedSinceFetchSec = Math.max(0, (warmingTick - availableFetchedAtRef.current) / 1000);
+                  const liveAvailMin = availableHistoryMin + elapsedSinceFetchSec / 60;
+                  const targetMin = resolveMinutes(timeframe);
+                  const remainingSec = Math.max(0, Math.round((targetMin - liveAvailMin) * 60));
+                  const mm = Math.floor(remainingSec / 60);
+                  const ss = remainingSec % 60;
+                  const clock = `${mm}:${String(ss).padStart(2, "0")}`;
+                  return (
+                    <div
+                      data-testid="history-warming-banner"
+                      className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-700 px-3 py-2 text-xs flex items-center gap-2 flex-wrap"
+                    >
+                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      {previous ? (
+                        <span>
+                          History warming up — we only have {liveAvailMin.toFixed(1)} min of snapshots so the {timeframeLabel} bars are approximate.
+                          <span className="ml-1">
+                            True {timeframeLabel} compare unlocks in{" "}
+                            <span
+                              data-testid="warming-countdown"
+                              className="inline-block font-mono-data font-semibold text-amber-900 dark:text-amber-100 tabular-nums"
+                            >
+                              {clock}
+                            </span>
+                          </span>
+                        </span>
+                      ) : (
+                        <span>
+                          Not enough stored history yet for a {timeframeLabel} comparison ({liveAvailMin.toFixed(1)} min available).
+                          <span className="ml-1">
+                            Unlocks in{" "}
+                            <span
+                              data-testid="warming-countdown"
+                              className="inline-block font-mono-data font-semibold text-amber-900 dark:text-amber-100 tabular-nums"
+                            >
+                              {clock}
+                            </span>
+                            . Try a shorter timeframe to see bars sooner.
+                          </span>
+                        </span>
+                      )}
+                      <span className="ml-auto flex items-center gap-1.5 text-[11px]" data-testid="change-alert-threshold-wrapper">
+                        <span className="opacity-80">Alert on ≥</span>
+                        <input
+                          data-testid="change-alert-threshold"
+                          type="number"
+                          step="0.5"
+                          min="0.1"
+                          value={changeAlertPct}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (Number.isFinite(v) && v > 0) setChangeAlertPct(v);
+                          }}
+                          className="w-14 px-1 py-0.5 rounded border border-amber-300 bg-white/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-100 font-mono-data text-right"
+                        />
+                        <span className="opacity-80">%</span>
                       </span>
-                    ) : (
-                      <span>
-                        Not enough stored history yet for a {timeframeLabel} comparison ({availableHistoryMin.toFixed(1)} min available). Try a shorter timeframe, or wait ~{Math.max(1, Math.ceil(resolveMinutes(timeframe) - availableHistoryMin))} more min.
-                      </span>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
                 <div
                   className={`bg-white dark:bg-slate-900 border rounded-md p-4 transition-all duration-700 ${
                     pulsePull ? "ring-2 ring-sky-300 border-sky-300" : "border-slate-200 dark:border-slate-700"

@@ -225,7 +225,14 @@ class OITracker:
             raise
 
     async def load_credentials(self):
-        """Load saved kite credentials from DB and initialize KiteService if present."""
+        """Load saved kite credentials from DB and initialize KiteService if present.
+
+        Bootstrap fallback: if the DB has no Kite credentials but KITE_API_KEY /
+        KITE_ACCESS_TOKEN env vars are present, seed the DB (encrypted) from
+        those and initialize the KiteService. This lets a fresh deploy come
+        online in LIVE mode without requiring the user to open the credentials
+        modal on every boot.
+        """
         doc = await self.db.credentials.find_one({"_id": "kite"})
         api_key = _decrypt_secret(doc.get("api_key_enc")) if doc else None
         access_token = _decrypt_secret(doc.get("access_token_enc")) if doc else None
@@ -233,6 +240,28 @@ class OITracker:
             api_key = doc.get("api_key")
         if not access_token and doc and doc.get("access_token"):
             access_token = doc.get("access_token")
+        # Env-var bootstrap: only used when DB has NOTHING stored yet, so that
+        # subsequent in-app updates from the credentials modal take precedence.
+        if not (api_key and access_token):
+            env_key = (os.environ.get("KITE_API_KEY") or "").strip()
+            env_tok = (os.environ.get("KITE_ACCESS_TOKEN") or "").strip()
+            if env_key and env_tok:
+                api_key = api_key or env_key
+                access_token = access_token or env_tok
+                try:
+                    await self.db.credentials.update_one(
+                        {"_id": "kite"},
+                        {"$set": {
+                            "api_key_enc": _encrypt_secret(api_key),
+                            "access_token_enc": _encrypt_secret(access_token),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                            "source": "env_bootstrap",
+                        }},
+                        upsert=True,
+                    )
+                    logger.info("Seeded Kite credentials from KITE_API_KEY / KITE_ACCESS_TOKEN env vars.")
+                except Exception as e:
+                    logger.warning(f"env-var Kite credentials seed failed: {e}")
         if doc and (doc.get("api_key") or doc.get("access_token")) and not (doc.get("api_key_enc") and doc.get("access_token_enc")):
             try:
                 await self.db.credentials.update_one(

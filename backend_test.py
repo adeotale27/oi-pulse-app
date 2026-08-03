@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Backend URL from review request
-BASE_URL = "https://06809b2f-6889-48e8-a120-619601eb6da3.preview.emergentagent.com/api"
+BASE_URL = "https://oi-api-trace.preview.emergentagent.com/api"
 
 # Admin credentials from /app/memory/test_credentials.md
 ADMIN_USERNAME = "Adeotale"
