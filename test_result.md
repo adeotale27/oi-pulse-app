@@ -40,6 +40,32 @@ Please verify these endpoints/behaviors against a running backend:
 5. `GET /api/oi/SENSEX/change?minutes=5` and `GET /api/oi/BANKNIFTY/change?minutes=5` also return current + previous shapes.
 6. Admin-gated endpoints reject unauthenticated requests with 401 (e.g. `POST /api/settings`).
 
+    - agent: main
+      message: |
+        FOLLOW-UP #2 — the ingress issue.
+        Even after setting a strict `CORS_ORIGIN_REGEX`, the deployed browser login still failed. Root cause:
+        the Emergent preview ingress (Cloudflare) injects `Access-Control-Allow-Origin: *` on every response,
+        which conflicts with the backend's `Access-Control-Allow-Credentials: true` header (browsers reject
+        `*` + credentials). The frontend axios instance was using `withCredentials: true` even though the app
+        uses only header-based auth (`X-Admin-Token` / `X-Guest-Token`) — no cookies at all.
+        Fix applied:
+          - `/app/frontend/src/lib/api.js` — set `withCredentials: false` on the axios instance (still sends
+             the X-Admin-Token / X-Guest-Token headers via the request interceptor).
+          - `/app/backend/.env` — set `CORS_ORIGINS=*` and removed the regex, so the backend does NOT emit
+             `Access-Control-Allow-Credentials: true` and does not clash with the ingress's wildcard.
+          - Restarted backend + frontend.
+        Verified via playwright: browser POST /api/auth/login now returns 200 with a token, admin_token gets
+        stored in sessionStorage, and the app navigates to `/` and renders the live dashboard.
+        Please re-verify:
+          1. Preflight OPTIONS `/api/auth/login` from the public URL still succeeds (200/204) with
+             `Access-Control-Allow-Origin: *` (from ingress) and NO `Access-Control-Allow-Credentials`
+             header conflict on the backend response.
+          2. POST `/api/auth/login` with correct creds returns 200 + token via the public URL AND localhost.
+          3. `GET /api/oi/NIFTY/change?minutes=15` returns valid `current` + `previous` with the sort-fix
+             still in place (previous timestamp progressively older for longer timeframes).
+          4. All three indices still polling (mongo counts still growing).
+          5. Admin-gated endpoints still reject unauthenticated requests.
+
 ## agent_communication:
     - agent: main
       message: |

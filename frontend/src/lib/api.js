@@ -12,7 +12,12 @@ const BACKEND_URL = _hasEnvBackend
   : (typeof window !== "undefined" ? window.location.origin : "");
 export const API = `${BACKEND_URL}/api`;
 
-export const api = axios.create({ baseURL: API, timeout: 20000, withCredentials: true });
+// NOTE: withCredentials MUST be false. The Emergent preview ingress (Cloudflare)
+// overrides `Access-Control-Allow-Origin` to `*`, and browsers reject `*` +
+// credentials mode. We authenticate via `X-Admin-Token` / `X-Guest-Token`
+// headers (see the request interceptor below) — no cookies are used — so
+// disabling withCredentials is safe.
+export const api = axios.create({ baseURL: API, timeout: 20000, withCredentials: false });
 
 // Simple deduped helper for the /tickers/extras endpoint so multiple callers
 // won't create duplicate concurrent network requests. Keeps one inflight promise
