@@ -317,10 +317,10 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
                   <Checkbox
                     data-testid="expire-admin-on-close"
-                    checked={settings.expire_admin_on_market_close !== false}
+                    checked={!!settings.expire_admin_on_market_close}
                     onCheckedChange={(ck) => setSettings({ ...settings, expire_admin_on_market_close: !!ck })}
                   />
-                  <span className="text-sm">Expire admin sessions on market close</span>
+                  <span className="text-sm">Expire admin sessions on market close (off by default)</span>
                 </label>
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
                   <Checkbox
