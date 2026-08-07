@@ -45,8 +45,11 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           threshold_pct: 15,
           compare_minutes: 3,
           cooldown_seconds: 120,
-          enabled_indices: ["NIFTY", "SENSEX"],
-          visible_pages: DASHBOARD_PAGES.map((p) => p.id),
+          enabled_indices: ["NIFTY", "SENSEX", "BANKNIFTY"],
+          straddle_enabled_indices: ["NIFTY", "SENSEX"],
+          oi_poll_interval_seconds: 15,
+          straddle_poll_interval_seconds: 60,
+          visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions").map((p) => p.id),
         });
       });
     setLocal(loadOISettings());
@@ -54,8 +57,13 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
 
   const toggleIndex = (idx) => {
     const cur = new Set(settings.enabled_indices || []);
-    if (cur.has(idx)) cur.delete(idx);
-    else cur.add(idx);
+    if (cur.has(idx)) {
+      if (cur.size <= 1) {
+        toast.error("Keep at least one tracked index");
+        return;
+      }
+      cur.delete(idx);
+    } else cur.add(idx);
     setSettings({ ...settings, enabled_indices: Array.from(cur) });
   };
 
@@ -68,8 +76,13 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
 
   const toggleVisiblePage = (pageId) => {
     const cur = new Set(Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id));
-    if (cur.has(pageId)) cur.delete(pageId);
-    else cur.add(pageId);
+    if (cur.has(pageId)) {
+      if (cur.size <= 1) {
+        toast.error("Keep at least one public page visible");
+        return;
+      }
+      cur.delete(pageId);
+    } else cur.add(pageId);
     setSettings({ ...settings, visible_pages: Array.from(cur) });
   };
 
@@ -79,11 +92,18 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
   const submit = async () => {
     setSaving(true);
     try {
-      await api.post("/settings", settings);
+      // Always persist local thresholds first so they aren't lost if server POST fails.
       saveOISettings(local);
-      toast.success("Alert settings saved");
-      onSaved?.(settings);
       onLocalSaved?.(local);
+      if (isAdmin) {
+        const { data } = await api.post("/settings", settings);
+        const saved = data || settings;
+        setSettings(saved);
+        toast.success("Settings saved — polling & alerts updated");
+        onSaved?.(saved);
+      } else {
+        toast.success("Local thresholds saved");
+      }
       onOpenChange(false);
     } catch (e) {
       toast.error("Failed to save settings: " + (e?.response?.data?.detail || e.message));

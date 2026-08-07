@@ -343,6 +343,7 @@ export default function Dashboard() {
     const gen = ++oiReqGenRef.current;
     const reqIndex = activeIndex;
     const reqExpiry = selectedExpiry;
+    setOiLoading(true);
     try {
       const also = (oiSettings.hugeShiftWindows || [1, 3, 5]).join(",");
       const data = await fetchOIChange(reqIndex, resolveMinutes(timeframe), {
@@ -362,15 +363,14 @@ export default function Dashboard() {
         also_windows: data.also_windows || {},
         at: Date.now(),
       });
-      // `lastPulledAt` reflects the ACTUAL market-tick timestamp of the snapshot,
-      // not client wall-clock — so once the market closes at 3:30 PM IST it stays
-      // pinned to the final tick (which is what the user wants).
       setLastPulledAt(data.current?.timestamp || new Date().toISOString());
       setPulsePull(true);
-      setTimeout(() => setPulsePull(false), 900);
+      setTimeout(() => setPulsePull(false), 600);
     } catch (e) {
       if (gen !== oiReqGenRef.current) return;
       console.error("loadOI failed", e);
+    } finally {
+      if (gen === oiReqGenRef.current) setOiLoading(false);
     }
   }, [activeIndex, timeframe, selectedExpiry, expiryReady, oiSettings.hugeShiftWindows]);
 
@@ -438,16 +438,10 @@ export default function Dashboard() {
     }
   }, [alarm, push, activeIndex]);
 
-  // ---- Configurable OI poll interval (15 / 30 / 60 s) ----
-  const [pollMs, setPollMs] = useState(() => {
-    try {
-      const v = parseInt(localStorage.getItem("oiPollMs") || "", 10);
-      return POLL_OPTIONS.includes(v) ? v : DEFAULT_POLL_MS;
-    } catch { return DEFAULT_POLL_MS; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem("oiPollMs", String(pollMs)); } catch { /* noop */ }
-  }, [pollMs]);
+  // ---- Configurable OI poll interval (15 / 30 / 60 s) — server is source of truth ----
+  const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
+  const [enabledIndices, setEnabledIndices] = useState(INDICES);
+  const [oiLoading, setOiLoading] = useState(false);
 
   // ---- Straddle poll interval (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(60000); // default 1 minute
@@ -456,8 +450,6 @@ export default function Dashboard() {
     try {
       const res = await api.get("/settings");
       if (res.data) {
-        // Server poll interval is source of truth for ops, but only apply when
-        // it actually changes — avoid restarting pollers every 60s needlessly.
         if (typeof res.data.oi_poll_interval_seconds === "number") {
           const next = res.data.oi_poll_interval_seconds * 1000;
           setPollMs((prev) => (prev === next ? prev : next));
@@ -469,10 +461,34 @@ export default function Dashboard() {
         if (Array.isArray(res.data.visible_pages)) {
           setVisiblePages(res.data.visible_pages);
         }
+        if (Array.isArray(res.data.enabled_indices) && res.data.enabled_indices.length) {
+          setEnabledIndices(res.data.enabled_indices);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch settings", e);
     }
+  }, []);
+
+  // Boot: pull /config once so poll interval is correct before first OI tick.
+  useEffect(() => {
+    api.get("/config").then((r) => {
+      const d = r.data || {};
+      if (typeof d.oi_poll_interval_seconds === "number") {
+        setPollMs(d.oi_poll_interval_seconds * 1000);
+      } else if (typeof d.poll_interval_seconds === "number") {
+        setPollMs(d.poll_interval_seconds * 1000);
+      }
+      if (typeof d.straddle_poll_interval_seconds === "number") {
+        setStraddlePollMs(d.straddle_poll_interval_seconds * 1000);
+      }
+      if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
+        setEnabledIndices(d.enabled_indices);
+      }
+      if (Array.isArray(d.visible_pages)) {
+        setVisiblePages(d.visible_pages);
+      }
+    }).catch(() => { /* ignore — settings poll will retry */ });
   }, []);
 
   // Auth state — once on mount + every 60s (not every OI poll).
@@ -491,7 +507,7 @@ export default function Dashboard() {
 
   useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings" });
 
-  useQuiescentAwarePolling(loadStatus, pollMs, [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status" });
+  useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status" });
   useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open, expiryReady], { status, dedupeKey: "dash-oi" });
   // Force an IMMEDIATE refetch whenever the user picks a different timeframe,
   // index, or expiry. `useQuiescentAwarePolling` only fires the callback on
@@ -516,17 +532,23 @@ export default function Dashboard() {
     { status, dedupeKey: "dash-alerts" },
   );
 
-  // When index changes, immediately clear current/previous & strike range so
-  // filters from the previous index don't hide the new index's strikes.
+  // When index changes, reset strike range but keep last chart visible (opacity)
+  // until the new index's data arrives — avoids a jarring blank flash.
   const prevIndexRef = useRef(activeIndex);
   useEffect(() => {
     if (prevIndexRef.current !== activeIndex) {
-      setCurrent(null);
-      setPrevious(null);
       setStrikeRange({ min: null, max: null });
+      setChangeBundle(null);
       prevIndexRef.current = activeIndex;
     }
   }, [activeIndex]);
+
+  // If enabled_indices no longer includes activeIndex, switch to the first enabled.
+  useEffect(() => {
+    if (enabledIndices.length && !enabledIndices.includes(activeIndex)) {
+      setActiveIndex(enabledIndices[0]);
+    }
+  }, [enabledIndices, activeIndex]);
 
   // Once fresh snapshot arrives, initialise strike range to the full span of
   // that snapshot (only if user hasn't already set a range).
@@ -1029,7 +1051,7 @@ export default function Dashboard() {
       <div className="flex flex-1 overflow-hidden">
         {!compact && (
           <Sidebar
-            indices={INDICES}
+            indices={enabledIndices.length ? enabledIndices : INDICES}
             activeIndex={activeIndex}
             onChangeIndex={setActiveIndex}
             current={current}
@@ -1232,10 +1254,13 @@ export default function Dashboard() {
                         <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 text-[10px] px-1.5 py-0 rounded-sm">New</Badge>
                       </div>
                     </div>
+                    <div
+                      className={`transition-opacity duration-300 ${oiLoading && current?.index && current.index !== activeIndex ? "opacity-40" : "opacity-100"}`}
+                    >
                     <OIChart
-                      key={`${activeIndex}-${lastPulledAt || "x"}`}
-                      current={filteredCurrent}
-                      previous={replayFrame || previous}
+                      key={activeIndex}
+                      current={current?.index && current.index !== activeIndex ? null : filteredCurrent}
+                      previous={current?.index && current.index !== activeIndex ? null : (replayFrame || previous)}
                       atm={current?.atm}
                       mode={status?.mode}
                       showOI={showOI}
@@ -1393,6 +1418,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )}
+                    </div>
                   </TabsContent>
                 )}
 
@@ -1647,6 +1673,15 @@ export default function Dashboard() {
           loadStatus();
           if (Array.isArray(settings.visible_pages)) {
             setVisiblePages(settings.visible_pages);
+          }
+          if (typeof settings.oi_poll_interval_seconds === "number") {
+            setPollMs(settings.oi_poll_interval_seconds * 1000);
+          }
+          if (typeof settings.straddle_poll_interval_seconds === "number") {
+            setStraddlePollMs(settings.straddle_poll_interval_seconds * 1000);
+          }
+          if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
+            setEnabledIndices(settings.enabled_indices);
           }
         }}
         onLocalSaved={setOiSettings}

@@ -90,10 +90,11 @@ export default function Header({
           windows: data.windows ?? prev.windows,
           server_time_ist: data.server_time_ist ?? prev.server_time_ist,
         };
-        const sameVix = ((prev.vix?.ts || null) === (next.vix?.ts || null)) || ((prev.vix?.last || null) === (next.vix?.last || null));
-        const sameGift = ((prev.gift_nifty?.ts || null) === (next.gift_nifty?.ts || null)) || ((prev.gift_nifty?.last || null) === (next.gift_nifty?.last || null));
+        const sameVix = ((prev.vix?.ts || null) === (next.vix?.ts || null)) && ((prev.vix?.last || null) === (next.vix?.last || null));
+        const sameGift = ((prev.gift_nifty?.ts || null) === (next.gift_nifty?.ts || null)) && ((prev.gift_nifty?.last || null) === (next.gift_nifty?.last || null));
         const sameServer = (prev.server_time_ist || null) === (next.server_time_ist || null);
-        if (sameVix && sameGift && sameServer) return prev;
+        const sameOpen = (prev.windows?.gift?.open_now) === (next.windows?.gift?.open_now);
+        if (sameVix && sameGift && sameServer && sameOpen) return prev;
         return next;
       });
     };
@@ -176,13 +177,29 @@ export default function Header({
         <div className="hidden md:flex items-center gap-6 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
           <Metric label="ATM" value={atm.toLocaleString()} />
           <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
-          <ExtraTickerCell label="GIFT NIFTY" data={extras.gift_nifty} windows={giftSessions} serverIst={extras?.server_time_ist} onOpenSessions={() => setGiftModalOpen(true)} />
+          <ExtraTickerCell
+            label="GIFT NIFTY"
+            data={extras.gift_nifty}
+            windows={giftSessions}
+            openNow={extras?.windows?.gift?.open_now}
+            kiteSymbol={extras?.windows?.gift?.kite_symbol || "NSEIX:GIFT NIFTY"}
+            serverIst={extras?.server_time_ist}
+            onOpenSessions={() => setGiftModalOpen(true)}
+          />
         </div>
 
         <div className="w-full md:hidden border-t border-slate-200 dark:border-slate-700 mt-2 pt-2">
           <div className="grid grid-cols-2 gap-2 px-3">
             <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
-          <ExtraTickerCell label="GIFT NIFTY" data={extras.gift_nifty} windows={giftSessions} serverIst={extras?.server_time_ist} onOpenSessions={() => setGiftModalOpen(true)} />
+          <ExtraTickerCell
+            label="GIFT NIFTY"
+            data={extras.gift_nifty}
+            windows={giftSessions}
+            openNow={extras?.windows?.gift?.open_now}
+            kiteSymbol={extras?.windows?.gift?.kite_symbol || "NSEIX:GIFT NIFTY"}
+            serverIst={extras?.server_time_ist}
+            onOpenSessions={() => setGiftModalOpen(true)}
+          />
           </div>
         </div>
 
@@ -384,7 +401,7 @@ function VixMetric({ value, sessionOpen, liveVix }) {
   );
 }
 
-function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions }) {
+function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, openNow, kiteSymbol }) {
   const [hover, setHover] = useState(false);
   const hasData = data && data.last != null && data.last > 0;
   const chgPct = hasData ? Number(data.change_pct || 0) : 0;
@@ -392,6 +409,8 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions }) {
   const tone = chgPct > 0.05 ? "emerald" : chgPct < -0.05 ? "rose" : "slate";
   const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-slate-500 dark:text-slate-400";
   const arrow = chgPct > 0.05 ? "▲" : chgPct < -0.05 ? "▼" : "▬";
+  const isProxy = Boolean(data?.is_proxy);
+  const source = data?.source || null;
 
   // determine GIFT session status using server-provided IST timestamp when available,
   // otherwise fallback to client-side conversion to Asia/Kolkata
@@ -434,12 +453,35 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions }) {
   }
 
   function getSessionInfo() {
-    if (!windows || !Array.isArray(windows) || windows.length === 0) return { activeIndex: -1, nextIndex: null, minsUntilNext: null };
+    if (!windows || !Array.isArray(windows) || windows.length === 0) {
+      return { activeIndex: -1, nextIndex: null, minsUntilNext: null, openNow: false };
+    }
+    // Prefer server flag when present (handles Fri evening → Sat 02:45 correctly).
+    if (openNow === true) {
+      const now = getIstNow();
+      const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+      let activeIndex = -1;
+      for (let i = 0; i < windows.length; i++) {
+        const s = windows[i];
+        const startM = parseHM(s.start_ist || s.start || "00:00");
+        const endM = parseHM(s.end_ist || s.end || "00:00");
+        if (startM <= endM) {
+          if (nowMinutes >= startM && nowMinutes <= endM) { activeIndex = i; break; }
+        } else if (nowMinutes >= startM || nowMinutes <= endM) {
+          activeIndex = i;
+          break;
+        }
+      }
+      return { activeIndex: activeIndex >= 0 ? activeIndex : 0, nextIndex: null, minsUntilNext: null, openNow: true };
+    }
+
     const now = getIstNow();
     const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
     const nowDay = now.getUTCDay();
-    const minutesOfDay = nowMinutes;
-    const isWeekend = (nowDay === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || nowDay === 6 || nowDay === 0;
+    // GIFT evening continues Fri→Sat 02:45 — do NOT treat Fri after 15:31 as closed for GIFT.
+    const isSatAfterGift = nowDay === 6 && nowMinutes > parseHM("02:45");
+    const isSun = nowDay === 0;
+    const isWeekend = isSun || isSatAfterGift;
 
     let activeIndex = -1;
     if (!isWeekend) {
@@ -538,9 +580,15 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions }) {
 
       {/* Hover tooltip showing GIFT session status */}
       {isGift && hover && (
-        <div className="absolute right-0 top-full mt-2 w-56 bg-white text-slate-900 dark:bg-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded shadow-lg p-2 text-xs z-50">
+        <div className="absolute right-0 top-full mt-2 w-64 bg-white text-slate-900 dark:bg-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded shadow-lg p-2 text-xs z-50">
           <div className="font-semibold mb-1">GIFT NIFTY Sessions</div>
           <div className="mb-1">{giftTooltip}</div>
+          <div className="text-[11px] text-slate-500 mb-1">
+            Kite symbol: <span className="font-mono">{kiteSymbol || "NSEIX:GIFT NIFTY"}</span>
+            {source ? ` · via ${source}` : ""}
+            {isProxy ? " · proxy (not live GIFT)" : ""}
+          </div>
+          {data?.note && <div className="text-[10px] text-amber-700 mb-1">{data.note}</div>}
           <div className="text-[11px] text-slate-500">
             { (windows || []).map((s, i) => (
               <div key={i}>{i === 0 ? 'Morning' : i === 1 ? 'Evening' : `Session ${i+1}`}:{' '}{s.start_ist || s.start} – {s.end_ist || s.end} IST { (sess && sess.activeIndex === i) ? '· active' : '' }</div>

@@ -212,6 +212,7 @@ async def _straddle_sampler():
     The poller already stores straddle samples on every successful OI tick.
     This loop only fills gaps using cached snapshots — it never hits Kite —
     so we avoid duplicate ~62-token quote batches for NIFTY/SENSEX.
+    Honors admin `straddle_enabled_indices` setting.
     """
     while True:
         try:
@@ -220,8 +221,12 @@ async def _straddle_sampler():
             except Exception:
                 poll_interval_seconds = STRADDLE_SAMPLE_INTERVAL_SECONDS
 
+            enabled = tracker.settings.get("straddle_enabled_indices") if tracker else None
+            if not enabled:
+                enabled = STRADDLE_INDICES
+
             if is_market_open() and tracker:
-                for idx in STRADDLE_INDICES:
+                for idx in enabled:
                     if idx not in INDEX_CONFIG:
                         continue
                     try:
@@ -391,6 +396,11 @@ async def set_credentials(payload: CredentialsIn, _admin: bool = Depends(require
         await tracker.set_credentials(payload.api_key, payload.access_token)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # Pull true GIFT NIFTY (NSEIX:GIFT NIFTY) + VIX via Kite immediately.
+    try:
+        await extra_tickers.force_refresh()
+    except Exception:
+        pass
     return {"ok": True, "mode": tracker.mode}
 
 
@@ -656,13 +666,27 @@ async def get_settings():
 async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_admin)):
     patch = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "enabled_indices" in patch:
+        if not patch["enabled_indices"]:
+            raise HTTPException(400, "At least one tracked index is required")
         for i in patch["enabled_indices"]:
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown index: {i}")
+    if "straddle_enabled_indices" in patch:
+        for i in patch["straddle_enabled_indices"]:
+            if i not in INDEX_CONFIG:
+                raise HTTPException(400, f"Unknown straddle index: {i}")
     if "visible_pages" in patch:
+        if not patch["visible_pages"]:
+            raise HTTPException(400, "At least one public dashboard page is required")
         for p in patch["visible_pages"]:
             if p not in DASHBOARD_PAGE_KEYS:
                 raise HTTPException(400, f"Unknown dashboard page: {p}")
+    if "oi_poll_interval_seconds" in patch:
+        if int(patch["oi_poll_interval_seconds"]) not in (15, 30, 60):
+            raise HTTPException(400, "oi_poll_interval_seconds must be 15, 30, or 60")
+    if "straddle_poll_interval_seconds" in patch:
+        if int(patch["straddle_poll_interval_seconds"]) not in (30, 60, 120):
+            raise HTTPException(400, "straddle_poll_interval_seconds must be 30, 60, or 120")
     return await tracker.save_settings(patch)
 
 
@@ -1118,11 +1142,13 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
         return
 
     try:
-        # Load poll interval from settings (default to 30s)
-        poll_interval_seconds = tracker.settings.get("straddle_poll_interval_seconds", 30)
-        
+        # Re-read poll interval each iteration so admin settings apply without reconnect.
         while True:
             try:
+                poll_interval_seconds = max(
+                    5,
+                    int(tracker.settings.get("straddle_poll_interval_seconds", 60)),
+                )
                 # Only fetch new data during market hours (9:15 AM - 3:30 PM IST, Mon-Fri)
                 from market_hours import is_market_open as is_market_open_fn
                 if not is_market_open_fn(datetime.now(IST)):
@@ -1131,8 +1157,12 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
                     await asyncio.sleep(60)
                     continue
                 
-                svc = tracker._get_service()
-                snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
+                # Prefer last OI snapshot (no extra Kite hit); fall back to live fetch.
+                snap = tracker.last_snapshot.get(idx)
+                if not snap or (expiry and snap.get("expiry") != expiry):
+                    svc = tracker._get_service()
+                    if svc:
+                        snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
                 if snap:
                     atm = int(snap.get("atm") or 0)
                     price = float(snap.get("price") or 0.0)
@@ -1251,7 +1281,17 @@ async def clear_alerts(_admin: bool = Depends(require_admin)):
 @api_router.get("/config")
 async def get_config():
     poll_interval_seconds = max(1, int(tracker.settings.get("oi_poll_interval_seconds", 15)))
-    return {"indices": INDEX_CONFIG, "poll_interval_seconds": poll_interval_seconds}
+    straddle_poll = max(1, int(tracker.settings.get("straddle_poll_interval_seconds", 60)))
+    return {
+        "indices": INDEX_CONFIG,
+        "poll_interval_seconds": poll_interval_seconds,
+        "oi_poll_interval_seconds": poll_interval_seconds,
+        "straddle_poll_interval_seconds": straddle_poll,
+        "enabled_indices": tracker.settings.get("enabled_indices", list(INDEX_CONFIG.keys())),
+        "straddle_enabled_indices": tracker.settings.get("straddle_enabled_indices", STRADDLE_INDICES),
+        "visible_pages": tracker.settings.get("visible_pages"),
+        "gift_kite_symbol": "NSEIX:GIFT NIFTY",
+    }
 
 
 # ------------------- Simple Admin Auth + Public Access Toggle -------------------
@@ -2157,6 +2197,10 @@ async def _startup():
     await tracker.load_settings()
     await tracker.start()
     extra_tickers.attach_db(db)
+    # Prefer Kite for GIFT NIFTY (NSEIX:GIFT NIFTY) + India VIX when LIVE.
+    extra_tickers.attach_kite_provider(
+        lambda: tracker.kite_service.kite if tracker and tracker.mode == "kite" and tracker.kite_service else None
+    )
     await extra_tickers.start()
     global straddle_sampler_task
     straddle_sampler_task = asyncio.create_task(_straddle_sampler())

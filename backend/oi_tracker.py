@@ -594,9 +594,11 @@ class OITracker:
                 # The persist_snapshot helper already logs and updates metrics.
                 pass
 
-            # persist straddle samples for the chosen expiry
+            # persist straddle samples for the chosen expiry (admin-selected indices only)
             try:
-                await self._store_straddle_sample(idx, snap)
+                straddle_enabled = self.settings.get("straddle_enabled_indices") or ["NIFTY", "SENSEX"]
+                if idx in straddle_enabled:
+                    await self._store_straddle_sample(idx, snap)
             except Exception as e:
                 logger.debug(
                     "[_poll_once] _store_straddle_sample failed: %s",
