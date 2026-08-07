@@ -243,7 +243,7 @@ export default function Header({
               className="hidden sm:inline-flex text-[10px] font-mono-data text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5"
               title={`Showing last session data for ${dataStatus.data_date}. Kite credentials are configured; OI polling is paused until next open.`}
             >
-              Session {dataStatus.data_date}
+              {dataStatus.data_date}
             </span>
           )}
 

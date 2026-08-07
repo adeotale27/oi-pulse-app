@@ -84,10 +84,10 @@ export function buildDataTruth({
       mode: "LAST_SESSION",
       badge: "LAST SESSION",
       asOfLabel: dataDate
-        ? `session ${dataDate}${asOfClock ? ` · ${asOfClock} IST` : ""}`
+        ? `${dataDate}${asOfClock ? ` · ${asOfClock} IST` : ""}`
         : asOfClock
-          ? `as of ${asOfClock} IST`
-          : "prior session",
+          ? `${asOfClock} IST`
+          : "prior close",
       detail: "Not live · OI polling paused until next open · GIFT/VIX may still update",
       tone: "session",
     };

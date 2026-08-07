@@ -101,11 +101,17 @@ function buildDataTruth({ dataStatus, marketOpen, mode, snapshotTs }) {
   const age = ds.cache_age_seconds;
   let isLive = ds.is_live === true;
   if (ds.is_live == null) isLive = kite && open && (age == null || age <= 45);
-  if (!asOfIso && !dataDate) return { mode: "NO_DATA", badge: "NO DATA" };
-  if (!kite) return { mode: "OFFLINE", badge: "OFFLINE" };
-  if (isLive && open) return { mode: "LIVE", badge: "LIVE" };
-  if (!open) return { mode: "LAST_SESSION", badge: "LAST SESSION" };
-  return { mode: "STALE", badge: "STALE" };
+  if (!asOfIso && !dataDate) return { mode: "NO_DATA", badge: "NO DATA", asOfLabel: "—" };
+  if (!kite) return { mode: "OFFLINE", badge: "OFFLINE", asOfLabel: dataDate || "—" };
+  if (isLive && open) return { mode: "LIVE", badge: "LIVE", asOfLabel: "data as of" };
+  if (!open) {
+    return {
+      mode: "LAST_SESSION",
+      badge: "LAST SESSION",
+      asOfLabel: dataDate ? `${dataDate}` : "prior close",
+    };
+  }
+  return { mode: "STALE", badge: "STALE", asOfLabel: "last tick" };
 }
 
 // ---- Tests ----
@@ -147,10 +153,13 @@ assert(buildDataTruth({
   dataStatus: { is_live: true, data_date: "2026-08-07", cache_age_seconds: 10 },
   marketOpen: true, mode: "kite", snapshotTs: "2026-08-07T10:00:00+05:30",
 }).mode === "LIVE", "live");
-assert(buildDataTruth({
+const lastSess = buildDataTruth({
   dataStatus: { is_live: false, stale_reason: "market_closed", data_date: "2026-08-07" },
   marketOpen: false, mode: "kite", snapshotTs: "2026-08-07T15:30:00+05:30",
-}).badge === "LAST SESSION", "last session badge");
+});
+assert(lastSess.badge === "LAST SESSION", "last session badge");
+// asOfLabel must not repeat the word "session" (badge already says LAST SESSION)
+assert(!/session/i.test(String(lastSess.asOfLabel || "")), "no redundant session word");
 assert(buildDataTruth({
   dataStatus: { is_live: false, stale_reason: "missing_kite_credentials", data_date: "2026-08-07" },
   marketOpen: true, mode: "offline", snapshotTs: "2026-08-07T10:00:00+05:30",
