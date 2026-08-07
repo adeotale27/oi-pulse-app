@@ -927,12 +927,17 @@ class OITracker:
     async def get_status(self):
         ms = market_status()
         poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
+        err = (self.last_error or "").lower()
+        token_bad = any(k in err for k in ("token", "api_key", "signature", "incorrect", "unauthorized", "forbidden"))
+        kite_ok = self.mode == "kite" and self.kite_service is not None and not token_bad
         return {
             "running": self.running,
             "mode": self.mode,
             "last_updated_at": self.last_updated_at,
             "last_error": self.last_error,
             "has_kite_credentials": self.kite_service is not None,
+            "kite_ok": kite_ok,
+            "kite_token_issue": bool(token_bad) or (self.kite_service is None and self.mode != "kite"),
             "poll_interval_seconds": poll_interval_seconds,
             "market": ms,
             "telegram_configured": notifier.is_configured(),

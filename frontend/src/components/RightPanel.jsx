@@ -75,8 +75,8 @@ export default function RightPanel({
   }, [allowedViews, view, onChangeView]);
 
   return (
-    <div className="h-full flex flex-col bg-white border border-slate-200 rounded-md overflow-hidden" data-testid="right-panel">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 bg-slate-50">
+    <div className="h-full min-h-0 flex flex-col bg-white border border-slate-200 rounded-md overflow-hidden" data-testid="right-panel">
+      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 bg-slate-50 shrink-0">
         <GripVertical className="w-3.5 h-3.5 text-slate-400" />
         <select
           value={selectedView}
@@ -99,76 +99,82 @@ export default function RightPanel({
           <X className="w-3.5 h-3.5" />
         </Button>
       </div>
-      <div className="flex-1 overflow-auto p-2">
-        {view === "alerts" && (
-          <AlertsPanel alerts={alerts} onClear={onClearAlerts} activeIndex={activeIndex} canClear={canClearAlerts} />
-        )}
-        {view === "strike" && (
-          <StrikeTable
-            current={filteredCurrent}
-            previous={previous}
-            atm={atm}
-            timeframeMin={timeframeMin}
-            oiSettings={oiSettings}
-            lotSize={lotSize}
-            expiry={selectedExpiry}
-            vixNow={vixNow}
-          />
-        )}
-        {view === "buildup" && (
-          <BuildupTable
-            current={filteredCurrent}
-            previous={previous}
-            atm={atm}
-            timeframeLabel={timeframeLabel}
-          />
-        )}
-        {view === "activity" && (
-          <ActivityFeed
-            events={(activity || []).filter((e) => e.index === activeIndex)}
-            activeIndex={activeIndex}
-            onClear={clearActivity}
-            filter={activityFilter}
-            onSetFilter={setActivityFilter}
-          />
-        )}
-        {view === "positions" && (
-          <PositionsPanel
-            isKiteMode={isKiteMode}
-            current={current}
-            vix={vixNow}
-            oiSettings={oiSettings}
-            activeIndex={activeIndex}
-            expiry={selectedExpiry}
-          />
-        )}
-        {view === "oichart" && (
-          <OIChart
-            current={filteredCurrent}
-            previous={previous}
-            atm={atm}
-            mode={status?.mode}
-            showOI={showOI}
-            currentTime={current?.timestamp}
-            prevTime={previous?.timestamp}
-          />
-        )}
-        {view === "straddle" && (
-          <div className="p-3">
-            <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={straddlePollMs} />
+
+      {/* View body scrolls; suggestion sits directly under finished content (not far below the fold). */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-2">
+        <div className={`min-h-0 ${view === "alerts" ? "flex-1 flex flex-col" : ""}`}>
+          {view === "alerts" && (
+            <AlertsPanel alerts={alerts} onClear={onClearAlerts} activeIndex={activeIndex} canClear={canClearAlerts} />
+          )}
+          {view === "strike" && (
+            <StrikeTable
+              current={filteredCurrent}
+              previous={previous}
+              atm={atm}
+              timeframeMin={timeframeMin}
+              oiSettings={oiSettings}
+              lotSize={lotSize}
+              expiry={selectedExpiry}
+              vixNow={vixNow}
+            />
+          )}
+          {view === "buildup" && (
+            <BuildupTable
+              current={filteredCurrent}
+              previous={previous}
+              atm={atm}
+              timeframeLabel={timeframeLabel}
+            />
+          )}
+          {view === "activity" && (
+            <ActivityFeed
+              events={(activity || []).filter((e) => e.index === activeIndex)}
+              activeIndex={activeIndex}
+              onClear={clearActivity}
+              filter={activityFilter}
+              onSetFilter={setActivityFilter}
+            />
+          )}
+          {view === "positions" && (
+            <PositionsPanel
+              isKiteMode={isKiteMode}
+              current={current}
+              vix={vixNow}
+              oiSettings={oiSettings}
+              activeIndex={activeIndex}
+              expiry={selectedExpiry}
+            />
+          )}
+          {view === "oichart" && (
+            <OIChart
+              current={filteredCurrent}
+              previous={previous}
+              atm={atm}
+              mode={status?.mode}
+              showOI={showOI}
+              currentTime={current?.timestamp}
+              prevTime={previous?.timestamp}
+            />
+          )}
+          {view === "straddle" && (
+            <div className="p-3">
+              <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={straddlePollMs} />
+            </div>
+          )}
+          {view === "index-events" && (
+            <EventRiskWidget activeIndex={activeIndex} />
+          )}
+        </div>
+
+        {suggestion && (
+          <div
+            className="shrink-0 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950"
+            data-testid="right-panel-suggestion"
+          >
+            {suggestion}
           </div>
         )}
-        {view === "index-events" && (
-          <EventRiskWidget activeIndex={activeIndex} />
-        )}
       </div>
-      {/* Persistent suggestion block — stays regardless of the selected view.
-          Only disappears when the whole right panel is closed. */}
-      {suggestion && (
-        <div className="border-t border-slate-200 dark:border-slate-700 p-3 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950" data-testid="right-panel-suggestion">
-          {suggestion}
-        </div>
-      )}
     </div>
   );
 }

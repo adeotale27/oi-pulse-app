@@ -130,6 +130,7 @@ export default function Sidebar({
   selectedExpiry,
   onChangeExpiry,
   showStrikeRange = false,
+  lastUpdatedByIndex = {},
 }) {
   const price = current?.price ?? 0;
   // Admin note section state (below the big clock). Publicly visible; editable by admin.
@@ -208,6 +209,28 @@ export default function Sidebar({
 
   const step = STRIKE_STEP[activeIndex] || 50;
 
+  const fmtPull = (iso) => {
+    if (!iso) return null;
+    try {
+      return new Date(iso).toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const ageSec = (iso) => {
+    if (!iso) return null;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return null;
+    return Math.max(0, Math.round((Date.now() - t) / 1000));
+  };
+
   return (
     <aside
       data-testid="sidebar"
@@ -220,20 +243,42 @@ export default function Sidebar({
           {indices.map((idx) => {
             const active = idx === activeIndex;
             const theme = INDEX_THEME[idx] || INDEX_THEME.NIFTY;
+            const pulled = lastUpdatedByIndex?.[idx];
+            const age = ageSec(pulled);
+            const fresh = age != null && age <= 45;
+            const stale = age != null && age > 90;
             return (
               <button
                 key={idx}
                 data-testid={`btn-index-${idx}`}
                 onClick={() => onChangeIndex(idx)}
-                className={`relative text-[11px] font-semibold rounded-md py-2 px-1 border transition-all leading-tight whitespace-nowrap ${
+                className={`relative text-[11px] font-semibold rounded-md py-2 px-1 border transition-all leading-tight ${
                   active ? theme.activeCls : theme.idleCls
                 }`}
+                title={pulled ? `Last OI ${fmtPull(pulled)} IST` : "No warm snapshot yet"}
               >
                 <span className={`absolute top-1 left-1.5 w-1.5 h-1.5 rounded-full ${theme.dot} ${active ? "opacity-100" : "opacity-70"}`} />
-                {theme.label}
+                <div className="whitespace-nowrap">{theme.label}</div>
+                <div
+                  data-testid={`index-updated-${idx}`}
+                  className={`mt-1 text-[9px] font-mono font-medium tracking-tight ${
+                    active
+                      ? "text-white/85"
+                      : fresh
+                        ? "text-emerald-700"
+                        : stale
+                          ? "text-amber-700"
+                          : "text-slate-500"
+                  }`}
+                >
+                  {pulled ? fmtPull(pulled) : "—"}
+                </div>
               </button>
             );
           })}
+        </div>
+        <div className="mt-1.5 text-[9px] text-slate-400">
+          Last OI pull (IST) · green = warm cache
         </div>
 
         {current && (

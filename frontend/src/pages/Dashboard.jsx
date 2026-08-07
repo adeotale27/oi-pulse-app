@@ -6,6 +6,7 @@ import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import GuestBanner from "@/components/GuestBanner";
 import MarketStatusBanner from "@/components/MarketStatusBanner";
+import KiteTokenBanner from "@/components/KiteTokenBanner";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
@@ -171,6 +172,7 @@ export default function Dashboard() {
   const [showOI, setShowOI] = useState(true);
   const [replayOpen, setReplayOpen] = useState(false);
   const [lastPulledAt, setLastPulledAt] = useState(null);
+  const [lastUpdatedByIndex, setLastUpdatedByIndex] = useState({});
   const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
   const [pulsePull, setPulsePull] = useState(false); // green flash on each fresh pull
   const [oiSettings, setOiSettings] = useState(loadOISettings());
@@ -427,6 +429,13 @@ export default function Dashboard() {
             expiry: exp || null,
             at: Date.now(),
           };
+          if (data.current?.timestamp) {
+            setLastUpdatedByIndex((prev) => (
+              prev[idx] === data.current.timestamp
+                ? prev
+                : { ...prev, [idx]: data.current.timestamp }
+            ));
+          }
           return { idx, data, ok: true };
         } catch (e) {
           console.error(`loadOI(${idx}) failed`, e);
@@ -1142,7 +1151,7 @@ export default function Dashboard() {
   }, [alerts, activeIndex, pushActivity]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
       {authState.is_guest && (
         <GuestBanner
           guestName={authState.guest_name}
@@ -1150,6 +1159,11 @@ export default function Dashboard() {
         />
       )}
       <MarketStatusBanner market={status?.market} lastPulledAt={lastPulledAt} />
+      <KiteTokenBanner
+        status={status}
+        isAdmin={authState.is_admin}
+        onOpenCreds={() => setCredsOpen(true)}
+      />
       <Header
         status={status}
         current={current}
@@ -1176,7 +1190,7 @@ export default function Dashboard() {
         spotPrices={liveSpotPrices}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {!compact && (
           <Sidebar
             indices={enabledIndices.length ? enabledIndices : INDICES}
@@ -1194,10 +1208,11 @@ export default function Dashboard() {
             selectedExpiry={selectedExpiry}
             onChangeExpiry={handleChangeExpiry}
             showStrikeRange={showStrikeRange}
+            lastUpdatedByIndex={lastUpdatedByIndex}
           />
         )}
 
-        <main className="flex-1 overflow-auto p-5 dark:bg-slate-950 dark:text-slate-200">
+        <main className="flex-1 min-h-0 overflow-auto p-5 dark:bg-slate-950 dark:text-slate-200">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
               <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 dark:border-slate-700 rounded-none justify-start">
@@ -1231,8 +1246,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full">
-              <Panel defaultSize={rightPanelOpen ? 72 : 100} minSize={50} className={flash ? "alert-flash" : ""}>
+            <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
+              <Panel defaultSize={rightPanelOpen ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div className="h-full space-y-4 pr-2">
                 {changeSummary && (
                   <SentimentBar
@@ -1716,7 +1731,7 @@ export default function Dashboard() {
               {rightPanelOpen && (
                 <>
                   <PanelResizeHandle className="w-1 mx-1 bg-slate-200 hover:bg-sky-400 transition-colors cursor-col-resize rounded-full" data-testid="right-panel-handle" />
-                  <Panel defaultSize={28} minSize={18} maxSize={55}>
+                  <Panel defaultSize={28} minSize={18} maxSize={55} className="min-h-0 overflow-hidden">
                     <RightPanel
                       view={rightPanelView}
                       onChangeView={setRightPanelView}

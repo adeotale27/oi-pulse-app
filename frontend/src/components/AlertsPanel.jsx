@@ -22,7 +22,7 @@ export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: sho
   }, [alerts, filterEnabled, activeIndex]);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-md h-full flex flex-col" data-testid="alerts-panel">
+    <div className="bg-white border border-slate-200 rounded-md h-full min-h-0 flex flex-col" data-testid="alerts-panel">
       <div className="p-3 border-b border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-slate-600" />
@@ -65,7 +65,7 @@ export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: sho
           )}
         </div>
       </div>
-      <ScrollArea className="flex-1 max-h-[420px]">
+      <ScrollArea className="flex-1 min-h-0 h-full">
         <div className="p-2 space-y-2">
           {filtered.length === 0 ? (
             <div className="text-xs text-slate-400 text-center py-6">

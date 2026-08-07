@@ -90,9 +90,22 @@ export default function SuggestionBox({
     }
 
     // ---- Concrete OI facts (always prefer measurable signals) ----
+    // ATM band first — what traders glance at on the selected timeframe.
+    const atmCe = marketIntel.atmCeDelta;
+    const atmPe = marketIntel.atmPeDelta;
+    if (atmCe != null || atmPe != null) {
+      const aCe = atmCe ?? 0;
+      const aPe = atmPe ?? 0;
+      const atmLead = aPe - aCe;
+      bullets.push(
+        `ATM band ΔOI: PE ${fmtOi(aPe)} · CE ${fmtOi(aCe)} ` +
+          `(${atmLead >= 0 ? "puts leading near ATM" : "calls leading near ATM"}).`
+      );
+    }
+
     if (changeSummary) {
       bullets.push(
-        `This window: Put ΔOI ${fmtOi(peDelta)} · Call ΔOI ${fmtOi(ceDelta)} ` +
+        `Full window: Put ΔOI ${fmtOi(peDelta)} · Call ΔOI ${fmtOi(ceDelta)} ` +
           `(${netWriters >= 0 ? "puts leading" : "calls leading"}).`
       );
     }
@@ -134,12 +147,10 @@ export default function SuggestionBox({
         bullets.push(`India VIX +${changePct.toFixed(1)}% vs session open — cut size; avoid naked shorts.`);
       } else if (changePct < -5) {
         bullets.push(`India VIX ${changePct.toFixed(1)}% vs session open — vol crushing; existing shorts get a tailwind.`);
-      } else {
-        bullets.push(`India VIX ${vixNow.toFixed(1)} (${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}% vs open).`);
       }
     }
 
-    // Keep card scannable
+    // Keep card scannable — ATM + 3–4 supporting lines
     return { headline, bullets: bullets.slice(0, 5), tone, Icon };
   }, [marketIntel, changeSummary, spot, vixNow, vixOpen]);
 
