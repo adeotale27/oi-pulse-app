@@ -9,12 +9,27 @@ import AccessControlModal from "@/components/AccessControlModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 /**
- * AdminControls — compact widget shown in the header (admin only).
- *  - Public Access toggle (auto-off at configured market close IST server-side)
- *  - Admin menu: Access Control, Change Password, Sign out
+ * AdminControls — Public Access toggle + Admin menu.
+ *
+ * `assumedAdmin` — when parent (Header) already knows the user is admin,
+ * render immediately instead of waiting on a second /auth/state fetch.
+ * Critical on mobile Tools after market close (quiescent polling / dedupe
+ * previously left this widget as null).
  */
-export default function AdminControls({ variant = "inline" }) {
-  const [state, setState] = useState(null);
+export default function AdminControls({
+  variant = "inline",
+  assumedAdmin = false,
+  publicAccessOpen = null,
+}) {
+  const [state, setState] = useState(() => (
+    assumedAdmin
+      ? {
+          is_admin: true,
+          public_access_open: !!publicAccessOpen,
+          pending_access_count: 0,
+        }
+      : null
+  ));
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
@@ -25,11 +40,35 @@ export default function AdminControls({ variant = "inline" }) {
       const { data } = await api.get("/auth/state");
       setState(data);
     } catch (_) {
-      // ignore
+      // keep assumedAdmin seed if the fetch fails while closed
+      if (assumedAdmin) {
+        setState((prev) => prev || {
+          is_admin: true,
+          public_access_open: !!publicAccessOpen,
+          pending_access_count: 0,
+        });
+      }
     }
-  }, []);
+  }, [assumedAdmin, publicAccessOpen]);
 
-  useQuiescentAwarePolling(refresh, 30_000, [refresh], { immediate: true, dedupeKey: "admin-controls" });
+  // Auth must keep working after EOD — never gate on market hours.
+  useQuiescentAwarePolling(refresh, 30_000, [refresh], {
+    immediate: true,
+    allowDuringQuiescent: true,
+    dedupeKey: variant === "panel" ? "admin-controls-panel" : "admin-controls-inline",
+  });
+
+  // Sync public flag from parent if we only have the seed state.
+  useEffect(() => {
+    if (publicAccessOpen == null) return;
+    setState((prev) => {
+      if (!prev?.is_admin) return prev;
+      if (prev.public_access_open === !!publicAccessOpen) return prev;
+      // Only seed when parent provided a definite value and we haven't fetched yet
+      // or values drifted — prefer server state once refresh lands.
+      return { ...prev, public_access_open: !!publicAccessOpen };
+    });
+  }, [publicAccessOpen]);
 
   useEffect(() => {
     if (!state?.is_admin) return;
@@ -51,15 +90,23 @@ export default function AdminControls({ variant = "inline" }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
 
-  if (!state?.is_admin) return null;
+  const isAdmin = !!(state?.is_admin || assumedAdmin);
+  if (!isAdmin) {
+    if (assumedAdmin) {
+      // Shouldn't happen — seed above — but never blank the Tools panel.
+    } else {
+      return null;
+    }
+  }
 
-  const pending = Number(state.pending_access_count || 0);
+  const publicOn = !!(state?.public_access_open);
+  const pending = Number(state?.pending_access_count || 0);
 
   const togglePublic = async () => {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/public-access", {
-        open: !state.public_access_open,
+        open: !publicOn,
       });
       toast.success(
         data.open
@@ -69,9 +116,6 @@ export default function AdminControls({ variant = "inline" }) {
           : "Public access OFF — all guests signed out"
       );
       await refresh();
-      if (data.open && pending === 0) {
-        // Nudge admin toward Access Control when turning public on
-      }
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Toggle failed");
     } finally {
@@ -108,17 +152,17 @@ export default function AdminControls({ variant = "inline" }) {
       data-variant={variant}
     >
       <div className={`flex items-center gap-2 text-xs ${isPanel ? "justify-between w-full" : ""}`}>
-        <div className="flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5 text-slate-500" />
-          <span className="text-slate-600 dark:text-slate-300 font-medium">Public access</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+          <span className="text-slate-600 dark:text-slate-300 font-medium truncate">Public access</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-[10px] font-semibold uppercase tracking-wide ${state.public_access_open ? "text-emerald-600" : "text-slate-400"}`}>
-            {state.public_access_open ? "ON" : "OFF"}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
+            {publicOn ? "ON" : "OFF"}
           </span>
           <Switch
             data-testid="admin-public-toggle"
-            checked={!!state.public_access_open}
+            checked={publicOn}
             onCheckedChange={togglePublic}
             disabled={busy}
           />
@@ -152,7 +196,7 @@ export default function AdminControls({ variant = "inline" }) {
         {menuOpen && (
           <div
             data-testid="admin-menu"
-            className={`absolute ${isPanel ? "left-0 right-0" : "right-0"} top-full mt-1 ${isPanel ? "w-full" : "w-52"} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-sm shadow-md z-50 text-sm`}
+            className={`absolute ${isPanel ? "left-0 right-0" : "right-0"} top-full mt-1 ${isPanel ? "w-full" : "w-52"} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-sm shadow-md z-[60] text-sm`}
           >
             <button
               data-testid="admin-menu-guests"

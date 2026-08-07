@@ -47,8 +47,8 @@ export default function Header({
   const mode = status?.mode ?? "offline";
 
   // Auth state — used to hide sensitive buttons from guests.
+  // Must keep refreshing after EOD (Tools / Public toggle still needed).
   const [authState, setAuthState] = useState({ is_admin: false });
-  // Quiescent-aware auth state refresh
   {
     let alive = true;
     const load = async () => {
@@ -56,12 +56,10 @@ export default function Header({
         const { data } = await api.get("/auth/state");
         if (alive) {
           setAuthState(data);
-          try { console.debug('[Header] auth_state fetched', data); } catch (_) {}
         }
       } catch (err) { console.error('[Header] auth_state fetch failed', err); }
     };
-    useQuiescentAwarePolling(load, 60_000, [], { immediate: true });
-    // ensure we don't set state after unmount
+    useQuiescentAwarePolling(load, 60_000, [], { immediate: true, allowDuringQuiescent: true, dedupeKey: "header-auth" });
     useEffect(() => () => { alive = false; }, []);
   }
   // Dev override: allow forcing admin UI without X-Admin-Token for local debugging.

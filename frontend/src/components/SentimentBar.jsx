@@ -1,9 +1,33 @@
 /**
- * Sentiment bar - shows a thick horizontal bar whose color/intensity
- * indicates bullish (green, PE OI building) vs bearish (red, CE OI building)
- * pressure based on the aggregate OI change vs previous snapshot.
+ * Sentiment bar — live bullish/bearish pressure from CE/PE OI change.
+ * After market close: do NOT show live "Bullish/Bearish pressure" — show a
+ * neutral market-closed strip so traders know OI bias is no longer updating.
  */
-export default function SentimentBar({ ceDelta, peDelta, timeframeMin }) {
+export default function SentimentBar({ ceDelta, peDelta, timeframeMin, marketOpen = true }) {
+  if (!marketOpen) {
+    return (
+      <div
+        className="rounded-sm border border-slate-200 dark:border-slate-700 overflow-hidden"
+        data-testid="sentiment-bar"
+        data-market="closed"
+      >
+        <div className="px-3 py-2 flex items-center justify-between bg-slate-100 dark:bg-slate-800/80">
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <span className="w-2 h-2 rounded-full bg-slate-400" />
+            <span className="text-slate-700 dark:text-slate-200">Market closed</span>
+            <span className="text-[10px] text-slate-500 font-mono-data">
+              · last session bias paused — OI not updating
+            </span>
+          </div>
+          <span className="font-mono-data text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            EOD
+          </span>
+        </div>
+        <div className="h-1.5 bg-slate-200 dark:bg-slate-700" />
+      </div>
+    );
+  }
+
   // net = peDelta - ceDelta.
   //   >0 => put writers dominating (bullish)
   //   <0 => call writers dominating (bearish)
@@ -13,16 +37,17 @@ export default function SentimentBar({ ceDelta, peDelta, timeframeMin }) {
   const strength = Math.min(1, Math.abs(ratio));
   const isBullish = ratio >= 0;
 
-  // Interpolate: 0 strength = pale, 1 strength = deep saturated
   const bg = isBullish
     ? `rgba(22, 163, 74, ${0.08 + 0.55 * strength})`
     : `rgba(220, 38, 38, ${0.08 + 0.55 * strength})`;
   const barColor = isBullish ? "#16A34A" : "#DC2626";
-  const label = isBullish ? "Bullish pressure · Put writers dominating" : "Bearish pressure · Call writers dominating";
+  const label = isBullish
+    ? "Bullish pressure · Put writers dominating"
+    : "Bearish pressure · Call writers dominating";
   const pct = (strength * 100).toFixed(0);
 
   return (
-    <div className="rounded-sm border border-slate-200 overflow-hidden" data-testid="sentiment-bar">
+    <div className="rounded-sm border border-slate-200 overflow-hidden" data-testid="sentiment-bar" data-market="open">
       <div className="px-3 py-2 flex items-center justify-between" style={{ background: bg }}>
         <div className="flex items-center gap-2 text-xs font-medium">
           <span className="w-2 h-2 rounded-full" style={{ background: barColor }} />
