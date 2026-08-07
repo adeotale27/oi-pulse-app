@@ -40,8 +40,13 @@ export default function GuestDirectoryModal({ open, onOpenChange }) {
     } finally { setLoading(false); }
   };
 
-  // Quiescent-aware guest directory refresh
-  useQuiescentAwarePolling(() => load(sinceHours), 15_000, [open, sinceHours], { immediate: true });
+  // Quiescent-aware guest directory refresh — only while the modal is open.
+  useQuiescentAwarePolling(
+    () => { if (open) return load(sinceHours); },
+    15_000,
+    [open, sinceHours],
+    { immediate: true, dedupeKey: "guest-directory" },
+  );
 
   const activeCount = rows.filter((r) => r.active).length;
 

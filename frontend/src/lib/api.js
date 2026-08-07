@@ -158,11 +158,25 @@ const authStorage = {
   },
 };
 
-// Attach admin & guest tokens (if any) to every request.
+export function clearGuestAuth() {
+  authStorage.remove("oi_guest_token");
+  authStorage.remove("oi_guest_name");
+  authStorage.remove("oi_guest_expires_at");
+}
+
+export function clearAdminAuth() {
+  authStorage.remove("oi_admin_token");
+}
+
+// Attach admin OR guest token (mutually exclusive — admin wins).
 api.interceptors.request.use((config) => {
   try {
     const at = authStorage.get("oi_admin_token");
-    if (at) config.headers["X-Admin-Token"] = at;
+    if (at) {
+      config.headers["X-Admin-Token"] = at;
+      // Do not also send a leftover guest token — confuses auth/state + last_seen.
+      return config;
+    }
     const gt = authStorage.get("oi_guest_token");
     if (gt) config.headers["X-Guest-Token"] = gt;
 
@@ -183,9 +197,8 @@ api.interceptors.response.use(
   (err) => {
     if (err?.response?.status === 401) {
       try {
-        authStorage.remove("oi_admin_token");
-        authStorage.remove("oi_guest_token");
-        authStorage.remove("oi_guest_name");
+        clearAdminAuth();
+        clearGuestAuth();
       } catch (_) { /* ignore */ }
     }
     return Promise.reject(err);
@@ -194,8 +207,12 @@ api.interceptors.response.use(
 
 export const fetchStatus = () => api.get("/status").then((r) => r.data);
 export const fetchOI = (idx) => api.get(`/oi/${idx}`).then((r) => r.data);
-export const fetchOIChange = (idx, minutes) =>
-  api.get(`/oi/${idx}/change`, { params: { minutes } }).then((r) => r.data);
+export const fetchOIChange = (idx, minutes, opts = {}) => {
+  const params = { minutes };
+  if (opts.expiry) params.expiry = opts.expiry;
+  if (opts.also) params.also = Array.isArray(opts.also) ? opts.also.join(",") : opts.also;
+  return api.get(`/oi/${idx}/change`, { params }).then((r) => r.data);
+};
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);

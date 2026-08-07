@@ -114,8 +114,8 @@ function formatDelta(v) {
 // Minutes elapsed since today's NSE market open (9:15 AM IST), CLAMPED at market
 // close (3:30 PM IST). During market hours this returns the live "9:15 → now"
 // window; after 3:30 PM it caps at 375 min so "Full Day" stays 9:15 – 3:30.
-// Before 9:15 AM (or on weekends/holidays), we fall back to yesterday's open so
-// the request still resolves to a valid earlier timestamp.
+// Before 9:15 AM (or on weekends/holidays), return the full prior session length
+// (375) — NEVER ~24h, which previously pulled yesterday's OI into today's Δ.
 const MARKET_OPEN_MIN = 9 * 60 + 15;   // 9:15 AM IST
 const MARKET_CLOSE_MIN = 15 * 60 + 30; // 3:30 PM IST
 function minutesSinceMarketOpenIST() {
@@ -128,17 +128,14 @@ function minutesSinceMarketOpenIST() {
   const m = parseInt(parts.find((p) => p.type === "minute").value, 10);
   const s = parseInt(parts.find((p) => p.type === "second").value, 10);
   const nowMin = h * 60 + m + s / 60;
+  const sessionLen = MARKET_CLOSE_MIN - MARKET_OPEN_MIN; // 375
 
   if (nowMin >= MARKET_OPEN_MIN && nowMin <= MARKET_CLOSE_MIN) {
-    // Market open → 9:15 to now.
-    return Math.ceil(nowMin - MARKET_OPEN_MIN);
+    return Math.max(1, Math.ceil(nowMin - MARKET_OPEN_MIN));
   }
-  if (nowMin > MARKET_CLOSE_MIN) {
-    // Post-close → clamp to full session length.
-    return MARKET_CLOSE_MIN - MARKET_OPEN_MIN; // 375 min
-  }
-  // Before market open today: use previous day's open (~24h earlier).
-  return Math.ceil(24 * 60 + (nowMin - MARKET_OPEN_MIN));
+  // Pre-open / post-close / weekend: request a full session window. The backend
+  // clamps lookback to the current (or last) session open anyway.
+  return sessionLen;
 }
 
 // Turn a timeframe pill key into a concrete "minutes" value the API accepts.
@@ -266,7 +263,8 @@ export default function Dashboard() {
           ...prevCurrent,
           price: match.price != null ? match.price : prevCurrent.price,
           atm: match.atm != null ? match.atm : prevCurrent.atm,
-          timestamp: match.timestamp || prevCurrent.timestamp,
+          // Do NOT overwrite OI snapshot timestamp with spot-tick time —
+          // that remounted the chart every tick and made "OI pulled" lag/lie.
         };
       });
     });
@@ -319,55 +317,68 @@ export default function Dashboard() {
     } catch (e) {
       console.error("loadStatus failed", e);
     }
-    // Also refresh auth state so we can hide admin controls for guests.
-    try {
-      const { data } = await api.get("/auth/state");
-      setAuthState(data);
-    } catch (_) { /* ignore */ }
+    // Auth state is owned by AuthGate / Header — do not re-fetch on every OI poll.
   }, []);
 
   const [historyReady, setHistoryReady] = useState(true);
   const [availableHistoryMin, setAvailableHistoryMin] = useState(0);
+  const [changeBundle, setChangeBundle] = useState(null);
+  const [expiryReady, setExpiryReady] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
   const availableFetchedAtRef = useRef(Date.now());
+  const oiReqGenRef = useRef(0);
   const [warmingTick, setWarmingTick] = useState(Date.now());
   useEffect(() => {
     if (historyReady) return undefined;
     const id = setInterval(() => setWarmingTick(Date.now()), 1000);
     return () => clearInterval(id);
   }, [historyReady]);
-  // Poll OI + previous for the active index
+  // Poll OI + previous for the active index (batched with huge-shift windows).
   const loadOI = useCallback(async () => {
+    // Gate until expiries for this index are resolved — prevents sending the
+    // previous index's expiry and mutating wrong-chain data.
+    if (!expiryReady) return;
+    const gen = ++oiReqGenRef.current;
+    const reqIndex = activeIndex;
+    const reqExpiry = selectedExpiry;
     try {
-      const params = { minutes: resolveMinutes(timeframe) };
-      if (selectedExpiry) params.expiry = selectedExpiry;
-      const { data } = await api.get(`/oi/${activeIndex}/change`, { params });
+      const also = (oiSettings.hugeShiftWindows || [1, 3, 5]).join(",");
+      const data = await fetchOIChange(reqIndex, resolveMinutes(timeframe), {
+        expiry: reqExpiry || undefined,
+        also,
+      });
+      if (gen !== oiReqGenRef.current) return; // stale response
+      if (reqIndex !== activeIndexRef.current) return;
       setCurrent(data.current);
       setPrevious(data.previous);
       setHistoryReady(data.history_ready !== false);
       setAvailableHistoryMin(Number(data.available_history_minutes || 0));
       availableFetchedAtRef.current = Date.now();
-      // capture data_status from the API so the UI can display whether this is
-      // live data or historical/offline data (and show the date it's for).
       setDataStatus(data.data_status || null);
+      setChangeBundle({
+        current: data.current,
+        also_windows: data.also_windows || {},
+        at: Date.now(),
+      });
       // `lastPulledAt` reflects the ACTUAL market-tick timestamp of the snapshot,
       // not client wall-clock — so once the market closes at 3:30 PM IST it stays
       // pinned to the final tick (which is what the user wants).
       setLastPulledAt(data.current?.timestamp || new Date().toISOString());
-      // Visual "just pulled" pulse on the chart card so users can see the
-      // bars refresh at each 30-second cycle.
       setPulsePull(true);
       setTimeout(() => setPulsePull(false), 900);
     } catch (e) {
+      if (gen !== oiReqGenRef.current) return;
       console.error("loadOI failed", e);
     }
-  }, [activeIndex, timeframe, selectedExpiry]);
+  }, [activeIndex, timeframe, selectedExpiry, expiryReady, oiSettings.hugeShiftWindows]);
 
   // Load expiries for the active index
   useEffect(() => {
     let cancelled = false;
+    setExpiryReady(false);
+    setSelectedExpiry(null); // clear immediately so we never send the old index's expiry
     api.get(`/expiries/${activeIndex}`).then((r) => {
       if (cancelled) return;
       const list = r.data.expiries || [];
@@ -375,9 +386,13 @@ export default function Dashboard() {
       setExpiries(list);
       setExpiriesMeta(meta);
       setExpiriesNote(r.data.note || null);
-      // reset selected expiry when switching index
-      setSelectedExpiry(list[0] || null);
-    }).catch((e) => console.error("loadExpiries failed", e));
+      const selected = r.data.selected && list.includes(r.data.selected) ? r.data.selected : (list[0] || null);
+      setSelectedExpiry(selected);
+      setExpiryReady(true);
+    }).catch((e) => {
+      console.error("loadExpiries failed", e);
+      if (!cancelled) setExpiryReady(true); // allow unscoped fetch as fallback
+    });
     return () => { cancelled = true; };
   }, [activeIndex]);
 
@@ -441,11 +456,15 @@ export default function Dashboard() {
     try {
       const res = await api.get("/settings");
       if (res.data) {
+        // Server poll interval is source of truth for ops, but only apply when
+        // it actually changes — avoid restarting pollers every 60s needlessly.
         if (typeof res.data.oi_poll_interval_seconds === "number") {
-          setPollMs(res.data.oi_poll_interval_seconds * 1000);
+          const next = res.data.oi_poll_interval_seconds * 1000;
+          setPollMs((prev) => (prev === next ? prev : next));
         }
         if (res.data.straddle_poll_interval_seconds) {
-          setStraddlePollMs(res.data.straddle_poll_interval_seconds * 1000);
+          const next = res.data.straddle_poll_interval_seconds * 1000;
+          setStraddlePollMs((prev) => (prev === next ? prev : next));
         }
         if (Array.isArray(res.data.visible_pages)) {
           setVisiblePages(res.data.visible_pages);
@@ -456,30 +475,45 @@ export default function Dashboard() {
     }
   }, []);
 
-  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status });
+  // Auth state — once on mount + every 60s (not every OI poll).
+  useEffect(() => {
+    let cancelled = false;
+    const refreshAuth = async () => {
+      try {
+        const { data } = await api.get("/auth/state");
+        if (!cancelled) setAuthState(data);
+      } catch (_) { /* ignore */ }
+    };
+    refreshAuth();
+    const id = setInterval(refreshAuth, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
-  useQuiescentAwarePolling(loadStatus, pollMs, [loadStatus, pollMs, status?.market?.is_market_open], { status });
-  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status });
+  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings" });
+
+  useQuiescentAwarePolling(loadStatus, pollMs, [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status" });
+  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open, expiryReady], { status, dedupeKey: "dash-oi" });
   // Force an IMMEDIATE refetch whenever the user picks a different timeframe,
   // index, or expiry. `useQuiescentAwarePolling` only fires the callback on
   // the FIRST mount, so without this the chart would wait up to `pollMs`
   // (15 s by default) before showing the new selection's data.
-  const oiCtxRef = useRef({ timeframe, activeIndex, selectedExpiry });
+  const oiCtxRef = useRef({ timeframe, activeIndex, selectedExpiry, expiryReady });
   useEffect(() => {
     const prev = oiCtxRef.current;
-    if (prev.timeframe === timeframe && prev.activeIndex === activeIndex && prev.selectedExpiry === selectedExpiry) return;
-    oiCtxRef.current = { timeframe, activeIndex, selectedExpiry };
-    loadOI();
-  }, [timeframe, activeIndex, selectedExpiry, loadOI]);
+    if (prev.timeframe === timeframe && prev.activeIndex === activeIndex && prev.selectedExpiry === selectedExpiry && prev.expiryReady === expiryReady) return;
+    oiCtxRef.current = { timeframe, activeIndex, selectedExpiry, expiryReady };
+    if (expiryReady) loadOI();
+  }, [timeframe, activeIndex, selectedExpiry, expiryReady, loadOI]);
   useQuiescentAwarePolling(
     async () => {
-      if (authState.is_admin || visiblePages.includes("alerts")) {
+      // Only poll alerts when the alerts tab (or right-panel alerts) is relevant.
+      if (authState.is_admin || activeTab === "alerts" || rightPanelView === "alerts") {
         await loadAlerts();
       }
     },
     5000,
-    [loadAlerts, authState.is_admin, visiblePages, status?.market?.is_market_open],
-    { status },
+    [loadAlerts, authState.is_admin, activeTab, rightPanelView, status?.market?.is_market_open],
+    { status, dedupeKey: "dash-alerts" },
   );
 
   // When index changes, immediately clear current/previous & strike range so
@@ -795,16 +829,14 @@ export default function Dashboard() {
 
   useHugeShiftMonitor({
     index: activeIndex,
-    expiry: selectedExpiry,
     windows: oiSettings.hugeShiftWindows,
     thresholdAbs: oiSettings.hugeShiftAbs,
-    pollMs: pollMs,
     cooldownMs: 120000,
     onShift: handleHugeShift,
-    // Only run huge-shift monitoring while the market is open — outside the
-    // 9:15–3:30 IST window the underlying data is frozen and any "shift" would
-    // be a false positive.
+    // Only evaluate while market is open — outside the window data is frozen.
     enabled: !(status?.market && status.market.is_market_open === false),
+    // Fed from the main loadOI batch (`also=` windows) — no extra API calls.
+    changeBundle,
   });
 
   // -------- Per-strike activity detector (gamma wall / institution / fast velocity) --------
@@ -1201,7 +1233,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <OIChart
-                      key={`${activeIndex}-${current?.timestamp || 'x'}`}
+                      key={`${activeIndex}-${lastPulledAt || "x"}`}
                       current={filteredCurrent}
                       previous={replayFrame || previous}
                       atm={current?.atm}
@@ -1518,7 +1550,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="text-slate-500">
-                    Auto-refresh every 30s ·{" "}
+                    Auto-refresh every {Math.round(pollMs / 1000)}s ·{" "}
                     <span className="font-mono-data">
                       {status?.mode === "kite" ? "Live" : "Offline / Historical data"}
                     </span>

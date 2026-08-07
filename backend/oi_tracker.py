@@ -168,7 +168,11 @@ class OITracker:
             "straddle_store_errors": 0,
             "alert_eval_errors": 0,
             "successful_snapshots": 0,
+            "single_flight_refreshes": 0,
         })
+        # Per-index single-flight refresh locks so /change never stampedes Kite.
+        self._refresh_locks: Dict[str, asyncio.Lock] = {i: asyncio.Lock() for i in INDICES}
+        self._refresh_tasks: Dict[str, Optional[asyncio.Task]] = {i: None for i in INDICES}
 
     async def load_settings(self):
         doc = await self.db.settings.find_one({"_id": "alerts"})
@@ -202,7 +206,9 @@ class OITracker:
         if index_name:
             doc.setdefault("index", index_name)
         doc["timestamp"] = doc.get("timestamp") or datetime.now(timezone.utc).isoformat()
-        doc["created_at"] = datetime.now(timezone.utc).isoformat()
+        # Never rewrite created_at on re-upsert — keep first-seen time for retention/debug.
+        created_at = datetime.now(timezone.utc).isoformat()
+        set_doc = {k: v for k, v in doc.items() if k != "created_at"}
         try:
             await self.db.oi_snapshots.update_one(
                 {
@@ -210,7 +216,7 @@ class OITracker:
                     "timestamp": doc.get("timestamp"),
                     "expiry": doc.get("expiry"),
                 },
-                {"$set": doc},
+                {"$set": set_doc, "$setOnInsert": {"created_at": created_at}},
                 upsert=True,
             )
         except Exception as e:
@@ -223,6 +229,56 @@ class OITracker:
                 extra={"metrics": dict(self.metrics)},
             )
             raise
+
+    def snapshot_age_seconds(self, snap: Optional[Dict[str, Any]]) -> Optional[float]:
+        if not snap or not snap.get("timestamp"):
+            return None
+        try:
+            ts = datetime.fromisoformat(snap["timestamp"])
+            return (datetime.now(timezone.utc) - ts).total_seconds()
+        except Exception:
+            return None
+
+    def request_background_refresh(self, index_name: str, expiry: Optional[str] = None) -> None:
+        """Kick a single-flight background Kite refresh without blocking callers.
+
+        Used by /change when the in-memory cache is stale. Only one refresh runs
+        per index at a time; additional callers reuse the same task.
+        """
+        idx = index_name.upper()
+        if idx not in INDICES:
+            return
+        if self.mode != "kite" or not self.kite_service:
+            return
+        if not (FORCE_ALWAYS_POLL or is_market_open()):
+            return
+        existing = self._refresh_tasks.get(idx)
+        if existing and not existing.done():
+            return
+
+        async def _do_refresh():
+            async with self._refresh_locks[idx]:
+                age = self.snapshot_age_seconds(self.last_snapshot.get(idx))
+                if age is not None and age <= 15:
+                    return
+                exp = expiry if expiry is not None else self.selected_expiry.get(idx)
+                try:
+                    self.metrics["single_flight_refreshes"] += 1
+                    snap = await asyncio.wait_for(
+                        asyncio.to_thread(self.kite_service.get_snapshot, idx, exp),
+                        timeout=10.0,
+                    )
+                    if snap:
+                        snap["mode"] = self.mode
+                        self.last_snapshot[idx] = snap
+                        try:
+                            await self.persist_snapshot(snap, index_name=idx)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.warning("[request_background_refresh] %s failed: %s", idx, e)
+
+        self._refresh_tasks[idx] = asyncio.create_task(_do_refresh())
 
     async def load_credentials(self):
         """Load saved kite credentials from DB and initialize KiteService if present.
@@ -365,7 +421,9 @@ class OITracker:
           - at 09:46:47 → sleep until 09:47:00 (13s)
           - at 09:47:00 → sleep until 09:47:15 (15s)
         """
-        now = datetime.now()
+        # Use IST-aware clock so boundary alignment matches market timestamps
+        # regardless of the server's local timezone.
+        now = now_ist()
         now_seconds = now.second + (now.microsecond / 1_000_000.0)
         remainder = now_seconds % interval_seconds
         wait = interval_seconds - remainder
@@ -536,19 +594,6 @@ class OITracker:
                 # The persist_snapshot helper already logs and updates metrics.
                 pass
 
-            # keep only last SNAPSHOT_RETENTION_HOURS (default 24) so full day session is preserved
-            try:
-                cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
-                await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
-            except Exception as e:
-                self.metrics["retention_prune_errors"] += 1
-                logger.debug(
-                    "[_poll_once] retention prune failed: %s",
-                    e,
-                    exc_info=True,
-                    extra={"metrics": dict(self.metrics)},
-                )
-
             # persist straddle samples for the chosen expiry
             try:
                 await self._store_straddle_sample(idx, snap)
@@ -571,6 +616,19 @@ class OITracker:
                     exc_info=True,
                     extra={"metrics": dict(self.metrics)},
                 )
+
+        # Retention prune once per poll cycle (not once per index).
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
+            await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
+        except Exception as e:
+            self.metrics["retention_prune_errors"] += 1
+            logger.debug(
+                "[_poll_once] retention prune failed: %s",
+                e,
+                exc_info=True,
+                extra={"metrics": dict(self.metrics)},
+            )
 
         self.last_updated_at = datetime.now(timezone.utc).isoformat()
 

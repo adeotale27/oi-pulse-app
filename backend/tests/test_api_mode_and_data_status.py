@@ -23,6 +23,16 @@ class FakeTracker:
         self.mode = mode
     def _get_service(self):
         return None
+    def snapshot_age_seconds(self, snap):
+        if not snap or not snap.get("timestamp"):
+            return None
+        try:
+            ts = datetime.fromisoformat(snap["timestamp"])
+            return (datetime.now(timezone.utc) - ts).total_seconds()
+        except Exception:
+            return None
+    def request_background_refresh(self, index_name, expiry=None):
+        return None
 
 
 class FakeCollection:
@@ -58,9 +68,9 @@ def test_mode_endpoint_accepts_valid_and_rejects_invalid(monkeypatch):
 
 def test_get_oi_change_offline_returns_data_status_and_anchor_prev(monkeypatch):
     ft = FakeTracker()
-    # create a current snapshot 2 minutes ago
+    # Current snapshot is "fresh" so /change won't replace it from DB.
     now = datetime.now(timezone.utc)
-    cur_ts = (now - timedelta(minutes=2)).isoformat()
+    cur_ts = now.isoformat()
     prev_ts = (now - timedelta(minutes=4)).isoformat()
     ft.last_snapshot["NIFTY"] = {
         "index": "NIFTY",
@@ -79,11 +89,22 @@ def test_get_oi_change_offline_returns_data_status_and_anchor_prev(monkeypatch):
         "strikes": [{"strike": 12300, "ce_oi": 90000, "pe_oi": 95000}],
     }
 
-    fake_coll = FakeCollection(doc=prev_doc)
-    fake_db = type("DB", (), {"oi_snapshots": fake_coll})
+    class WindowAwareCollection:
+        async def find_one(self, query, sort=None, projection=None):
+            # Previous-window query includes $lt current_ts
+            ts_q = (query or {}).get("timestamp") or {}
+            if isinstance(ts_q, dict) and "$lt" in ts_q:
+                return prev_doc
+            # Latest-current lookup — return None so we keep memory snapshot
+            return None
+        async def update_one(self, *args, **kwargs):
+            return None
+
+    fake_db = type("DB", (), {"oi_snapshots": WindowAwareCollection()})
 
     monkeypatch.setattr(server, "tracker", ft)
     monkeypatch.setattr(server, "db", fake_db)
+    monkeypatch.setattr(server, "is_market_open", lambda: False)
 
     client = TestClient(server.app)
     r = client.get("/api/oi/NIFTY/change", params={"minutes": 5})
@@ -97,22 +118,19 @@ def test_get_oi_change_offline_returns_data_status_and_anchor_prev(monkeypatch):
     assert ds["data_date"] is not None
     # previous should be present and match our prev_doc timestamp
     assert payload["previous"]["timestamp"] == prev_doc["timestamp"]
+    assert "also_windows" in payload
 
 
 def test_timeframe_anchor_strict_window(monkeypatch):
     ft = FakeTracker()
     now = datetime.now(timezone.utc)
     cur_ts = now.isoformat()
-    # previous doc outside the requested window
-    prev_outside = {
-        "index": "NIFTY",
-        "timestamp": (now - timedelta(minutes=30)).isoformat(),
-    }
     fake_coll = FakeCollection(doc=None)  # simulate no prev inside window
     fake_db = type("DB", (), {"oi_snapshots": fake_coll})
     ft.last_snapshot["NIFTY"] = {"index": "NIFTY", "timestamp": cur_ts, "strikes": []}
     monkeypatch.setattr(server, "tracker", ft)
     monkeypatch.setattr(server, "db", fake_db)
+    monkeypatch.setattr(server, "is_market_open", lambda: False)
     client = TestClient(server.app)
     # request minutes=5 -> no previous inside 5 min window
     r = client.get("/api/oi/NIFTY/change", params={"minutes": 5})
@@ -120,6 +138,43 @@ def test_timeframe_anchor_strict_window(monkeypatch):
     payload = r.json()
     assert payload["previous"] is None
     assert payload["history_ready"] is False
+
+
+def test_change_batches_also_windows(monkeypatch):
+    ft = FakeTracker()
+    now = datetime.now(timezone.utc)
+    cur_ts = now.isoformat()
+    prev_1 = {"index": "NIFTY", "timestamp": (now - timedelta(minutes=1)).isoformat(), "strikes": []}
+    prev_3 = {"index": "NIFTY", "timestamp": (now - timedelta(minutes=3)).isoformat(), "strikes": []}
+    ft.last_snapshot["NIFTY"] = {"index": "NIFTY", "timestamp": cur_ts, "strikes": []}
+
+    class MultiWindowCollection:
+        async def find_one(self, query, sort=None, projection=None):
+            ts_q = (query or {}).get("timestamp") or {}
+            if not isinstance(ts_q, dict) or "$gte" not in ts_q:
+                return None
+            gte = datetime.fromisoformat(ts_q["$gte"])
+            # Pick the earliest baseline that fits the window start
+            age_min = (now - gte).total_seconds() / 60.0
+            if age_min >= 2.5:
+                return prev_3
+            if age_min >= 0.5:
+                return prev_1
+            return None
+        async def update_one(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(server, "tracker", ft)
+    monkeypatch.setattr(server, "db", type("DB", (), {"oi_snapshots": MultiWindowCollection()}))
+    monkeypatch.setattr(server, "is_market_open", lambda: False)
+    client = TestClient(server.app)
+    r = client.get("/api/oi/NIFTY/change", params={"minutes": 15, "also": "1,3"})
+    assert r.status_code == 200
+    payload = r.json()
+    assert "1" in payload["also_windows"]
+    assert "3" in payload["also_windows"]
+    assert payload["also_windows"]["1"]["previous"]["timestamp"] == prev_1["timestamp"]
+    assert payload["also_windows"]["3"]["previous"]["timestamp"] == prev_3["timestamp"]
 
 
 def test_tracker_metrics_exist(monkeypatch):

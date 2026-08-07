@@ -51,6 +51,11 @@ class KiteService:
         self.instrument_token_map: Dict[str, int] = {}
         self.token_to_symbol: Dict[int, str] = {}
         self._loaded = False
+        # Cache India VIX across index fetches in the same poll cycle so we
+        # don't burn 3 identical quote calls per cycle (NIFTY/SENSEX/BANKNIFTY).
+        self._vix_cache: Optional[float] = None
+        self._vix_cached_at: float = 0.0
+        self._vix_ttl_seconds: float = 12.0
 
     def _load_instruments(self):
         if self._loaded:
@@ -90,6 +95,21 @@ class KiteService:
         ]
         expiries = sorted({str(pd.to_datetime(x).date()) for x in opt_df["expiry"].unique()})
         return expiries
+
+    def _get_india_vix(self) -> float:
+        """Return India VIX, reusing a short in-process cache across indices."""
+        import time as _time
+        now = _time.monotonic()
+        if self._vix_cache is not None and (now - self._vix_cached_at) < self._vix_ttl_seconds:
+            return float(self._vix_cache)
+        try:
+            vix_q = self.kite.quote("NSE:INDIA VIX")
+            vix = float(vix_q["NSE:INDIA VIX"]["last_price"])
+            self._vix_cache = vix
+            self._vix_cached_at = now
+            return vix
+        except Exception:
+            return float(self._vix_cache or 0.0)
 
     def get_snapshot(self, index_name: str, expiry: Optional[str] = None) -> Optional[Dict[str, Any]]:
         try:
@@ -188,12 +208,7 @@ class KiteService:
             })
 
         pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0.0
-        vix = 0.0
-        try:
-            vix_q = self.kite.quote("NSE:INDIA VIX")
-            vix = float(vix_q["NSE:INDIA VIX"]["last_price"])
-        except Exception:
-            pass
+        vix = self._get_india_vix()
 
         return {
             "index": index_name,

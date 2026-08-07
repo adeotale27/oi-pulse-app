@@ -33,11 +33,17 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     const prevMap = new Map();
     (previous?.strikes || []).forEach((s) => prevMap.set(s.strike, s));
     return current.strikes.map((s) => {
-      const p = prevMap.get(s.strike) || {};
+      const p = prevMap.get(s.strike);
       const peNow = Number(s.pe_oi ?? 0);
-      const pePrev = Number(p.pe_oi ?? s.pe_oi ?? 0);
       const ceNow = Number(s.ce_oi ?? 0);
-      const cePrev = Number(p.ce_oi ?? s.ce_oi ?? 0);
+      // If previous snapshot exists but this strike is missing, treat prev as 0
+      // (new strike = full OI as build). If no previous at all, delta = 0.
+      const pePrev = previous
+        ? Number(p?.pe_oi ?? 0)
+        : peNow;
+      const cePrev = previous
+        ? Number(p?.ce_oi ?? 0)
+        : ceNow;
       const peDelta = peNow - pePrev;
       const ceDelta = ceNow - cePrev;
 

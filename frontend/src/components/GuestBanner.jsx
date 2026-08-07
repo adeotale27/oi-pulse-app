@@ -1,5 +1,6 @@
 import { LogOut, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { clearGuestAuth } from "@/lib/api";
 
 /**
  * Small amber banner shown when a guest is browsing the app.
@@ -7,10 +8,7 @@ import { toast } from "sonner";
  */
 export default function GuestBanner({ guestName, adminName }) {
   const exit = () => {
-    try {
-      sessionStorage.removeItem("oi_guest_token");
-      sessionStorage.removeItem("oi_guest_name");
-    } catch (_) { /* ignore */ }
+    clearGuestAuth();
     toast.success("Exited guest session");
     window.location.reload();
   };

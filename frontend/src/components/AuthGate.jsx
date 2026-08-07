@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { api } from "@/lib/api";
+import { api, clearGuestAuth, clearAdminAuth } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,14 @@ export default function AuthGate({ children }) {
   const refresh = async () => {
     try {
       const { data } = await api.get("/auth/state");
+      // If public access closed and we're not admin, clear leftover guest tokens.
+      if (data.requires_login && !data.is_admin) {
+        clearGuestAuth();
+      }
+      if (!data.is_guest && !data.is_admin) {
+        // Ensure stale guest identity isn't kept client-side after revoke.
+        if (!data.public_access_open) clearGuestAuth();
+      }
       setState({ loading: false, ...data });
     } catch (_) {
       setState({ loading: false, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false });
@@ -51,7 +59,7 @@ export default function AuthGate({ children }) {
   }, []);
 
   // Quiescent-aware refresh of auth state
-  useQuiescentAwarePolling(refresh, 60_000, [], { immediate: true });
+  useQuiescentAwarePolling(refresh, 60_000, [], { immediate: true, dedupeKey: "auth-gate" });
 
   // Client-side 8h idle-logout for admin (matches backend TTL).
   useEffect(() => {
@@ -60,7 +68,7 @@ export default function AuthGate({ children }) {
     const check = setInterval(() => {
       if (Date.now() - lastActivityRef.current > ttl) {
         toast.info("Signed out — session timed out.");
-        sessionStorage.removeItem("oi_admin_token");
+        clearAdminAuth();
         window.location.reload();
       }
     }, 60_000);
@@ -75,14 +83,14 @@ export default function AuthGate({ children }) {
     const now = Date.now();
     if (expMs <= now) {
       toast.info("Signed out — market closed (3:30 PM IST).");
-      sessionStorage.removeItem("oi_admin_token");
+      clearAdminAuth();
       window.location.reload();
       return;
     }
     // Schedule + safety-net poll every minute (backend rejects if expired).
     const timer = setTimeout(() => {
       toast.info("Signed out — market closed (3:30 PM IST).");
-      sessionStorage.removeItem("oi_admin_token");
+      clearAdminAuth();
       window.location.reload();
     }, Math.min(expMs - now, 2147483000)); // clamp for 32-bit setTimeout
     return () => clearTimeout(timer);
@@ -97,6 +105,7 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/login", { username: username.trim(), password });
+      clearGuestAuth(); // mutually exclusive tokens
       sessionStorage.setItem("oi_admin_token", data.token);
       toast.success(`Welcome, ${data.username}`);
       await refresh();
@@ -115,10 +124,9 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/guest", { name });
-      // store guest token and name
+      clearAdminAuth(); // mutually exclusive tokens
       try { sessionStorage.setItem("oi_guest_token", data.token); } catch (_) {}
       try { sessionStorage.setItem("oi_guest_name", data.name); } catch (_) {}
-      // persist expiry timestamp so header can show remaining time
       try {
         const expiresMs = Date.now() + (Number(data.expires_in_seconds || 0) * 1000);
         sessionStorage.setItem("oi_guest_expires_at", String(expiresMs));
@@ -138,8 +146,13 @@ export default function AuthGate({ children }) {
     );
   }
 
-  // If authenticated (admin OR guest), render the app.
-  if (state.is_admin || state.is_guest) return children;
+  // Admin always passes. Guest only while public access remains open.
+  if (state.is_admin) return children;
+  if (state.is_guest && state.public_access_open) return children;
+  // Stale guest token after public access closed → force login/guest prompt
+  if (state.is_guest && !state.public_access_open) {
+    clearGuestAuth();
+  }
 
   // Public access open → prompt for guest full name (polished user-facing UI)
   if (state.needs_guest_name || state.public_access_open) {

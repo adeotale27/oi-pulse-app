@@ -179,14 +179,15 @@ async def _store_oi_snapshot(snapshot: Dict[str, Any], *, index_name: Optional[s
     if index_name:
         doc.setdefault("index", index_name)
     doc["timestamp"] = doc.get("timestamp") or datetime.now(timezone.utc).isoformat()
-    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(timezone.utc).isoformat()
+    set_doc = {k: v for k, v in doc.items() if k != "created_at"}
     await db.oi_snapshots.update_one(
         {
             "index": doc.get("index"),
             "timestamp": doc.get("timestamp"),
             "expiry": doc.get("expiry"),
         },
-        {"$set": doc},
+        {"$set": set_doc, "$setOnInsert": {"created_at": created_at}},
         upsert=True,
     )
 
@@ -206,21 +207,25 @@ async def _persist_straddle_sample(index_name: str, snap: dict):
 
 
 async def _straddle_sampler():
+    """Derive straddle samples from the tracker's last OI snapshots.
+
+    The poller already stores straddle samples on every successful OI tick.
+    This loop only fills gaps using cached snapshots — it never hits Kite —
+    so we avoid duplicate ~62-token quote batches for NIFTY/SENSEX.
+    """
     while True:
         try:
-            # Read poll interval from runtime settings so admin changes take effect without restart.
             try:
                 poll_interval_seconds = int(tracker.settings.get("straddle_poll_interval_seconds", STRADDLE_SAMPLE_INTERVAL_SECONDS))
             except Exception:
                 poll_interval_seconds = STRADDLE_SAMPLE_INTERVAL_SECONDS
 
-            if is_market_open():
-                svc = tracker._get_service()
+            if is_market_open() and tracker:
                 for idx in STRADDLE_INDICES:
                     if idx not in INDEX_CONFIG:
                         continue
                     try:
-                        snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                        snap = tracker.last_snapshot.get(idx)
                         if not snap:
                             continue
                         await _persist_straddle_sample(idx, snap)
@@ -243,6 +248,10 @@ async def _guest_from_request(request: Request):
     tok = _extract_bearer(request, "x-guest-token")
     if not tok:
         return None
+    # Guests are only valid while public access is open.
+    open_, _ = await _get_public_access_state()
+    if not open_:
+        return None
     sess = await db.guest_sessions.find_one({"_id": tok})
     if not sess:
         return None
@@ -254,23 +263,38 @@ async def _guest_from_request(request: Request):
         return None
     if (datetime.now(timezone.utc) - started).total_seconds() > GUEST_SESSION_TTL_SECONDS:
         return None
-    # Touch last_seen_at
+    # Throttle last_seen writes — auth/state is polled often; avoid write amplification.
     try:
-        await db.guest_sessions.update_one(
-            {"_id": tok},
-            {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
-        )
+        last_seen = sess.get("last_seen_at")
+        should_touch = True
+        if last_seen:
+            try:
+                ls = datetime.fromisoformat(last_seen)
+                should_touch = (datetime.now(timezone.utc) - ls).total_seconds() >= 60
+            except Exception:
+                should_touch = True
+        if should_touch:
+            await db.guest_sessions.update_one(
+                {"_id": tok},
+                {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}},
+            )
     except Exception:
         pass
     return sess
 
 
 def _next_market_close_ist() -> datetime:
-    from market_hours import IST
+    from market_hours import IST, is_weekend, is_holiday
     now = datetime.now(IST)
     close = now.replace(hour=15, minute=30, second=0, microsecond=0)
     if now >= close:
         close = close + timedelta(days=1)
+    # Skip weekends / holidays so public-access expiry lands on a trading day close.
+    for _ in range(15):
+        if not is_weekend(close) and not is_holiday(close):
+            break
+        close = close + timedelta(days=1)
+        close = close.replace(hour=15, minute=30, second=0, microsecond=0)
     return close.astimezone(timezone.utc)
 
 
@@ -286,6 +310,10 @@ async def _get_public_access_state():
                 await db.settings.update_one(
                     {"_id": "public_access"}, {"$set": {"open": False, "expires_at": None}}, upsert=True
                 )
+                # Auto-expiry must revoke lingering guest tokens — otherwise guests
+                # keep picking up live OI after the intended cut-off.
+                if open_:
+                    await _revoke_guest_sessions("public_access_expired")
                 open_ = False
             else:
                 expires_at_iso = exp_dt.isoformat()
@@ -498,8 +526,8 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
-    if expiry:
-        tracker.set_expiry(idx, expiry)
+    # Do NOT mutate tracker.selected_expiry from a GET — that would switch the
+    # shared background poller for every client. Expiry is a read filter only.
     snap = tracker.last_snapshot.get(idx)
     # if expiry mismatch or no snap, fetch on-demand (only when market is open)
     if not snap or (expiry and snap.get("expiry") != expiry):
@@ -507,23 +535,39 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
             # Market closed → serve latest from DB, don't hit Kite.
             doc = await db.oi_snapshots.find_one(
                 {"index": idx, **({"expiry": expiry} if expiry else {})},
-                sort=[("created_at", -1)],
+                sort=[("timestamp", -1)],
                 projection={"_id": 0},
             )
             if doc:
                 snap = doc
-                tracker.last_snapshot[idx] = doc
+                if not expiry or doc.get("expiry") == tracker.selected_expiry.get(idx):
+                    tracker.last_snapshot[idx] = doc
         else:
             try:
                 svc = tracker._get_service()
                 if svc:
-                    snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
+                    # Use requested expiry for THIS fetch only; do not set_expiry.
+                    fetch_exp = expiry if expiry is not None else tracker.selected_expiry.get(idx)
+                    snap = await asyncio.to_thread(svc.get_snapshot, idx, fetch_exp)
                     if snap:
                         snap["mode"] = tracker.mode
-                        tracker.last_snapshot[idx] = snap
+                        # Only update shared cache when expiry matches the poller's selection
+                        # (or no specific expiry was requested).
+                        if not expiry or snap.get("expiry") == tracker.selected_expiry.get(idx) or tracker.selected_expiry.get(idx) is None:
+                            tracker.last_snapshot[idx] = snap
+                            try:
+                                await _store_oi_snapshot(snap, index_name=idx)
+                            except Exception:
+                                pass
                 else:
-                    # Offline: do not attempt Kite fetch; preserve last DB/cached snapshot.
                     logger.info(f"get_current_oi: tracker offline, serving cached DB snapshot for {idx}")
+                    doc = await db.oi_snapshots.find_one(
+                        {"index": idx, **({"expiry": expiry} if expiry else {})},
+                        sort=[("timestamp", -1)],
+                        projection={"_id": 0},
+                    )
+                    if doc:
+                        snap = doc
             except Exception as e:
                 raise HTTPException(500, str(e))
     if not snap:
@@ -622,142 +666,53 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
     return await tracker.save_settings(patch)
 
 
-@api_router.get("/oi/{index_name}/change")
-async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440), expiry: Optional[str] = None):
-    """Return current snapshot plus a time-based baseline snapshot for diffing."""
-    idx = index_name.upper()
-    if idx not in INDEX_CONFIG:
-        raise HTTPException(404, "Unknown index")
-    if expiry:
-        tracker.set_expiry(idx, expiry)
-    current = tracker.last_snapshot.get(idx)
+def _session_open_utc_for_anchor(anchor: datetime) -> datetime:
+    """Return today's NSE session-open (09:14 IST) in UTC for the anchor's IST day.
 
-    # -------------------------------------------------------------- #
-    # P0 FIX: If cached `last_snapshot` is older than STALE_THRESHOLD
-    # seconds, force a fresh get_snapshot() call INLINE. This
-    # protects the /change endpoint from a silently-stalled
-    # background poll loop (which was causing 1/3/5/10/15 min windows
-    # to all resolve to the same DB doc and return identical deltas).
-    # -------------------------------------------------------------- #
-    STALE_THRESHOLD_SECONDS = 20
-    is_stale = False
-    market_is_open = is_market_open()
-    if current:
-        try:
-            cur_ts_dt = datetime.fromisoformat(current.get("timestamp"))
-            age = (datetime.now(timezone.utc) - cur_ts_dt).total_seconds()
-            if age > STALE_THRESHOLD_SECONDS:
-                is_stale = True
-                if market_is_open:
-                    logger.warning(
-                        f"/change: cached snapshot for {idx} is {age:.1f}s old "
-                        f"(>{STALE_THRESHOLD_SECONDS}s) — refreshing inline."
-                    )
-        except Exception:
-            is_stale = True
+    Change windows must never reach into the previous trading day — that made
+    Full-Day / pre-open deltas look like "yesterday's OI pulled into today".
+    """
+    anchor_ist = anchor.astimezone(IST) if anchor.tzinfo else anchor.replace(tzinfo=timezone.utc).astimezone(IST)
+    session_open_ist = anchor_ist.replace(
+        hour=MARKET_OPEN.hour, minute=MARKET_OPEN.minute, second=0, microsecond=0
+    )
+    return session_open_ist.astimezone(timezone.utc)
 
-    if (not current) or is_stale or (expiry and current.get("expiry") != expiry):
-        # Respect market hours: once the market is closed, we STOP pulling
-        # fresh ticks and simply serve the last snapshot from memory / DB.
-        # This satisfies the "9:15 AM – 3:30 PM only" polling requirement
-        # and keeps the UI stable overnight / on weekends / on holidays.
-        if not market_is_open:
-            # If the requested expiry differs from the cached snapshot, load the
-            # last matching expiry from DB rather than returning stale wrong-expiry data.
-            need_refresh = not current or (expiry and current.get("expiry") != expiry)
-            if need_refresh:
-                doc = await db.oi_snapshots.find_one(
-                    {"index": idx, **({"expiry": expiry} if expiry else {})},
-                    sort=[("timestamp", -1)],
-                    projection={"_id": 0},
-                )
-                if doc:
-                    current = doc
-                    tracker.last_snapshot[idx] = doc
-                elif not current or (expiry and current.get("expiry") != expiry):
-                    raise HTTPException(503, f"No data available for {idx} — market is closed and no cached snapshot yet.")
-        else:
-            try:
-                # If tracker is not in LIVE mode, do not attempt an inline Kite fetch —
-                # serve DB/cached snapshot instead and mark the response as stale.
-                svc = tracker._get_service()
-                if tracker.mode != "kite" or not svc:
-                    logger.warning(f"/change: tracker offline (mode={tracker.mode}) — skipping inline fetch for {idx}")
-                else:
-                    fresh = await asyncio.wait_for(
-                        asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
-                        timeout=10.0,
-                    )
-                    if fresh:
-                        fresh["mode"] = tracker.mode
-                        tracker.last_snapshot[idx] = fresh
-                        current = fresh
-                    elif not current:
-                        # No cache AND fresh returned None
-                        raise HTTPException(503, f"No data available for {idx}")
-                    else:
-                        # Keep stale as fallback but log
-                        logger.warning(f"/change: fresh get_snapshot({idx}) returned None; using stale cache.")
-            except asyncio.TimeoutError:
-                logger.error(f"/change: get_snapshot({idx}) timed out after 10s; using stale cache if any.")
-                if not current:
-                    raise HTTPException(504, f"Snapshot fetch timed out for {idx}")
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.exception(f"/change inline refresh failed for {idx}: {e}")
-                if not current:
-                    raise HTTPException(500, str(e))
-    if not current:
-        raise HTTPException(503, "No current data")
 
-    # Always persist the freshly-served `current` snapshot to Mongo so the
-    # /change endpoint keeps history current even if the background tracker
-    # thread stalls. Upsert on (index, timestamp, expiry) so we don't create
-    # duplicate rows for the same market tick.
-    current_ts = current.get("timestamp")
-    if current_ts:
-        try:
-            await _store_oi_snapshot(current, index_name=idx)
-        except Exception as _e:
-            logger.warning(f"/change upsert failed for {idx}: {_e}")
+async def _find_previous_snapshot(
+    idx: str,
+    current_ts: str,
+    minutes: int,
+    expiry: Optional[str],
+) -> tuple:
+    """Find the earliest snapshot in [max(anchor−N, session_open), current_ts).
 
-    # Anchor the lookback on the `current` snapshot's own timestamp (the actual
-    # market-tick time), NOT on wall-clock now(). Using now() would cause every
-    # short timeframe (1/3/5/10/15 min) to collapse to the same DB doc whenever
-    # the tracker was even briefly behind wall-clock.
+    Returns (prev_doc, history_ready, available_history_minutes).
+    """
     try:
-        anchor = datetime.fromisoformat(current_ts) if current_ts else datetime.now(timezone.utc)
+        anchor = datetime.fromisoformat(current_ts)
     except Exception:
         anchor = datetime.now(timezone.utc)
     target = anchor - timedelta(minutes=minutes)
-    # Query on the snapshot's own `timestamp` field (also indexed) so we look
-    # for OI data that was actually recorded within the exact requested window.
-    # This is the strict behavior you requested: the baseline must be the nearest
-    # prior stored snapshot inside the lookback window, not any older fallback.
-    prev_doc = None
-    if current_ts:
-        window_query = {
-            "index": idx,
-            "timestamp": {"$gte": target.isoformat(), "$lt": current_ts},
-        }
-        if expiry:
-            window_query["expiry"] = expiry
-        # IMPORTANT: sort ASCENDING so we pick the EARLIEST snapshot inside
-        # [target, current_ts). That snapshot is the one closest to the
-        # requested "N minutes ago" boundary — which is what the OI-Change
-        # UI needs when the user asks for a 1 / 3 / 5 / 15 / 30 / … min delta.
-        # Sorting descending would return the snapshot closest to `now`
-        # (i.e. only one poll-interval old), collapsing every timeframe into
-        # a ~15-second delta and rendering the Call/Put OI change as 0.
-        prev_doc = await db.oi_snapshots.find_one(
-            window_query,
-            sort=[("timestamp", 1)],
-            projection={"_id": 0},
-        )
+    session_open = _session_open_utc_for_anchor(anchor)
+    # Clamp lookback to today's session so previous-day OI never contaminates Δ.
+    if target < session_open:
+        target = session_open
 
-    # Attach a small meta so the frontend can indicate "history warming up" when
-    # the requested lookback isn't available yet.
+    window_query = {
+        "index": idx,
+        "timestamp": {"$gte": target.isoformat(), "$lt": current_ts},
+    }
+    if expiry:
+        window_query["expiry"] = expiry
+
+    # ASC → earliest in window ≈ closest to the N-min-ago boundary.
+    prev_doc = await db.oi_snapshots.find_one(
+        window_query,
+        sort=[("timestamp", 1)],
+        projection={"_id": 0},
+    )
+
     history_ready = True
     elapsed_min_val: Optional[float] = None
     if prev_doc and current_ts:
@@ -765,8 +720,6 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
             prev_ts_dt = datetime.fromisoformat(prev_doc.get("timestamp"))
             cur_ts_dt = datetime.fromisoformat(current_ts)
             elapsed_min_val = (cur_ts_dt - prev_ts_dt).total_seconds() / 60.0
-            # Consider history "ready" only if we have at least ~80 % of the
-            # requested lookback available. Otherwise flag it as warming up.
             if elapsed_min_val < 0.8 * minutes:
                 history_ready = False
         except Exception:
@@ -774,10 +727,136 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
     elif not prev_doc:
         history_ready = False
 
-    # Strict window rule: a baseline is only valid if it exists inside the
-    # exact requested lookback window. If the window has no prior snapshot,
-    # we leave `previous` as null and mark history as not-ready so the UI can
-    # stay honest instead of showing misleading identical deltas.
+    return prev_doc, history_ready, round(elapsed_min_val, 2) if elapsed_min_val is not None else 0.0
+
+
+def _build_data_status(current: dict, market_is_open: bool, age_seconds: Optional[float]) -> dict:
+    mode = tracker.mode if tracker else "offline"
+    stale_reason = None
+    is_live = False
+    if mode != "kite":
+        stale_reason = "missing_kite_credentials"
+    elif not market_is_open:
+        stale_reason = "market_closed"
+    elif age_seconds is None:
+        stale_reason = "no_timestamp"
+    elif age_seconds > 45:
+        stale_reason = "stale_cache"
+    else:
+        is_live = True
+
+    data_date = None
+    try:
+        if current.get("timestamp"):
+            data_date = datetime.fromisoformat(current["timestamp"]).astimezone(IST).date().isoformat()
+    except Exception:
+        data_date = None
+
+    return {
+        "is_live": is_live,
+        "stale_reason": stale_reason,
+        "data_date": data_date,
+        "cache_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
+    }
+
+
+@api_router.get("/oi/{index_name}/change")
+async def get_oi_change(
+    index_name: str,
+    minutes: int = Query(15, ge=1, le=1440),
+    expiry: Optional[str] = None,
+    also: Optional[str] = Query(None, description="Comma-separated extra windows e.g. 1,3,5"),
+):
+    """Return current snapshot plus a time-based baseline snapshot for diffing.
+
+    Efficiency contract:
+      * Never hits Kite inline (avoids N-client stampede). Background poller is
+        the sole writer; if cache is stale we kick a single-flight refresh and
+        still return the latest known snapshot immediately.
+      * GET never mutates tracker.selected_expiry.
+      * Lookback is clamped to today's session open so previous-day OI cannot
+        leak into Change-in-OI.
+      * `also=1,3,5` returns extra baselines in one round-trip (huge-shift).
+    """
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(404, "Unknown index")
+
+    market_is_open = is_market_open()
+    current = tracker.last_snapshot.get(idx) if tracker else None
+
+    # Expiry filter only — never call set_expiry from GET.
+    if current and expiry and current.get("expiry") != expiry:
+        current = None
+
+    age = None
+    if tracker and current and hasattr(tracker, "snapshot_age_seconds"):
+        age = tracker.snapshot_age_seconds(current)
+    STALE_THRESHOLD_SECONDS = 25
+    needs_db = (not current) or (age is not None and age > STALE_THRESHOLD_SECONDS and not market_is_open)
+
+    if needs_db or (not current):
+        doc = await db.oi_snapshots.find_one(
+            {"index": idx, **({"expiry": expiry} if expiry else {})},
+            sort=[("timestamp", -1)],
+            projection={"_id": 0},
+        )
+        if doc:
+            current = doc
+            # Only seed shared cache when serving the poller's selected expiry.
+            if tracker and (not expiry or doc.get("expiry") == tracker.selected_expiry.get(idx) or tracker.selected_expiry.get(idx) is None):
+                tracker.last_snapshot[idx] = doc
+            if tracker and hasattr(tracker, "snapshot_age_seconds"):
+                age = tracker.snapshot_age_seconds(current)
+
+    if not current:
+        raise HTTPException(
+            503,
+            f"No data available for {idx}"
+            + (" — market is closed and no cached snapshot yet." if not market_is_open else ""),
+        )
+
+    # If cache is stale while market is open, kick ONE background refresh —
+    # do not block this request on Kite.
+    if market_is_open and tracker and hasattr(tracker, "request_background_refresh"):
+        if age is None or age > STALE_THRESHOLD_SECONDS:
+            tracker.request_background_refresh(idx, expiry=expiry)
+
+    current_ts = current.get("timestamp")
+    if not current_ts:
+        raise HTTPException(503, "No current data")
+
+    prev_doc, history_ready, available_min = await _find_previous_snapshot(
+        idx, current_ts, minutes, expiry
+    )
+
+    # Batch extra windows for huge-shift monitor (one round-trip).
+    also_windows: Dict[str, Any] = {}
+    if also:
+        extra_mins = []
+        for part in also.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                m = int(part)
+                if 1 <= m <= 1440 and m != minutes:
+                    extra_mins.append(m)
+            except ValueError:
+                continue
+        # Deduplicate while preserving order
+        seen = set()
+        for m in extra_mins:
+            if m in seen:
+                continue
+            seen.add(m)
+            p, ready, avail = await _find_previous_snapshot(idx, current_ts, m, expiry)
+            also_windows[str(m)] = {
+                "previous": p,
+                "minutes": m,
+                "history_ready": ready,
+                "available_history_minutes": avail,
+            }
 
     return {
         "index": idx,
@@ -785,18 +864,9 @@ async def get_oi_change(index_name: str, minutes: int = Query(15, ge=1, le=1440)
         "previous": prev_doc,
         "minutes": minutes,
         "history_ready": history_ready,
-        "available_history_minutes": round(elapsed_min_val, 2) if elapsed_min_val is not None else 0.0,
-        # Data status: whether this response represents a LIVE Kite pull or
-        # historical/stale DB data (e.g. when API keys are missing / not updated).
-        "data_status": (lambda: {
-            "is_live": True if tracker.mode == "kite" else False,
-            "stale_reason": (lambda:
-                ("missing_kite_credentials" if tracker.mode != "kite" else None)
-            )(),
-            "data_date": (lambda: (
-                (datetime.fromisoformat(current.get("timestamp")).astimezone(IST).date().isoformat()) if current.get("timestamp") else None
-            ))(),
-        })(),
+        "available_history_minutes": available_min,
+        "also_windows": also_windows,
+        "data_status": _build_data_status(current, market_is_open, age),
     }
 
 
@@ -1707,15 +1777,10 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
         logger.info("[admin/refresh-day] offline mode: skipping synthetic backfill (no Kite credentials configured)")
         # backfilled remains 0
 
-    # 3) Immediate live poll (fresh 'now' tick) for ALL indices — but ONLY when
-    #    the market is currently open. Outside market hours the last backfilled
-    #    snapshot at ~15:30 IST IS the "current" market state; adding a live
-    #    tick at wall-clock "now" (e.g. 20:00 IST) would create a bogus data
-    #    point and confuse the timeframe-diff logic.
-    live_pulled = []
+    # 3) Immediate live poll for ALL indices when market is open — skipped if
+    #    step 2 already performed the kite live pull (avoids double Kite quotes).
     if is_market_open():
-        # Only attempt immediate live poll when tracker is in LIVE mode.
-        if tracker.mode == "kite" and tracker.kite_service:
+        if tracker.mode == "kite" and tracker.kite_service and not live_pulled:
             try:
                 svc = tracker._get_service()
                 for idx in ALL_INDICES:
@@ -1734,7 +1799,7 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
                         logger.warning(f"[refresh live-poll] {idx}: {e}")
             except Exception as e:
                 logger.warning(f"[admin/refresh-day] live poll block failed: {e}")
-        else:
+        elif tracker.mode != "kite":
             logger.info("[admin/refresh-day] market open but tracker offline — skipping immediate live poll")
     else:
         # After close: seed `last_snapshot` from the last backfilled document so
@@ -2067,13 +2132,20 @@ async def _startup():
 
     # Ensure indexes for fast history / retention queries.
     try:
-        await db.oi_snapshots.create_index([("index", 1), ("timestamp", 1), ("expiry", 1)])
+        # Unique compound key prevents duplicate ticks for the same market sample.
+        await db.oi_snapshots.create_index(
+            [("index", 1), ("expiry", 1), ("timestamp", 1)],
+            unique=True,
+            name="uniq_index_expiry_ts",
+        )
         await db.oi_snapshots.create_index([("index", 1), ("created_at", 1)])
         await db.oi_snapshots.create_index("created_at")
         await db.alerts.create_index([("index", 1), ("created_at", -1)])
         await db.straddle_samples.create_index([("index", 1), ("trade_date", 1), ("expiry", 1)])
         await db.straddle_samples.create_index([("index", 1), ("ts", 1)])
         await db.straddle_samples.create_index("created_at")
+        await db.guest_sessions.create_index([("started_at", -1)])
+        await db.guest_sessions.create_index("revoked_at")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 

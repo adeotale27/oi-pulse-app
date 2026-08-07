@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import OiPulseLogo from "@/components/OiPulseLogo";
-import { api, fetchExtras, subscribeExtras, unsubscribeExtras } from "@/lib/api";
+import { api, fetchExtras, subscribeExtras, unsubscribeExtras, clearGuestAuth } from "@/lib/api";
 import { toast } from "sonner";
 
 import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
@@ -240,10 +240,7 @@ export default function Header({
               }
               const remainingLabel = remainingMs != null ? fmt(remainingMs) : '';
               const exitGuest = () => {
-                try { sessionStorage.removeItem('oi_guest_token'); } catch(_){}
-                try { sessionStorage.removeItem('oi_guest_name'); } catch(_){}
-                try { sessionStorage.removeItem('oi_guest_expires_at'); } catch(_){}
-                // also inform server to revoke? For now just reload and clear client state
+                clearGuestAuth();
                 window.location.reload();
               };
               return (
