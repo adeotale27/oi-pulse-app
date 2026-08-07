@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, Moon, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
-import { fetchOIChange, subscribeExtras } from "@/lib/api";
+import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
 import {
   briefTriggerKey,
   carryHorizonLabel,
@@ -8,6 +8,7 @@ import {
   carryWindowItems,
   dayLabel,
   dismissStorageKey,
+  holidayCarryAdvice,
   sessionBiasFromSnapshots,
   shouldAutoShowBrief,
 } from "@/lib/overnightBrief";
@@ -59,6 +60,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   const [biases, setBiases] = useState([]);
   const [loading, setLoading] = useState(false);
   const [gift, setGift] = useState(null);
+  const [indexImpacts, setIndexImpacts] = useState([]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 15_000);
@@ -73,7 +75,11 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   }, []);
 
   const ist = useMemo(() => getISTParts(now), [now]);
-  const events = useMemo(() => carryWindowItems(ist.weekday), [ist.weekday]);
+  const events = useMemo(
+    () => carryWindowItems(ist.weekday, { indexImpacts }),
+    [ist.weekday, indexImpacts],
+  );
+  const holidayNote = useMemo(() => holidayCarryAdvice(ist.weekday), [ist.weekday]);
 
   // Auto-show when trigger fires and not dismissed for this key.
   useEffect(() => {
@@ -117,9 +123,28 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     }
   }, [visible, indices]);
 
+  const loadIndexImpacts = useCallback(async () => {
+    if (!visible || !indices?.length) return;
+    const packs = await Promise.all(
+      indices.map(async (idx) => {
+        try {
+          const { data } = await api.get(`/events/${idx}`);
+          return { index: idx, events: data?.events || [] };
+        } catch {
+          return { index: idx, events: [] };
+        }
+      }),
+    );
+    setIndexImpacts(packs);
+  }, [visible, indices]);
+
   useEffect(() => {
     loadBiases();
   }, [loadBiases]);
+
+  useEffect(() => {
+    loadIndexImpacts();
+  }, [loadIndexImpacts]);
 
   const giftPct = gift?.change_pct != null ? Number(gift.change_pct) : null;
   const verdict = useMemo(
@@ -198,6 +223,14 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         <p className="leading-snug opacity-90" data-testid="overnight-gap-advice">
           {verdict.advice}
         </p>
+        {holidayNote && (
+          <div
+            className="rounded border border-amber-400/60 bg-amber-100/70 dark:bg-amber-950/40 px-2 py-1.5 text-[11px] leading-snug"
+            data-testid="overnight-gap-holiday-note"
+          >
+            {holidayNote}
+          </div>
+        )}
 
         {/* Per-index whole-day bias */}
         <div>
@@ -265,22 +298,24 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           )}
         </div>
 
-        {/* Events / holidays */}
+        {/* Events / holidays / index impact */}
         <div>
           <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
-            Events {carryHorizonLabel(ist.weekday)}
+            Events & index impact · {carryHorizonLabel(ist.weekday)}
           </div>
           {events.length === 0 ? (
-            <div className="opacity-60 px-1">No major scheduled events in carry window.</div>
+            <div className="opacity-60 px-1">No major scheduled events or index impacts in carry window.</div>
           ) : (
-            <ul className="space-y-0.5 max-h-28 overflow-y-auto" data-testid="overnight-gap-events">
-              {events.slice(0, 6).map((e) => (
+            <ul className="space-y-0.5 max-h-36 overflow-y-auto" data-testid="overnight-gap-events">
+              {events.slice(0, 10).map((e) => (
                 <li key={`${e.date}|${e.name}`} className="leading-snug px-1">
                   <span className="font-medium">{dayLabel(e.daysAway, ist.weekday)}</span>
                   {" · "}
                   {e.name}
-                  {e.impact ? (
+                  {e.source === "index-impact" ? (
+                    <span className="opacity-60"> [INDEX]</span>
+                  ) : e.impact ? (
                     <span className="opacity-60"> [{String(e.impact).toUpperCase()}]</span>
                   ) : null}
                 </li>

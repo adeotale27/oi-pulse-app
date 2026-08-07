@@ -71,10 +71,10 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
           flat ? "text-slate-500"
             : up ? "text-emerald-600"
               : "text-rose-600";
-        const arrowIcon =
-          flat ? <Minus className="w-3 h-3" />
-            : up ? <TrendingUp className="w-3 h-3" />
-              : <TrendingDown className="w-3 h-3" />;
+        const Arrow =
+          flat ? Minus
+            : up ? TrendingUp
+              : TrendingDown;
         const isActive = t.index === activeIndex;
         return (
           <button
@@ -82,28 +82,37 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             type="button"
             onClick={() => onSelectIndex?.(t.index)}
             data-testid={`ticker-${t.index}`}
-            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-2 sm:px-3 py-1.5 sm:py-2 min-w-[96px] sm:min-w-[120px] flex-1 sm:flex-none hover:brightness-95 transition-all ${
+            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-2.5 sm:px-3 py-1.5 sm:py-2 min-w-[110px] sm:min-w-[132px] flex-1 sm:flex-none hover:brightness-95 transition-all ${
               isActive
                 ? `border-transparent ring-2 ${s.ring} shadow-sm`
-                : "border-slate-200"
+                : "border-slate-200 dark:border-slate-700"
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
           >
-            <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
-              <div className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                {s.label}
+            <div className="flex items-center justify-between gap-2 text-[9px] uppercase tracking-widest text-slate-600 dark:text-slate-400 font-semibold">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+                <span className="truncate">{s.label}</span>
               </div>
-              <div className={`text-[10px] font-mono-data ${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
+              <div className={`text-[10px] font-mono-data tabular-nums shrink-0 ${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
                 {t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%
               </div>
             </div>
-            <div className="flex items-center justify-between mt-0.5">
-              <div className="text-sm font-mono-data font-semibold text-slate-900" data-testid={`ticker-${t.index}-ltp`}>
+            <div className="flex items-end justify-between gap-2 mt-1">
+              <div
+                className="text-sm font-mono-data font-semibold text-slate-900 dark:text-slate-100 tabular-nums leading-none"
+                data-testid={`ticker-${t.index}-ltp`}
+              >
                 {fmtNum(t.ltp, 2)}
               </div>
-              <div className={`text-[11px] font-mono-data ${toneCls}`} data-testid={`ticker-${t.index}-chg`}>
-                {arrowIcon}{t.change > 0 ? "+" : ""}{fmtNum(t.change, 2)}
+              <div
+                className={`flex items-center gap-1 text-[11px] font-mono-data tabular-nums leading-none shrink-0 ${toneCls}`}
+                data-testid={`ticker-${t.index}-chg`}
+              >
+                <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+                <span>
+                  {t.change > 0 ? "+" : ""}{fmtNum(t.change, 2)}
+                </span>
               </div>
             </div>
           </button>
