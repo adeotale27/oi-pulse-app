@@ -186,16 +186,30 @@ export default function Dashboard() {
     try { return localStorage.getItem("darkMode") === "1"; } catch { return false; }
   });
   const [compact, setCompact] = useState(() => {
-    try { return localStorage.getItem("compact") === "1"; } catch { return false; }
+    try {
+      const stored = localStorage.getItem("compact");
+      if (stored === "1" || stored === "0") return stored === "1";
+    } catch { /* noop */ }
+    // Default compact on laptop / tablet so the chart gets more space.
+    try { return window.matchMedia("(max-width: 1280px)").matches; } catch { return false; }
   });
   const [soundsOpen, setSoundsOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
-    try { return localStorage.getItem("rightPanelOpen") !== "0"; } catch { return true; }
+    try {
+      const stored = localStorage.getItem("rightPanelOpen");
+      if (stored === "1" || stored === "0") return stored === "1";
+    } catch { /* noop */ }
+    // Phones: keep chart full-width — side panel was crushing the layout.
+    try { return !window.matchMedia("(max-width: 768px)").matches; } catch { return true; }
   });
   const [rightPanelView, setRightPanelView] = useState(() => {
     try { return localStorage.getItem("rightPanelView") || "alerts"; } catch { return "alerts"; }
   });
+  const [isMobile, setIsMobile] = useState(() => {
+    try { return window.matchMedia("(max-width: 768px)").matches; } catch { return false; }
+  });
+  const [replayJumpTs, setReplayJumpTs] = useState(null);
   const [vixSessionOpen, setVixSessionOpen] = useState(() => {
     try {
       const raw = localStorage.getItem("vixSessionOpen");
@@ -254,6 +268,17 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem("rightPanelView", rightPanelView); } catch (_) { /* noop */ }
   }, [rightPanelView]);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  // On phones, never keep the side panel open — it was leaving a narrow
+  // Alerts/Suggestion strip and a blank chart area.
+  const showRightPanel = rightPanelOpen && !isMobile;
 
   useEffect(() => {
     // Connect WebSocket (spot). The WS wrapper will itself defer connects
@@ -935,6 +960,21 @@ export default function Dashboard() {
   const handleHugeShift = useCallback((shift) => {
     // Silence shifts for indices other than the currently viewed one.
     if (shift.index !== activeIndex) return;
+    // Bookmark the live snapshot time so Replay can jump here.
+    const bookmarkTs = changeBundle?.current?.timestamp || current?.timestamp || shift.at || null;
+    if (bookmarkTs) {
+      try {
+        const key = `oi_replay_bookmark_${shift.index}`;
+        localStorage.setItem(key, JSON.stringify({
+          ts: bookmarkTs,
+          at: shift.at,
+          side: shift.side,
+          window: shift.window,
+          value: shift.value,
+        }));
+      } catch (_) { /* noop */ }
+      setReplayJumpTs(bookmarkTs);
+    }
     // Also log to activity feed
     pushActivity({
       type: "huge-shift",
@@ -943,15 +983,16 @@ export default function Dashboard() {
       window: shift.window,
       value: shift.value,
       at: shift.at,
+      snapshotTs: bookmarkTs,
       message: `${shift.side} OI ${shift.value > 0 ? "build" : "unwind"} across ATM ± 1 in ${shift.window} min`,
     });
     // If a modal is already showing, queue this one; user must acknowledge
     // each in turn so nothing gets missed.
     if (hugeShift) {
-      hugeShiftQueueRef.current.push(shift);
+      hugeShiftQueueRef.current.push({ ...shift, snapshotTs: bookmarkTs });
       return;
     }
-    setHugeShift(shift);
+    setHugeShift({ ...shift, snapshotTs: bookmarkTs });
     try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
     try {
       push(
@@ -972,7 +1013,7 @@ export default function Dashboard() {
         contributing: shift.contributing || [],
       }).catch(() => { /* silent — user already sees the modal */ });
     } catch (_) { /* noop */ }
-  }, [activeIndex, hugeShift, siren, push, pushActivity]);
+  }, [activeIndex, hugeShift, siren, push, pushActivity, changeBundle, current?.timestamp]);
 
   const dismissHugeShift = useCallback(() => {
     setHugeShift(null);
@@ -984,6 +1025,15 @@ export default function Dashboard() {
         try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
       }
     }, 250);
+  }, []);
+
+  const replayHugeShiftMoment = useCallback((ts) => {
+    if (!ts) return;
+    setReplayJumpTs(ts);
+    setReplayOpen(true);
+    setActiveTab("oi-change");
+    setHugeShift(null);
+    hugeShiftQueueRef.current = [];
   }, []);
 
   useHugeShiftMonitor({
@@ -1188,6 +1238,12 @@ export default function Dashboard() {
         compact={compact}
         onToggleCompact={() => setCompact((v) => !v)}
         spotPrices={liveSpotPrices}
+        onFreshPullDone={() => {
+          // Clear warm caches then re-hydrate every enabled index after Fresh Pull.
+          oiCacheRef.current = {};
+          loadOI();
+          loadStatus();
+        }}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -1212,10 +1268,10 @@ export default function Dashboard() {
           />
         )}
 
-        <main className="flex-1 min-h-0 overflow-auto p-5 dark:bg-slate-950 dark:text-slate-200">
+        <main className="flex-1 min-h-0 overflow-auto p-2 sm:p-4 md:p-5 dark:bg-slate-950 dark:text-slate-200">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-              <TabsList className="bg-transparent p-0 h-auto gap-1 border-b border-slate-200 dark:border-slate-700 rounded-none justify-start">
+            <div className="flex items-center justify-between mb-3 sm:mb-4 gap-3 flex-wrap">
+              <TabsList className="tabs-scroll bg-transparent p-0 h-auto gap-1 border-b border-slate-200 dark:border-slate-700 rounded-none justify-start max-w-full">
                 {DASHBOARD_PAGES.filter((t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))).map((t) => (
                   <TabsTrigger
                     key={t.v}
@@ -1247,7 +1303,7 @@ export default function Dashboard() {
             </div>
 
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
-              <Panel defaultSize={rightPanelOpen ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
+              <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div className="h-full space-y-4 pr-2">
                 {changeSummary && (
                   <SentimentBar
@@ -1475,6 +1531,8 @@ export default function Dashboard() {
                         <ReplayScrubber
                           index={activeIndex}
                           minutes={180}
+                          jumpToTs={replayJumpTs}
+                          onJumpConsumed={() => setReplayJumpTs(null)}
                           onReplayFrame={setReplayFrame}
                         />
                       )}
@@ -1728,7 +1786,7 @@ export default function Dashboard() {
                 </div>
                 </div>
               </Panel>
-              {rightPanelOpen && (
+              {showRightPanel && (
                 <>
                   <PanelResizeHandle className="w-1 mx-1 bg-slate-200 hover:bg-sky-400 transition-colors cursor-col-resize rounded-full" data-testid="right-panel-handle" />
                   <Panel defaultSize={28} minSize={18} maxSize={55} className="min-h-0 overflow-hidden">
@@ -1776,16 +1834,29 @@ export default function Dashboard() {
                 </>
               )}
             </PanelGroup>
-            {!rightPanelOpen && (
+            {!showRightPanel && !isMobile && (
               <button
                 type="button"
                 onClick={() => setRightPanelOpen(true)}
                 data-testid="btn-open-right-panel"
-                className="fixed right-4 bottom-4 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 px-3 py-2 text-xs font-semibold flex items-center gap-1.5 z-50"
+                className="fixed right-4 bottom-4 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 px-3 py-2 text-xs font-semibold flex items-center gap-2 z-50"
                 title="Reopen side panel"
               >
                 <PanelRightOpen className="w-4 h-4" />
                 Side Panel
+              </button>
+            )}
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRightPanelView("alerts");
+                  setActiveTab("alerts");
+                }}
+                data-testid="btn-mobile-alerts"
+                className="fixed right-4 bottom-4 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 px-3 py-2 text-xs font-semibold flex items-center gap-2 z-50 md:hidden"
+              >
+                Alerts
               </button>
             )}
           </Tabs>
@@ -1835,7 +1906,11 @@ export default function Dashboard() {
         onLocalSaved={setOiSettings}
       />
 
-      <HugeShiftModal shift={hugeShift} onClose={dismissHugeShift} />
+      <HugeShiftModal
+        shift={hugeShift}
+        onClose={dismissHugeShift}
+        onReplayAtMoment={replayHugeShiftMoment}
+      />
 
       <SoundSettingsModal open={soundsOpen} onOpenChange={setSoundsOpen} />
       <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />

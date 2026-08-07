@@ -38,6 +38,7 @@ export default function Header({
   onToggleDark,
   compact,
   onToggleCompact,
+  onFreshPullDone,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -122,21 +123,27 @@ export default function Header({
 
   // Refresh DB action (admin only)
   const [refreshing, setRefreshing] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const onRefreshDay = async () => {
     if (!isAdmin) return;
     if (!window.confirm(
-      "Fresh Pull: clear today's OI snapshots and re-populate from 9:15 AM to now (or configured market close if the market has closed)?\n\n" +
-      "Note: No synthetic/demo backfill will be created. If Kite credentials are not configured, the system will remain OFFLINE and only historical DB data (if any) will be served.\n" +
-      "In LIVE (Kite) mode: history before 'now' cannot be recovered — live polling will simply restart from now."
+      "Fresh Pull: clear ALL OI snapshots and pull a live tick for every ENABLED index in one click?\n\n" +
+      "• Live (Kite): one parallel pull per enabled index — history before now cannot be recovered.\n" +
+      "• Offline: wipe only (no synthetic/demo backfill).\n" +
+      "Disabled indices in Settings are skipped."
     )) return;
     setRefreshing(true);
     try {
       const { data } = await api.post("/admin/refresh-day", {});
+      const enabled = (data.enabled_indices || []).join(", ") || "none";
+      const pulled = (data.live_indices_pulled || data.indices_backfilled || []).join(", ") || "none";
       toast.success(
-        `Refreshed · deleted ${data.deleted} · back-filled ${data.backfilled_snapshots} snapshots`
+        data.message ||
+          `Fresh Pull · cleared ${data.deleted} · pulled ${pulled} · enabled ${enabled}`
       );
+      onFreshPullDone?.(data);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Refresh failed");
+      toast.error(e?.response?.data?.detail || "Fresh Pull failed");
     } finally {
       setRefreshing(false);
     }
@@ -157,20 +164,22 @@ export default function Header({
   // "yesterday-close vs live LTP", i.e. today's real % change.
   const myTicker = (tickerData || []).find((t) => t.index === current?.index);
 
+  const toolBtn =
+    "rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 h-8 w-8 p-0 sm:h-9 sm:w-auto sm:px-3";
+
   return (
     <header
       data-testid="dashboard-header"
       className="w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 relative"
     >
       <GiftSessionsModal open={giftModalOpen} onOpenChange={setGiftModalOpen} windows={giftSessions} serverIst={extras?.server_time_ist} />
-      {/* --- Single row: brand, secondary metrics, tickers, clock, actions --- */}
-      <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
+
+      {/* Row 1: brand + status + essential actions */}
+      <div className="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3">
         <div className="flex items-center gap-2 shrink-0">
-          <OiPulseLogo className="w-9 h-9 drop-shadow-sm" />
-          <div>
-            <div className="text-sm font-semibold tracking-tight dark:text-slate-100 bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
-              OI Pulse
-            </div>
+          <OiPulseLogo className="w-8 h-8 sm:w-9 sm:h-9 drop-shadow-sm" />
+          <div className="text-sm font-semibold tracking-tight dark:text-slate-100 bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
+            OI Pulse
           </div>
         </div>
 
@@ -188,32 +197,15 @@ export default function Header({
           />
         </div>
 
-        <div className="w-full md:hidden border-t border-slate-200 dark:border-slate-700 mt-2 pt-2">
-          <div className="grid grid-cols-2 gap-2 px-3">
-            <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
-          <ExtraTickerCell
-            label="GIFT NIFTY"
-            data={extras.gift_nifty}
-            windows={giftSessions}
-            openNow={extras?.windows?.gift?.open_now}
-            kiteSymbol={extras?.windows?.gift?.kite_symbol || "NSEIX:GIFT NIFTY"}
-            serverIst={extras?.server_time_ist}
-            onOpenSessions={() => setGiftModalOpen(true)}
-          />
-          </div>
-        </div>
-
-        {/* Ticker cards inline beside VIX */}
-        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-3 border-l border-slate-200 dark:border-slate-700 flex-wrap">
+        {/* Desktop tickers sit in the top row */}
+        <div className="hidden md:flex items-stretch gap-2 flex-1 min-w-0 pl-3 border-l border-slate-200 dark:border-slate-700">
           <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} spotPrices={spotPrices} />
         </div>
 
-        {/* Compact clock for mobile (visible when header has limited space or sidebar hidden) */}
-        <div className="lg:hidden ml-2">
-          <BigClock compact />
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 ml-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
+          <div className="md:hidden">
+            <BigClock compact />
+          </div>
           {(lastPulledAt || nowLabel) && (
             <div className="hidden lg:flex flex-col items-start gap-0 bg-transparent text-slate-700 px-3 py-1 rounded-sm leading-tight min-w-[120px]" data-testid="oi-and-time">
               {lastPulledAt && <div className="text-[10px] font-mono-data uppercase tracking-widest text-slate-500 dark:text-slate-400">OI pulled</div>}
@@ -222,7 +214,6 @@ export default function Header({
                 <span className={`w-2 h-2 rounded-full ${status?.market && status.market.is_market_open ? "bg-emerald-500" : "bg-slate-300"}`} />
                 <span className={`font-semibold ${status?.market && status.market.is_market_open ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}>{nowLabel}</span>
               </div>
-              {/* If tracker is offline, show which date the displayed data is from */}
               {dataStatus && !dataStatus.is_live && dataStatus.data_date && (
                 <div className="text-[10px] font-mono-data text-amber-600 dark:text-amber-400 mt-1">
                   Showing historical data for: <span className="font-semibold">{dataStatus.data_date}</span> · API key required for live updates
@@ -238,7 +229,6 @@ export default function Header({
             {mode === "kite" ? "LIVE" : "OFFLINE"}
           </Badge>
 
-          {/* Guest profile pill in header: show guest name and remaining session time */}
           {authState?.is_guest && !isAdmin && (
             (() => {
               const guestName = authState.guest_name || (typeof window !== 'undefined' ? sessionStorage.getItem('oi_guest_name') : null) || 'Guest';
@@ -261,7 +251,7 @@ export default function Header({
                 window.location.reload();
               };
               return (
-                <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-sm text-slate-800 dark:text-slate-100">
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-sm text-slate-800 dark:text-slate-100">
                   <div className="font-medium">{guestName}</div>
                   {remainingLabel && <div className="text-xs text-slate-500">· expires in {remainingLabel}</div>}
                   <button onClick={exitGuest} className="text-xs text-rose-600 hover:underline ml-2">Exit</button>
@@ -270,10 +260,14 @@ export default function Header({
             })()
           )}
 
-          <AdminControls />
+          <div className="hidden sm:block">
+            <AdminControls />
+          </div>
+
+          {/* Always-visible quick tools */}
           <Button
             data-testid="btn-toggle-compact"
-            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            variant="outline" size="sm" className={toolBtn}
             onClick={onToggleCompact}
             title={compact ? "Show sidebar (Ctrl+B)" : "Hide sidebar (Ctrl+B)"}
           >
@@ -281,7 +275,7 @@ export default function Header({
           </Button>
           <Button
             data-testid="btn-toggle-dark"
-            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            variant="outline" size="sm" className={toolBtn}
             onClick={onToggleDark}
             title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
           >
@@ -289,7 +283,7 @@ export default function Header({
           </Button>
           <Button
             data-testid="btn-toggle-notifications"
-            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            variant="outline" size="sm" className={`hidden sm:inline-flex ${toolBtn}`}
             onClick={onToggleNotif}
             title={notifEnabled ? "Notifications on" : "Enable notifications"}
           >
@@ -297,7 +291,7 @@ export default function Header({
           </Button>
           <Button
             data-testid="btn-open-sounds"
-            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            variant="outline" size="sm" className={`hidden md:inline-flex ${toolBtn}`}
             onClick={onOpenSounds}
             title="Alert sound preferences"
           >
@@ -305,7 +299,7 @@ export default function Header({
           </Button>
           <Button
             data-testid="btn-download-csv"
-            variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+            variant="outline" size="sm" className={`hidden md:inline-flex ${toolBtn}`}
             onClick={onDownloadCsv}
             title="Download current OI as CSV"
           >
@@ -314,65 +308,152 @@ export default function Header({
           {isAdmin && (
             <Button
               data-testid="btn-open-settings"
-              variant="outline" size="sm" className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+              variant="outline" size="sm" className={`hidden md:inline-flex ${toolBtn}`}
               onClick={onOpenSettings}
               title="Alert settings"
             >
               <Settings2 className="w-4 h-4" />
             </Button>
           )}
+
+          {/* Desktop admin action cluster */}
+          <div className="hidden lg:flex items-center gap-2">
+            <Button
+              data-testid="btn-straddle-chart"
+              size="sm"
+              onClick={onOpenMorningRefresh}
+              className={`rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
+              title="Morning token refresh (one-tap)"
+            >
+              <RefreshCw className="w-4 h-4 mr-1.5" />
+              Refresh
+            </Button>
+            <Button
+              data-testid="btn-refresh-day"
+              size="sm"
+              onClick={onRefreshDay}
+              disabled={refreshing}
+              className={`rounded-sm bg-rose-600 hover:bg-rose-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
+              title="Wipe snapshots and live-pull every enabled index in one click"
+            >
+              <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
+              {refreshing ? "Refreshing…" : "Fresh Pull"}
+            </Button>
+            <Button
+              data-testid="btn-open-upload"
+              size="sm"
+              onClick={onOpenUpload}
+              className={`rounded-sm bg-sky-600 hover:bg-sky-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
+              title="Upload Nifty50 / Bank Nifty / Sensex constituents or NSE event calendar"
+            >
+              <UploadCloud className="w-4 h-4 mr-1.5" />
+              Upload
+            </Button>
+            <Button
+              data-testid="btn-open-telegram-prefs"
+              variant="outline" size="sm"
+              className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
+              onClick={onOpenTelegramPrefs}
+              title="Telegram alert preferences"
+            >
+              <Send className="w-4 h-4 mr-1.5" />
+              Telegram
+            </Button>
+            <Button
+              data-testid="btn-open-credentials"
+              variant="outline" size="sm"
+              className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
+              onClick={onOpenCreds}
+            >
+              <KeyRound className="w-4 h-4 mr-1.5" />
+              Kite API
+            </Button>
+          </div>
+
+          {/* Mobile / tablet: collapse admin tools */}
+          {isAdmin && (
+            <Button
+              data-testid="btn-mobile-tools"
+              variant="outline"
+              size="sm"
+              className="lg:hidden rounded-sm h-8 px-2 text-xs"
+              onClick={() => setMobileToolsOpen((v) => !v)}
+              title="Admin tools"
+            >
+              Tools
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile: VIX / GIFT + index tickers on their own rows */}
+      <div className="md:hidden px-3 pb-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+        <div className="grid grid-cols-2 gap-2">
+          <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
+          <ExtraTickerCell
+            label="GIFT NIFTY"
+            data={extras.gift_nifty}
+            windows={giftSessions}
+            openNow={extras?.windows?.gift?.open_now}
+            kiteSymbol={extras?.windows?.gift?.kite_symbol || "NSEIX:GIFT NIFTY"}
+            serverIst={extras?.server_time_ist}
+            onOpenSessions={() => setGiftModalOpen(true)}
+          />
+        </div>
+        <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} spotPrices={spotPrices} />
+      </div>
+
+      {isAdmin && mobileToolsOpen && (
+        <div
+          data-testid="mobile-admin-tools"
+          className="lg:hidden px-3 pb-3 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2"
+        >
+          <div className="w-full sm:hidden">
+            <AdminControls />
+          </div>
           <Button
-            data-testid="btn-straddle-chart"
             size="sm"
             onClick={onOpenMorningRefresh}
-            className={`rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
-            title="Morning token refresh (one-tap)"
+            className="rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <RefreshCw className="w-4 h-4 mr-1.5" />
             Refresh
           </Button>
           <Button
-            data-testid="btn-refresh-day"
             size="sm"
             onClick={onRefreshDay}
             disabled={refreshing}
-            className={`rounded-sm bg-rose-600 hover:bg-rose-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
-            title="Wipe today's OI data and repopulate NIFTY / SENSEX / BANKNIFTY from 9:15 AM to now (or configured market close if market closed)"
+            className="rounded-sm bg-rose-600 hover:bg-rose-700 text-white"
           >
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh Pull"}
           </Button>
-          <Button
-            data-testid="btn-open-upload"
-            size="sm"
-            onClick={onOpenUpload}
-            className={`rounded-sm bg-sky-600 hover:bg-sky-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
-            title="Upload Nifty50 / Bank Nifty / Sensex constituents or NSE event calendar"
-          >
+          <Button size="sm" onClick={onOpenUpload} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button
-            data-testid="btn-open-telegram-prefs"
-            variant="outline" size="sm"
-            className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
-            onClick={onOpenTelegramPrefs}
-            title="Telegram alert preferences"
-          >
+          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenTelegramPrefs}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>
-          <Button
-            data-testid="btn-open-credentials"
-            variant="outline" size="sm"
-            className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
-            onClick={onOpenCreds}
-          >
+          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
             <KeyRound className="w-4 h-4 mr-1.5" />
             Kite API
           </Button>
+          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
+            <Settings2 className="w-4 h-4 mr-1.5" />
+            Settings
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
+            <Volume2 className="w-4 h-4 mr-1.5" />
+            Sounds
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-sm" onClick={onDownloadCsv}>
+            <Download className="w-4 h-4 mr-1.5" />
+            CSV
+          </Button>
         </div>
-      </div>
+      )}
     </header>
   );
 }

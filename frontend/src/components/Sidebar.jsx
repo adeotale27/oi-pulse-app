@@ -140,6 +140,12 @@ export default function Sidebar({
   const [noteUpdatedAt, setNoteUpdatedAt] = useState(null);
   const [loadingNote, setLoadingNote] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  // Re-render every 15s so inactive-index stale flash (>2 min) stays accurate.
+  const [, setAgeTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setAgeTick((n) => n + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -246,6 +252,8 @@ export default function Sidebar({
             const pulled = lastUpdatedByIndex?.[idx];
             const age = ageSec(pulled);
             const fresh = age != null && age <= 45;
+            // Inactive index more than 2 minutes behind → flash so trader notices.
+            const veryStale = !active && age != null && age > 120;
             const stale = age != null && age > 90;
             return (
               <button
@@ -254,8 +262,14 @@ export default function Sidebar({
                 onClick={() => onChangeIndex(idx)}
                 className={`relative text-[11px] font-semibold rounded-md py-2 px-1 border transition-all leading-tight ${
                   active ? theme.activeCls : theme.idleCls
-                }`}
-                title={pulled ? `Last OI ${fmtPull(pulled)} IST` : "No warm snapshot yet"}
+                } ${veryStale ? "index-chip-stale" : ""}`}
+                title={
+                  pulled
+                    ? veryStale
+                      ? `STALE · last OI ${fmtPull(pulled)} IST (${age}s behind)`
+                      : `Last OI ${fmtPull(pulled)} IST`
+                    : "No warm snapshot yet"
+                }
               >
                 <span className={`absolute top-1 left-1.5 w-1.5 h-1.5 rounded-full ${theme.dot} ${active ? "opacity-100" : "opacity-70"}`} />
                 <div className="whitespace-nowrap">{theme.label}</div>
@@ -264,14 +278,16 @@ export default function Sidebar({
                   className={`mt-1 text-[9px] font-mono font-medium tracking-tight ${
                     active
                       ? "text-white/85"
-                      : fresh
-                        ? "text-emerald-700"
-                        : stale
-                          ? "text-amber-700"
-                          : "text-slate-500"
+                      : veryStale
+                        ? "text-amber-800 font-semibold"
+                        : fresh
+                          ? "text-emerald-700"
+                          : stale
+                            ? "text-amber-700"
+                            : "text-slate-500"
                   }`}
                 >
-                  {pulled ? fmtPull(pulled) : "—"}
+                  {pulled ? (veryStale ? `⚠ ${fmtPull(pulled)}` : fmtPull(pulled)) : "—"}
                 </div>
               </button>
             );

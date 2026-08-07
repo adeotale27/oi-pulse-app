@@ -2218,14 +2218,12 @@ async def get_extra_tickers():
 # ------------------- Admin: refresh today's OI data -------------------
 @api_router.post("/admin/refresh-day")
 async def admin_refresh_day(_admin: bool = Depends(require_admin)):
-    """FRESH PULL — wipe today's OI snapshots (from 09:15 IST) and re-populate
-    the session for NIFTY, SENSEX and BANKNIFTY.
+    """FRESH PULL — wipe OI snapshots and live-pull every ENABLED index in one click.
 
-    Session data is back-filled at 1-minute cadence from 09:15 IST to the min
-    of (now, 15:30 IST). Historical OI ticks cannot be recovered from Kite so
-    the back-fill uses the mock service as a stand-in when we are in kite mode
-    — this gives the "Full Day" view a complete history to render while live
-    Kite polling continues to overwrite the current tick going forward.
+    Uses admin `enabled_indices` (falls back to all known indices). Historical
+    OI ticks cannot be recovered from Kite, so there is no synthetic backfill:
+    we take one live snapshot per enabled index (in parallel) when Kite mode is
+    active, then normal polling continues. Offline mode only clears the DB.
     """
     today_ist = datetime.now(IST).date()
     day_start_utc = datetime.combine(
@@ -2243,52 +2241,69 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
         f"today session start {day_start_utc.isoformat()}"
     )
 
-    ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
+    from oi_service import INDEX_CONFIG
+    from market_hours import display_hours
+
+    enabled = [
+        i for i in (tracker.settings.get("enabled_indices") or list(INDEX_CONFIG.keys()))
+        if i in INDEX_CONFIG
+    ]
+    if not enabled:
+        enabled = list(INDEX_CONFIG.keys())
 
     # 2) Backfill strategy depends on whether Kite credentials are present:
     #    • KITE MODE  → NO synthetic backfill. Kite only supplies live ticks,
     #                   so fabricating history would show FAKE OI values that
     #                   don't match reality. Instead we take ONE live Kite
-    #                   snapshot per index at "now" and rely on the tracker's
-    #                   normal 15-second poll to fill in the rest going
-    #                   forward. This is the "real data only" behaviour the
-    #                   user wants when Kite is connected.
-    #    • MOCK MODE  → generate a synthetic 1-minute-cadence day (mock's own
-    #                   base prices) so demos have a populated Full-Day chart.
+    #                   snapshot per enabled index at "now" and rely on the
+    #                   tracker's normal poll to fill in the rest going forward.
+    #    • OFFLINE    → skip synthetic backfill (no fake data).
     backfilled = 0
-    per_index_count = {idx: 0 for idx in ALL_INDICES}
+    per_index_count = {idx: 0 for idx in enabled}
     live_pulled: List[str] = []
     now_ist_now = datetime.now(IST)
     session_start = datetime.combine(
         today_ist, datetime.min.time().replace(hour=9, minute=15)
     ).replace(tzinfo=IST)
+    _, close_hm = display_hours()
+    try:
+        ch, cm = [int(x) for x in close_hm.split(":")[:2]]
+    except Exception:
+        ch, cm = 15, 40
     session_end = min(
         now_ist_now,
         datetime.combine(
-            today_ist, datetime.min.time().replace(hour=15, minute=30)
+            today_ist, datetime.min.time().replace(hour=ch, minute=cm)
         ).replace(tzinfo=IST),
     )
 
     if tracker.mode == "kite" and tracker.kite_service:
-        # Real-data-only: one live poll per index; live poller continues from
-        # here every 15s. No synthetic history is written.
+        # Real-data-only: one live poll per ENABLED index in parallel.
         ksvc = tracker.kite_service
-        for idx in ALL_INDICES:
+
+        async def _pull(idx: str):
             try:
                 snap = await asyncio.wait_for(
                     asyncio.to_thread(ksvc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
-                    timeout=10.0,
+                    timeout=15.0,
                 )
-                if snap:
-                    snap["mode"] = "kite"
-                    snap["source"] = "live"
-                    tracker.last_snapshot[idx] = snap
-                    await _store_oi_snapshot(snap, index_name=idx)
-                    per_index_count[idx] += 1
-                    backfilled += 1
-                    live_pulled.append(idx)
+                return idx, snap, None
             except Exception as e:
-                logger.warning(f"[refresh kite-live] {idx}: {e}")
+                return idx, None, e
+
+        results = await asyncio.gather(*[_pull(idx) for idx in enabled])
+        for idx, snap, err in results:
+            if err is not None:
+                logger.warning(f"[refresh kite-live] {idx}: {err}")
+                continue
+            if snap:
+                snap["mode"] = "kite"
+                snap["source"] = "live"
+                tracker.last_snapshot[idx] = snap
+                await _store_oi_snapshot(snap, index_name=idx)
+                per_index_count[idx] += 1
+                backfilled += 1
+                live_pulled.append(idx)
     else:
         # OFFLINE mode (no Kite credentials): DO NOT synthesize or backfill
         # mock/demo data. Creating synthetic history would expose fake values to
@@ -2298,26 +2313,33 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
         logger.info("[admin/refresh-day] offline mode: skipping synthetic backfill (no Kite credentials configured)")
         # backfilled remains 0
 
-    # 3) Immediate live poll for ALL indices when market is open — skipped if
+    # 3) Immediate live poll for ALL enabled indices when market is open — skipped if
     #    step 2 already performed the kite live pull (avoids double Kite quotes).
     if is_market_open():
         if tracker.mode == "kite" and tracker.kite_service and not live_pulled:
             try:
                 svc = tracker._get_service()
-                for idx in ALL_INDICES:
+
+                async def _live(idx: str):
                     try:
                         snap = await asyncio.wait_for(
                             asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx)),
-                            timeout=10.0,
+                            timeout=15.0,
                         )
-                        if snap:
-                            snap["mode"] = tracker.mode
-                            snap["source"] = "live"
-                            tracker.last_snapshot[idx] = snap
-                            await _store_oi_snapshot(snap, index_name=idx)
-                            live_pulled.append(idx)
+                        return idx, snap, None
                     except Exception as e:
-                        logger.warning(f"[refresh live-poll] {idx}: {e}")
+                        return idx, None, e
+
+                for idx, snap, err in await asyncio.gather(*[_live(idx) for idx in enabled]):
+                    if err is not None:
+                        logger.warning(f"[refresh live-poll] {idx}: {err}")
+                        continue
+                    if snap:
+                        snap["mode"] = tracker.mode
+                        snap["source"] = "live"
+                        tracker.last_snapshot[idx] = snap
+                        await _store_oi_snapshot(snap, index_name=idx)
+                        live_pulled.append(idx)
             except Exception as e:
                 logger.warning(f"[admin/refresh-day] live poll block failed: {e}")
         elif tracker.mode != "kite":
@@ -2325,7 +2347,7 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
     else:
         # After close: seed `last_snapshot` from the last backfilled document so
         # /oi/{idx}/change serves the correct final tick immediately.
-        for idx in ALL_INDICES:
+        for idx in enabled:
             doc = await db.oi_snapshots.find_one(
                 {"index": idx},
                 sort=[("timestamp", -1)],
@@ -2349,16 +2371,14 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
         "per_index_count": per_index_count,
         "indices_backfilled": successful_indices,
         "live_indices_pulled": live_pulled,
+        "enabled_indices": enabled,
         "mode": tracker.mode,
-        "session_start_utc": day_start_utc.isoformat(),
-        "session_end_ist": min(datetime.now(IST),
-                               datetime.combine(today_ist,
-                                                datetime.min.time().replace(hour=15, minute=30)
-                                                ).replace(tzinfo=IST)).isoformat(),
+        "session_start_ist": session_start.isoformat(),
+        "session_end_ist": session_end.isoformat(),
         "message": (
             f"Fresh Pull complete. Cleared {deleted.deleted_count} old snapshots and "
-            f"back-filled {backfilled} snapshots ({', '.join(successful_indices)}) "
-            f"from 09:15 IST → now. Live polling continues automatically."
+            f"pulled live ticks for {', '.join(live_pulled) or 'none'} "
+            f"(enabled: {', '.join(enabled)}). Live polling continues automatically."
         ),
     }
 

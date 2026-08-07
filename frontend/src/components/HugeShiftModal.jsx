@@ -1,4 +1,4 @@
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, X, Rewind } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -21,11 +21,16 @@ function sideMeta(side, value) {
   return { tone: "rose",  headline: "Massive PUT OI unwind", read: "Put writers covering near ATM — support cracking, bearish tilt." };
 }
 
-export default function HugeShiftModal({ shift, onClose }) {
+export default function HugeShiftModal({ shift, onClose, onReplayAtMoment }) {
   if (!shift) return null;
   const meta = sideMeta(shift.side, shift.value);
   const toneBg = meta.tone === "emerald" ? "bg-emerald-50 border-emerald-300" : "bg-rose-50 border-rose-300";
   const toneText = meta.tone === "emerald" ? "text-emerald-800" : "text-rose-800";
+  const bookmarkTs = shift.snapshotTs || shift.at;
+  let jumpLabel = "";
+  try {
+    jumpLabel = bookmarkTs ? new Date(bookmarkTs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+  } catch { jumpLabel = ""; }
   return (
     <Dialog open={!!shift} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent
@@ -77,7 +82,19 @@ export default function HugeShiftModal({ shift, onClose }) {
             </div>
           ) : null}
         </div>
-        <DialogFooter>
+        <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-end">
+          {bookmarkTs && onReplayAtMoment && (
+            <Button
+              data-testid="btn-replay-huge-shift"
+              variant="outline"
+              onClick={() => onReplayAtMoment(bookmarkTs)}
+              className="rounded-sm border-slate-300"
+              title={`Open session replay parked at ${jumpLabel || "this moment"}`}
+            >
+              <Rewind className="w-4 h-4 mr-1" />
+              {jumpLabel ? `Jump to ${jumpLabel}` : "Replay at this moment"}
+            </Button>
+          )}
           <Button
             data-testid="btn-ack-huge-shift"
             onClick={onClose}

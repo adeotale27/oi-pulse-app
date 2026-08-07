@@ -82,7 +82,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             type="button"
             onClick={() => onSelectIndex?.(t.index)}
             data-testid={`ticker-${t.index}`}
-            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-3 py-2 min-w-[120px] hover:brightness-95 transition-all ${
+            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-2 sm:px-3 py-1.5 sm:py-2 min-w-[96px] sm:min-w-[120px] flex-1 sm:flex-none hover:brightness-95 transition-all ${
               isActive
                 ? `border-transparent ring-2 ${s.ring} shadow-sm`
                 : "border-slate-200"
