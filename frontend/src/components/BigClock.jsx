@@ -1,12 +1,37 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotify } from "@/hooks/useNotify";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 import { FNO_CLOSE_MINUTE, WEEKEND_START_MINUTE, REMINDER_MINUTES, hmFromMinutes } from "@/lib/marketTimes";
 import {
   EVENT_WARNING_MINUTE,
   SUNDAY_BRIEF_MINUTE,
   buildEventWarningCopy,
 } from "@/lib/overnightBrief";
+
+const CARRY_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+
+async function fetchIndexImpactPacks() {
+  const packs = await Promise.all(
+    CARRY_INDICES.map(async (idx) => {
+      try {
+        const { data } = await api.get(`/events/${idx}`);
+        return { index: idx, events: data?.events || [] };
+      } catch {
+        return { index: idx, events: [] };
+      }
+    }),
+  );
+  return packs;
+}
+
+async function showCarryToast(weekday) {
+  let indexImpacts = [];
+  try {
+    indexImpacts = await fetchIndexImpactPacks();
+  } catch (_) { /* ignore */ }
+  return buildEventWarningCopy(weekday, { indexImpacts });
+}
 
 // Helper: return a Date object representing the current IST local time.
 function getISTDate(dt = new Date()) {
@@ -125,23 +150,25 @@ export default function BigClock({ compact = false }) {
       !notifiedRef.current.has(`${minuteKey}|events`)
     ) {
       notifiedRef.current.add(`${minuteKey}|events`);
-      const copy = buildEventWarningCopy(weekday);
-      try { push(copy.title, copy.lines.slice(0, 3).join(" · ") || copy.description); } catch (_) { /* ignore */ }
-      try { alarm(); } catch (_) { /* ignore */ }
-      try {
-        toast(copy.title, {
-          id: `event-carry-${key}`,
-          description: copy.description,
-          duration: Infinity, // manual close only
-          closeButton: true,
-          important: true,
-          classNames: {
-            toast: copy.hasEvents
-              ? "border-2 border-amber-500 bg-amber-50 text-amber-950"
-              : "border border-slate-300",
-          },
-        });
-      } catch (_) { /* ignore */ }
+      (async () => {
+        const copy = await showCarryToast(weekday);
+        try { push(copy.title, copy.lines.slice(0, 3).join(" · ") || copy.description); } catch (_) { /* ignore */ }
+        try { alarm(); } catch (_) { /* ignore */ }
+        try {
+          toast(copy.title, {
+            id: `event-carry-${key}`,
+            description: copy.description,
+            duration: Infinity, // manual close only
+            closeButton: true,
+            important: true,
+            classNames: {
+              toast: copy.hasEvents
+                ? "border-2 border-amber-500 bg-amber-50 text-amber-950"
+                : "border border-slate-300",
+            },
+          });
+        } catch (_) { /* ignore */ }
+      })();
     }
 
     // Sunday 20:00 — Monday-open gap brief toast (card also auto-opens).
@@ -151,29 +178,31 @@ export default function BigClock({ compact = false }) {
       !notifiedRef.current.has(`${minuteKey}|sunday-brief`)
     ) {
       notifiedRef.current.add(`${minuteKey}|sunday-brief`);
-      const copy = buildEventWarningCopy(0);
-      try {
-        push(
-          "Sunday night gap brief",
-          copy.lines.slice(0, 3).join(" · ") || "Review GIFT + Monday events before the open.",
-        );
-      } catch (_) { /* ignore */ }
-      try { alarm(); } catch (_) { /* ignore */ }
-      try {
-        toast("Sunday night · Should I carry into Monday?", {
-          id: `sunday-carry-${key}`,
-          description:
-            copy.hasEvents
-              ? copy.description
-              : "Check GIFT overnight move and whole-day bias in the sticky gap brief.",
-          duration: Infinity,
-          closeButton: true,
-          important: true,
-          classNames: {
-            toast: "border-2 border-amber-500 bg-amber-50 text-amber-950",
-          },
-        });
-      } catch (_) { /* ignore */ }
+      (async () => {
+        const copy = await showCarryToast(0);
+        try {
+          push(
+            "Sunday night gap brief",
+            copy.lines.slice(0, 3).join(" · ") || "Review GIFT + Monday events before the open.",
+          );
+        } catch (_) { /* ignore */ }
+        try { alarm(); } catch (_) { /* ignore */ }
+        try {
+          toast("Sunday night · Should I carry into Monday?", {
+            id: `sunday-carry-${key}`,
+            description:
+              copy.hasEvents
+                ? copy.description
+                : "Check GIFT overnight move and whole-day bias in the sticky gap brief.",
+            duration: Infinity,
+            closeButton: true,
+            important: true,
+            classNames: {
+              toast: "border-2 border-amber-500 bg-amber-50 text-amber-950",
+            },
+          });
+        } catch (_) { /* ignore */ }
+      })();
     }
 
     if (isWeekday && reminderTimes.includes(cur) && !notifiedRef.current.has(minuteKey)) {

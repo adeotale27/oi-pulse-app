@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, RefreshCw, Send, Database, UploadCloud } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
@@ -18,7 +18,7 @@ export default function Header({
   current,
   dataStatus,
   onOpenCreds,
-  onOpenMorningRefresh,
+  onOpenMorningRefresh: _onOpenMorningRefresh, // kept for API compat; token refresh via Kite API
   onOpenTelegramPrefs,
   onOpenSettings,
   onDownloadCsv,
@@ -214,38 +214,39 @@ export default function Header({
               </div>
             </div>
           )}
-          <Badge
-            data-testid="mode-badge"
-            className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
-            title={
-              mode === "kite"
-                ? (status?.market?.is_market_open
-                  ? "Kite connected — see data-truth strip for LIVE vs lag"
-                  : "Kite connected · market closed — board shows last session (not live ticks)")
-                : "Offline: Kite API key required for live updates"
-            }
-          >
-            {mode === "kite" ? (status?.market?.is_market_open ? "KITE" : "KITE · CLOSED") : "OFFLINE"}
-          </Badge>
-          {/* Compact session/offline chip — never competes with the data-truth strip */}
-          {mode !== "kite" && (
-            <span
-              data-testid="offline-hint-chip"
-              className="hidden sm:inline-flex max-w-[9rem] truncate text-[10px] font-mono-data text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
-              title="Kite API key required for live updates. Connect via Kite API."
+          <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack">
+            <Badge
+              data-testid="mode-badge"
+              className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
+              title={
+                mode !== "kite"
+                  ? "OFFLINE — no Kite credentials. Connect via Kite API to pull live OI."
+                  : status?.market?.is_market_open
+                    ? "KITE · OPEN — credentials connected and NSE cash/F&O session is open. OI polls while the market is open; the data-truth strip shows LIVE vs lag."
+                    : "KITE · CLOSED — credentials are connected, but the NSE session is closed (post-close / weekend / holiday). Board shows the last session snapshot; OI polling is paused until next open. GIFT/VIX may still update."
+              }
             >
-              Needs API key
-            </span>
-          )}
-          {mode === "kite" && dataStatus?.data_date && status?.market && status.market.is_market_open === false && (
-            <span
-              data-testid="session-date-chip"
-              className="hidden sm:inline-flex text-[10px] font-mono-data text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5"
-              title={`Showing last session data for ${dataStatus.data_date}. Kite credentials are configured; OI polling is paused until next open.`}
-            >
-              {dataStatus.data_date}
-            </span>
-          )}
+              {mode === "kite" ? (status?.market?.is_market_open ? "KITE · OPEN" : "KITE · CLOSED") : "OFFLINE"}
+            </Badge>
+            {mode === "kite" && dataStatus?.data_date && status?.market && status.market.is_market_open === false && (
+              <span
+                data-testid="session-date-chip"
+                className="text-[10px] font-mono-data text-center text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5"
+                title={`Last session date on the board: ${dataStatus.data_date}. Not live ticks.`}
+              >
+                {dataStatus.data_date}
+              </span>
+            )}
+            {mode !== "kite" && (
+              <span
+                data-testid="offline-hint-chip"
+                className="hidden sm:inline-flex text-[10px] font-mono-data text-center text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
+                title="Kite API key required for live updates. Connect via Kite API."
+              >
+                Needs API key
+              </span>
+            )}
+          </div>
 
           {authState?.is_guest && !isAdmin && (
             (() => {
@@ -340,16 +341,6 @@ export default function Header({
           {/* Desktop admin action cluster */}
           <div className="hidden lg:flex items-center gap-2">
             <Button
-              data-testid="btn-straddle-chart"
-              size="sm"
-              onClick={onOpenMorningRefresh}
-              className={`rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
-              title="Morning token refresh (one-tap)"
-            >
-              <RefreshCw className="w-4 h-4 mr-1.5" />
-              Refresh
-            </Button>
-            <Button
               data-testid="btn-refresh-day"
               size="sm"
               onClick={onRefreshDay}
@@ -436,14 +427,6 @@ export default function Header({
               publicAccessOpen={!!authState.public_access_open}
             />
           </div>
-          <Button
-            size="sm"
-            onClick={onOpenMorningRefresh}
-            className="rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <RefreshCw className="w-4 h-4 mr-1.5" />
-            Refresh
-          </Button>
           <Button
             size="sm"
             onClick={onRefreshDay}
@@ -677,10 +660,11 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
         </div>
         <div className={`text-[10px] font-mono-data ${toneCls}`}>{hasData ? `${chgPct >= 0 ? "+" : ""}${chgPct.toFixed(2)}%` : "—"}</div>
       </div>
-      <div className="flex items-center justify-between mt-0.5">
-        <div className={`text-sm font-mono-data font-semibold text-slate-900`}>{hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</div>
-        <div className={`text-[11px] font-mono-data ${toneCls}`}>
-          {arrow}{chg > 0 ? "+" : ""}{chg.toFixed(2)}
+      <div className="flex items-center justify-between gap-2 mt-1">
+        <div className={`text-sm font-mono-data font-semibold text-slate-900 tabular-nums leading-none`}>{hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</div>
+        <div className={`flex items-center gap-1 text-[11px] font-mono-data tabular-nums leading-none shrink-0 ${toneCls}`}>
+          <span aria-hidden>{arrow}</span>
+          <span>{chg > 0 ? "+" : ""}{chg.toFixed(2)}</span>
         </div>
       </div>
 
