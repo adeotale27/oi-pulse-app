@@ -51,7 +51,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           straddle_poll_interval_seconds: 60,
           market_open_ist: "09:15",
           market_close_ist: "15:40",
-          expire_admin_on_market_close: true,
+          expire_admin_on_market_close: false,
           admin_session_ttl_minutes: 480,
           alert_enabled_indices: ["NIFTY"],
           show_strike_range: false,

@@ -147,7 +147,7 @@ DEFAULT_SETTINGS = {
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",
-    "expire_admin_on_market_close": True,
+    "expire_admin_on_market_close": False,  # stay signed in past market close (Remember me / long sessions)
     "admin_session_ttl_minutes": 480,
     # Alert focus indices — weekday defaults applied unless user overrides today
     "alert_enabled_indices": None,  # filled on load from weekday default
@@ -192,6 +192,19 @@ class OITracker:
         doc = await self.db.settings.find_one({"_id": "alerts"})
         if doc:
             self.settings.update({k: v for k, v in doc.items() if k != "_id"})
+        # Product default: do NOT kick admin at market close. Persist so UI +
+        # /auth/state stay consistent after upgrades from the old True default.
+        if self.settings.get("expire_admin_on_market_close") is True:
+            self.settings["expire_admin_on_market_close"] = False
+            try:
+                await self.db.settings.update_one(
+                    {"_id": "alerts"},
+                    {"$set": {"expire_admin_on_market_close": False}},
+                    upsert=True,
+                )
+                logger.info("Migrated expire_admin_on_market_close → False (admin stays signed in past close)")
+            except Exception as e:
+                logger.warning("Could not persist expire_admin_on_market_close=False: %s", e)
         # Apply market hours + weekday alert defaults
         self._apply_market_hours()
         self._refresh_alert_indices_for_today()

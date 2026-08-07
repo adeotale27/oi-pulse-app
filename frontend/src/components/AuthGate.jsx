@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { api, clearGuestAuth, clearAdminAuth } from "@/lib/api";
+import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,9 +16,9 @@ import OiPulseLogo from "@/components/OiPulseLogo";
  *   2. Guest name prompt (when public access is open but caller has no guest token)
  *   3. Pass-through (admin or guest already authenticated)
  *
- * Also handles 8h admin idle-timeout: on last activity, we don't touch the server;
- * the server rejects expired tokens on next call. Additionally, we schedule a
- * client-side auto-logout after ADMIN_SESSION_TTL_SECONDS of idle to be graceful.
+ * Returning guests (same IP + previously approved name) are auto-admitted.
+ * Admin Remember-me restores via /auth/remember-login. Admin is NOT kicked at
+ * market close unless Settings → expire_admin_on_market_close is explicitly ON.
  */
 export default function AuthGate({ children }) {
   const [state, setState] = useState({ loading: true, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false });
@@ -38,34 +38,68 @@ export default function AuthGate({ children }) {
   const [waitStatus, setWaitStatus] = useState(null); // pending | rejected | null
   const lastActivityRef = useRef(Date.now());
   const pendingPollRef = useRef(null);
+  const autoGuestRef = useRef(false);
 
   const refresh = async () => {
     try {
-      // Attempt remember-me auto-login if no admin session yet.
+      // Strip stale localStorage admin tokens — they blocked Remember-me forever.
+      try {
+        const staleLocal = localStorage.getItem("oi_admin_token");
+        const sessTok = sessionStorage.getItem("oi_admin_token");
+        if (staleLocal && !sessTok) localStorage.removeItem("oi_admin_token");
+      } catch (_) { /* noop */ }
+
       const rememberTok = (() => {
         try { return localStorage.getItem("oi_admin_remember_token"); } catch (_) { return null; }
       })();
-      const hasAdmin = (() => {
-        try { return !!(sessionStorage.getItem("oi_admin_token") || localStorage.getItem("oi_admin_token")); } catch (_) { return false; }
+      // Only skip remember when we already have a *session* token.
+      const hasSessionAdmin = (() => {
+        try { return !!sessionStorage.getItem("oi_admin_token"); } catch (_) { return false; }
       })();
-      if (rememberTok && !hasAdmin) {
+      if (rememberTok && !hasSessionAdmin) {
         try {
           const { data: rem } = await api.post("/auth/remember-login", { remember_token: rememberTok });
           if (rem?.token) {
-            try { sessionStorage.setItem("oi_admin_token", rem.token); } catch (_) {}
+            persistAdminSession(rem.token);
           }
-        } catch (_) {
-          try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+        } catch (err) {
+          // Soft IP/UA mismatch or expired — only drop token on hard expiry/invalid
+          const detail = String(err?.response?.data?.detail || "");
+          if (/expired|invalid|missing/i.test(detail)) {
+            try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+          }
         }
       }
+
       const { data } = await api.get("/auth/state");
+
+      // Returning guest on same IP — auto-login without a click.
+      if (
+        data?.auto_guest_token &&
+        !data.is_admin &&
+        !data.is_guest &&
+        !autoGuestRef.current
+      ) {
+        autoGuestRef.current = true;
+        persistGuestAuth({
+          token: data.auto_guest_token,
+          name: data.auto_guest_name || data.suggested_guest_name || "",
+          expiresInSeconds: data.auto_guest_expires_in,
+        });
+        clearAdminAuth({ clearRemember: false });
+        toast.success(`Welcome back, ${data.auto_guest_name || data.suggested_guest_name || "guest"}`);
+        // Re-fetch so is_guest is true with the new header token.
+        const { data: again } = await api.get("/auth/state");
+        setState({ loading: false, ...again });
+        return;
+      }
+
       if (data.requires_login && !data.is_admin) {
         clearGuestAuth();
       }
       if (!data.is_guest && !data.is_admin) {
         if (!data.public_access_open) clearGuestAuth();
       }
-      // Prefill guest name from IP recall (only if field still empty)
       if (data.suggested_guest_name) {
         setGuestName((prev) => prev || data.suggested_guest_name);
       }
@@ -88,43 +122,49 @@ export default function AuthGate({ children }) {
     };
   }, []);
 
-  // Quiescent-aware refresh of auth state
-  useQuiescentAwarePolling(refresh, 60_000, [], { immediate: true, dedupeKey: "auth-gate" });
+  // Auth must keep working after EOD.
+  useQuiescentAwarePolling(refresh, 60_000, [], {
+    immediate: true,
+    allowDuringQuiescent: true,
+    dedupeKey: "auth-gate",
+  });
 
-  // Client-side 8h idle-logout for admin (matches backend TTL).
+  // Absolute session TTL logout for admin (matches backend created_at + ttl).
+  // Does NOT call /auth/logout (that would wipe Remember-me for this IP).
   useEffect(() => {
     if (!state.is_admin) return;
     const ttl = (state.session_ttl_seconds || 8 * 3600) * 1000;
     const check = setInterval(() => {
       if (Date.now() - lastActivityRef.current > ttl) {
         toast.info("Signed out — session timed out.");
-        clearAdminAuth();
+        clearAdminAuth({ clearRemember: false });
         window.location.reload();
       }
     }, 60_000);
     return () => clearInterval(check);
   }, [state.is_admin, state.session_ttl_seconds]);
 
-  // Hard auto-logout for admin at configured market close (backend also enforces this).
+  // Market-close admin logout — ONLY when Settings explicitly enables it.
   useEffect(() => {
-    if (!state.is_admin || !state.admin_session_expires_at) return;
+    if (!state.is_admin) return;
+    if (!state.expire_admin_on_market_close) return;
+    if (!state.admin_session_expires_at) return;
     const expMs = Date.parse(state.admin_session_expires_at);
     if (Number.isNaN(expMs)) return;
     const now = Date.now();
     if (expMs <= now) {
       toast.info("Signed out — market closed.");
-      clearAdminAuth();
+      clearAdminAuth({ clearRemember: false });
       window.location.reload();
       return;
     }
-    // Schedule + safety-net poll every minute (backend rejects if expired).
     const timer = setTimeout(() => {
       toast.info("Signed out — market closed.");
-      clearAdminAuth();
+      clearAdminAuth({ clearRemember: false });
       window.location.reload();
-    }, Math.min(expMs - now, 2147483000)); // clamp for 32-bit setTimeout
+    }, Math.min(expMs - now, 2147483000));
     return () => clearTimeout(timer);
-  }, [state.is_admin, state.admin_session_expires_at]);
+  }, [state.is_admin, state.admin_session_expires_at, state.expire_admin_on_market_close]);
 
   const doLogin = async (e) => {
     e?.preventDefault();
@@ -135,8 +175,8 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/login", { username: username.trim(), password });
-      clearGuestAuth(); // mutually exclusive tokens
-      sessionStorage.setItem("oi_admin_token", data.token);
+      clearGuestAuth();
+      persistAdminSession(data.token);
       toast.success(`Welcome, ${data.username}`);
       await refresh();
     } catch (e) {
@@ -145,13 +185,8 @@ export default function AuthGate({ children }) {
   };
 
   const admitGuest = async (token, name, expiresIn) => {
-    clearAdminAuth();
-    try { sessionStorage.setItem("oi_guest_token", token); } catch (_) {}
-    try { sessionStorage.setItem("oi_guest_name", name || ""); } catch (_) {}
-    try {
-      const expiresMs = Date.now() + (Number(expiresIn || 0) * 1000);
-      sessionStorage.setItem("oi_guest_expires_at", String(expiresMs));
-    } catch (_) {}
+    clearAdminAuth({ clearRemember: false });
+    persistGuestAuth({ token, name: name || "", expiresInSeconds: expiresIn });
     try {
       sessionStorage.removeItem("oi_access_request_id");
       sessionStorage.removeItem("oi_access_request_name");

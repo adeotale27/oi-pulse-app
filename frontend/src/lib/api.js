@@ -164,6 +164,28 @@ export function clearGuestAuth() {
   authStorage.remove("oi_guest_expires_at");
 }
 
+export function persistGuestAuth({ token, name, expiresInSeconds }) {
+  if (!token) return;
+  try { sessionStorage.setItem("oi_guest_token", token); } catch (_) {}
+  try { localStorage.setItem("oi_guest_token", token); } catch (_) {}
+  if (name != null) {
+    try { sessionStorage.setItem("oi_guest_name", name); } catch (_) {}
+    try { localStorage.setItem("oi_guest_name", name); } catch (_) {}
+  }
+  if (expiresInSeconds != null) {
+    const expiresMs = Date.now() + (Number(expiresInSeconds) * 1000);
+    try { sessionStorage.setItem("oi_guest_expires_at", String(expiresMs)); } catch (_) {}
+    try { localStorage.setItem("oi_guest_expires_at", String(expiresMs)); } catch (_) {}
+  }
+}
+
+export function persistAdminSession(token) {
+  if (!token) return;
+  try { sessionStorage.setItem("oi_admin_token", token); } catch (_) {}
+  // Never leave a stale localStorage admin token — it blocked Remember-me.
+  try { localStorage.removeItem("oi_admin_token"); } catch (_) {}
+}
+
 export function clearAdminAuth({ clearRemember = false } = {}) {
   authStorage.remove("oi_admin_token");
   if (clearRemember) {
@@ -194,15 +216,22 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Global 401 handler — session likely expired; clear any auth tokens so the auth gate re-prompts.
+// Global 401 handler — clear ephemeral session tokens so AuthGate can re-auth.
+// Keep Remember-me token so the next load can restore the admin session.
 api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401) {
+      const url = String(err?.config?.url || "");
+      // Don't wipe remember token on remember-login failure — caller handles that.
+      const isRememberAttempt = url.includes("/auth/remember-login");
       try {
-        clearAdminAuth();
+        clearAdminAuth({ clearRemember: false });
         clearGuestAuth();
       } catch (_) { /* ignore */ }
+      if (isRememberAttempt) {
+        // leave oi_admin_remember_token; AuthGate may soft-retry or user re-logins
+      }
     }
     return Promise.reject(err);
   },

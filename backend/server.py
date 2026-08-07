@@ -140,8 +140,8 @@ async def _admin_from_request(request: Request):
         except Exception:
             pass
         return None
-    # Optional cap: force auto-logout at configured market close (default ON).
-    expire_on_close = True
+    # Optional cap: force auto-logout at configured market close (DEFAULT OFF).
+    expire_on_close = False
     try:
         if tracker and "expire_admin_on_market_close" in tracker.settings:
             expire_on_close = bool(tracker.settings["expire_admin_on_market_close"])
@@ -1632,7 +1632,14 @@ async def auth_remember_login(payload: RememberLoginIn, request: Request):
         raise HTTPException(401, "Remember token expired")
     ip = _client_ip(request)
     if doc.get("ip") and ip and doc["ip"] != ip:
-        raise HTTPException(401, "Remember token not valid for this device/IP")
+        # Soft-fail: keep the remember token (IP can change on mobile/CGNAT).
+        # Only reject this attempt — do not delete the device record.
+        ua = (request.headers.get("user-agent") or "")[:200]
+        stored_ua = (doc.get("user_agent") or "")[:200]
+        if not stored_ua or stored_ua != ua:
+            raise HTTPException(401, "Remember token not valid for this device/IP")
+        # UA matches → allow (IP drifted but same browser profile)
+        logger.info("remember-login: IP changed (%s → %s) but UA matched — allowing", doc.get("ip"), ip)
     # Issue a fresh session (same as login)
     session_tok = secrets.token_urlsafe(32)
     now_utc = datetime.now(timezone.utc)
@@ -1787,10 +1794,82 @@ async def auth_access_request_status(request_id: str, request: Request):
         out["token"] = doc["guest_token"]
         out["expires_in_seconds"] = GUEST_SESSION_TTL_SECONDS
         out["status"] = "approved"
+        # Hand off once — subsequent polls see "consumed" so the token isn't
+        # endlessly re-exposed. Client must persist the token on first receipt.
+        try:
+            await db.access_requests.update_one(
+                {"_id": request_id, "status": "approved"},
+                {"$set": {
+                    "status": "consumed",
+                    "consumed_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+        except Exception:
+            pass
     elif doc.get("status") == "consumed":
         # Token already handed off — tell client to use stored session / re-enter name.
         out["status"] = "consumed"
     return out
+
+
+async def _try_auto_guest_for_ip(ip: Optional[str], request: Request) -> Optional[dict]:
+    """If this IP was previously approved under a known name, re-admit without a click.
+
+    Order:
+      1) Revive a still-valid last_token session
+      2) Else mint a fresh session when a prior approved request exists for this IP
+    """
+    if not ip:
+        return None
+    if await _is_ip_blocked(ip):
+        return None
+    open_, _ = await _get_public_access_state()
+    if not open_:
+        return None
+    row = await db.guest_ip_names.find_one({"_id": ip})
+    if not row or not row.get("name"):
+        return None
+    name = row["name"]
+    # 1) Live session still good?
+    tok = row.get("last_token")
+    if tok:
+        sess = await db.guest_sessions.find_one({"_id": tok})
+        if sess and not sess.get("revoked_at"):
+            try:
+                started = datetime.fromisoformat(sess.get("started_at"))
+                age = (datetime.now(timezone.utc) - started).total_seconds()
+                if age <= GUEST_SESSION_TTL_SECONDS:
+                    return {
+                        "token": tok,
+                        "name": sess.get("name") or name,
+                        "expires_in_seconds": max(60, int(GUEST_SESSION_TTL_SECONDS - age)),
+                        "source": "revive",
+                    }
+            except Exception:
+                pass
+    # 2) Previously approved on this IP → mint without another admin click
+    prior = await db.access_requests.find_one(
+        {
+            "ip": ip,
+            "status": {"$in": ["approved", "consumed"]},
+            "name": name,
+        },
+        sort=[("decided_at", -1)],
+    )
+    if not prior:
+        # Any prior approval for this IP (name may have been edited slightly)
+        prior = await db.access_requests.find_one(
+            {"ip": ip, "status": {"$in": ["approved", "consumed"]}},
+            sort=[("decided_at", -1)],
+        )
+        if prior and prior.get("name"):
+            name = prior["name"]
+    if not prior:
+        return None
+    ua = request.headers.get("user-agent", "")[:200]
+    guest = await _create_guest_session(name, ip, ua, request_id=prior.get("_id"))
+    guest["source"] = "reissue"
+    return guest
 
 
 @api_router.get("/auth/state")
@@ -1809,15 +1888,18 @@ async def auth_state(request: Request):
     if is_admin and admin_sess:
         try:
             created = datetime.fromisoformat(admin_sess["created_at"])
-            expire_on_close = True
+            expire_on_close = False
             if tracker and "expire_admin_on_market_close" in tracker.settings:
                 expire_on_close = bool(tracker.settings["expire_admin_on_market_close"])
             if expire_on_close:
                 admin_session_expires_at = _session_market_expiry_utc(created).isoformat()
         except Exception:
             admin_session_expires_at = None
-    # Suggest previous guest name for this IP (public return visit).
+    # Suggest previous guest name + auto-admit returning guests on the same IP.
     suggested_guest_name = None
+    auto_guest_token = None
+    auto_guest_name = None
+    auto_guest_expires_in = None
     ip = _client_ip(request)
     if needs_guest_name and ip:
         try:
@@ -1826,6 +1908,17 @@ async def auth_state(request: Request):
                 suggested_guest_name = row["name"]
         except Exception:
             pass
+        try:
+            auto = await _try_auto_guest_for_ip(ip, request)
+            if auto and auto.get("token"):
+                auto_guest_token = auto["token"]
+                auto_guest_name = auto.get("name") or suggested_guest_name
+                auto_guest_expires_in = auto.get("expires_in_seconds")
+                # Reflect admitted state immediately for this response shape
+                # (client will store the token and re-fetch).
+                suggested_guest_name = auto_guest_name or suggested_guest_name
+        except Exception as e:
+            logger.warning(f"auto guest for IP failed: {e}")
     pending_access_count = 0
     if is_admin:
         pending_access_count = await _pending_access_count()
@@ -1842,8 +1935,11 @@ async def auth_state(request: Request):
         "is_admin": is_admin,
         "is_guest": is_guest,
         "guest_name": guest_name,
-        "needs_guest_name": needs_guest_name,
+        "needs_guest_name": needs_guest_name and not auto_guest_token,
         "suggested_guest_name": suggested_guest_name,
+        "auto_guest_token": auto_guest_token,
+        "auto_guest_name": auto_guest_name,
+        "auto_guest_expires_in": auto_guest_expires_in,
         "admin_name": admin_name,
         "admin_display_name": ADMIN_USERNAME,
         "session_ttl_seconds": (
@@ -1851,6 +1947,9 @@ async def auth_state(request: Request):
             if tracker else ADMIN_SESSION_TTL_SECONDS
         ),
         "admin_session_expires_at": admin_session_expires_at,
+        "expire_admin_on_market_close": bool(
+            (tracker.settings or {}).get("expire_admin_on_market_close", False) if tracker else False
+        ),
         "can_remember_login": True,
         "pending_access_count": pending_access_count,
         "ip_blocked": await _is_ip_blocked(ip) if not is_admin else False,

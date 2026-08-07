@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { api, clearAdminAuth } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -71,15 +71,16 @@ export default function AdminControls({
   }, [publicAccessOpen]);
 
   useEffect(() => {
-    if (!state?.is_admin) return;
-    const logoutTimer = setTimeout(async () => {
-      try { await api.post("/auth/logout"); } catch (_) {}
-      sessionStorage.removeItem("oi_admin_token");
-      toast.info("Admin session expired. Signed out.");
+    if (!state?.is_admin) return undefined;
+    // Soft client safety-net only — never call /auth/logout (that wipes Remember-me).
+    const ttlMs = Math.max(60, Number(state.session_ttl_seconds || 8 * 3600)) * 1000;
+    const logoutTimer = setTimeout(() => {
+      clearAdminAuth({ clearRemember: false });
+      toast.info("Admin session timed out. Signed out.");
       window.location.reload();
-    }, 420 * 60 * 1000);
+    }, ttlMs);
     return () => clearTimeout(logoutTimer);
-  }, [state?.is_admin]);
+  }, [state?.is_admin, state?.session_ttl_seconds]);
 
   useEffect(() => {
     if (!menuOpen) return;

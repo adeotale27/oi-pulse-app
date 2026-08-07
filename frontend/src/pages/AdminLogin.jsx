@@ -25,19 +25,28 @@ export default function AdminLogin() {
   useEffect(() => {
     (async () => {
       try {
-        // Try 24h remember-me auto-login first (IP-bound on server).
+        // Strip stale localStorage admin token that blocked Remember-me.
+        try {
+          if (localStorage.getItem("oi_admin_token") && !sessionStorage.getItem("oi_admin_token")) {
+            localStorage.removeItem("oi_admin_token");
+          }
+        } catch (_) {}
         const rememberTok = localStorage.getItem("oi_admin_remember_token");
-        if (rememberTok && !sessionStorage.getItem("oi_admin_token") && !localStorage.getItem("oi_admin_token")) {
+        if (rememberTok && !sessionStorage.getItem("oi_admin_token")) {
           try {
             const { data } = await api.post("/auth/remember-login", { remember_token: rememberTok });
             if (data?.token) {
               sessionStorage.setItem("oi_admin_token", data.token);
+              try { localStorage.removeItem("oi_admin_token"); } catch (_) {}
               toast.success(`Welcome back, ${data.username}`);
               navigate("/", { replace: true });
               return;
             }
-          } catch (_) {
-            try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+          } catch (err) {
+            const detail = String(err?.response?.data?.detail || "");
+            if (/expired|invalid|missing/i.test(detail)) {
+              try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+            }
           }
         }
         const { data } = await api.get("/auth/state");
@@ -62,13 +71,11 @@ export default function AdminLogin() {
         password,
         remember_me: remember,
       });
-      // Session token stays in sessionStorage only. Remember-me uses a separate
-      // 24h IP-bound token so a stale session cookie cannot block auto-login.
       try { sessionStorage.setItem("oi_admin_token", data.token); } catch(_) {}
       try { localStorage.removeItem("oi_admin_token"); } catch(_) {}
       if (remember && data.remember_token) {
         try { localStorage.setItem("oi_admin_remember_token", data.remember_token); } catch(_) {}
-      } else {
+      } else if (!remember) {
         try { localStorage.removeItem("oi_admin_remember_token"); } catch(_) {}
       }
       try {
