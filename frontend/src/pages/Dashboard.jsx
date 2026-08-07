@@ -335,6 +335,7 @@ export default function Dashboard() {
   const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
   const [enabledIndices, setEnabledIndices] = useState(INDICES);
   const [oiLoading, setOiLoading] = useState(false);
+  const [showStrikeRange, setShowStrikeRange] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
@@ -559,6 +560,9 @@ export default function Dashboard() {
         if (Array.isArray(res.data.enabled_indices) && res.data.enabled_indices.length) {
           setEnabledIndices(res.data.enabled_indices);
         }
+        if (typeof res.data.show_strike_range === "boolean") {
+          setShowStrikeRange(res.data.show_strike_range);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch settings", e);
@@ -582,6 +586,9 @@ export default function Dashboard() {
       }
       if (Array.isArray(d.visible_pages)) {
         setVisiblePages(d.visible_pages);
+      }
+      if (typeof d.show_strike_range === "boolean") {
+        setShowStrikeRange(d.show_strike_range);
       }
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, []);
@@ -648,35 +655,39 @@ export default function Dashboard() {
     }
   }, [enabledIndices, activeIndex]);
 
-  // Once fresh snapshot arrives, initialise strike range to the full span of
-  // that snapshot (only if user hasn't already set a range).
+  // Once fresh snapshot arrives, initialise strike range to ATM±strikesAround
+  // (or full chain). Strike Range alone drives the chart window.
   useEffect(() => {
-    if (current && current.strikes?.length && (strikeRange.min == null || strikeRange.max == null)) {
-      const sorted = [...current.strikes].sort((a, b) => a.strike - b.strike);
-      const min = sorted[0].strike;
-      const max = sorted[sorted.length - 1].strike;
-      setStrikeRange({ min, max });
+    if (!current?.strikes?.length) return;
+    if (strikeRange.min != null && strikeRange.max != null) return;
+    const sorted = [...current.strikes].sort((a, b) => a.strike - b.strike);
+    if (strikesAround === "all") {
+      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
+      return;
     }
-  }, [current, strikeRange.min, strikeRange.max]);
+    const atm = current.atm;
+    const atmIdx = sorted.findIndex((s) => s.strike === atm);
+    if (atmIdx < 0) {
+      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
+      return;
+    }
+    const n = Number(strikesAround) || 10;
+    const lo = Math.max(0, atmIdx - n);
+    const hi = Math.min(sorted.length - 1, atmIdx + n);
+    setStrikeRange({ min: sorted[lo].strike, max: sorted[hi].strike });
+  }, [current, strikeRange.min, strikeRange.max, strikesAround]);
 
-  // Filter strikes based on user selection
+  // Chart window = Strike Range only (ATM quick-picks rewrite min/max).
   const filteredCurrent = useMemo(() => {
     if (!current) return null;
     let strikes = [...current.strikes].sort((a, b) => a.strike - b.strike);
-    const atm = current.atm;
-    if (strikesAround !== "all") {
-      const atmIdx = strikes.findIndex((s) => s.strike === atm);
-      if (atmIdx >= 0) {
-        const lo = Math.max(0, atmIdx - strikesAround);
-        const hi = Math.min(strikes.length, atmIdx + strikesAround + 1);
-        strikes = strikes.slice(lo, hi);
-      }
-    }
-    if (strikeRange.min != null && strikeRange.max != null) {
-      strikes = strikes.filter((s) => s.strike >= strikeRange.min && s.strike <= strikeRange.max);
+    if (strikeRange.min != null && strikeRange.max != null && strikeRange.min !== "" && strikeRange.max !== "") {
+      const lo = Math.min(Number(strikeRange.min), Number(strikeRange.max));
+      const hi = Math.max(Number(strikeRange.min), Number(strikeRange.max));
+      strikes = strikes.filter((s) => s.strike >= lo && s.strike <= hi);
     }
     return { ...current, strikes };
-  }, [current, strikesAround, strikeRange]);
+  }, [current, strikeRange]);
 
   const handleToggleNotif = async () => {
     const perm = await requestPermission();
@@ -692,14 +703,33 @@ export default function Dashboard() {
     toast.success("Alerts cleared");
   };
 
-  const handleReset = () => {
-    if (current?.strikes?.length) {
-      setStrikeRange({
-        min: current.strikes[0].strike,
-        max: current.strikes[current.strikes.length - 1].strike,
-      });
-      setStrikesAround(10);
+  const applyStrikesAround = useCallback((n) => {
+    setStrikesAround(n);
+    if (!current?.strikes?.length) return;
+    const sorted = [...current.strikes].sort((a, b) => a.strike - b.strike);
+    if (n === "all") {
+      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
+      return;
     }
+    const atm = current.atm;
+    const atmIdx = sorted.findIndex((s) => s.strike === atm);
+    if (atmIdx < 0) {
+      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
+      return;
+    }
+    const count = Number(n) || 10;
+    const lo = Math.max(0, atmIdx - count);
+    const hi = Math.min(sorted.length - 1, atmIdx + count);
+    setStrikeRange({ min: sorted[lo].strike, max: sorted[hi].strike });
+  }, [current]);
+
+  const handleStrikeRangeChange = useCallback((next) => {
+    setStrikeRange(next);
+    // Manual range edit → leave ATM pill highlighting alone but chart follows range.
+  }, []);
+
+  const handleReset = () => {
+    applyStrikesAround(10);
   };
 
   const changeSummary = useMemo(() => {
@@ -1154,15 +1184,16 @@ export default function Dashboard() {
             onChangeIndex={setActiveIndex}
             current={current}
             strikesAround={strikesAround}
-            onChangeStrikesAround={setStrikesAround}
+            onChangeStrikesAround={applyStrikesAround}
             strikeRange={strikeRange}
-            onChangeStrikeRange={setStrikeRange}
+            onChangeStrikeRange={handleStrikeRangeChange}
             onReset={handleReset}
             expiries={expiries}
             expiriesMeta={expiriesMeta}
             expiriesNote={expiriesNote}
             selectedExpiry={selectedExpiry}
             onChangeExpiry={handleChangeExpiry}
+            showStrikeRange={showStrikeRange}
           />
         )}
 
@@ -1719,7 +1750,8 @@ export default function Dashboard() {
                         <SuggestionBox
                           indexName={activeIndex}
                           marketIntel={marketIntel}
-                          vrp={vrp}
+                          changeSummary={changeSummary}
+                          spot={current?.price || current?.atm}
                           vixNow={current?.vix || status?.vix}
                           vixOpen={vixSessionOpen}
                         />
@@ -1781,6 +1813,9 @@ export default function Dashboard() {
           if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
             setEnabledIndices(settings.enabled_indices);
           }
+          if (typeof settings.show_strike_range === "boolean") {
+            setShowStrikeRange(settings.show_strike_range);
+          }
         }}
         onLocalSaved={setOiSettings}
       />
@@ -1796,16 +1831,16 @@ export default function Dashboard() {
 function IntelCell({ label, value, hint, tone = "slate", tip }) {
   const toneClass =
     tone === "emerald"
-      ? "text-emerald-700"
+      ? "text-emerald-700 dark:text-emerald-300"
       : tone === "rose"
-        ? "text-rose-700"
-        : "text-slate-700";
+        ? "text-rose-700 dark:text-rose-300"
+        : "text-slate-800 dark:text-slate-100";
   return (
     <div
-      className="rounded-md border border-slate-200 bg-white px-3 py-2 flex flex-col leading-tight"
+      className="rounded-lg border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-900/60 px-3 py-2.5 flex flex-col leading-tight shadow-sm"
       data-testid={`intel-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
-      <span className="uppercase tracking-widest text-[9px] text-slate-400 flex items-center gap-1">
+      <span className="uppercase tracking-widest text-[9px] text-slate-400 flex items-center gap-1 font-semibold">
         {label}
         {tip && (
           <InfoTip testId={`intel-${label.toLowerCase().replace(/\s+/g, "-")}-tip`}>
@@ -1813,8 +1848,8 @@ function IntelCell({ label, value, hint, tone = "slate", tip }) {
           </InfoTip>
         )}
       </span>
-      <span className={`text-sm font-semibold ${toneClass}`}>{value ?? "—"}</span>
-      {hint ? <span className="text-[10px] text-slate-500 truncate">{hint}</span> : null}
+      <span className={`text-base font-semibold tabular-nums tracking-tight mt-0.5 ${toneClass}`}>{value ?? "—"}</span>
+      {hint ? <span className="text-[10px] text-slate-500 truncate mt-0.5">{hint}</span> : null}
     </div>
   );
 }

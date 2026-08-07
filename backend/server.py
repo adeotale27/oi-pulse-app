@@ -385,6 +385,7 @@ class SettingsIn(BaseModel):
     expire_admin_on_market_close: Optional[bool] = None
     admin_session_ttl_minutes: Optional[int] = None
     alert_enabled_indices: Optional[List[str]] = None  # weekday-defaulted alert focus
+    show_strike_range: Optional[bool] = None  # sidebar Strike Range steppers
 
 
 class LoginIn(BaseModel):
@@ -1345,6 +1346,7 @@ async def get_config():
         "visible_pages": tracker.settings.get("visible_pages"),
         "market_open_ist": tracker.settings.get("market_open_ist", open_hm),
         "market_close_ist": tracker.settings.get("market_close_ist", close_hm),
+        "show_strike_range": bool(tracker.settings.get("show_strike_range", False)),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
     }
 

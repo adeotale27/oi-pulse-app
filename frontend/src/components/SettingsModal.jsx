@@ -54,6 +54,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           expire_admin_on_market_close: true,
           admin_session_ttl_minutes: 480,
           alert_enabled_indices: ["NIFTY"],
+          show_strike_range: false,
           visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions").map((p) => p.id),
         });
       });
@@ -321,6 +322,17 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                   />
                   <span className="text-sm">Expire admin sessions on market close</span>
                 </label>
+                <label className="flex items-center gap-2 py-1 cursor-pointer">
+                  <Checkbox
+                    data-testid="show-strike-range"
+                    checked={!!settings.show_strike_range}
+                    onCheckedChange={(ck) => setSettings({ ...settings, show_strike_range: !!ck })}
+                  />
+                  <span className="text-sm">Show Strike Range steppers in sidebar</span>
+                </label>
+                <div className="text-[10px] text-slate-500 -mt-1 pl-6">
+                  Off by default. When on, Min/Max ± controls the OI chart window directly (step = index strike size).
+                </div>
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Admin session TTL (minutes)</Label>
                   <Input

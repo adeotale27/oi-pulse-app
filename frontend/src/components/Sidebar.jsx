@@ -38,16 +38,28 @@ const STRIKE_STEP = {
   BANKNIFTY: 100,
 };
 
-function StepperInput({ testId, value, step, onChange }) {
-  const dec = () => onChange(Math.max(0, (Number(value) || 0) - step));
-  const inc = () => onChange((Number(value) || 0) + step);
+function snapToStep(value, step) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || !step) return n;
+  return Math.round(n / step) * step;
+}
+
+function StepperInput({ testId, value, step, onChange, min = 0, max = Infinity }) {
+  const commit = (raw) => {
+    let next = snapToStep(raw, step);
+    if (!Number.isFinite(next)) return;
+    next = Math.max(min, Math.min(max, next));
+    onChange(next);
+  };
+  const dec = () => commit((Number(value) || 0) - step);
+  const inc = () => commit((Number(value) || 0) + step);
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" data-testid={`${testId}-stepper`}>
       <button
         type="button"
         data-testid={`${testId}-dec`}
         onClick={dec}
-        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95 shrink-0"
+        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 active:scale-95 shrink-0 transition-colors"
         aria-label="Decrement"
       >
         <Minus className="w-3.5 h-3.5" />
@@ -60,7 +72,15 @@ function StepperInput({ testId, value, step, onChange }) {
         value={value ?? ""}
         onChange={(e) => {
           const digits = e.target.value.replace(/[^0-9]/g, "");
-          onChange(digits === "" ? "" : Number(digits));
+          if (digits === "") {
+            onChange("");
+            return;
+          }
+          onChange(Number(digits));
+        }}
+        onBlur={() => {
+          if (value === "" || value == null) return;
+          commit(value);
         }}
         className="h-8 min-w-0 flex-1 rounded-md font-mono-data text-sm text-center px-1"
       />
@@ -68,7 +88,7 @@ function StepperInput({ testId, value, step, onChange }) {
         type="button"
         data-testid={`${testId}-inc`}
         onClick={inc}
-        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95 shrink-0"
+        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 active:scale-95 shrink-0 transition-colors"
         aria-label="Increment"
       >
         <Plus className="w-3.5 h-3.5" />
@@ -109,6 +129,7 @@ export default function Sidebar({
   expiriesNote,
   selectedExpiry,
   onChangeExpiry,
+  showStrikeRange = false,
 }) {
   const price = current?.price ?? 0;
   // Admin note section state (below the big clock). Publicly visible; editable by admin.
@@ -282,11 +303,14 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Strike range with stepper (index-aware step: NIFTY 50, SENSEX/BANK 100) */}
-      <div className="p-4 border-b border-slate-200">
+      {/* Strike range with stepper (index-aware step: NIFTY 50, SENSEX/BANK 100).
+          Hidden by default via Admin Settings → show_strike_range. */}
+      {showStrikeRange && (
+      <div className="p-4 border-b border-slate-200" data-testid="strike-range-section">
         <div className="flex items-center justify-between">
           <Label className="text-[10px] uppercase tracking-widest text-slate-500">Strike Range</Label>
           <button
+            type="button"
             data-testid="btn-reset-range"
             onClick={onReset}
             className="text-xs text-slate-500 hover:text-slate-900 inline-flex items-center gap-1"
@@ -301,7 +325,16 @@ export default function Sidebar({
               testId="input-strike-min"
               value={strikeRange.min}
               step={step}
-              onChange={(v) => onChangeStrikeRange({ ...strikeRange, min: v })}
+              max={(Number(strikeRange.max) || Infinity) - step}
+              onChange={(v) => {
+                const min = v === "" ? "" : Number(v);
+                const max = strikeRange.max;
+                if (min !== "" && max != null && Number(min) > Number(max)) {
+                  onChangeStrikeRange({ min, max: min });
+                } else {
+                  onChangeStrikeRange({ ...strikeRange, min });
+                }
+              }}
             />
           </div>
           <div>
@@ -310,14 +343,24 @@ export default function Sidebar({
               testId="input-strike-max"
               value={strikeRange.max}
               step={step}
-              onChange={(v) => onChangeStrikeRange({ ...strikeRange, max: v })}
+              min={(Number(strikeRange.min) || 0) + step}
+              onChange={(v) => {
+                const max = v === "" ? "" : Number(v);
+                const min = strikeRange.min;
+                if (max !== "" && min != null && Number(max) < Number(min)) {
+                  onChangeStrikeRange({ min: max, max });
+                } else {
+                  onChangeStrikeRange({ ...strikeRange, max });
+                }
+              }}
             />
           </div>
         </div>
         <div className="mt-2 text-[10px] text-slate-400 font-mono-data">
-          Step: {step} pts ({activeIndex})
+          Step: {step} pts ({activeIndex}) · chart follows this window
         </div>
       </div>
+      )}
 
       {/* Strikes around ATM */}
       <div className="p-4">
@@ -326,6 +369,7 @@ export default function Sidebar({
         </Label>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <button
+            type="button"
             data-testid="strikes-all"
             onClick={() => onChangeStrikesAround("all")}
             className={`text-xs px-2.5 py-1 rounded-md border font-mono-data transition-colors ${
@@ -338,6 +382,7 @@ export default function Sidebar({
           </button>
           {STRIKE_COUNTS.map((n) => (
             <button
+              type="button"
               key={n}
               data-testid={`strikes-${n}`}
               onClick={() => onChangeStrikesAround(n)}
