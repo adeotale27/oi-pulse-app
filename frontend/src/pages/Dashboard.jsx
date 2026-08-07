@@ -6,6 +6,9 @@ import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import GuestBanner from "@/components/GuestBanner";
 import MarketStatusBanner from "@/components/MarketStatusBanner";
+import DataTruthStrip from "@/components/DataTruthStrip";
+import OvernightGapBrief from "@/components/OvernightGapBrief";
+import WriterDefenseMap from "@/components/WriterDefenseMap";
 import KiteTokenBanner from "@/components/KiteTokenBanner";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
@@ -1240,12 +1243,20 @@ export default function Dashboard() {
           adminName={authState.admin_display_name}
         />
       )}
+      <DataTruthStrip
+        dataStatus={dataStatus}
+        marketOpen={status?.market?.is_market_open === true}
+        mode={status?.mode}
+        snapshotTs={current?.timestamp || dataStatus?.as_of}
+        emphasize={!!authState.is_guest}
+      />
       <MarketStatusBanner market={status?.market} lastPulledAt={lastPulledAt} />
       <KiteTokenBanner
         status={status}
         isAdmin={authState.is_admin}
         onOpenCreds={() => setCredsOpen(true)}
       />
+      <OvernightGapBrief indices={enabledIndices.length ? enabledIndices : INDICES} />
       <Header
         status={status}
         current={current}
@@ -1347,6 +1358,12 @@ export default function Dashboard() {
                     sessionMinutes={dayBiasSummary?.minutes}
                   />
                 )}
+                <WriterDefenseMap
+                  current={filteredCurrent}
+                  sessionPrevious={changeBundle?.also_windows?.session?.previous}
+                  band={3}
+                  marketOpen={!(status?.market && status.market.is_market_open === false)}
+                />
                 {!historyReady && (() => {
                   // Live countdown: available minutes grows by (now - fetchedAt).
                   const elapsedSinceFetchSec = Math.max(0, (warmingTick - availableFetchedAtRef.current) / 1000);

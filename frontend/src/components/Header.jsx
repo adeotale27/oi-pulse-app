@@ -217,11 +217,17 @@ export default function Header({
           <Badge
             data-testid="mode-badge"
             className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
-            title={mode === "kite" ? "Live Kite mode — credentials configured" : "Offline: Kite API key required for live updates"}
+            title={
+              mode === "kite"
+                ? (status?.market?.is_market_open
+                  ? "Kite connected — see data-truth strip for LIVE vs lag"
+                  : "Kite connected · market closed — board shows last session (not live ticks)")
+                : "Offline: Kite API key required for live updates"
+            }
           >
-            {mode === "kite" ? "LIVE" : "OFFLINE"}
+            {mode === "kite" ? (status?.market?.is_market_open ? "KITE" : "KITE · CLOSED") : "OFFLINE"}
           </Badge>
-          {/* Compact session/offline chip — never competes with LIVE for space */}
+          {/* Compact session/offline chip — never competes with the data-truth strip */}
           {mode !== "kite" && (
             <span
               data-testid="offline-hint-chip"
@@ -235,7 +241,7 @@ export default function Header({
             <span
               data-testid="session-date-chip"
               className="hidden sm:inline-flex text-[10px] font-mono-data text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5"
-              title={`Showing last session data for ${dataStatus.data_date}. LIVE credentials are configured; OI polling is paused until next open.`}
+              title={`Showing last session data for ${dataStatus.data_date}. Kite credentials are configured; OI polling is paused until next open.`}
             >
               Session {dataStatus.data_date}
             </span>

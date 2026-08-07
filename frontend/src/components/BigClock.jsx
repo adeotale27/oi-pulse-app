@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotify } from "@/hooks/useNotify";
 import { toast } from "sonner";
-import { eventsWithinDays } from "@/lib/econCalendar";
-import { upcomingHolidays, todayIST } from "@/lib/holidays";
 import { FNO_CLOSE_MINUTE, WEEKEND_START_MINUTE, REMINDER_MINUTES, hmFromMinutes } from "@/lib/marketTimes";
+import {
+  EVENT_WARNING_MINUTE,
+  SUNDAY_BRIEF_MINUTE,
+  buildEventWarningCopy,
+} from "@/lib/overnightBrief";
 
 // Helper: return a Date object representing the current IST local time.
 function getISTDate(dt = new Date()) {
@@ -28,91 +31,6 @@ function getISTParts(dt = new Date()) {
     m: istDate.getUTCMinutes(),
     s: istDate.getUTCSeconds(),
     weekday: istDate.getUTCDay(), // 0=Sun … 5=Fri … 6=Sat
-  };
-}
-
-/** 15:15 IST — event / overnight carry warning (sticky toast). */
-const EVENT_WARNING_MINUTE = 15 * 60 + 15;
-
-/**
- * Events + holidays the trader must respect before carrying overnight.
- * Mon–Thu → today + tomorrow.
- * Friday → today through Monday (covers weekend + Mon open risk).
- */
-function carryWindowItems(weekday /* 0=Sun … 5=Fri */) {
-  const maxDays = weekday === 5 ? 3 : 1; // Fri → Mon inclusive
-  const econ = eventsWithinDays(maxDays);
-  const today = todayIST();
-  const holidays = upcomingHolidays(today)
-    .filter((h) => {
-      const [y, mo, d] = today.split("-").map(Number);
-      const start = Date.UTC(y, mo - 1, d);
-      const [hy, hm, hd] = h.date.split("-").map(Number);
-      const end = Date.UTC(hy, hm - 1, hd);
-      const days = Math.round((end - start) / 86400000);
-      return days >= 0 && days <= maxDays;
-    })
-    .map((h) => ({
-      date: h.date,
-      name: `NSE Holiday — ${h.name}`,
-      type: "holiday",
-      country: "IN",
-      impact: "critical",
-      daysAway: (() => {
-        const [y, mo, d] = today.split("-").map(Number);
-        const start = Date.UTC(y, mo - 1, d);
-        const [hy, hm, hd] = h.date.split("-").map(Number);
-        return Math.round((Date.UTC(hy, hm - 1, hd) - start) / 86400000);
-      })(),
-    }));
-
-  const merged = [...econ, ...holidays].sort((a, b) => a.date.localeCompare(b.date));
-  // Dedupe by date+name
-  const seen = new Set();
-  return merged.filter((e) => {
-    const k = `${e.date}|${e.name}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
-
-function dayLabel(daysAway, weekday) {
-  if (daysAway === 0) return "Today";
-  if (daysAway === 1) return "Tomorrow";
-  if (weekday === 5 && daysAway === 2) return "Sunday";
-  if (weekday === 5 && daysAway === 3) return "Monday";
-  return `In ${daysAway}d`;
-}
-
-function buildEventWarningCopy(weekday) {
-  const items = carryWindowItems(weekday);
-  const horizon = weekday === 5
-    ? "through Monday open (weekend gap risk)"
-    : "for tonight / tomorrow";
-
-  if (!items.length) {
-    return {
-      title: "Overnight carry check · 3:15 IST",
-      description: `No major scheduled events ${horizon}. Still review delta / hedges before close.`,
-      lines: [],
-      hasEvents: false,
-    };
-  }
-
-  const lines = items.slice(0, 8).map((e) => {
-    const when = dayLabel(e.daysAway, weekday);
-    const impact = (e.impact || "").toUpperCase();
-    return `${when} · ${e.name}${impact ? ` [${impact}]` : ""}`;
-  });
-
-  return {
-    title: "⚠ Event risk before close · 3:15 IST",
-    description:
-      `Upcoming events ${horizon}. Hedge or close positions you are not comfortable carrying.\n\n` +
-      lines.join("\n"),
-    lines,
-    hasEvents: true,
   };
 }
 
@@ -200,6 +118,7 @@ export default function BigClock({ compact = false }) {
     }
 
     // 15:15 sticky event / carry warning — must be dismissed manually.
+    // OvernightGapBrief sticky card also auto-surfaces at this minute.
     if (
       isWeekday &&
       cur === hmFromMinutes(EVENT_WARNING_MINUTE) &&
@@ -220,6 +139,38 @@ export default function BigClock({ compact = false }) {
             toast: copy.hasEvents
               ? "border-2 border-amber-500 bg-amber-50 text-amber-950"
               : "border border-slate-300",
+          },
+        });
+      } catch (_) { /* ignore */ }
+    }
+
+    // Sunday 20:00 — Monday-open gap brief toast (card also auto-opens).
+    if (
+      weekday === 0 &&
+      cur === hmFromMinutes(SUNDAY_BRIEF_MINUTE) &&
+      !notifiedRef.current.has(`${minuteKey}|sunday-brief`)
+    ) {
+      notifiedRef.current.add(`${minuteKey}|sunday-brief`);
+      const copy = buildEventWarningCopy(0);
+      try {
+        push(
+          "Sunday night gap brief",
+          copy.lines.slice(0, 3).join(" · ") || "Review GIFT + Monday events before the open.",
+        );
+      } catch (_) { /* ignore */ }
+      try { alarm(); } catch (_) { /* ignore */ }
+      try {
+        toast("Sunday night · Should I carry into Monday?", {
+          id: `sunday-carry-${key}`,
+          description:
+            copy.hasEvents
+              ? copy.description
+              : "Check GIFT overnight move and whole-day bias in the sticky gap brief.",
+          duration: Infinity,
+          closeButton: true,
+          important: true,
+          classNames: {
+            toast: "border-2 border-amber-500 bg-amber-50 text-amber-950",
           },
         });
       } catch (_) { /* ignore */ }

@@ -116,6 +116,8 @@ def test_get_oi_change_offline_returns_data_status_and_anchor_prev(monkeypatch):
     assert ds["is_live"] is False
     assert ds["stale_reason"] == "missing_kite_credentials"
     assert ds["data_date"] is not None
+    assert ds.get("label") == "OFFLINE"
+    assert "as_of" in ds
     # previous should be present and match our prev_doc timestamp
     assert payload["previous"]["timestamp"] == prev_doc["timestamp"]
     assert "also_windows" in payload
