@@ -262,7 +262,7 @@ async def alert_market_close():
     if not await _should_send("market_close"):
         return
     await send_message(
-        "🔵 <b>Market closed</b> — polling paused until 9:00 AM tomorrow (IST).",
+        "🔵 <b>Market closed</b> — polling paused until next open (IST).",
         dedupe_key=f"market_close:{time.strftime('%Y-%m-%d')}", cooldown_seconds=86400,
     )
 

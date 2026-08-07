@@ -1,16 +1,26 @@
 """
 NSE market hours helper (IST timezone).
-Polling window: 9:00 AM – 3:30 PM IST, Mon–Fri (excluding NSE holidays).
 
-We start at 9:00 (not 9:15) so pre-open snapshots are in the DB and a 15-min
-comparison already works by 9:15. Retention is handled separately (24h).
+Defaults aligned with Index F&O / CAS rules (effective 2026-08-03):
+  • Display open  : 09:15 IST
+  • Poll open     : 09:14 IST (1 min pre-open so 15-min compare works at 09:15)
+  • Poll close    : 15:41 IST (1 min after Index F&O close at 15:40)
+
+Admin Settings can override open/close via configure_hours().
 """
 from datetime import datetime, timedelta, time as dtime, timezone
+from typing import Optional, Tuple
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-MARKET_OPEN = dtime(9, 14)    # start polling 1 min pre-open so 15-min compare works from 9:15
-MARKET_CLOSE = dtime(15, 31)  # keep one snapshot after 3:30 close for the last-bar view
+# Module defaults — mutated by configure_hours() when admin saves settings.
+_DISPLAY_OPEN = dtime(9, 15)
+_POLL_OPEN = dtime(9, 14)
+_POLL_CLOSE = dtime(15, 41)  # Index F&O closes 15:40; keep one tick after
+
+# Back-compat aliases used across the codebase
+MARKET_OPEN = _POLL_OPEN
+MARKET_CLOSE = _POLL_CLOSE
 
 # NSE trading holidays 2026 (equity & derivatives). Update yearly.
 NSE_HOLIDAYS_2026 = {
@@ -32,6 +42,54 @@ NSE_HOLIDAYS_2026 = {
 }
 
 
+def _parse_hm(value: str, fallback: dtime) -> dtime:
+    try:
+        parts = str(value).strip().split(":")
+        h, m = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return dtime(h, m)
+    except Exception:
+        pass
+    return fallback
+
+
+def configure_hours(open_ist: Optional[str] = None, close_ist: Optional[str] = None) -> Tuple[dtime, dtime]:
+    """Apply admin-configured display open/close. Poll window = open−1m … close+1m."""
+    global _DISPLAY_OPEN, _POLL_OPEN, _POLL_CLOSE, MARKET_OPEN, MARKET_CLOSE
+    if open_ist:
+        disp_open = _parse_hm(open_ist, _DISPLAY_OPEN)
+        _DISPLAY_OPEN = disp_open
+        # Poll 1 minute early so history windows are warm at display-open.
+        total = disp_open.hour * 60 + disp_open.minute
+        early = max(0, total - 1)
+        _POLL_OPEN = dtime(early // 60, early % 60)
+    if close_ist:
+        disp_close = _parse_hm(close_ist, dtime(15, 40))
+        # Poll 1 minute past close for a final snapshot.
+        total = disp_close.hour * 60 + disp_close.minute + 1
+        if total >= 24 * 60:
+            total = 24 * 60 - 1
+        _POLL_CLOSE = dtime(total // 60, total % 60)
+    MARKET_OPEN = _POLL_OPEN
+    MARKET_CLOSE = _POLL_CLOSE
+    return _DISPLAY_OPEN, dtime(
+        (_POLL_CLOSE.hour * 60 + _POLL_CLOSE.minute - 1) // 60,
+        (_POLL_CLOSE.hour * 60 + _POLL_CLOSE.minute - 1) % 60,
+    )
+
+
+def display_hours() -> Tuple[str, str]:
+    """Return (open_hhmm, close_hhmm) as shown in Admin Settings / banners."""
+    close_min = _POLL_CLOSE.hour * 60 + _POLL_CLOSE.minute - 1
+    if close_min < 0:
+        close_min = 0
+    close = dtime(close_min // 60, close_min % 60)
+    return (
+        f"{_DISPLAY_OPEN.hour:02d}:{_DISPLAY_OPEN.minute:02d}",
+        f"{close.hour:02d}:{close.minute:02d}",
+    )
+
+
 def now_ist() -> datetime:
     return datetime.now(IST)
 
@@ -49,26 +107,24 @@ def is_market_open(dt: datetime = None) -> bool:
     if is_weekend(dt) or is_holiday(dt):
         return False
     t = dt.time()
-    return MARKET_OPEN <= t <= MARKET_CLOSE
+    return _POLL_OPEN <= t <= _POLL_CLOSE
 
 
 def next_market_open(dt: datetime = None) -> datetime:
     """Return the next datetime (IST) at which the market will be open."""
     dt = dt or now_ist()
-    # today candidate
-    candidate = dt.replace(hour=MARKET_OPEN.hour, minute=MARKET_OPEN.minute,
+    candidate = dt.replace(hour=_POLL_OPEN.hour, minute=_POLL_OPEN.minute,
                            second=0, microsecond=0)
     if dt < candidate and not is_weekend(dt) and not is_holiday(dt):
         return candidate
-    # otherwise walk forward day by day
     d = dt + timedelta(days=1)
-    for _ in range(15):  # max ~2 weeks lookahead
-        d = d.replace(hour=MARKET_OPEN.hour, minute=MARKET_OPEN.minute,
+    for _ in range(15):
+        d = d.replace(hour=_POLL_OPEN.hour, minute=_POLL_OPEN.minute,
                       second=0, microsecond=0)
         if not is_weekend(d) and not is_holiday(d):
             return d
         d = d + timedelta(days=1)
-    return d  # fallback
+    return d
 
 
 def seconds_until_next_open(dt: datetime = None) -> int:
@@ -80,12 +136,12 @@ def market_status() -> dict:
     dt = now_ist()
     open_ = is_market_open(dt)
     t = dt.time()
+    disp_open, disp_close = display_hours()
 
-    # Phase classification for a professional status banner in the UI.
     if is_weekend(dt):
         phase = "weekend"
         banner_title = "Markets closed for the weekend"
-        banner_detail = "NSE trading resumes on the next business day at 9:15 AM IST. Displaying the most recent snapshot from our database."
+        banner_detail = f"NSE trading resumes on the next business day at {disp_open} IST. Displaying the most recent snapshot from our database."
     elif is_holiday(dt):
         phase = "holiday"
         banner_title = "Markets closed — NSE holiday"
@@ -94,24 +150,16 @@ def market_status() -> dict:
         phase = "open"
         banner_title = None
         banner_detail = None
-    elif t < MARKET_OPEN:
+    elif t < _POLL_OPEN:
         phase = "pre_open"
         banner_title = "Markets have not opened yet"
-        banner_detail = "NSE opens at 9:15 AM IST. Live Open Interest polling will begin shortly. Displaying the most recent snapshot from our database."
+        banner_detail = f"NSE opens at {disp_open} IST. Live Open Interest polling will begin shortly. Displaying the most recent snapshot from our database."
     else:
         phase = "post_close"
         banner_title = "Markets closed for the day"
-        banner_detail = "NSE closed for the day. Displaying today's final snapshot from our database — data will resume at 9:15 AM IST on the next trading day."
+        banner_detail = f"NSE closed for the day (Index F&O / configured close {disp_close} IST). Displaying today's final snapshot — data resumes at {disp_open} IST next trading day."
 
-    # New closing rules effective 2026-08-03 (Closing Auction Session / CAS):
-    # - Stocks trading in the F&O segment: continuous trading stops at 15:15 (3:15 PM), followed by a Closing Auction Session (CAS)
-    # - All other stocks: trading closes at 15:30 (3:30 PM)
-    # - Index and stock F&O contracts: trading closes at 15:40 (3:40 PM)
-    # Auto square-off times (effective 2026-08-03):
-    # - Equity (stocks under CAS): 15:10
-    # - Equity (stocks not under CAS): 15:25
-    # - Index and stock F&O contracts: 15:25
-
+    # CAS reference (informational — not the poll window)
     fno_continuous_close_ist = "15:15"
     equity_close_ist = "15:30"
     index_fno_close_ist = "15:40"
@@ -124,7 +172,8 @@ def market_status() -> dict:
 
     closing_auction_note = (
         "From 2026-08-03: Stocks in the F&O segment stop continuous trading at 15:15 IST followed by a Closing Auction Session; "
-        "other stocks close at 15:30 IST; index and stock F&O contracts close at 15:40 IST."
+        "other stocks close at 15:30 IST; index and stock F&O contracts close at 15:40 IST. "
+        f"This app polls OI until the configured close ({disp_close} IST)."
     )
 
     return {
@@ -133,11 +182,10 @@ def market_status() -> dict:
         "banner_title": banner_title,
         "banner_detail": banner_detail,
         "now_ist": dt.isoformat(),
-        "market_open_ist": "09:14",
-        "market_close_ist": "15:31",  # legacy: one snapshot after the canonical 15:30 close
-        "display_open_ist": "09:15",
-        "display_close_ist": equity_close_ist,  # legacy field kept for compatibility
-        # New fields to show precise closing / CAS / auto-squareoff times below the big clock
+        "market_open_ist": f"{_POLL_OPEN.hour:02d}:{_POLL_OPEN.minute:02d}",
+        "market_close_ist": f"{_POLL_CLOSE.hour:02d}:{_POLL_CLOSE.minute:02d}",
+        "display_open_ist": disp_open,
+        "display_close_ist": disp_close,
         "fno_continuous_close_ist": fno_continuous_close_ist,
         "index_fno_close_ist": index_fno_close_ist,
         "closing_auction_note": closing_auction_note,
@@ -147,3 +195,19 @@ def market_status() -> dict:
         "next_market_open_ist": next_market_open(dt).isoformat() if not open_ else None,
         "seconds_until_next_open": seconds_until_next_open(dt) if not open_ else 0,
     }
+
+
+# Weekday → default alert indices (Mon=0 … Fri=4)
+# Mon/Tue/Fri → NIFTY weekly expiry focus; Wed/Thu → SENSEX weekly expiry focus.
+WEEKDAY_ALERT_DEFAULTS = {
+    0: ["NIFTY"],       # Monday
+    1: ["NIFTY"],       # Tuesday
+    2: ["SENSEX"],      # Wednesday
+    3: ["SENSEX"],      # Thursday
+    4: ["NIFTY"],       # Friday
+}
+
+
+def default_alert_indices_for_today(dt: datetime = None) -> list:
+    dt = dt or now_ist()
+    return list(WEEKDAY_ALERT_DEFAULTS.get(dt.weekday(), ["NIFTY", "SENSEX"]))

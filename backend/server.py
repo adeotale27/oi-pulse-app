@@ -21,7 +21,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from oi_tracker import OITracker, INDICES, JsonLogFormatter
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
-from market_hours import is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend
+from market_hours import is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend, display_hours, configure_hours
 from gift_vix_service import extra_tickers
 import event_risk_service as ers
 from fastapi import UploadFile, File, Form
@@ -123,32 +123,46 @@ async def _admin_from_request(request: Request):
         created_at = datetime.fromisoformat(sess.get("created_at"))
     except Exception:
         return None
+    ttl = sess.get("ttl_seconds") or ADMIN_SESSION_TTL_SECONDS
+    try:
+        if tracker and tracker.settings.get("admin_session_ttl_minutes"):
+            ttl = max(60, int(tracker.settings["admin_session_ttl_minutes"]) * 60)
+    except Exception:
+        pass
     age = (datetime.now(timezone.utc) - created_at).total_seconds()
-    if age > ADMIN_SESSION_TTL_SECONDS:
+    if age > ttl:
         try:
             await db.admin_sessions.delete_one({"_id": tok})
         except Exception:
             pass
         return None
-    # Additional cap: force auto-logout at the next 3:30 PM IST after login.
-    market_exp = _session_market_expiry_utc(created_at)
-    if datetime.now(timezone.utc) >= market_exp:
-        try:
-            await db.admin_sessions.delete_one({"_id": tok})
-        except Exception:
-            pass
-        return None
+    # Optional cap: force auto-logout at configured market close (default ON).
+    expire_on_close = True
+    try:
+        if tracker and "expire_admin_on_market_close" in tracker.settings:
+            expire_on_close = bool(tracker.settings["expire_admin_on_market_close"])
+    except Exception:
+        pass
+    if expire_on_close:
+        market_exp = _session_market_expiry_utc(created_at)
+        if datetime.now(timezone.utc) >= market_exp:
+            try:
+                await db.admin_sessions.delete_one({"_id": tok})
+            except Exception:
+                pass
+            return None
     return sess
 
 
 def _session_market_expiry_utc(created_at_utc: datetime) -> datetime:
-    """
-    Return the UTC datetime at which this admin session must auto-expire due
-    to the "3:30 PM IST" rule. If login happened at/after 15:30 IST today,
-    expiry is 15:30 IST tomorrow.
-    """
+    """Expire admin session at today's configured market close (IST), or tomorrow if already past."""
     created_ist = created_at_utc.astimezone(IST)
-    close_ist = created_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+    _, close_hm = display_hours()
+    try:
+        hh, mm = [int(x) for x in close_hm.split(":")[:2]]
+    except Exception:
+        hh, mm = 15, 40
+    close_ist = created_ist.replace(hour=hh, minute=mm, second=0, microsecond=0)
     if created_ist >= close_ist:
         close_ist = close_ist + timedelta(days=1)
     return close_ist.astimezone(timezone.utc)
@@ -289,17 +303,21 @@ async def _guest_from_request(request: Request):
 
 
 def _next_market_close_ist() -> datetime:
-    from market_hours import IST, is_weekend, is_holiday
+    from market_hours import IST, is_weekend, is_holiday, display_hours
     now = datetime.now(IST)
-    close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    _, close_hm = display_hours()
+    try:
+        hh, mm = [int(x) for x in close_hm.split(":")[:2]]
+    except Exception:
+        hh, mm = 15, 40
+    close = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
     if now >= close:
         close = close + timedelta(days=1)
-    # Skip weekends / holidays so public-access expiry lands on a trading day close.
     for _ in range(15):
         if not is_weekend(close) and not is_holiday(close):
             break
         close = close + timedelta(days=1)
-        close = close.replace(hour=15, minute=30, second=0, microsecond=0)
+        close = close.replace(hour=hh, minute=mm, second=0, microsecond=0)
     return close.astimezone(timezone.utc)
 
 
@@ -362,6 +380,17 @@ class SettingsIn(BaseModel):
     straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
+    market_open_ist: Optional[str] = None   # e.g. "09:15"
+    market_close_ist: Optional[str] = None  # e.g. "15:40" (Index F&O / CAS)
+    expire_admin_on_market_close: Optional[bool] = None
+    admin_session_ttl_minutes: Optional[int] = None
+    alert_enabled_indices: Optional[List[str]] = None  # weekday-defaulted alert focus
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+    remember_me: Optional[bool] = False
 
 
 class ExpiryIn(BaseModel):
@@ -379,7 +408,6 @@ class RefreshTokenIn(BaseModel):
     request_token: str
 
 
-# ------------------- Routes -------------------
 @api_router.get("/")
 async def root():
     return {"message": "NSE OI Tracker API", "indices": list(INDEX_CONFIG.keys())}
@@ -671,6 +699,10 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         for i in patch["enabled_indices"]:
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown index: {i}")
+    if "alert_enabled_indices" in patch:
+        for i in patch["alert_enabled_indices"]:
+            if i not in INDEX_CONFIG:
+                raise HTTPException(400, f"Unknown alert index: {i}")
     if "straddle_enabled_indices" in patch:
         for i in patch["straddle_enabled_indices"]:
             if i not in INDEX_CONFIG:
@@ -687,6 +719,20 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
     if "straddle_poll_interval_seconds" in patch:
         if int(patch["straddle_poll_interval_seconds"]) not in (30, 60, 120):
             raise HTTPException(400, "straddle_poll_interval_seconds must be 30, 60, or 120")
+    for key in ("market_open_ist", "market_close_ist"):
+        if key in patch:
+            try:
+                hh, mm = [int(x) for x in str(patch[key]).split(":")[:2]]
+                if not (0 <= hh <= 23 and 0 <= mm <= 59):
+                    raise ValueError("range")
+                patch[key] = f"{hh:02d}:{mm:02d}"
+            except Exception:
+                raise HTTPException(400, f"{key} must be HH:MM (IST)")
+    if "admin_session_ttl_minutes" in patch:
+        v = int(patch["admin_session_ttl_minutes"])
+        if v < 30 or v > 24 * 60:
+            raise HTTPException(400, "admin_session_ttl_minutes must be between 30 and 1440")
+        patch["admin_session_ttl_minutes"] = v
     return await tracker.save_settings(patch)
 
 
@@ -1280,8 +1326,14 @@ async def clear_alerts(_admin: bool = Depends(require_admin)):
 
 @api_router.get("/config")
 async def get_config():
+    if tracker:
+        try:
+            tracker._refresh_alert_indices_for_today()
+        except Exception:
+            pass
     poll_interval_seconds = max(1, int(tracker.settings.get("oi_poll_interval_seconds", 15)))
     straddle_poll = max(1, int(tracker.settings.get("straddle_poll_interval_seconds", 60)))
+    open_hm, close_hm = display_hours()
     return {
         "indices": INDEX_CONFIG,
         "poll_interval_seconds": poll_interval_seconds,
@@ -1289,7 +1341,10 @@ async def get_config():
         "straddle_poll_interval_seconds": straddle_poll,
         "enabled_indices": tracker.settings.get("enabled_indices", list(INDEX_CONFIG.keys())),
         "straddle_enabled_indices": tracker.settings.get("straddle_enabled_indices", STRADDLE_INDICES),
+        "alert_enabled_indices": tracker.settings.get("alert_enabled_indices"),
         "visible_pages": tracker.settings.get("visible_pages"),
+        "market_open_ist": tracker.settings.get("market_open_ist", open_hm),
+        "market_close_ist": tracker.settings.get("market_close_ist", close_hm),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
     }
 
@@ -1298,9 +1353,15 @@ async def get_config():
 # Helpers moved to top of file. Endpoints follow.
 
 
-class LoginIn(BaseModel):
-    username: str
-    password: str
+REMEMBER_ME_TTL_SECONDS = 24 * 3600
+
+
+def _client_ip(request: Request) -> Optional[str]:
+    # Prefer first X-Forwarded-For hop when behind a proxy / ingress.
+    xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if xff:
+        return xff
+    return request.client.host if request.client else None
 
 
 @api_router.post("/auth/login")
@@ -1308,19 +1369,38 @@ async def auth_login(payload: LoginIn, request: Request):
     if not hmac.compare_digest(payload.username, ADMIN_USERNAME) or \
        not await _verify_admin_password(payload.password):
         raise HTTPException(401, "Invalid credentials")
-    # Rotate a fresh session token, store with created_at → allows 8h expiry.
     token = secrets.token_urlsafe(32)
-    ip = request.client.host if request.client else None
+    ip = _client_ip(request)
     now_utc = datetime.now(timezone.utc)
+    ttl_min = 480
+    try:
+        if tracker and tracker.settings.get("admin_session_ttl_minutes"):
+            ttl_min = int(tracker.settings["admin_session_ttl_minutes"])
+    except Exception:
+        pass
     await db.admin_sessions.insert_one({
         "_id": token,
         "created_at": now_utc.isoformat(),
         "ip": ip,
         "user_agent": request.headers.get("user-agent", "")[:200],
+        "ttl_seconds": max(60, ttl_min * 60),
     })
-    # When admin logs in, if public access is currently open → close it
-    # (so guests get kicked and admin has full control). Preserve guest login
-    # records for later audit by revoking instead of deleting them.
+    remember_token = None
+    if payload.remember_me:
+        remember_token = secrets.token_urlsafe(32)
+        # One remember device per IP — replace any prior token for this machine.
+        try:
+            if ip:
+                await db.admin_remember_devices.delete_many({"ip": ip})
+        except Exception:
+            pass
+        await db.admin_remember_devices.insert_one({
+            "_id": remember_token,
+            "ip": ip,
+            "created_at": now_utc.isoformat(),
+            "expires_at": (now_utc + timedelta(seconds=REMEMBER_ME_TTL_SECONDS)).isoformat(),
+            "user_agent": request.headers.get("user-agent", "")[:200],
+        })
     try:
         open_, _ = await _get_public_access_state()
         if open_:
@@ -1337,7 +1417,55 @@ async def auth_login(payload: LoginIn, request: Request):
     market_exp = _session_market_expiry_utc(now_utc)
     return {
         "ok": True, "token": token, "is_admin": True, "username": ADMIN_USERNAME,
-        "expires_in_seconds": ADMIN_SESSION_TTL_SECONDS,
+        "expires_in_seconds": max(60, ttl_min * 60),
+        "session_expires_at": market_exp.isoformat(),
+        "remember_token": remember_token,
+        "remember_expires_in_seconds": REMEMBER_ME_TTL_SECONDS if remember_token else None,
+    }
+
+
+class RememberLoginIn(BaseModel):
+    remember_token: str
+
+
+@api_router.post("/auth/remember-login")
+async def auth_remember_login(payload: RememberLoginIn, request: Request):
+    """Auto-login from a 24h IP-bound remember token (Remember me)."""
+    tok = (payload.remember_token or "").strip()
+    if not tok:
+        raise HTTPException(401, "Missing remember token")
+    doc = await db.admin_remember_devices.find_one({"_id": tok})
+    if not doc:
+        raise HTTPException(401, "Remember token invalid")
+    try:
+        exp = datetime.fromisoformat(doc["expires_at"])
+    except Exception:
+        raise HTTPException(401, "Remember token invalid")
+    if datetime.now(timezone.utc) >= exp:
+        try:
+            await db.admin_remember_devices.delete_one({"_id": tok})
+        except Exception:
+            pass
+        raise HTTPException(401, "Remember token expired")
+    ip = _client_ip(request)
+    if doc.get("ip") and ip and doc["ip"] != ip:
+        raise HTTPException(401, "Remember token not valid for this device/IP")
+    # Issue a fresh session (same as login)
+    session_tok = secrets.token_urlsafe(32)
+    now_utc = datetime.now(timezone.utc)
+    ttl_min = int((tracker.settings or {}).get("admin_session_ttl_minutes", 480) if tracker else 480)
+    await db.admin_sessions.insert_one({
+        "_id": session_tok,
+        "created_at": now_utc.isoformat(),
+        "ip": ip,
+        "user_agent": request.headers.get("user-agent", "")[:200],
+        "ttl_seconds": max(60, ttl_min * 60),
+        "from_remember": True,
+    })
+    market_exp = _session_market_expiry_utc(now_utc)
+    return {
+        "ok": True, "token": session_tok, "is_admin": True, "username": ADMIN_USERNAME,
+        "expires_in_seconds": max(60, ttl_min * 60),
         "session_expires_at": market_exp.isoformat(),
     }
 
@@ -1375,6 +1503,13 @@ async def auth_logout(request: Request):
     tok = _extract_bearer(request, "x-admin-token")
     if tok:
         await db.admin_sessions.delete_one({"_id": tok})
+    # Also clear remember-me for this IP if present
+    ip = _client_ip(request)
+    if ip:
+        try:
+            await db.admin_remember_devices.delete_many({"ip": ip})
+        except Exception:
+            pass
     return {"ok": True}
 
 
@@ -1395,7 +1530,7 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
     if " " not in name:
         raise HTTPException(400, "Please enter your FULL name (first name + last name).")
     token = secrets.token_urlsafe(32)
-    ip = request.client.host if request.client else None
+    ip = _client_ip(request)
     ua = request.headers.get("user-agent", "")[:200]
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.guest_sessions.insert_one({
@@ -1406,6 +1541,16 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
         "started_at": now_iso,
         "last_seen_at": now_iso,
     })
+    # Remember name for this IP so return visits can pre-fill.
+    if ip:
+        try:
+            await db.guest_ip_names.update_one(
+                {"_id": ip},
+                {"$set": {"name": name, "updated_at": now_iso, "last_token": token}},
+                upsert=True,
+            )
+        except Exception:
+            pass
     logger.info(f"GUEST session started: name='{name}' ip={ip}")
     return {"ok": True, "token": token, "name": name, "expires_in_seconds": GUEST_SESSION_TTL_SECONDS}
 
@@ -1426,9 +1571,30 @@ async def auth_state(request: Request):
     if is_admin and admin_sess:
         try:
             created = datetime.fromisoformat(admin_sess["created_at"])
-            admin_session_expires_at = _session_market_expiry_utc(created).isoformat()
+            expire_on_close = True
+            if tracker and "expire_admin_on_market_close" in tracker.settings:
+                expire_on_close = bool(tracker.settings["expire_admin_on_market_close"])
+            if expire_on_close:
+                admin_session_expires_at = _session_market_expiry_utc(created).isoformat()
         except Exception:
             admin_session_expires_at = None
+    # Suggest previous guest name for this IP (public return visit).
+    suggested_guest_name = None
+    if needs_guest_name:
+        ip = _client_ip(request)
+        if ip:
+            try:
+                row = await db.guest_ip_names.find_one({"_id": ip})
+                if row and row.get("name"):
+                    suggested_guest_name = row["name"]
+            except Exception:
+                pass
+    # Refresh weekday alert defaults if day rolled over
+    try:
+        if tracker:
+            tracker._refresh_alert_indices_for_today()
+    except Exception:
+        pass
     return {
         "requires_login": requires_login,
         "public_access_open": open_,
@@ -1437,10 +1603,15 @@ async def auth_state(request: Request):
         "is_guest": is_guest,
         "guest_name": guest_name,
         "needs_guest_name": needs_guest_name,
+        "suggested_guest_name": suggested_guest_name,
         "admin_name": admin_name,
-        "admin_display_name": ADMIN_USERNAME,   # shown in "Guest access via <name>" banner
-        "session_ttl_seconds": ADMIN_SESSION_TTL_SECONDS,
+        "admin_display_name": ADMIN_USERNAME,
+        "session_ttl_seconds": (
+            int(tracker.settings.get("admin_session_ttl_minutes", 480)) * 60
+            if tracker else ADMIN_SESSION_TTL_SECONDS
+        ),
         "admin_session_expires_at": admin_session_expires_at,
+        "can_remember_login": True,
     }
 
 
@@ -2186,6 +2357,9 @@ async def _startup():
         await db.straddle_samples.create_index("created_at")
         await db.guest_sessions.create_index([("started_at", -1)])
         await db.guest_sessions.create_index("revoked_at")
+        await db.admin_remember_devices.create_index("ip")
+        await db.admin_remember_devices.create_index("expires_at")
+        await db.guest_ip_names.create_index("updated_at")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 

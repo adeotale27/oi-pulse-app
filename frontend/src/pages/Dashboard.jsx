@@ -111,13 +111,13 @@ function formatDelta(v) {
   return `${sign}${Math.round(abs)}`;
 }
 
-// Minutes elapsed since today's NSE market open (9:15 AM IST), CLAMPED at market
-// close (3:30 PM IST). During market hours this returns the live "9:15 → now"
-// window; after 3:30 PM it caps at 375 min so "Full Day" stays 9:15 – 3:30.
-// Before 9:15 AM (or on weekends/holidays), return the full prior session length
-// (375) — NEVER ~24h, which previously pulled yesterday's OI into today's Δ.
+// Minutes elapsed since today's NSE market open (9:15 AM IST), CLAMPED at Index
+// F&O / configured close (15:40 IST). During market hours this returns the live
+// "9:15 → now" window; after close it caps at a full session so "Full Day"
+// stays 9:15 – 15:40. Before open (or on weekends/holidays), return the full
+// prior session length — NEVER ~24h, which previously pulled yesterday's OI.
 const MARKET_OPEN_MIN = 9 * 60 + 15;   // 9:15 AM IST
-const MARKET_CLOSE_MIN = 15 * 60 + 30; // 3:30 PM IST
+const MARKET_CLOSE_MIN = 15 * 60 + 40; // 15:40 IST (Index F&O / CAS default)
 function minutesSinceMarketOpenIST() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -128,7 +128,7 @@ function minutesSinceMarketOpenIST() {
   const m = parseInt(parts.find((p) => p.type === "minute").value, 10);
   const s = parseInt(parts.find((p) => p.type === "second").value, 10);
   const nowMin = h * 60 + m + s / 60;
-  const sessionLen = MARKET_CLOSE_MIN - MARKET_OPEN_MIN; // 375
+  const sessionLen = MARKET_CLOSE_MIN - MARKET_OPEN_MIN; // 385
 
   if (nowMin >= MARKET_OPEN_MIN && nowMin <= MARKET_CLOSE_MIN) {
     return Math.max(1, Math.ceil(nowMin - MARKET_OPEN_MIN));

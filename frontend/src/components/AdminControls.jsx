@@ -10,7 +10,7 @@ import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 /**
  * AdminControls — compact widget shown in the header (admin only).
- *  - Public Access toggle (auto-off at 3:30 PM IST server-side)
+ *  - Public Access toggle (auto-off at configured market close IST server-side)
  *  - Admin menu: Guest Directory, Change Password, Sign out
  *  - Auto logout after 420 minutes
  */
@@ -78,7 +78,9 @@ export default function AdminControls() {
 
       toast.success(
         data.open
-          ? "Public access ON — expires at 3:30 PM IST"
+          ? (data.expires_at
+              ? `Public access ON — expires at market close (${new Date(data.expires_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} IST)`
+              : "Public access ON — expires at market close")
           : "Public access OFF"
       );
 
@@ -97,7 +99,16 @@ export default function AdminControls() {
       // ignore
     }
 
-    sessionStorage.removeItem("oi_admin_token");
+    try {
+      const { clearAdminAuth } = await import("@/lib/api");
+      clearAdminAuth({ clearRemember: true });
+    } catch (_) {
+      try {
+        sessionStorage.removeItem("oi_admin_token");
+        localStorage.removeItem("oi_admin_token");
+        localStorage.removeItem("oi_admin_remember_token");
+      } catch (_) {}
+    }
     toast.success("Signed out.");
     window.location.reload();
   };

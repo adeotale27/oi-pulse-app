@@ -164,8 +164,11 @@ export function clearGuestAuth() {
   authStorage.remove("oi_guest_expires_at");
 }
 
-export function clearAdminAuth() {
+export function clearAdminAuth({ clearRemember = false } = {}) {
   authStorage.remove("oi_admin_token");
+  if (clearRemember) {
+    try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+  }
 }
 
 // Attach admin OR guest token (mutually exclusive — admin wins).

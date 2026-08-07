@@ -8,24 +8,26 @@ export default function MarketStatusBanner({ market, lastPulledAt }) {
   if (!market || market.is_market_open) return null;
 
   const phase = market.phase || "post_close";
+  const openHm = market.display_open_ist || "09:15";
+  const closeHm = market.display_close_ist || "15:40";
   const cfg = {
     pre_open: {
       icon: Sunrise,
       tone: "amber",
       title: market.banner_title || "Markets not open yet",
-      short: "Opens 9:15 AM IST",
+      short: `Opens ${openHm} IST`,
     },
     post_close: {
       icon: Moon,
       tone: "slate",
       title: market.banner_title || "Markets closed",
-      short: "Closed at 3:30 PM IST",
+      short: `Closed at ${closeHm} IST`,
     },
     weekend: {
       icon: CalendarOff,
       tone: "slate",
       title: market.banner_title || "Weekend",
-      short: "Resumes Mon 9:15 AM IST",
+      short: `Resumes next session ${openHm} IST`,
     },
     holiday: {
       icon: CalendarOff,

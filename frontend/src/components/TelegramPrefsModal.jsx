@@ -14,7 +14,7 @@ const TYPE_ROWS = [
   { key: "huge_shift", label: "Huge OI shift popup", hint: "Same events that trigger the on-screen popup" },
   { key: "huge_shift_major_only", label: "…but only MAJOR shifts (≥ threshold below)", hint: "Filters out small shifts", nested: true },
   { key: "market_open", label: "Market open ping", hint: "One message at 9:00 AM IST" },
-  { key: "market_close", label: "Market close ping", hint: "One message at 3:30 PM IST" },
+  { key: "market_close", label: "Market close ping", hint: "One message at configured market close (default 15:40 IST)" },
   { key: "daily_digest", label: "Daily digest at 3:30 PM", hint: "Total alerts + biggest reversals + closing OI" },
   { key: "kite_token", label: "Kite token issue", hint: "8:45 AM check-in if daily token has expired" },
   { key: "tracker_errors", label: "Tracker errors / stops", hint: "Critical — recommended ON" },

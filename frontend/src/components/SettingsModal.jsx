@@ -49,6 +49,11 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           straddle_enabled_indices: ["NIFTY", "SENSEX"],
           oi_poll_interval_seconds: 15,
           straddle_poll_interval_seconds: 60,
+          market_open_ist: "09:15",
+          market_close_ist: "15:40",
+          expire_admin_on_market_close: true,
+          admin_session_ttl_minutes: 480,
+          alert_enabled_indices: ["NIFTY"],
           visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions").map((p) => p.id),
         });
       });
@@ -65,6 +70,18 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
       cur.delete(idx);
     } else cur.add(idx);
     setSettings({ ...settings, enabled_indices: Array.from(cur) });
+  };
+
+  const toggleAlertIndex = (idx) => {
+    const cur = new Set(settings.alert_enabled_indices || []);
+    if (cur.has(idx)) {
+      if (cur.size <= 1) {
+        toast.error("Keep at least one alert index");
+        return;
+      }
+      cur.delete(idx);
+    } else cur.add(idx);
+    setSettings({ ...settings, alert_enabled_indices: Array.from(cur) });
   };
 
   const toggleStraddleIndex = (idx) => {
@@ -214,7 +231,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
 
             <div>
               <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">
-                Tracked indices
+                Tracked indices (polled every cycle)
               </Label>
               <div className="space-y-1.5">
                 {ALL_INDICES.map((idx) => (
@@ -232,11 +249,92 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                 ))}
               </div>
             </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block flex items-center gap-1">
+                Alert focus indices (today)
+                <InfoTip title="Weekday alert defaults">
+                  Defaults: Mon/Tue/Fri → NIFTY · Wed/Thu → SENSEX (weekly expiry focus).
+                  Changing this saves an override for today only — resets to weekday default on the next day.
+                </InfoTip>
+              </Label>
+              <div className="text-[10px] text-slate-500 mb-2">
+                {settings.alert_indices_override_date
+                  ? `Manual override for ${settings.alert_indices_override_date} (resets tomorrow)`
+                  : "Using weekday default — edit to override for today"}
+              </div>
+              <div className="space-y-1.5">
+                {ALL_INDICES.map((idx) => (
+                  <label
+                    key={`alert-${idx}`}
+                    className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Checkbox
+                      data-testid={`alert-enabled-${idx}`}
+                      checked={(settings.alert_enabled_indices || []).includes(idx)}
+                      onCheckedChange={() => toggleAlertIndex(idx)}
+                    />
+                    <span className="text-sm font-medium">{idx}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           </section>
 
           {/* ------------- Data Collection Poll Intervals ------------- */}
           {isAdmin && (
             <>
+              <section className="space-y-4 pt-2 border-t border-slate-200">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+                  Market hours &amp; admin policy (Admin Only)
+                </div>
+                <div className="text-xs text-slate-500">
+                  Index F&amp;O closes at 15:40 IST under CAS rules (from 2026-08-03). Equity CAS stocks stop at 15:15; other equities at 15:30. This app polls OI until the close you set below.
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Market open (IST)</Label>
+                    <Input
+                      data-testid="market-open-ist"
+                      type="time"
+                      value={settings.market_open_ist || "09:15"}
+                      onChange={(e) => setSettings({ ...settings, market_open_ist: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Market close (IST)</Label>
+                    <Input
+                      data-testid="market-close-ist"
+                      type="time"
+                      value={settings.market_close_ist || "15:40"}
+                      onChange={(e) => setSettings({ ...settings, market_close_ist: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 py-1 cursor-pointer">
+                  <Checkbox
+                    data-testid="expire-admin-on-close"
+                    checked={settings.expire_admin_on_market_close !== false}
+                    onCheckedChange={(ck) => setSettings({ ...settings, expire_admin_on_market_close: !!ck })}
+                  />
+                  <span className="text-sm">Expire admin sessions on market close</span>
+                </label>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Admin session TTL (minutes)</Label>
+                  <Input
+                    data-testid="admin-session-ttl"
+                    type="number"
+                    min={30}
+                    max={1440}
+                    value={settings.admin_session_ttl_minutes ?? 480}
+                    onChange={(e) => setSettings({ ...settings, admin_session_ttl_minutes: Number(e.target.value) || 480 })}
+                    className="h-9"
+                  />
+                </div>
+              </section>
+
               <section className="space-y-4 pt-2 border-t border-slate-200">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
                   Data Collection (Admin Only)

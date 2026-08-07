@@ -2,9 +2,9 @@
 Background OI tracker - polls Kite / Mock every N seconds, stores snapshots in Mongo,
 and evaluates alert rules for OI reversal spikes.
 
-Polls ONLY during NSE market hours (9:00–15:30 IST, Mon–Fri, excl. holidays)
-when FORCE_ALWAYS_POLL=false (default). Retains 24 h of snapshots so any
-timeframe from 5 min – 4 h has data available.
+Polls ONLY during NSE market hours (default open 09:15 / Index F&O close 15:40 IST,
+Mon–Fri, excl. holidays; configurable in Admin Settings) when FORCE_ALWAYS_POLL=false.
+Retains 24 h of snapshots so any timeframe from 5 min – 4 h has data available.
 """
 import asyncio
 import base64
@@ -26,7 +26,10 @@ try:
         MockService = None
 except Exception:
     MockService = None
-from market_hours import is_market_open, market_status, now_ist
+from market_hours import (
+    is_market_open, market_status, now_ist, configure_hours,
+    default_alert_indices_for_today,
+)
 import notifier
 
 
@@ -133,11 +136,19 @@ DEFAULT_SETTINGS = {
     "threshold_pct": 15.0,      # % OI change to trigger alert
     "cooldown_seconds": 120,    # per-index alert cooldown
     "compare_minutes": 3,       # compare with snapshot from N minutes ago
-    "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"],  # which indices to poll (BANKNIFTY optional)
+    "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"],  # which indices to poll
     "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
     "straddle_poll_interval_seconds": 60,  # Straddle data pull interval (default 60 = 1 minute)
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
     "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "alerts", "activity", "holidays", "straddle", "index-events"],
+    # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
+    "market_open_ist": "09:15",
+    "market_close_ist": "15:40",
+    "expire_admin_on_market_close": True,
+    "admin_session_ttl_minutes": 480,
+    # Alert focus indices — weekday defaults applied unless user overrides today
+    "alert_enabled_indices": None,  # filled on load from weekday default
+    "alert_indices_override_date": None,  # IST date string when user last overrode
 }
 
 
@@ -178,15 +189,67 @@ class OITracker:
         doc = await self.db.settings.find_one({"_id": "alerts"})
         if doc:
             self.settings.update({k: v for k, v in doc.items() if k != "_id"})
+        # Apply market hours + weekday alert defaults
+        self._apply_market_hours()
+        self._refresh_alert_indices_for_today()
+
+    def _apply_market_hours(self):
+        try:
+            configure_hours(
+                self.settings.get("market_open_ist", "09:15"),
+                self.settings.get("market_close_ist", "15:40"),
+            )
+        except Exception as e:
+            logger.warning("configure_hours failed: %s", e)
+
+    def _refresh_alert_indices_for_today(self):
+        """Reset alert focus to weekday defaults unless user overrode today.
+
+        Day change clears yesterday's override. Persistence to Mongo is best-effort
+        so GET /settings stays consistent across restarts without blocking alerts.
+        """
+        today = now_ist().date().isoformat()
+        override_date = self.settings.get("alert_indices_override_date")
+        if override_date == today and self.settings.get("alert_enabled_indices"):
+            return  # keep today's explicit choice
+        defaults = default_alert_indices_for_today()
+        prev = self.settings.get("alert_enabled_indices")
+        prev_override = self.settings.get("alert_indices_override_date")
+        self.settings["alert_enabled_indices"] = defaults
+        self.settings["alert_indices_override_date"] = None
+        if prev != defaults or prev_override:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.db.settings.update_one(
+                    {"_id": "alerts"},
+                    {"$set": {
+                        "alert_enabled_indices": defaults,
+                        "alert_indices_override_date": None,
+                    }},
+                    upsert=True,
+                ))
+            except Exception:
+                pass
 
     async def save_settings(self, patch: Dict[str, Any]):
-        allowed = {"threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices", 
-                   "oi_poll_interval_seconds", "straddle_poll_interval_seconds", "straddle_enabled_indices", "visible_pages"}
+        allowed = {
+            "threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices",
+            "oi_poll_interval_seconds", "straddle_poll_interval_seconds",
+            "straddle_enabled_indices", "visible_pages",
+            "market_open_ist", "market_close_ist",
+            "expire_admin_on_market_close", "admin_session_ttl_minutes",
+            "alert_enabled_indices", "alert_indices_override_date",
+        }
         clean = {k: v for k, v in patch.items() if k in allowed}
+        # Explicit alert-index change → mark as today's override
+        if "alert_enabled_indices" in clean:
+            clean["alert_indices_override_date"] = now_ist().date().isoformat()
         self.settings.update(clean)
         await self.db.settings.update_one(
             {"_id": "alerts"}, {"$set": clean}, upsert=True
         )
+        if "market_open_ist" in clean or "market_close_ist" in clean:
+            self._apply_market_hours()
         return self.settings
 
     def list_expiries(self, index_name: str):
@@ -698,6 +761,11 @@ class OITracker:
         windows — the user was seeing bullish/bearish alerts long after 3:30 PM.
         """
         if not (FORCE_ALWAYS_POLL or is_market_open()):
+            return
+        # Weekday alert focus (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu) unless overridden today.
+        self._refresh_alert_indices_for_today()
+        alert_idxs = self.settings.get("alert_enabled_indices") or []
+        if alert_idxs and index_name not in alert_idxs:
             return
         cutoff_min = int(self.settings.get("compare_minutes", 3))
         threshold_pct = float(self.settings.get("threshold_pct", 15.0))

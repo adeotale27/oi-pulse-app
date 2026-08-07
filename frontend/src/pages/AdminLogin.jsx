@@ -25,6 +25,21 @@ export default function AdminLogin() {
   useEffect(() => {
     (async () => {
       try {
+        // Try 24h remember-me auto-login first (IP-bound on server).
+        const rememberTok = localStorage.getItem("oi_admin_remember_token");
+        if (rememberTok && !sessionStorage.getItem("oi_admin_token") && !localStorage.getItem("oi_admin_token")) {
+          try {
+            const { data } = await api.post("/auth/remember-login", { remember_token: rememberTok });
+            if (data?.token) {
+              sessionStorage.setItem("oi_admin_token", data.token);
+              toast.success(`Welcome back, ${data.username}`);
+              navigate("/", { replace: true });
+              return;
+            }
+          } catch (_) {
+            try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+          }
+        }
         const { data } = await api.get("/auth/state");
         if (data?.is_admin) {
           navigate("/", { replace: true });
@@ -42,18 +57,29 @@ export default function AdminLogin() {
     setBusy(true);
     try {
       setCardState('busy');
-      const { data } = await api.post("/auth/login", { username: username.trim(), password });
-      // store token in sessionStorage by default; if user asked to remember, also write to localStorage
+      const { data } = await api.post("/auth/login", {
+        username: username.trim(),
+        password,
+        remember_me: remember,
+      });
+      // Session token stays in sessionStorage only. Remember-me uses a separate
+      // 24h IP-bound token so a stale session cookie cannot block auto-login.
       try { sessionStorage.setItem("oi_admin_token", data.token); } catch(_) {}
-      if (remember) {
-        try { localStorage.setItem("oi_admin_token", data.token); } catch(_) {}
+      try { localStorage.removeItem("oi_admin_token"); } catch(_) {}
+      if (remember && data.remember_token) {
+        try { localStorage.setItem("oi_admin_remember_token", data.remember_token); } catch(_) {}
+      } else {
+        try { localStorage.removeItem("oi_admin_remember_token"); } catch(_) {}
       }
-      // Also wipe any lingering guest token — admin route means admin session only.
-      try { sessionStorage.removeItem("oi_guest_token"); sessionStorage.removeItem("oi_guest_name"); } catch(_) {}
+      try {
+        const { clearGuestAuth } = await import("@/lib/api");
+        clearGuestAuth();
+      } catch (_) {
+        try { sessionStorage.removeItem("oi_guest_token"); sessionStorage.removeItem("oi_guest_name"); } catch(_) {}
+      }
 
       setCardState('success');
-      toast.success(`Welcome back, ${data.username} 👋`);
-      // small delay to show success micro-UX then navigate
+      toast.success(`Welcome back, ${data.username}`);
       setTimeout(() => {
         navigate("/", { replace: true });
         setTimeout(() => window.location.reload(), 100);
@@ -61,7 +87,6 @@ export default function AdminLogin() {
     } catch (err) {
       setCardState('error');
       toast.error(err?.response?.data?.detail || "Login failed — check credentials");
-      // brief shake animation can be seen via cardState
       setTimeout(() => setCardState('idle'), 600);
     } finally {
       setBusy(false);
@@ -171,7 +196,10 @@ export default function AdminLogin() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> <span>Remember me</span></label>
+                  <label className="flex items-center gap-2 text-sm text-slate-600" title="Stay signed in on this machine (same IP) for 24 hours">
+                    <input type="checkbox" data-testid="admin-remember-me" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                    <span>Remember me (this device, 24h)</span>
+                  </label>
                   <a href="/" className="text-sm text-slate-600 underline">Continue as guest</a>
                 </div>
 

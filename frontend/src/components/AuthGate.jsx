@@ -30,14 +30,33 @@ export default function AuthGate({ children }) {
 
   const refresh = async () => {
     try {
+      // Attempt remember-me auto-login if no admin session yet.
+      const rememberTok = (() => {
+        try { return localStorage.getItem("oi_admin_remember_token"); } catch (_) { return null; }
+      })();
+      const hasAdmin = (() => {
+        try { return !!(sessionStorage.getItem("oi_admin_token") || localStorage.getItem("oi_admin_token")); } catch (_) { return false; }
+      })();
+      if (rememberTok && !hasAdmin) {
+        try {
+          const { data: rem } = await api.post("/auth/remember-login", { remember_token: rememberTok });
+          if (rem?.token) {
+            try { sessionStorage.setItem("oi_admin_token", rem.token); } catch (_) {}
+          }
+        } catch (_) {
+          try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+        }
+      }
       const { data } = await api.get("/auth/state");
-      // If public access closed and we're not admin, clear leftover guest tokens.
       if (data.requires_login && !data.is_admin) {
         clearGuestAuth();
       }
       if (!data.is_guest && !data.is_admin) {
-        // Ensure stale guest identity isn't kept client-side after revoke.
         if (!data.public_access_open) clearGuestAuth();
+      }
+      // Prefill guest name from IP recall (only if field still empty)
+      if (data.suggested_guest_name) {
+        setGuestName((prev) => prev || data.suggested_guest_name);
       }
       setState({ loading: false, ...data });
     } catch (_) {
@@ -75,21 +94,21 @@ export default function AuthGate({ children }) {
     return () => clearInterval(check);
   }, [state.is_admin, state.session_ttl_seconds]);
 
-  // Hard auto-logout for admin at 3:30 PM IST (backend also enforces this).
+  // Hard auto-logout for admin at configured market close (backend also enforces this).
   useEffect(() => {
     if (!state.is_admin || !state.admin_session_expires_at) return;
     const expMs = Date.parse(state.admin_session_expires_at);
     if (Number.isNaN(expMs)) return;
     const now = Date.now();
     if (expMs <= now) {
-      toast.info("Signed out — market closed (3:30 PM IST).");
+      toast.info("Signed out — market closed.");
       clearAdminAuth();
       window.location.reload();
       return;
     }
     // Schedule + safety-net poll every minute (backend rejects if expired).
     const timer = setTimeout(() => {
-      toast.info("Signed out — market closed (3:30 PM IST).");
+      toast.info("Signed out — market closed.");
       clearAdminAuth();
       window.location.reload();
     }, Math.min(expMs - now, 2147483000)); // clamp for 32-bit setTimeout
@@ -228,6 +247,11 @@ export default function AuthGate({ children }) {
                 <form onSubmit={doGuest} className="space-y-4" data-testid="guest-form">
                   <div>
                     <Label className="text-xs uppercase tracking-wider text-slate-500">Full name</Label>
+                    {state.suggested_guest_name ? (
+                      <p className="text-xs text-emerald-700 mb-1.5" data-testid="guest-welcome-back">
+                        Welcome back — we remembered your name from this device.
+                      </p>
+                    ) : null}
                     <Input data-testid="guest-name" value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="e.g. Rahul Sharma" autoFocus />
                   </div>
 
