@@ -408,8 +408,8 @@ export default function Header({
           data-testid="mobile-admin-tools"
           className="lg:hidden px-3 pb-3 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2"
         >
-          <div className="w-full sm:hidden">
-            <AdminControls />
+          <div className="w-full basis-full">
+            <AdminControls variant="panel" />
           </div>
           <Button
             size="sm"

@@ -19,7 +19,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `blocked_ips` | Hard blocks |
 | Constituents / events docs | Uploaded calendars & index members |
 
-Retention: OI snapshots are pruned by the tracker (`SNAPSHOT_RETENTION_HOURS`, default 24). Straddle samples use `STRADDLE_RETENTION_HOURS`.
+Retention: OI / straddle samples default to **96 hours** so Friday’s session survives the weekend and Monday pre-open (`SNAPSHOT_RETENTION_HOURS` / `STRADDLE_RETENTION_HOURS`). Prune also floors at the previous trading day’s open. Weekend / holiday / pre-open APIs resolve `session_anchor_date` (last trading day) for history, straddle, and banners. After configured market close, OI polling stops; **GIFT Nifty** continues on its own schedule.
 
 ---
 

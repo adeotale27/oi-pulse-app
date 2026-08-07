@@ -121,10 +121,11 @@ def _decrypt_secret(value: Optional[str]) -> Optional[str]:
 POLL_INTERVAL_SECONDS = 15
 INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
 
-# Data retention: keep 24 hours so a full trading day (9:00–15:30 = 6.5h)
-# plus overnight review is always available.
-SNAPSHOT_RETENTION_HOURS = int(os.environ.get("SNAPSHOT_RETENTION_HOURS", "24"))
-STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "48"))
+# Data retention: keep ≥96h so Friday's session survives the weekend and
+# is still available Monday pre-open. Long weekends (Fri holiday → Tue) still
+# fit. Override with SNAPSHOT_RETENTION_HOURS / STRADDLE_RETENTION_HOURS.
+SNAPSHOT_RETENTION_HOURS = int(os.environ.get("SNAPSHOT_RETENTION_HOURS", "96"))
+STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "96"))
 
 # When true, poll 24/7 (dev / mock). When false, poll only inside NSE hours.
 FORCE_ALWAYS_POLL = os.environ.get("FORCE_ALWAYS_POLL", "false").lower() == "true"
@@ -718,12 +719,17 @@ class OITracker:
                     extra={"metrics": dict(self.metrics)},
                 )
 
-        # Retention prune once per poll cycle (not once per index).
+        # Retention prune once per poll cycle (only runs while market is open).
+        # Floor: never wipe the previous trading session so weekends/holidays
+        # always retain Friday (or last session) for review.
         try:
-            cutoff = (datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)).isoformat()
-            await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff}})
+            from market_hours import previous_trading_day, session_window_utc, now_ist as _now_ist
+            prev_start_utc, _ = session_window_utc(previous_trading_day(_now_ist()))
+            hours_cutoff = datetime.now(timezone.utc) - timedelta(hours=SNAPSHOT_RETENTION_HOURS)
+            cutoff_dt = min(hours_cutoff, prev_start_utc)
+            await self.db.oi_snapshots.delete_many({"created_at": {"$lt": cutoff_dt.isoformat()}})
         except Exception as e:
-            self.metrics["retention_prune_errors"] += 1
+            self.metrics["retention_prune_errors"] = self.metrics.get("retention_prune_errors", 0) + 1
             logger.debug(
                 "[_poll_once] retention prune failed: %s",
                 e,

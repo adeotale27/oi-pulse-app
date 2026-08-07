@@ -131,6 +131,7 @@ export default function Sidebar({
   onChangeExpiry,
   showStrikeRange = false,
   lastUpdatedByIndex = {},
+  marketOpen = true,
 }) {
   const price = current?.price ?? 0;
   // Admin note section state (below the big clock). Publicly visible; editable by admin.
@@ -252,9 +253,10 @@ export default function Sidebar({
             const pulled = lastUpdatedByIndex?.[idx];
             const age = ageSec(pulled);
             const fresh = age != null && age <= 45;
-            // Inactive index more than 2 minutes behind → flash so trader notices.
-            const veryStale = !active && age != null && age > 120;
-            const stale = age != null && age > 90;
+            // Only flash "stale" while the market is open — after configured
+            // close / weekend / holiday the last tick is expected to age.
+            const veryStale = marketOpen && !active && age != null && age > 120;
+            const stale = marketOpen && age != null && age > 90;
             return (
               <button
                 key={idx}
@@ -267,7 +269,9 @@ export default function Sidebar({
                   pulled
                     ? veryStale
                       ? `STALE · last OI ${fmtPull(pulled)} IST (${age}s behind)`
-                      : `Last OI ${fmtPull(pulled)} IST`
+                      : marketOpen
+                        ? `Last OI ${fmtPull(pulled)} IST`
+                        : `Last session OI ${fmtPull(pulled)} IST (market closed)`
                     : "No warm snapshot yet"
                 }
               >
@@ -280,11 +284,13 @@ export default function Sidebar({
                       ? "text-white/85"
                       : veryStale
                         ? "text-amber-800 font-semibold"
-                        : fresh
-                          ? "text-emerald-700"
-                          : stale
-                            ? "text-amber-700"
-                            : "text-slate-500"
+                        : !marketOpen
+                          ? "text-slate-500"
+                          : fresh
+                            ? "text-emerald-700"
+                            : stale
+                              ? "text-amber-700"
+                              : "text-slate-500"
                   }`}
                 >
                   {pulled ? (veryStale ? `⚠ ${fmtPull(pulled)}` : fmtPull(pulled)) : "—"}

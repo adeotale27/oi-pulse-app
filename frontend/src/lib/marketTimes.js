@@ -1,11 +1,12 @@
 // Centralized market timing constants and helpers (minutes since midnight IST)
 export const FNO_CLOSE_MINUTE = 15 * 60 + 40; // 15:40 IST - F&O market close
-export const WEEKEND_START_MINUTE = 15 * 60 + 31; // 15:31 IST - weekend begins
+export const WEEKEND_START_MINUTE = 15 * 60 + 40; // Align with Index F&O / configured close (15:40)
 
-// Reminder times shifted +10 minutes from prior 15:00 / 15:15 / 15:25 -> 15:10 / 15:25 / 15:35
+// Reminder times: 15:10 / 15:25 / 15:35 (15:15 is the sticky event-risk toast in BigClock)
 export const REMINDER_MINUTES = [15 * 60 + 10, 15 * 60 + 25, 15 * 60 + 35];
 
-export const MARKET_CLOSE_TOAST_MINUTE = FNO_CLOSE_MINUTE + 1; // 15:41 - show close toast
+export const MARKET_CLOSE_TOAST_MINUTE = FNO_CLOSE_MINUTE + 1; // 15:41
+export const EVENT_WARNING_MINUTE = 15 * 60 + 15; // 15:15 sticky overnight/event toast
 
 export const GIFT_SESSION_WINDOWS = [
   { start_ist: "06:30", end_ist: "15:40" },
@@ -58,6 +59,6 @@ export function isMarketQuiescent(maybeStatusOrDate = undefined) {
     return map[w] ?? 0;
   })(weekdayPart.value) : new Date(dt).getUTCDay();
   const minutesOfDay = hour * 60 + minute;
-  // Weekend begins on Friday at WEEKEND_START_MINUTE (15:31 IST), or any Sat/Sun
+  // Weekend begins on Friday at WEEKEND_START_MINUTE (15:40 IST), or any Sat/Sun
   return (wk === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || wk === 6 || wk === 0;
 }

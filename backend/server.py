@@ -21,7 +21,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from oi_tracker import OITracker, INDICES, JsonLogFormatter
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
-from market_hours import is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend, display_hours, configure_hours
+from market_hours import (
+    is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend, display_hours, configure_hours,
+    session_anchor_date, session_window_utc, previous_trading_day,
+)
 from gift_vix_service import extra_tickers
 import event_risk_service as ers
 from fastapi import UploadFile, File, Form
@@ -1018,15 +1021,70 @@ async def get_oi_change(
 
 @api_router.get("/history/{index_name}")
 async def get_history(index_name: str, minutes: int = Query(60, ge=1, le=1440)):
+    """Return OI snapshot history for Replay.
+
+    While the market is open: last `minutes` of wall-clock time.
+    When closed (post-close / weekend / holiday / pre-open): serve the
+    last trading session (session_anchor_date), optionally trimmed to the
+    last `minutes` of that session so weekend users still see Friday's data.
+    """
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
-    docs = await db.oi_snapshots.find(
-        {"index": idx, "timestamp": {"$gte": cutoff, "$lte": datetime.now(timezone.utc).isoformat()}},
-        {"_id": 0}
-    ).sort("timestamp", 1).to_list(length=5000)
-    return {"index": idx, "count": len(docs), "history": docs}
+
+    now_utc = datetime.now(timezone.utc)
+    market_open = is_market_open()
+
+    if market_open:
+        cutoff = (now_utc - timedelta(minutes=minutes)).isoformat()
+        docs = await db.oi_snapshots.find(
+            {"index": idx, "timestamp": {"$gte": cutoff, "$lte": now_utc.isoformat()}},
+            {"_id": 0},
+        ).sort("timestamp", 1).to_list(length=5000)
+        return {
+            "index": idx,
+            "count": len(docs),
+            "history": docs,
+            "session_anchor_date": session_anchor_date().isoformat(),
+            "source": "live_window",
+        }
+
+    # Closed: resolve last trading session and serve that day's ticks.
+    anchor = session_anchor_date()
+    start_utc, end_utc = session_window_utc(anchor)
+    # If post-close same day, end at now (final tick may be slightly after display close).
+    if end_utc > now_utc:
+        end_utc = now_utc
+    query = {
+        "index": idx,
+        "timestamp": {"$gte": start_utc.isoformat(), "$lte": end_utc.isoformat()},
+    }
+    docs = await db.oi_snapshots.find(query, {"_id": 0}).sort("timestamp", 1).to_list(length=5000)
+
+    # Trim to last N minutes of the session if requested window is shorter than the full day.
+    if docs and minutes < 24 * 60:
+        try:
+            last_ts = datetime.fromisoformat(docs[-1]["timestamp"].replace("Z", "+00:00"))
+            trim_from = (last_ts - timedelta(minutes=minutes)).isoformat()
+            docs = [d for d in docs if d.get("timestamp", "") >= trim_from]
+        except Exception:
+            pass
+
+    # Absolute fallback: most recent snapshots in retention window.
+    if not docs:
+        cutoff = (now_utc - timedelta(hours=96)).isoformat()
+        docs = await db.oi_snapshots.find(
+            {"index": idx, "timestamp": {"$gte": cutoff}},
+            {"_id": 0},
+        ).sort("timestamp", 1).to_list(length=5000)
+
+    return {
+        "index": idx,
+        "count": len(docs),
+        "history": docs,
+        "session_anchor_date": anchor.isoformat(),
+        "source": "last_session",
+    }
 
 
 @api_router.get("/vrp/{index_name}")
@@ -1159,22 +1217,19 @@ async def get_straddle(index_name: str, expiry: Optional[str] = None, position: 
 
 
 def _previous_trading_day(now_ist: datetime) -> date:
-    candidate = (now_ist - timedelta(days=1)).date()
-    while is_weekend(datetime.combine(candidate, datetime.min.time(), IST)) or is_holiday(datetime.combine(candidate, datetime.min.time(), IST)):
-        candidate = (datetime.combine(candidate, datetime.min.time(), IST) - timedelta(days=1)).date()
-    return candidate
+    return previous_trading_day(now_ist)
 
 
 def _resolve_straddle_trade_date(requested_date: Optional[str] = None) -> date:
-    now_ist = datetime.now(IST)
+    now = datetime.now(IST)
     if requested_date and requested_date not in ("auto", "latest"):
         try:
             return date.fromisoformat(requested_date)
         except ValueError:
             raise HTTPException(400, "Invalid date format for trade_date; expected YYYY-MM-DD")
-    if now_ist.time() < MARKET_OPEN:
-        return _previous_trading_day(now_ist)
-    return now_ist.date()
+    # Weekend / holiday / pre-open → last completed session.
+    # Open or post-close on a trading day → today.
+    return session_anchor_date(now)
 
 
 @api_router.get("/straddle/{index_name}/history")
@@ -1186,16 +1241,20 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
     query = {"index": idx, "trade_date": target_date.isoformat()}
     if expiry:
         query["expiry"] = expiry
-    if minutes is not None and minutes < 24 * 60 and not (date is None and datetime.now(IST).time() < MARKET_OPEN):
+    # Only apply a rolling wall-clock minutes filter while the market is open.
+    # On weekends/holidays/post-close, return the full last-session samples.
+    if minutes is not None and minutes < 24 * 60 and is_market_open():
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
         query["created_at"] = {"$gte": cutoff}
     docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=(minutes * 120) if minutes else 5000)
 
-    if not docs and date is None and datetime.now(IST).time() < MARKET_OPEN:
+    # If empty (weekend/holiday after 09:14, or missing samples), fall back to previous trading day.
+    if not docs and date is None:
         previous_date = _previous_trading_day(datetime.now(IST))
-        query["trade_date"] = previous_date.isoformat()
-        query.pop("created_at", None)
-        docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=5000)
+        if previous_date.isoformat() != query.get("trade_date"):
+            query["trade_date"] = previous_date.isoformat()
+            query.pop("created_at", None)
+            docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=5000)
 
     return {"index": idx, "trade_date": query["trade_date"], "count": len(docs), "history": docs}
 
@@ -2149,8 +2208,7 @@ async def get_tickers():
     """Return LTP + previous close + change + change% for NIFTY 50, SENSEX and
     BANK NIFTY. Used by the header static ticker strip so users can eyeball
     today's movement at a glance across all three main indices.
-    Falls back to mock movement when Kite isn't connected."""
-    import random
+    Falls back to last DB snapshot when Kite isn't connected."""
     result = []
     symbols = [
         ("NIFTY",     "NSE:NIFTY 50",   "NIFTY 50"),
@@ -2185,21 +2243,30 @@ async def get_tickers():
         except Exception as e:
             logger.warning(f"tickers kite failed, falling back to snapshot: {e}")
 
-    # Fallback: use the tracker's last_snapshot which has live prices, and mock a
-    # prev_close by biasing it 0-0.8% away from current LTP.
+    # Fallback: use the tracker's last_snapshot (seeded from DB on boot).
+    # Never invent random prev_close — that misleads weekend/holiday viewers.
     for internal, _symbol, label in symbols:
-        snap = tracker.last_snapshot.get(internal) or {}
-        ltp = float(snap.get("price") or 0)
-        prev = ltp * (1 - random.uniform(-0.008, 0.008)) if ltp else 0
-        change = ltp - prev
-        change_pct = (change / prev * 100) if prev else 0.0
+        snap = tracker.last_snapshot.get(internal)
+        if not snap:
+            try:
+                snap = await db.oi_snapshots.find_one(
+                    {"index": internal},
+                    sort=[("timestamp", -1)],
+                    projection={"_id": 0, "price": 1, "atm": 1, "timestamp": 1},
+                )
+            except Exception:
+                snap = None
+        snap = snap or {}
+        ltp = float(snap.get("price") or snap.get("atm") or 0)
+        prev = ltp  # unknown prev_close offline — show flat rather than fake %
         result.append({
             "index": internal, "label": label,
             "ltp": round(ltp, 2), "prev_close": round(prev, 2),
             "day_open": round(prev, 2),
-            "day_high": round(ltp * 1.003, 2), "day_low": round(ltp * 0.997, 2),
-            "change": round(change, 2), "change_pct": round(change_pct, 3),
+            "day_high": round(ltp, 2), "day_low": round(ltp, 2),
+            "change": 0.0, "change_pct": 0.0,
             "source": "historical",
+            "as_of": snap.get("timestamp"),
         })
     return {"mode": tracker.mode, "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
 
@@ -2224,7 +2291,15 @@ async def admin_refresh_day(_admin: bool = Depends(require_admin)):
     OI ticks cannot be recovered from Kite, so there is no synthetic backfill:
     we take one live snapshot per enabled index (in parallel) when Kite mode is
     active, then normal polling continues. Offline mode only clears the DB.
+
+    Refused on weekend/holiday so Friday (last session) data is not wiped.
     """
+    if is_weekend(datetime.now(IST)) or is_holiday(datetime.now(IST)):
+        raise HTTPException(
+            400,
+            "Fresh Pull is disabled on weekends/holidays so the last trading "
+            "session remains available for review. Try again on the next trading day.",
+        )
     today_ist = datetime.now(IST).date()
     day_start_utc = datetime.combine(
         today_ist, datetime.min.time().replace(hour=9, minute=15)
@@ -2704,6 +2779,27 @@ async def _startup():
     await tracker.load_credentials()
     await tracker.load_settings()
     await tracker.start()
+    # Seed in-memory last_snapshot from DB so weekend/holiday/cold-restart
+    # serves Friday (or last session) immediately without waiting for a poll.
+    try:
+        enabled = tracker.settings.get("enabled_indices") or list(INDEX_CONFIG.keys())
+        for idx in enabled:
+            if idx in tracker.last_snapshot:
+                continue
+            doc = await db.oi_snapshots.find_one(
+                {"index": idx},
+                sort=[("timestamp", -1)],
+                projection={"_id": 0},
+            )
+            if doc:
+                tracker.last_snapshot[idx] = doc
+        logger.info(
+            "Seeded last_snapshot for %s indices from DB (session anchor %s)",
+            len(tracker.last_snapshot),
+            session_anchor_date().isoformat(),
+        )
+    except Exception as e:
+        logger.warning(f"last_snapshot seed skipped: {e}")
     extra_tickers.attach_db(db)
     # Prefer Kite for GIFT NIFTY (NSEIX:GIFT NIFTY) + India VIX when LIVE.
     extra_tickers.attach_kite_provider(

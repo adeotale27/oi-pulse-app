@@ -296,13 +296,6 @@ function CustomLegend({ showOI }) {
       ];
   return (
     <div className="pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
-      <div className="text-center text-slate-500 mb-2">
-        {showOI ? (
-          <span>Legend: <span className="font-medium text-slate-700">Solid = OI kept</span> · <span className="font-medium text-slate-700">Striped = increase</span> · <span className="font-medium text-slate-700">Outline = decrease</span></span>
-        ) : (
-          <span>Legend: <span className="font-medium text-slate-700">OI change in selected timeframe</span> · bars above zero = increase · below zero = decrease</span>
-        )}
-      </div>
       <div className="flex items-center justify-center gap-x-5 gap-y-2 flex-wrap">
         {items.map((it, i) => (
           <div key={i} className="flex items-center gap-1.5">

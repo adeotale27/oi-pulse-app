@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotify } from "@/hooks/useNotify";
 import { toast } from "sonner";
+import { eventsWithinDays } from "@/lib/econCalendar";
+import { upcomingHolidays, todayIST } from "@/lib/holidays";
+import { FNO_CLOSE_MINUTE, WEEKEND_START_MINUTE, REMINDER_MINUTES, hmFromMinutes } from "@/lib/marketTimes";
 
 // Helper: return a Date object representing the current IST local time.
 function getISTDate(dt = new Date()) {
@@ -24,11 +27,94 @@ function getISTParts(dt = new Date()) {
     h: istDate.getUTCHours(),
     m: istDate.getUTCMinutes(),
     s: istDate.getUTCSeconds(),
-    weekday: istDate.getUTCDay(),
+    weekday: istDate.getUTCDay(), // 0=Sun … 5=Fri … 6=Sat
   };
 }
 
-import { FNO_CLOSE_MINUTE, WEEKEND_START_MINUTE, REMINDER_MINUTES, MARKET_CLOSE_TOAST_MINUTE, hmFromMinutes } from '@/lib/marketTimes';
+/** 15:15 IST — event / overnight carry warning (sticky toast). */
+const EVENT_WARNING_MINUTE = 15 * 60 + 15;
+
+/**
+ * Events + holidays the trader must respect before carrying overnight.
+ * Mon–Thu → today + tomorrow.
+ * Friday → today through Monday (covers weekend + Mon open risk).
+ */
+function carryWindowItems(weekday /* 0=Sun … 5=Fri */) {
+  const maxDays = weekday === 5 ? 3 : 1; // Fri → Mon inclusive
+  const econ = eventsWithinDays(maxDays);
+  const today = todayIST();
+  const holidays = upcomingHolidays(today)
+    .filter((h) => {
+      const [y, mo, d] = today.split("-").map(Number);
+      const start = Date.UTC(y, mo - 1, d);
+      const [hy, hm, hd] = h.date.split("-").map(Number);
+      const end = Date.UTC(hy, hm - 1, hd);
+      const days = Math.round((end - start) / 86400000);
+      return days >= 0 && days <= maxDays;
+    })
+    .map((h) => ({
+      date: h.date,
+      name: `NSE Holiday — ${h.name}`,
+      type: "holiday",
+      country: "IN",
+      impact: "critical",
+      daysAway: (() => {
+        const [y, mo, d] = today.split("-").map(Number);
+        const start = Date.UTC(y, mo - 1, d);
+        const [hy, hm, hd] = h.date.split("-").map(Number);
+        return Math.round((Date.UTC(hy, hm - 1, hd) - start) / 86400000);
+      })(),
+    }));
+
+  const merged = [...econ, ...holidays].sort((a, b) => a.date.localeCompare(b.date));
+  // Dedupe by date+name
+  const seen = new Set();
+  return merged.filter((e) => {
+    const k = `${e.date}|${e.name}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function dayLabel(daysAway, weekday) {
+  if (daysAway === 0) return "Today";
+  if (daysAway === 1) return "Tomorrow";
+  if (weekday === 5 && daysAway === 2) return "Sunday";
+  if (weekday === 5 && daysAway === 3) return "Monday";
+  return `In ${daysAway}d`;
+}
+
+function buildEventWarningCopy(weekday) {
+  const items = carryWindowItems(weekday);
+  const horizon = weekday === 5
+    ? "through Monday open (weekend gap risk)"
+    : "for tonight / tomorrow";
+
+  if (!items.length) {
+    return {
+      title: "Overnight carry check · 3:15 IST",
+      description: `No major scheduled events ${horizon}. Still review delta / hedges before close.`,
+      lines: [],
+      hasEvents: false,
+    };
+  }
+
+  const lines = items.slice(0, 8).map((e) => {
+    const when = dayLabel(e.daysAway, weekday);
+    const impact = (e.impact || "").toUpperCase();
+    return `${when} · ${e.name}${impact ? ` [${impact}]` : ""}`;
+  });
+
+  return {
+    title: "⚠ Event risk before close · 3:15 IST",
+    description:
+      `Upcoming events ${horizon}. Hedge or close positions you are not comfortable carrying.\n\n` +
+      lines.join("\n"),
+    lines,
+    hasEvents: true,
+  };
+}
 
 export default function BigClock({ compact = false }) {
   const [now, setNow] = useState(new Date());
@@ -36,7 +122,6 @@ export default function BigClock({ compact = false }) {
   const notifiedRef = useRef(new Set()); // keys like YYYY-MM-DD|HH:MM
 
   useEffect(() => {
-    // Request permission only for full view to avoid prompting mobile users for a compact header clock
     if (!compact) requestPermission();
   }, [requestPermission, compact]);
 
@@ -47,25 +132,25 @@ export default function BigClock({ compact = false }) {
 
   const { h, m, s, weekday } = getISTParts(now);
   const pad = (n) => String(n).padStart(2, "0");
-  // Convert to 12-hour display
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   const ampm = h >= 12 ? "PM" : "AM";
 
   const minutesOfDay = h * 60 + m;
-  // Weekend definition: begins after configured weekend start minute
   const isWeekend = (weekday === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || weekday === 6 || weekday === 0;
   const isWeekday = !isWeekend && (weekday >= 1 && weekday <= 5);
 
-  // Red alert window: shifted by +10 minutes from previous 15:00–15:29 → now 15:10–15:39
   const inAlertWindow = minutesOfDay >= (15 * 60 + 10) && minutesOfDay < FNO_CLOSE_MINUTE;
 
-  // Notification schedule (IST times)
   useEffect(() => {
-    // Build key for this exact minute
-    const key = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    const key = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
     const minuteKey = `${key}|${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-
     const cur = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+
     const scheduledAlerts = [
       {
         time: "08:59",
@@ -97,31 +182,57 @@ export default function BigClock({ compact = false }) {
       },
     ];
 
-    const reminderTimes = REMINDER_MINUTES.map(hmFromMinutes);
-    const marketCloseToastTime = hmFromMinutes(MARKET_CLOSE_TOAST_MINUTE);
+    const reminderTimes = REMINDER_MINUTES.map(hmFromMinutes).filter(
+      (t) => t !== hmFromMinutes(EVENT_WARNING_MINUTE),
+    );
 
-    if (s === 0) {
-      const scheduled = scheduledAlerts.find(
-        (alert) => alert.time === cur && alert.days.includes(weekday),
-      );
+    if (s !== 0) return;
 
-      if (scheduled && !notifiedRef.current.has(minuteKey)) {
-        notifiedRef.current.add(minuteKey);
-        try { push(scheduled.title, scheduled.description); } catch (e) { /* ignore */ }
-        try { alarm(); } catch (_) { /* ignore */ }
-        try { toast.success(scheduled.toast, { description: scheduled.description }); } catch (_) { /* ignore */ }
-      }
+    const scheduled = scheduledAlerts.find(
+      (alert) => alert.time === cur && alert.days.includes(weekday),
+    );
 
-      if (isWeekday && reminderTimes.includes(cur) && !notifiedRef.current.has(minuteKey)) {
-        notifiedRef.current.add(minuteKey);
-        try { push(`Market reminder · ${cur} IST`, `It is ${cur} IST — consider exiting positions.`); } catch (e) { /* ignore */ }
-        try { alarm(); } catch (_) { /* ignore */ }
-        try { toast.success(`Reminder: ${cur} IST`, { description: "Time to review / exit positions" }); } catch (_) { /* ignore */ }
-      }
+    if (scheduled && !notifiedRef.current.has(minuteKey)) {
+      notifiedRef.current.add(minuteKey);
+      try { push(scheduled.title, scheduled.description); } catch (_) { /* ignore */ }
+      try { alarm(); } catch (_) { /* ignore */ }
+      try { toast.success(scheduled.toast, { description: scheduled.description }); } catch (_) { /* ignore */ }
     }
-  }, [h, m, s, now, push, alarm]);
 
-  // Compact rendering for header / mobile
+    // 15:15 sticky event / carry warning — must be dismissed manually.
+    if (
+      isWeekday &&
+      cur === hmFromMinutes(EVENT_WARNING_MINUTE) &&
+      !notifiedRef.current.has(`${minuteKey}|events`)
+    ) {
+      notifiedRef.current.add(`${minuteKey}|events`);
+      const copy = buildEventWarningCopy(weekday);
+      try { push(copy.title, copy.lines.slice(0, 3).join(" · ") || copy.description); } catch (_) { /* ignore */ }
+      try { alarm(); } catch (_) { /* ignore */ }
+      try {
+        toast(copy.title, {
+          id: `event-carry-${key}`,
+          description: copy.description,
+          duration: Infinity, // manual close only
+          closeButton: true,
+          important: true,
+          classNames: {
+            toast: copy.hasEvents
+              ? "border-2 border-amber-500 bg-amber-50 text-amber-950"
+              : "border border-slate-300",
+          },
+        });
+      } catch (_) { /* ignore */ }
+    }
+
+    if (isWeekday && reminderTimes.includes(cur) && !notifiedRef.current.has(minuteKey)) {
+      notifiedRef.current.add(minuteKey);
+      try { push(`Market reminder · ${cur} IST`, `It is ${cur} IST — consider exiting positions.`); } catch (_) { /* ignore */ }
+      try { alarm(); } catch (_) { /* ignore */ }
+      try { toast.success(`Reminder: ${cur} IST`, { description: "Time to review / exit positions" }); } catch (_) { /* ignore */ }
+    }
+  }, [h, m, s, now, push, alarm, isWeekday, weekday]);
+
   if (compact) {
     return (
       <div className={`px-2 py-1 rounded-sm flex items-center gap-2 ${inAlertWindow ? "bg-rose-600 text-white" : isWeekend ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-900"}`}>
@@ -140,7 +251,6 @@ export default function BigClock({ compact = false }) {
           <div className="font-mono-data font-bold tracking-tight tabular-nums text-2xl sm:text-3xl md:text-4xl">
             {hour12}:{pad(m)}
           </div>
-          {/* Seconds are hidden on very small screens to avoid layout wrap */}
           <div className="font-mono-data font-medium tracking-tight tabular-nums text-lg text-slate-500 hidden sm:inline">:{pad(s)}</div>
           <div className="text-sm sm:text-base font-semibold ml-1">{ampm}</div>
         </div>

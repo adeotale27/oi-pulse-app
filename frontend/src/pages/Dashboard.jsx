@@ -1265,6 +1265,7 @@ export default function Dashboard() {
             onChangeExpiry={handleChangeExpiry}
             showStrikeRange={showStrikeRange}
             lastUpdatedByIndex={lastUpdatedByIndex}
+            marketOpen={!(status?.market && status.market.is_market_open === false)}
           />
         )}
 
