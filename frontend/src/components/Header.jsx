@@ -39,6 +39,9 @@ export default function Header({
   compact,
   onToggleCompact,
   onFreshPullDone,
+  /** Parent (Dashboard) already resolved admin — don't wait on a second /auth/state. */
+  assumedAdmin = false,
+  publicAccessOpen = null,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -46,9 +49,24 @@ export default function Header({
   const vix = current?.vix ?? 0;
   const mode = status?.mode ?? "offline";
 
+  function hasAdminToken() {
+    try {
+      return !!(
+        sessionStorage.getItem("oi_admin_token") ||
+        localStorage.getItem("oi_admin_token") ||
+        localStorage.getItem("oi_admin_remember_token")
+      );
+    } catch {
+      return false;
+    }
+  }
+
   // Auth state — used to hide sensitive buttons from guests.
   // Must keep refreshing after EOD (Tools / Public toggle still needed).
-  const [authState, setAuthState] = useState({ is_admin: false });
+  const [authState, setAuthState] = useState({
+    is_admin: !!(assumedAdmin || hasAdminToken()),
+    public_access_open: !!publicAccessOpen,
+  });
   {
     let alive = true;
     const load = async () => {
@@ -57,19 +75,45 @@ export default function Header({
         if (alive) {
           setAuthState(data);
         }
-      } catch (err) { console.error('[Header] auth_state fetch failed', err); }
+      } catch (err) {
+        console.error("[Header] auth_state fetch failed", err);
+        // Keep assumed admin seed so Tools never disappears after a failed poll.
+        if (alive && (assumedAdmin || hasAdminToken())) {
+          setAuthState((prev) => ({
+            ...prev,
+            is_admin: true,
+            public_access_open: publicAccessOpen != null ? !!publicAccessOpen : !!prev.public_access_open,
+          }));
+        }
+      }
     };
-    useQuiescentAwarePolling(load, 60_000, [], { immediate: true, allowDuringQuiescent: true, dedupeKey: "header-auth" });
+    useQuiescentAwarePolling(load, 60_000, [], {
+      immediate: true,
+      allowDuringQuiescent: true,
+      dedupeKey: "header-auth",
+    });
     useEffect(() => () => { alive = false; }, []);
   }
+
+  // Stay in sync when Dashboard already knows admin / public flag.
+  useEffect(() => {
+    if (!assumedAdmin && publicAccessOpen == null) return;
+    setAuthState((prev) => ({
+      ...prev,
+      is_admin: assumedAdmin || prev.is_admin || hasAdminToken(),
+      public_access_open:
+        publicAccessOpen != null ? !!publicAccessOpen : prev.public_access_open,
+    }));
+  }, [assumedAdmin, publicAccessOpen]);
+
   // Dev override: allow forcing admin UI without X-Admin-Token for local debugging.
   // Guard behind NODE_ENV !== 'production' so production builds are not affected.
-  const devForce = (typeof window !== 'undefined') && (process.env.NODE_ENV !== 'production') && (
-    localStorage.getItem('oi_dev_force_admin') === '1' || sessionStorage.getItem('oi_dev_force_admin') === '1'
+  const devForce = (typeof window !== "undefined") && (process.env.NODE_ENV !== "production") && (
+    localStorage.getItem("oi_dev_force_admin") === "1" || sessionStorage.getItem("oi_dev_force_admin") === "1"
   );
-  const isAdmin = devForce || !!authState.is_admin;
+  const isAdmin = devForce || !!authState.is_admin || !!assumedAdmin || hasAdminToken();
   if (devForce) {
-    try { console.warn('[Header] devForce admin UI enabled via oi_dev_force_admin'); } catch(_) {}
+    try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }
 
   // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
@@ -381,22 +425,27 @@ export default function Header({
               Kite API
             </Button>
           </div>
-
-          {/* Mobile / tablet: collapse admin tools */}
-          {isAdmin && (
-            <Button
-              data-testid="btn-mobile-tools"
-              variant="outline"
-              size="sm"
-              className="lg:hidden rounded-sm h-8 px-2 text-xs"
-              onClick={() => setMobileToolsOpen((v) => !v)}
-              title="Admin tools"
-            >
-              Tools
-            </Button>
-          )}
         </div>
       </div>
+
+      {/* Mobile / tablet admin Tools — own row so Public access / Settings are never clipped */}
+      {isAdmin && (
+        <div className="lg:hidden px-3 pb-2 flex items-center gap-2" data-testid="mobile-tools-bar">
+          <Button
+            data-testid="btn-mobile-tools"
+            size="sm"
+            onClick={() => setMobileToolsOpen((v) => !v)}
+            className={`flex-1 rounded-sm h-9 text-xs font-semibold ${
+              mobileToolsOpen
+                ? "bg-slate-900 text-white hover:bg-slate-800"
+                : "bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
+            title="Admin tools: Public access, Settings, Kite API, Fresh Pull"
+          >
+            {mobileToolsOpen ? "Hide Tools" : "Tools · Public / Settings / Admin"}
+          </Button>
+        </div>
+      )}
 
       {/* Mobile: VIX / GIFT + index tickers on their own rows */}
       <div className="md:hidden px-3 pb-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
@@ -418,16 +467,44 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="mobile-admin-tools"
-          className="lg:hidden px-3 pb-3 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2"
+          className="lg:hidden px-3 pb-3 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2 bg-slate-50/80 dark:bg-slate-900/50"
         >
+          <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
+            Admin tools
+          </div>
           <div className="w-full basis-full">
             <AdminControls
               variant="panel"
               assumedAdmin={isAdmin}
-              publicAccessOpen={!!authState.public_access_open}
+              publicAccessOpen={
+                publicAccessOpen != null
+                  ? !!publicAccessOpen
+                  : !!authState.public_access_open
+              }
             />
           </div>
           <Button
+            data-testid="btn-mobile-settings"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={onOpenSettings}
+          >
+            <Settings2 className="w-4 h-4 mr-1.5" />
+            Settings
+          </Button>
+          <Button
+            data-testid="btn-mobile-kite"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={onOpenCreds}
+          >
+            <KeyRound className="w-4 h-4 mr-1.5" />
+            Kite API
+          </Button>
+          <Button
+            data-testid="btn-mobile-fresh-pull"
             size="sm"
             onClick={onRefreshDay}
             disabled={refreshing}
@@ -436,27 +513,42 @@ export default function Header({
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh Pull"}
           </Button>
-          <Button size="sm" onClick={onOpenUpload} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
+          <Button
+            data-testid="btn-mobile-upload"
+            size="sm"
+            onClick={onOpenUpload}
+            className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white"
+          >
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenTelegramPrefs}>
+          <Button
+            data-testid="btn-mobile-telegram"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={onOpenTelegramPrefs}
+          >
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>
-          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
-            <KeyRound className="w-4 h-4 mr-1.5" />
-            Kite API
-          </Button>
-          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
-            <Settings2 className="w-4 h-4 mr-1.5" />
-            Settings
-          </Button>
-          <Button variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
+          <Button
+            data-testid="btn-mobile-sounds"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={onOpenSounds}
+          >
             <Volume2 className="w-4 h-4 mr-1.5" />
             Sounds
           </Button>
-          <Button variant="outline" size="sm" className="rounded-sm" onClick={onDownloadCsv}>
+          <Button
+            data-testid="btn-mobile-csv"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={onDownloadCsv}
+          >
             <Download className="w-4 h-4 mr-1.5" />
             CSV
           </Button>

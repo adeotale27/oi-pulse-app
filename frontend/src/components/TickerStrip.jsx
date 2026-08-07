@@ -62,7 +62,10 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
   }
 
   return (
-    <div className="flex items-stretch gap-2 flex-wrap" data-testid="ticker-strip">
+    <div
+      className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-stretch"
+      data-testid="ticker-strip"
+    >
       {displayTickers.map((t) => {
         const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
         const up = t.change > 0;
@@ -82,14 +85,14 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             type="button"
             onClick={() => onSelectIndex?.(t.index)}
             data-testid={`ticker-${t.index}`}
-            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-2.5 sm:px-3 py-1.5 sm:py-2 min-w-[110px] sm:min-w-[132px] flex-1 sm:flex-none hover:brightness-95 transition-all ${
+            className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none hover:brightness-95 transition-all ${
               isActive
                 ? `border-transparent ring-2 ${s.ring} shadow-sm`
                 : "border-slate-200 dark:border-slate-700"
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
           >
-            <div className="flex items-center justify-between gap-2 text-[9px] uppercase tracking-widest text-slate-600 dark:text-slate-400 font-semibold">
+            <div className="flex items-center justify-between gap-3 text-[9px] uppercase tracking-widest text-slate-600 dark:text-slate-400 font-semibold">
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
                 <span className="truncate">{s.label}</span>
@@ -98,15 +101,16 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 {t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%
               </div>
             </div>
-            <div className="flex items-end justify-between gap-2 mt-1">
+            {/* Phone: stack LTP then change so nothing overlaps. sm+: side-by-side. */}
+            <div className="mt-1.5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
               <div
-                className="text-sm font-mono-data font-semibold text-slate-900 dark:text-slate-100 tabular-nums leading-none"
+                className="text-base sm:text-sm font-mono-data font-semibold text-slate-900 dark:text-slate-100 tabular-nums leading-none"
                 data-testid={`ticker-${t.index}-ltp`}
               >
                 {fmtNum(t.ltp, 2)}
               </div>
               <div
-                className={`flex items-center gap-1 text-[11px] font-mono-data tabular-nums leading-none shrink-0 ${toneCls}`}
+                className={`inline-flex items-center gap-1.5 text-xs sm:text-[11px] font-mono-data tabular-nums leading-none ${toneCls}`}
                 data-testid={`ticker-${t.index}-chg`}
               >
                 <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
