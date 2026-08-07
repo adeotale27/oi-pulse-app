@@ -153,3 +153,19 @@ Please verify these endpoints/behaviors against a running backend:
           2. Actual `POST /api/auth/login` with the correct body and that Origin header returns 200 + valid token, and the response likewise carries the specific-origin `Access-Control-Allow-Origin` (not `*`).
           3. Preflight/POST from a bogus origin like `https://evil.example.com` is rejected (no CORS headers, so the browser will block it).
           4. Also re-verify remaining items 3–7 from the earlier list (status, all 3 OI indices live, /change endpoint sort fix, MongoDB snapshot growth, admin-gated auth, /history).
+
+    - agent: main
+      message: |
+        EFFICIENCY / UNBREAKABLE PASS (branch cursor/oi-efficiency-unbreakable-82e9):
+        - /oi/{idx}/change no longer does inline Kite fetches (single-flight background refresh only).
+        - Lookback clamped to today's session open — stops previous-day OI leaking into Change-in-OI.
+        - GET never mutates tracker.selected_expiry; also=1,3,5 batches huge-shift windows.
+        - Guest auto-revoke on public-access expiry; guest requires public_access.open.
+        - Frontend: request-gen on loadOI, expiry gate on index switch, spot WS no longer overwrites
+          OI timestamp, huge-shift consumes also_windows (no 3× duplicate polls).
+        Unit tests for /change windows + also-batch pass. Please re-verify backend:
+          1. GET /api/oi/NIFTY/change?minutes=15&also=1,3,5 returns also_windows without hitting Kite
+             (tracker poller remains sole writer; data_status.is_live reflects market+age).
+          2. Full-day / long windows never return previous.timestamp from a prior trade date.
+          3. Guest token after public-access expire → is_guest=false on /auth/state.
+          4. All 3 indices still polled by background tracker.
