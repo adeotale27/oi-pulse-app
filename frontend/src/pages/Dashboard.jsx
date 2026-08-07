@@ -1269,6 +1269,8 @@ export default function Dashboard() {
         status={status}
         current={current}
         dataStatus={dataStatus}
+        assumedAdmin={!!authState.is_admin}
+        publicAccessOpen={!!authState.public_access_open}
         onOpenCreds={() => setCredsOpen(true)}
         onOpenMorningRefresh={() => setMorningRefreshOpen(true)}
         onOpenTelegramPrefs={() => setTelegramPrefsOpen(true)}
