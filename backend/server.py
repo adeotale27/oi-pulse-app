@@ -276,6 +276,19 @@ async def _guest_from_request(request: Request):
         return None
     if sess.get("revoked_at"):
         return None
+    ip = _client_ip(request)
+    if await _is_ip_blocked(ip) or (sess.get("ip") and await _is_ip_blocked(sess.get("ip"))):
+        try:
+            await db.guest_sessions.update_one(
+                {"_id": tok},
+                {"$set": {
+                    "revoked_at": datetime.now(timezone.utc).isoformat(),
+                    "revoked_reason": "ip_blocked",
+                }},
+            )
+        except Exception:
+            pass
+        return None
     try:
         started = datetime.fromisoformat(sess.get("started_at"))
     except Exception:
@@ -353,6 +366,68 @@ async def _revoke_guest_sessions(reason: Optional[str] = None):
         await db.guest_sessions.update_many({"revoked_at": {"$exists": False}}, {"$set": update})
     except Exception:
         pass
+
+
+async def _is_ip_blocked(ip: Optional[str]) -> bool:
+    if not ip:
+        return False
+    try:
+        doc = await db.blocked_ips.find_one({"_id": ip})
+        return bool(doc)
+    except Exception:
+        return False
+
+
+async def _revoke_guests_for_ip(ip: str, reason: str = "ip_blocked"):
+    if not ip:
+        return 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        r = await db.guest_sessions.update_many(
+            {"ip": ip, "revoked_at": {"$exists": False}},
+            {"$set": {"revoked_at": now_iso, "revoked_reason": reason}},
+        )
+        return int(getattr(r, "modified_count", 0) or 0)
+    except Exception:
+        return 0
+
+
+async def _pending_access_count() -> int:
+    try:
+        return int(await db.access_requests.count_documents({"status": "pending"}))
+    except Exception:
+        return 0
+
+
+async def _create_guest_session(name: str, ip: Optional[str], ua: str, *, request_id: Optional[str] = None) -> dict:
+    token = secrets.token_urlsafe(32)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "_id": token,
+        "name": name,
+        "ip": ip,
+        "user_agent": ua,
+        "started_at": now_iso,
+        "last_seen_at": now_iso,
+    }
+    if request_id:
+        doc["access_request_id"] = request_id
+    await db.guest_sessions.insert_one(doc)
+    if ip:
+        try:
+            await db.guest_ip_names.update_one(
+                {"_id": ip},
+                {"$set": {"name": name, "updated_at": now_iso, "last_token": token}},
+                upsert=True,
+            )
+        except Exception:
+            pass
+    return {
+        "token": token,
+        "name": name,
+        "expires_in_seconds": GUEST_SESSION_TTL_SECONDS,
+        "started_at": now_iso,
+    }
 
 
 # ------------------- Models -------------------
@@ -1521,40 +1596,95 @@ class GuestSessionIn(BaseModel):
 
 @api_router.post("/auth/guest")
 async def auth_guest_start(payload: GuestSessionIn, request: Request):
-    """Register a guest with their full name. Requires public access to be OPEN."""
+    """Submit a guest access request (approval required). Requires public access OPEN.
+
+    Does NOT mint a session immediately — admin must approve via Access Control.
+    Client polls GET /auth/access-request/{id} until approved/rejected.
+    """
     open_, _ = await _get_public_access_state()
     if not open_:
-        raise HTTPException(403, "Public access is not open. Please contact the admin.")
+        raise HTTPException(403, "Public access is not open. Please ask the admin to give access.")
     name = (payload.name or "").strip()
     if len(name) < 2 or len(name) > 100:
         raise HTTPException(400, "Please enter your full name (2–100 chars).")
-    # Very light sanity: must contain a space (full name)
     if " " not in name:
         raise HTTPException(400, "Please enter your FULL name (first name + last name).")
-    token = secrets.token_urlsafe(32)
     ip = _client_ip(request)
+    if await _is_ip_blocked(ip):
+        raise HTTPException(403, "Access from this network is blocked. Contact the admin.")
     ua = request.headers.get("user-agent", "")[:200]
     now_iso = datetime.now(timezone.utc).isoformat()
-    await db.guest_sessions.insert_one({
-        "_id": token,
+
+    # One pending request per IP — reuse instead of flooding the admin queue.
+    if ip:
+        existing = await db.access_requests.find_one({"ip": ip, "status": "pending"})
+        if existing:
+            await db.access_requests.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"name": name, "user_agent": ua, "updated_at": now_iso}},
+            )
+            return {
+                "ok": True,
+                "status": "pending",
+                "request_id": existing["_id"],
+                "name": name,
+                "message": "Waiting for admin approval",
+            }
+
+    req_id = secrets.token_urlsafe(16)
+    await db.access_requests.insert_one({
+        "_id": req_id,
         "name": name,
         "ip": ip,
         "user_agent": ua,
-        "started_at": now_iso,
-        "last_seen_at": now_iso,
+        "status": "pending",
+        "created_at": now_iso,
+        "updated_at": now_iso,
     })
-    # Remember name for this IP so return visits can pre-fill.
-    if ip:
-        try:
-            await db.guest_ip_names.update_one(
-                {"_id": ip},
-                {"$set": {"name": name, "updated_at": now_iso, "last_token": token}},
-                upsert=True,
-            )
-        except Exception:
-            pass
-    logger.info(f"GUEST session started: name='{name}' ip={ip}")
-    return {"ok": True, "token": token, "name": name, "expires_in_seconds": GUEST_SESSION_TTL_SECONDS}
+    logger.info(f"ACCESS REQUEST pending: name='{name}' ip={ip} id={req_id}")
+    try:
+        import notifier as _n
+        await _n.send_message(
+            f"🛂 <b>Access request</b>\n{name}\nIP: <code>{ip or '—'}</code>",
+            dedupe_key=f"access_req:{req_id}",
+            cooldown_seconds=0,
+        )
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "status": "pending",
+        "request_id": req_id,
+        "name": name,
+        "message": "Waiting for admin approval",
+    }
+
+
+@api_router.get("/auth/access-request/{request_id}")
+async def auth_access_request_status(request_id: str, request: Request):
+    """Guest polls this while waiting for admin approve/reject."""
+    doc = await db.access_requests.find_one({"_id": request_id})
+    if not doc:
+        raise HTTPException(404, "Request not found")
+    # Bind poll to originating IP when known (stops token fishing).
+    ip = _client_ip(request)
+    if doc.get("ip") and ip and doc["ip"] != ip:
+        raise HTTPException(403, "Request not valid for this device")
+    out = {
+        "request_id": doc["_id"],
+        "status": doc.get("status"),
+        "name": doc.get("name"),
+        "created_at": doc.get("created_at"),
+        "decided_at": doc.get("decided_at"),
+    }
+    if doc.get("status") == "approved" and doc.get("guest_token"):
+        out["token"] = doc["guest_token"]
+        out["expires_in_seconds"] = GUEST_SESSION_TTL_SECONDS
+        out["status"] = "approved"
+    elif doc.get("status") == "consumed":
+        # Token already handed off — tell client to use stored session / re-enter name.
+        out["status"] = "consumed"
+    return out
 
 
 @api_router.get("/auth/state")
@@ -1582,15 +1712,17 @@ async def auth_state(request: Request):
             admin_session_expires_at = None
     # Suggest previous guest name for this IP (public return visit).
     suggested_guest_name = None
-    if needs_guest_name:
-        ip = _client_ip(request)
-        if ip:
-            try:
-                row = await db.guest_ip_names.find_one({"_id": ip})
-                if row and row.get("name"):
-                    suggested_guest_name = row["name"]
-            except Exception:
-                pass
+    ip = _client_ip(request)
+    if needs_guest_name and ip:
+        try:
+            row = await db.guest_ip_names.find_one({"_id": ip})
+            if row and row.get("name"):
+                suggested_guest_name = row["name"]
+        except Exception:
+            pass
+    pending_access_count = 0
+    if is_admin:
+        pending_access_count = await _pending_access_count()
     # Refresh weekday alert defaults if day rolled over
     try:
         if tracker:
@@ -1614,6 +1746,8 @@ async def auth_state(request: Request):
         ),
         "admin_session_expires_at": admin_session_expires_at,
         "can_remember_login": True,
+        "pending_access_count": pending_access_count,
+        "ip_blocked": await _is_ip_blocked(ip) if not is_admin else False,
     }
 
 
@@ -1642,6 +1776,15 @@ async def auth_toggle_public(payload: PublicAccessIn, request: Request):
         # Revoke all guest sessions so nobody remains authenticated after close,
         # but keep login records for later auditing.
         await _revoke_guest_sessions("public_access_closed")
+        # Auto-reject lingering pending requests.
+        try:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            await db.access_requests.update_many(
+                {"status": "pending"},
+                {"$set": {"status": "rejected", "decided_at": now_iso, "decided_reason": "public_access_closed"}},
+            )
+        except Exception:
+            pass
         return {"ok": True, "open": False, "expires_at": None}
 
 
@@ -1652,19 +1795,184 @@ async def auth_list_guests(request: Request, since_hours: int = Query(24, ge=1, 
     since_dt = datetime.now(timezone.utc) - timedelta(hours=since_hours)
     docs = await db.guest_sessions.find(
         {"started_at": {"$gte": since_dt.isoformat()}},
-        {"_id": 0}
     ).sort("started_at", -1).to_list(length=500)
-    # Also compute "active in last 5 min" flag.
     now = datetime.now(timezone.utc)
+    out = []
     for d in docs:
+        row = {
+            "token": d.get("_id"),
+            "name": d.get("name"),
+            "ip": d.get("ip"),
+            "user_agent": d.get("user_agent"),
+            "started_at": d.get("started_at"),
+            "last_seen_at": d.get("last_seen_at"),
+            "revoked_at": d.get("revoked_at"),
+            "revoked_reason": d.get("revoked_reason"),
+        }
         try:
             ls = datetime.fromisoformat(d.get("last_seen_at") or d.get("started_at"))
-            d["active"] = not bool(d.get("revoked_at")) and (now - ls).total_seconds() < 300
-            d["idle_seconds"] = int((now - ls).total_seconds())
+            row["active"] = not bool(d.get("revoked_at")) and (now - ls).total_seconds() < 300
+            row["idle_seconds"] = int((now - ls).total_seconds())
         except Exception:
-            d["active"] = False
-            d["idle_seconds"] = None
-    return {"guests": docs, "count": len(docs), "since_hours": since_hours}
+            row["active"] = False
+            row["idle_seconds"] = None
+        out.append(row)
+    return {"guests": out, "count": len(out), "since_hours": since_hours}
+
+
+@api_router.post("/auth/guests/{token}/revoke")
+async def auth_revoke_guest(token: str, _admin: bool = Depends(require_admin)):
+    """Kick a single guest session immediately."""
+    tok = (token or "").strip()
+    if not tok:
+        raise HTTPException(400, "Missing guest token")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    r = await db.guest_sessions.update_one(
+        {"_id": tok, "revoked_at": {"$exists": False}},
+        {"$set": {"revoked_at": now_iso, "revoked_reason": "admin_kick"}},
+    )
+    if r.matched_count == 0:
+        # Already revoked or unknown — still ok for idempotence
+        existing = await db.guest_sessions.find_one({"_id": tok})
+        if not existing:
+            raise HTTPException(404, "Guest session not found")
+    return {"ok": True, "token": tok, "revoked": True}
+
+
+@api_router.get("/auth/access-requests")
+async def auth_list_access_requests(
+    status: Optional[str] = Query(None),
+    _admin: bool = Depends(require_admin),
+):
+    """Admin queue: pending (default) + recent decided requests."""
+    q = {}
+    if status in ("pending", "approved", "rejected", "consumed"):
+        q["status"] = status
+    else:
+        # Default: pending first, plus recent decisions (last 24h)
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        q = {"$or": [
+            {"status": "pending"},
+            {"decided_at": {"$gte": since}},
+            {"created_at": {"$gte": since}},
+        ]}
+    docs = await db.access_requests.find(q).sort("created_at", -1).to_list(length=200)
+    rows = []
+    for d in docs:
+        rows.append({
+            "request_id": d.get("_id"),
+            "name": d.get("name"),
+            "ip": d.get("ip"),
+            "status": d.get("status"),
+            "created_at": d.get("created_at"),
+            "decided_at": d.get("decided_at"),
+            "decided_reason": d.get("decided_reason"),
+        })
+    pending = sum(1 for r in rows if r["status"] == "pending")
+    return {"requests": rows, "pending_count": pending}
+
+
+@api_router.post("/auth/access-requests/{request_id}/approve")
+async def auth_approve_access(request_id: str, request: Request, _admin: bool = Depends(require_admin)):
+    open_, _ = await _get_public_access_state()
+    if not open_:
+        raise HTTPException(400, "Turn Public Access ON before approving guests.")
+    doc = await db.access_requests.find_one({"_id": request_id})
+    if not doc:
+        raise HTTPException(404, "Request not found")
+    if doc.get("status") not in ("pending",):
+        raise HTTPException(400, f"Request is already {doc.get('status')}")
+    if doc.get("ip") and await _is_ip_blocked(doc["ip"]):
+        raise HTTPException(400, "This IP is blocked. Unblock it first.")
+    ua = doc.get("user_agent") or ""
+    guest = await _create_guest_session(doc["name"], doc.get("ip"), ua, request_id=request_id)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.access_requests.update_one(
+        {"_id": request_id},
+        {"$set": {
+            "status": "approved",
+            "decided_at": now_iso,
+            "decided_reason": "admin_approve",
+            "guest_token": guest["token"],
+        }},
+    )
+    logger.info(f"ACCESS APPROVED: name='{doc['name']}' ip={doc.get('ip')} id={request_id}")
+    return {"ok": True, "request_id": request_id, "status": "approved", "guest_name": doc["name"]}
+
+
+@api_router.post("/auth/access-requests/{request_id}/reject")
+async def auth_reject_access(request_id: str, _admin: bool = Depends(require_admin)):
+    doc = await db.access_requests.find_one({"_id": request_id})
+    if not doc:
+        raise HTTPException(404, "Request not found")
+    if doc.get("status") != "pending":
+        raise HTTPException(400, f"Request is already {doc.get('status')}")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.access_requests.update_one(
+        {"_id": request_id},
+        {"$set": {"status": "rejected", "decided_at": now_iso, "decided_reason": "admin_reject"}},
+    )
+    return {"ok": True, "request_id": request_id, "status": "rejected"}
+
+
+class BlockIpIn(BaseModel):
+    ip: str
+    reason: Optional[str] = None
+
+
+@api_router.get("/auth/blocked-ips")
+async def auth_list_blocked_ips(_admin: bool = Depends(require_admin)):
+    docs = await db.blocked_ips.find({}).sort("blocked_at", -1).to_list(length=200)
+    rows = [{
+        "ip": d.get("_id"),
+        "reason": d.get("reason"),
+        "blocked_at": d.get("blocked_at"),
+        "name_hint": d.get("name_hint"),
+    } for d in docs]
+    return {"blocked": rows, "count": len(rows)}
+
+
+@api_router.post("/auth/blocked-ips")
+async def auth_block_ip(payload: BlockIpIn, _admin: bool = Depends(require_admin)):
+    ip = (payload.ip or "").strip()
+    if not ip or len(ip) > 64:
+        raise HTTPException(400, "Invalid IP")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    name_hint = None
+    try:
+        g = await db.guest_sessions.find_one({"ip": ip}, sort=[("started_at", -1)])
+        if g:
+            name_hint = g.get("name")
+    except Exception:
+        pass
+    await db.blocked_ips.update_one(
+        {"_id": ip},
+        {"$set": {
+            "reason": (payload.reason or "admin_block")[:200],
+            "blocked_at": now_iso,
+            "name_hint": name_hint,
+        }},
+        upsert=True,
+    )
+    kicked = await _revoke_guests_for_ip(ip, "ip_blocked")
+    # Reject pending requests from this IP
+    try:
+        await db.access_requests.update_many(
+            {"ip": ip, "status": "pending"},
+            {"$set": {"status": "rejected", "decided_at": now_iso, "decided_reason": "ip_blocked"}},
+        )
+    except Exception:
+        pass
+    return {"ok": True, "ip": ip, "sessions_revoked": kicked}
+
+
+@api_router.delete("/auth/blocked-ips/{ip}")
+async def auth_unblock_ip(ip: str, _admin: bool = Depends(require_admin)):
+    ip = (ip or "").strip()
+    if not ip:
+        raise HTTPException(400, "Invalid IP")
+    await db.blocked_ips.delete_one({"_id": ip})
+    return {"ok": True, "ip": ip, "unblocked": True}
 
 
 # ------------------- Telegram notifications -------------------
@@ -2359,9 +2667,13 @@ async def _startup():
         await db.straddle_samples.create_index("created_at")
         await db.guest_sessions.create_index([("started_at", -1)])
         await db.guest_sessions.create_index("revoked_at")
+        await db.guest_sessions.create_index("ip")
         await db.admin_remember_devices.create_index("ip")
         await db.admin_remember_devices.create_index("expires_at")
         await db.guest_ip_names.create_index("updated_at")
+        await db.access_requests.create_index([("status", 1), ("created_at", -1)])
+        await db.access_requests.create_index([("ip", 1), ("status", 1)])
+        await db.blocked_ips.create_index("blocked_at")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 

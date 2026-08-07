@@ -26,7 +26,18 @@ export default function AuthGate({ children }) {
   const [password, setPassword] = useState("");
   const [guestName, setGuestName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingRequest, setPendingRequest] = useState(() => {
+    try {
+      const id = sessionStorage.getItem("oi_access_request_id");
+      const name = sessionStorage.getItem("oi_access_request_name");
+      return id ? { id, name: name || "" } : null;
+    } catch (_) {
+      return null;
+    }
+  });
+  const [waitStatus, setWaitStatus] = useState(null); // pending | rejected | null
   const lastActivityRef = useRef(Date.now());
+  const pendingPollRef = useRef(null);
 
   const refresh = async () => {
     try {
@@ -133,6 +144,71 @@ export default function AuthGate({ children }) {
     } finally { setBusy(false); }
   };
 
+  const admitGuest = async (token, name, expiresIn) => {
+    clearAdminAuth();
+    try { sessionStorage.setItem("oi_guest_token", token); } catch (_) {}
+    try { sessionStorage.setItem("oi_guest_name", name || ""); } catch (_) {}
+    try {
+      const expiresMs = Date.now() + (Number(expiresIn || 0) * 1000);
+      sessionStorage.setItem("oi_guest_expires_at", String(expiresMs));
+    } catch (_) {}
+    try {
+      sessionStorage.removeItem("oi_access_request_id");
+      sessionStorage.removeItem("oi_access_request_name");
+    } catch (_) {}
+    setPendingRequest(null);
+    setWaitStatus(null);
+    toast.success(`Welcome, ${name || "guest"}`);
+    await refresh();
+  };
+
+  // Poll pending access request until admin decides.
+  useEffect(() => {
+    if (!pendingRequest?.id || state.is_guest || state.is_admin) return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { data } = await api.get(`/auth/access-request/${pendingRequest.id}`);
+        if (cancelled) return;
+        if (data.status === "approved" || data.status === "consumed") && data.token) {
+          await admitGuest(data.token, data.name || pendingRequest.name, data.expires_in_seconds);
+          return;
+        }
+        if (data.status === "consumed" && !data.token) {
+          // Approved earlier but token already claimed — clear wait state.
+          try {
+            sessionStorage.removeItem("oi_access_request_id");
+            sessionStorage.removeItem("oi_access_request_name");
+          } catch (_) {}
+          setPendingRequest(null);
+          setWaitStatus(null);
+          toast.message("Already approved — enter your name again if you were signed out.");
+          return;
+        }
+        if (data.status === "rejected") {
+          setWaitStatus("rejected");
+          try {
+            sessionStorage.removeItem("oi_access_request_id");
+            sessionStorage.removeItem("oi_access_request_name");
+          } catch (_) {}
+          toast.error("Access request was rejected by the admin.");
+          setPendingRequest(null);
+          return;
+        }
+        setWaitStatus("pending");
+      } catch (_) {
+        // keep waiting; request may be briefly unavailable
+      }
+    };
+    poll();
+    pendingPollRef.current = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      if (pendingPollRef.current) clearInterval(pendingPollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRequest?.id, state.is_guest, state.is_admin]);
+
   const doGuest = async (e) => {
     e?.preventDefault();
     const name = guestName.trim();
@@ -143,18 +219,27 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/guest", { name });
-      clearAdminAuth(); // mutually exclusive tokens
-      try { sessionStorage.setItem("oi_guest_token", data.token); } catch (_) {}
-      try { sessionStorage.setItem("oi_guest_name", data.name); } catch (_) {}
-      try {
-        const expiresMs = Date.now() + (Number(data.expires_in_seconds || 0) * 1000);
-        sessionStorage.setItem("oi_guest_expires_at", String(expiresMs));
-      } catch (_) {}
-      toast.success(`Welcome, ${data.name}`);
-      await refresh();
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "Could not start guest session");
-    } finally { setBusy(false); }
+      // New flow: pending until admin approves.
+      if (data?.status === "pending" && data.request_id) {
+        try {
+          sessionStorage.setItem("oi_access_request_id", data.request_id);
+          sessionStorage.setItem("oi_access_request_name", data.name || name);
+        } catch (_) {}
+        setPendingRequest({ id: data.request_id, name: data.name || name });
+        setWaitStatus("pending");
+        toast.message("Request sent", { description: "Waiting for admin approval…" });
+        return;
+      }
+      // Backward-compatible: immediate token (if server ever returns one)
+      if (data?.token) {
+        await admitGuest(data.token, data.name || name, data.expires_in_seconds);
+      }
+    } catch (err) {
+      const detail = err?.response?.data?.detail || "Could not request access";
+      toast.error(detail);
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (state.loading) {
@@ -252,14 +337,52 @@ export default function AuthGate({ children }) {
                         Welcome back — we remembered your name from this device.
                       </p>
                     ) : null}
-                    <Input data-testid="guest-name" value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="e.g. Rahul Sharma" autoFocus />
+                    <Input
+                      data-testid="guest-name"
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      placeholder="e.g. Rahul Sharma"
+                      autoFocus
+                      disabled={!!pendingRequest}
+                    />
                   </div>
 
-                  <Button data-testid="guest-submit" type="submit" className={`w-full rounded-lg py-3 bg-emerald-600 hover:bg-emerald-700`} disabled={busy}>
-                    <div className="flex items-center justify-center gap-2"><UserPlus className="w-4 h-4" /> <span>{busy ? 'Entering…' : 'Continue'}</span></div>
-                  </Button>
+                  {pendingRequest || waitStatus === "pending" ? (
+                    <div
+                      data-testid="guest-waiting-approval"
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-1"
+                    >
+                      <div className="font-semibold">Waiting for admin approval…</div>
+                      <div className="text-xs opacity-80">
+                        Requested as <b>{pendingRequest?.name || guestName}</b>. Keep this window open — you&apos;ll enter automatically when approved.
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs underline opacity-70 hover:opacity-100 pt-1"
+                        onClick={() => {
+                          try {
+                            sessionStorage.removeItem("oi_access_request_id");
+                            sessionStorage.removeItem("oi_access_request_name");
+                          } catch (_) {}
+                          setPendingRequest(null);
+                          setWaitStatus(null);
+                        }}
+                      >
+                        Cancel request
+                      </button>
+                    </div>
+                  ) : (
+                    <Button data-testid="guest-submit" type="submit" className={`w-full rounded-lg py-3 bg-emerald-600 hover:bg-emerald-700`} disabled={busy}>
+                      <div className="flex items-center justify-center gap-2">
+                        <UserPlus className="w-4 h-4" />
+                        <span>{busy ? "Requesting…" : "Request access"}</span>
+                      </div>
+                    </Button>
+                  )}
 
-                  <div className="mt-2 text-center text-xs text-slate-500">This view is read-only for guests.</div>
+                  <div className="mt-2 text-center text-xs text-slate-500">
+                    Admin must approve your request. Access is read-only for guests.
+                  </div>
                 </form>
 
                 <div className="mt-6 grid grid-cols-3 gap-3 text-center">

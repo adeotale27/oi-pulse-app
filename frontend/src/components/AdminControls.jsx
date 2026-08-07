@@ -3,22 +3,21 @@ import { api } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Users, LogOut, KeyRound, ChevronDown } from "lucide-react";
+import { Users, LogOut, KeyRound, ChevronDown, UserCheck } from "lucide-react";
 import { toast } from "sonner";
-import GuestDirectoryModal from "@/components/GuestDirectoryModal";
+import AccessControlModal from "@/components/AccessControlModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 /**
  * AdminControls — compact widget shown in the header (admin only).
  *  - Public Access toggle (auto-off at configured market close IST server-side)
- *  - Admin menu: Guest Directory, Change Password, Sign out
- *  - Auto logout after 420 minutes
+ *  - Admin menu: Access Control, Change Password, Sign out
  */
 export default function AdminControls() {
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [guestsOpen, setGuestsOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -30,61 +29,49 @@ export default function AdminControls() {
     }
   }, []);
 
-  // Use quiescent-aware polling for admin state refresh
-  useQuiescentAwarePolling(refresh, 60_000, [refresh], { immediate: true });
+  useQuiescentAwarePolling(refresh, 30_000, [refresh], { immediate: true, dedupeKey: "admin-controls" });
 
-  // Auto logout after 420 minutes
   useEffect(() => {
     if (!state?.is_admin) return;
-
     const logoutTimer = setTimeout(async () => {
-      try {
-        await api.post("/auth/logout");
-      } catch (_) {
-        // ignore
-      }
-
+      try { await api.post("/auth/logout"); } catch (_) {}
       sessionStorage.removeItem("oi_admin_token");
       toast.info("Admin session expired. Signed out.");
       window.location.reload();
-    }, 420 * 60 * 1000); // 420 minutes
-
+    }, 420 * 60 * 1000);
     return () => clearTimeout(logoutTimer);
   }, [state?.is_admin]);
 
-  // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
-
     const onDoc = (e) => {
-      if (!e.target.closest?.("[data-admin-menu]")) {
-        setMenuOpen(false);
-      }
+      if (!e.target.closest?.("[data-admin-menu]")) setMenuOpen(false);
     };
-
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
 
   if (!state?.is_admin) return null;
 
+  const pending = Number(state.pending_access_count || 0);
+
   const togglePublic = async () => {
     setBusy(true);
-
     try {
       const { data } = await api.post("/auth/public-access", {
         open: !state.public_access_open,
       });
-
       toast.success(
         data.open
           ? (data.expires_at
-              ? `Public access ON — expires at market close (${new Date(data.expires_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} IST)`
-              : "Public access ON — expires at market close")
-          : "Public access OFF"
+              ? `Public access ON — guests must be approved. Expires ${new Date(data.expires_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} IST`
+              : "Public access ON — guests must be approved")
+          : "Public access OFF — all guests signed out"
       );
-
       await refresh();
+      if (data.open && pending === 0) {
+        // Nudge admin toward Access Control when turning public on
+      }
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Toggle failed");
     } finally {
@@ -93,12 +80,7 @@ export default function AdminControls() {
   };
 
   const logout = async () => {
-    try {
-      await api.post("/auth/logout");
-    } catch (_) {
-      // ignore
-    }
-
+    try { await api.post("/auth/logout"); } catch (_) {}
     try {
       const { clearAdminAuth } = await import("@/lib/api");
       clearAdminAuth({ clearRemember: true });
@@ -121,7 +103,6 @@ export default function AdminControls() {
       <div className="flex items-center gap-1.5 text-xs">
         <Users className="w-3.5 h-3.5 text-slate-500" />
         <span className="text-slate-500">Public</span>
-
         <Switch
           data-testid="admin-public-toggle"
           checked={!!state.public_access_open}
@@ -129,6 +110,18 @@ export default function AdminControls() {
           disabled={busy}
         />
       </div>
+
+      {pending > 0 && (
+        <button
+          type="button"
+          data-testid="admin-pending-badge"
+          onClick={() => setAccessOpen(true)}
+          className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[11px] font-semibold hover:bg-amber-200"
+          title="Pending access requests"
+        >
+          {pending} request{pending === 1 ? "" : "s"}
+        </button>
+      )}
 
       <div className="relative" data-admin-menu>
         <Button
@@ -145,18 +138,21 @@ export default function AdminControls() {
         {menuOpen && (
           <div
             data-testid="admin-menu"
-            className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-sm shadow-md z-50 text-sm"
+            className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-sm shadow-md z-50 text-sm"
           >
             <button
               data-testid="admin-menu-guests"
               onClick={() => {
                 setMenuOpen(false);
-                setGuestsOpen(true);
+                setAccessOpen(true);
               }}
               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
             >
-              <Users className="w-3.5 h-3.5" />
-              Guest Directory
+              <UserCheck className="w-3.5 h-3.5" />
+              Access Control
+              {pending > 0 && (
+                <span className="ml-auto text-[10px] rounded-full bg-amber-100 text-amber-800 px-1.5">{pending}</span>
+              )}
             </button>
 
             <button
@@ -185,15 +181,8 @@ export default function AdminControls() {
         )}
       </div>
 
-      <GuestDirectoryModal
-        open={guestsOpen}
-        onOpenChange={setGuestsOpen}
-      />
-
-      <ChangePasswordModal
-        open={pwOpen}
-        onOpenChange={setPwOpen}
-      />
+      <AccessControlModal open={accessOpen} onOpenChange={setAccessOpen} />
+      <ChangePasswordModal open={pwOpen} onOpenChange={setPwOpen} />
     </div>
   );
 }

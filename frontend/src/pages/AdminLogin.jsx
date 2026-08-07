@@ -200,7 +200,28 @@ export default function AdminLogin() {
                     <input type="checkbox" data-testid="admin-remember-me" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
                     <span>Remember me (this device, 24h)</span>
                   </label>
-                  <a href="/" className="text-sm text-slate-600 underline">Continue as guest</a>
+                  <button
+                    type="button"
+                    data-testid="continue-as-guest"
+                    className="text-sm text-slate-600 underline hover:text-slate-900"
+                    onClick={async () => {
+                      try {
+                        const { data } = await api.get("/auth/state");
+                        if (data?.public_access_open) {
+                          navigate("/", { replace: true });
+                          return;
+                        }
+                        toast.error("Ask Admin to give access", {
+                          description: "Public access is currently off. Contact the admin to open access for guests.",
+                          duration: 6000,
+                        });
+                      } catch (_) {
+                        toast.error("Ask Admin to give access");
+                      }
+                    }}
+                  >
+                    Continue as guest
+                  </button>
                 </div>
 
                 <Button data-testid="admin-login-submit" type="submit" className={`w-full rounded-lg py-3 ${cardState === 'busy' ? 'bg-slate-700' : 'bg-slate-900 hover:bg-slate-800'}`} disabled={busy}>
