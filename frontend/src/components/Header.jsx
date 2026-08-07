@@ -259,7 +259,10 @@ export default function Header({
           )}
 
           <div className="hidden sm:block">
-            <AdminControls />
+            <AdminControls
+              assumedAdmin={isAdmin}
+              publicAccessOpen={!!authState.public_access_open}
+            />
           </div>
 
           {/* Always-visible quick tools */}
@@ -407,7 +410,11 @@ export default function Header({
           className="lg:hidden px-3 pb-3 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2"
         >
           <div className="w-full basis-full">
-            <AdminControls variant="panel" />
+            <AdminControls
+              variant="panel"
+              assumedAdmin={isAdmin}
+              publicAccessOpen={!!authState.public_access_open}
+            />
           </div>
           <Button
             size="sm"

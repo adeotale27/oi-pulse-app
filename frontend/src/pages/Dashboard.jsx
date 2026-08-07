@@ -1311,6 +1311,7 @@ export default function Dashboard() {
                     ceDelta={changeSummary.ce}
                     peDelta={changeSummary.pe}
                     timeframeMin={timeframe}
+                    marketOpen={!(status?.market && status.market.is_market_open === false)}
                   />
                 )}
                 {!historyReady && (() => {
