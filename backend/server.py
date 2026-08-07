@@ -892,6 +892,7 @@ async def _find_previous_snapshot(
 
 
 def _build_data_status(current: dict, market_is_open: bool, age_seconds: Optional[float]) -> dict:
+    """Truth layer for clients: LIVE vs LAST SESSION vs OFFLINE — never ambiguous."""
     mode = tracker.mode if tracker else "offline"
     stale_reason = None
     is_live = False
@@ -907,17 +908,39 @@ def _build_data_status(current: dict, market_is_open: bool, age_seconds: Optiona
         is_live = True
 
     data_date = None
+    as_of = None
+    as_of_ist = None
     try:
-        if current.get("timestamp"):
-            data_date = datetime.fromisoformat(current["timestamp"]).astimezone(IST).date().isoformat()
+        if current and current.get("timestamp"):
+            as_of = current["timestamp"]
+            ts = datetime.fromisoformat(current["timestamp"])
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            ist_ts = ts.astimezone(IST)
+            data_date = ist_ts.date().isoformat()
+            as_of_ist = ist_ts.strftime("%H:%M:%S")
     except Exception:
         data_date = None
+        as_of_ist = None
+
+    if is_live:
+        label = "LIVE"
+    elif mode != "kite":
+        label = "OFFLINE"
+    elif not market_is_open:
+        label = "LAST_SESSION"
+    else:
+        label = "STALE"
 
     return {
         "is_live": is_live,
         "stale_reason": stale_reason,
         "data_date": data_date,
         "cache_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
+        "as_of": as_of,
+        "as_of_ist": as_of_ist,
+        "label": label,
+        "market_open": bool(market_is_open),
     }
 
 
