@@ -144,6 +144,8 @@ DEFAULT_SETTINGS = {
     "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "alerts", "activity", "holidays", "straddle", "index-events"],
     # Sidebar Strike Range steppers — off by default (ATM quick-picks cover most use)
     "show_strike_range": False,
+    # Writer Defense map on Open Interest tab (admin-togglable)
+    "show_writer_defense": True,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",
@@ -255,7 +257,7 @@ class OITracker:
             "market_open_ist", "market_close_ist",
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",
-            "show_strike_range",
+            "show_strike_range", "show_writer_defense",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}
         # Explicit alert-index change → mark as today's override

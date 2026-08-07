@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { X, GripVertical } from "lucide-react";
+import { X, GripVertical, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AlertsPanel from "@/components/AlertsPanel";
 import StrikeTable from "@/components/StrikeTable";
@@ -75,23 +75,26 @@ export default function RightPanel({
   }, [allowedViews, view, onChangeView]);
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-white border border-slate-200 rounded-md overflow-hidden" data-testid="right-panel">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 bg-slate-50 shrink-0">
-        <GripVertical className="w-3.5 h-3.5 text-slate-400" />
-        <select
-          value={selectedView}
-          onChange={(e) => onChangeView(e.target.value)}
-          data-testid="right-panel-select"
-          className="text-xs font-semibold bg-transparent focus:outline-none flex-1 truncate cursor-pointer"
-        >
-          {allowedViews.map((v) => (
-            <option key={v.key} value={v.key}>{v.label}</option>
-          ))}
-        </select>
+    <div className="h-full min-h-0 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md overflow-hidden" data-testid="right-panel">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 px-3 py-2 bg-slate-50 dark:bg-slate-800/80 shrink-0 relative z-20">
+        <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <div className="relative flex-1 min-w-0">
+          <select
+            value={selectedView}
+            onChange={(e) => onChangeView(e.target.value)}
+            data-testid="right-panel-select"
+            className="w-full appearance-none text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-sm pl-2 pr-7 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
+          >
+            {allowedViews.map((v) => (
+              <option key={v.key} value={v.key}>{v.label}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+        </div>
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 w-6 p-0 text-slate-500 hover:text-slate-900"
+          className="h-6 w-6 p-0 text-slate-500 hover:text-slate-900 shrink-0"
           onClick={onClose}
           data-testid="right-panel-close"
           title="Close side panel"
@@ -100,13 +103,22 @@ export default function RightPanel({
         </Button>
       </div>
 
-      {/* View body scrolls; suggestion sits directly under finished content (not far below the fold). */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-2">
-        <div className={`min-h-0 ${view === "alerts" ? "flex-1 flex flex-col" : ""}`}>
-          {view === "alerts" && (
-            <AlertsPanel alerts={alerts} onClear={onClearAlerts} activeIndex={activeIndex} canClear={canClearAlerts} />
+      {/* Content scrolls inside the panel; suggestion stays pinned under the fold edge. */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2"
+          data-testid="right-panel-scroll"
+        >
+          {selectedView === "alerts" && (
+            <AlertsPanel
+              alerts={alerts}
+              onClear={onClearAlerts}
+              activeIndex={activeIndex}
+              canClear={canClearAlerts}
+              embed
+            />
           )}
-          {view === "strike" && (
+          {selectedView === "strike" && (
             <StrikeTable
               current={filteredCurrent}
               previous={previous}
@@ -118,7 +130,7 @@ export default function RightPanel({
               vixNow={vixNow}
             />
           )}
-          {view === "buildup" && (
+          {selectedView === "buildup" && (
             <BuildupTable
               current={filteredCurrent}
               previous={previous}
@@ -126,7 +138,7 @@ export default function RightPanel({
               timeframeLabel={timeframeLabel}
             />
           )}
-          {view === "activity" && (
+          {selectedView === "activity" && (
             <ActivityFeed
               events={(activity || []).filter((e) => e.index === activeIndex)}
               activeIndex={activeIndex}
@@ -135,7 +147,7 @@ export default function RightPanel({
               onSetFilter={setActivityFilter}
             />
           )}
-          {view === "positions" && (
+          {selectedView === "positions" && (
             <PositionsPanel
               isKiteMode={isKiteMode}
               current={current}
@@ -145,7 +157,7 @@ export default function RightPanel({
               expiry={selectedExpiry}
             />
           )}
-          {view === "oichart" && (
+          {selectedView === "oichart" && (
             <OIChart
               current={filteredCurrent}
               previous={previous}
@@ -156,22 +168,24 @@ export default function RightPanel({
               prevTime={previous?.timestamp}
             />
           )}
-          {view === "straddle" && (
+          {selectedView === "straddle" && (
             <div className="p-3">
               <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={straddlePollMs} />
             </div>
           )}
-          {view === "index-events" && (
+          {selectedView === "index-events" && (
             <EventRiskWidget activeIndex={activeIndex} />
           )}
         </div>
 
         {suggestion && (
           <div
-            className="shrink-0 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950"
+            className="shrink-0 border-t border-slate-200 dark:border-slate-700 p-2 bg-white dark:bg-slate-900"
             data-testid="right-panel-suggestion"
           >
-            {suggestion}
+            <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950">
+              {suggestion}
+            </div>
           </div>
         )}
       </div>

@@ -465,6 +465,7 @@ class SettingsIn(BaseModel):
     admin_session_ttl_minutes: Optional[int] = None
     alert_enabled_indices: Optional[List[str]] = None  # weekday-defaulted alert focus
     show_strike_range: Optional[bool] = None  # sidebar Strike Range steppers
+    show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
 
 
 class LoginIn(BaseModel):
@@ -1551,6 +1552,7 @@ async def get_config():
         "market_open_ist": tracker.settings.get("market_open_ist", open_hm),
         "market_close_ist": tracker.settings.get("market_close_ist", close_hm),
         "show_strike_range": bool(tracker.settings.get("show_strike_range", False)),
+        "show_writer_defense": bool(tracker.settings.get("show_writer_defense", True)),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
     }
 

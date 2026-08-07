@@ -366,6 +366,8 @@ export default function Dashboard() {
   const [enabledIndices, setEnabledIndices] = useState(INDICES);
   const [oiLoading, setOiLoading] = useState(false);
   const [showStrikeRange, setShowStrikeRange] = useState(false);
+  const [showWriterDefense, setShowWriterDefense] = useState(true);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
@@ -603,6 +605,9 @@ export default function Dashboard() {
         if (typeof res.data.show_strike_range === "boolean") {
           setShowStrikeRange(res.data.show_strike_range);
         }
+        if (typeof res.data.show_writer_defense === "boolean") {
+          setShowWriterDefense(res.data.show_writer_defense);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch settings", e);
@@ -629,6 +634,9 @@ export default function Dashboard() {
       }
       if (typeof d.show_strike_range === "boolean") {
         setShowStrikeRange(d.show_strike_range);
+      }
+      if (typeof d.show_writer_defense === "boolean") {
+        setShowWriterDefense(d.show_writer_defense);
       }
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, []);
@@ -1312,9 +1320,9 @@ export default function Dashboard() {
           />
         )}
 
-        <main className="flex-1 min-h-0 overflow-auto p-2 sm:p-4 md:p-5 dark:bg-slate-950 dark:text-slate-200">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="flex items-center justify-between mb-3 sm:mb-4 gap-3 flex-wrap">
+        <main className="flex-1 min-h-0 overflow-hidden p-2 sm:p-4 md:p-5 dark:bg-slate-950 dark:text-slate-200 flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col">
+            <div className="flex items-center justify-between mb-3 sm:mb-4 gap-3 flex-wrap shrink-0">
               <TabsList className="tabs-scroll bg-transparent p-0 h-auto gap-1 border-b border-slate-200 dark:border-slate-700 rounded-none justify-start max-w-full">
                 {DASHBOARD_PAGES.filter((t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))).map((t) => (
                   <TabsTrigger
@@ -1346,9 +1354,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
+            <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full flex-1 min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
-                <div className="h-full space-y-4 pr-2">
+                <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-2">
                 {(dayBiasSummary || changeSummary) && (
                   <SentimentBar
                     ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}
@@ -1358,12 +1366,6 @@ export default function Dashboard() {
                     sessionMinutes={dayBiasSummary?.minutes}
                   />
                 )}
-                <WriterDefenseMap
-                  current={filteredCurrent}
-                  sessionPrevious={changeBundle?.also_windows?.session?.previous}
-                  band={3}
-                  marketOpen={!(status?.market && status.market.is_market_open === false)}
-                />
                 {!historyReady && (() => {
                   // Live countdown: available minutes grows by (now - fetchedAt).
                   const elapsedSinceFetchSec = Math.max(0, (warmingTick - availableFetchedAtRef.current) / 1000);
@@ -1836,6 +1838,14 @@ export default function Dashboard() {
                     </span>
                   </div>
                 </div>
+                {activeTab === "open-interest" && showWriterDefense && (
+                  <WriterDefenseMap
+                    current={filteredCurrent}
+                    sessionPrevious={changeBundle?.also_windows?.session?.previous}
+                    band={3}
+                    marketOpen={!(status?.market && status.market.is_market_open === false)}
+                  />
+                )}
                 </div>
               </Panel>
               {showRightPanel && (
@@ -1901,15 +1911,67 @@ export default function Dashboard() {
             {isMobile && (
               <button
                 type="button"
-                onClick={() => {
-                  setRightPanelView("alerts");
-                  setActiveTab("alerts");
-                }}
-                data-testid="btn-mobile-alerts"
+                onClick={() => setMobilePanelOpen(true)}
+                data-testid="btn-mobile-side-panel"
                 className="fixed right-4 bottom-4 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 px-3 py-2 text-xs font-semibold flex items-center gap-2 z-50 md:hidden"
               >
-                Alerts
+                <PanelRightOpen className="w-4 h-4" />
+                Side Panel
               </button>
+            )}
+            {isMobile && mobilePanelOpen && (
+              <div
+                className="fixed inset-0 z-[60] md:hidden flex flex-col bg-slate-950/50"
+                data-testid="mobile-side-panel-overlay"
+              >
+                <button
+                  type="button"
+                  className="flex-1 min-h-[12vh]"
+                  aria-label="Close side panel backdrop"
+                  onClick={() => setMobilePanelOpen(false)}
+                />
+                <div className="h-[88vh] max-h-[88vh] bg-white dark:bg-slate-950 rounded-t-xl shadow-2xl overflow-hidden p-2 pb-[env(safe-area-inset-bottom)]">
+                  <RightPanel
+                    view={rightPanelView}
+                    onChangeView={setRightPanelView}
+                    onClose={() => setMobilePanelOpen(false)}
+                    visiblePages={visiblePages}
+                    isAdmin={authState.is_admin}
+                    alerts={alerts}
+                    onClearAlerts={handleClearAlerts}
+                    canClearAlerts={authState.is_admin}
+                    activeIndex={activeIndex}
+                    filteredCurrent={filteredCurrent}
+                    current={current}
+                    previous={previous}
+                    atm={current?.atm}
+                    timeframeMin={resolveMinutes(timeframe)}
+                    timeframeLabel={timeframeLabel}
+                    oiSettings={oiSettings}
+                    lotSize={oiSettings.lotSize?.[activeIndex] || 1}
+                    selectedExpiry={selectedExpiry}
+                    vixNow={current?.vix || status?.vix}
+                    activity={activity}
+                    activityFilter={activityFilter}
+                    setActivityFilter={setActivityFilter}
+                    clearActivity={() => { setActivity([]); seenActivityRef.current.clear(); }}
+                    isKiteMode={status?.mode === "kite"}
+                    status={status}
+                    showOI={showOI}
+                    straddlePollMs={straddlePollMs}
+                    suggestion={
+                      <SuggestionBox
+                        indexName={activeIndex}
+                        marketIntel={marketIntel}
+                        changeSummary={changeSummary}
+                        spot={current?.price || current?.atm}
+                        vixNow={current?.vix || status?.vix}
+                        vixOpen={vixSessionOpen}
+                      />
+                    }
+                  />
+                </div>
+              </div>
             )}
           </Tabs>
         </main>
@@ -1953,6 +2015,9 @@ export default function Dashboard() {
           }
           if (typeof settings.show_strike_range === "boolean") {
             setShowStrikeRange(settings.show_strike_range);
+          }
+          if (typeof settings.show_writer_defense === "boolean") {
+            setShowWriterDefense(settings.show_writer_defense);
           }
         }}
         onLocalSaved={setOiSettings}

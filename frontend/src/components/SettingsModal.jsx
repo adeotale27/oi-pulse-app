@@ -56,6 +56,8 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           alert_enabled_indices: ["NIFTY"],
           show_strike_range: false,
           visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions").map((p) => p.id),
+          show_writer_defense: true,
+          show_strike_range: false,
         });
       });
     setLocal(loadOISettings());
@@ -445,6 +447,24 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                     </label>
                   ))}
                 </div>
+
+                <label
+                  className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                  data-testid="show-writer-defense-row"
+                >
+                  <Checkbox
+                    data-testid="show-writer-defense"
+                    className="mt-0.5"
+                    checked={settings.show_writer_defense !== false}
+                    onCheckedChange={(ck) => setSettings({ ...settings, show_writer_defense: !!ck })}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Writer Defense map</div>
+                    <div className="text-[10px] text-slate-500">
+                      Show ATM± Put/Call OI held vs cracked on the Open Interest page only (below the OI last-pulled strip).
+                    </div>
+                  </div>
+                </label>
               </section>
             </>
           )}

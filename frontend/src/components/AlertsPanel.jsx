@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Bell, X, TrendingUp, TrendingDown, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 function formatTime(iso) {
   try {
@@ -11,7 +10,15 @@ function formatTime(iso) {
   }
 }
 
-export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: showAllProp, canClear = true }) {
+export default function AlertsPanel({
+  alerts,
+  onClear,
+  activeIndex,
+  showAll: showAllProp,
+  canClear = true,
+  /** When true, grow with content — parent (RightPanel) owns scrolling. */
+  embed = false,
+}) {
   const [localShowAll, setLocalShowAll] = useState(false);
   // If parent passes an activeIndex, filter to that index by default; the user
   // can flip a small toggle to view alerts for other indices too.
@@ -21,9 +28,55 @@ export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: sho
     return alerts.filter((a) => a.index === activeIndex);
   }, [alerts, filterEnabled, activeIndex]);
 
+  const list = (
+    <div className={`${embed ? "p-2" : "p-2"} space-y-2`}>
+      {filtered.length === 0 ? (
+        <div className="text-xs text-slate-400 text-center py-6">
+          {filterEnabled ? `No alerts for ${activeIndex} yet.` : "No alerts yet."}
+        </div>
+      ) : (
+        filtered.map((a) => {
+          const bullish = a.direction?.toLowerCase().includes("bullish");
+          return (
+            <div
+              key={a.created_at + a.index}
+              data-testid="alert-item"
+              className={`border rounded-sm p-2 ${
+                bullish ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-semibold">
+                  {bullish ? (
+                    <TrendingUp className="w-3 h-3 text-emerald-600" />
+                  ) : (
+                    <TrendingDown className="w-3 h-3 text-rose-600" />
+                  )}
+                  <span>{a.index}</span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono-data">
+                  {formatTime(a.created_at)}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-700 mt-1">{a.direction}</div>
+              <div className="text-[10px] text-slate-500 font-mono-data mt-1">
+                Price {a.price?.toFixed?.(2)} · ATM {a.atm} · {a.strikes?.length ?? 0} strikes
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
   return (
-    <div className="bg-white border border-slate-200 rounded-md h-full min-h-0 flex flex-col" data-testid="alerts-panel">
-      <div className="p-3 border-b border-slate-200 flex items-center justify-between">
+    <div
+      className={`bg-white border border-slate-200 rounded-md ${
+        embed ? "" : "h-full min-h-0 flex flex-col max-h-[70vh]"
+      }`}
+      data-testid="alerts-panel"
+    >
+      <div className="p-3 border-b border-slate-200 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-slate-600" />
           <span className="text-sm font-semibold">Alerts</span>
@@ -65,46 +118,11 @@ export default function AlertsPanel({ alerts, onClear, activeIndex, showAll: sho
           )}
         </div>
       </div>
-      <ScrollArea className="flex-1 min-h-0 h-full">
-        <div className="p-2 space-y-2">
-          {filtered.length === 0 ? (
-            <div className="text-xs text-slate-400 text-center py-6">
-              {filterEnabled ? `No alerts for ${activeIndex} yet.` : "No alerts yet."}
-            </div>
-          ) : (
-            filtered.map((a) => {
-              const bullish = a.direction?.toLowerCase().includes("bullish");
-              return (
-                <div
-                  key={a.created_at + a.index}
-                  data-testid="alert-item"
-                  className={`border rounded-sm p-2 ${
-                    bullish ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold">
-                      {bullish ? (
-                        <TrendingUp className="w-3 h-3 text-emerald-600" />
-                      ) : (
-                        <TrendingDown className="w-3 h-3 text-rose-600" />
-                      )}
-                      <span>{a.index}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-500 font-mono-data">
-                      {formatTime(a.created_at)}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-700 mt-1">{a.direction}</div>
-                  <div className="text-[10px] text-slate-500 font-mono-data mt-1">
-                    Price {a.price?.toFixed?.(2)} · ATM {a.atm} · {a.strikes?.length ?? 0} strikes
-                  </div>
-                </div>
-              );
-            })
-          )}
+      {embed ? list : (
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          {list}
         </div>
-      </ScrollArea>
+      )}
     </div>
   );
 }
