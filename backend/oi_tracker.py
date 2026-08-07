@@ -250,6 +250,11 @@ class OITracker:
         )
         if "market_open_ist" in clean or "market_close_ist" in clean:
             self._apply_market_hours()
+        if "enabled_indices" in clean:
+            try:
+                await self.seed_default_expiries()
+            except Exception as e:
+                logger.warning("seed_default_expiries after settings save failed: %s", e)
         return self.settings
 
     def list_expiries(self, index_name: str):
@@ -444,6 +449,10 @@ class OITracker:
         self.kite_service = svc
         self.mode = "kite"
         self.last_error = None
+        try:
+            await self.seed_default_expiries()
+        except Exception as e:
+            logger.warning("seed_default_expiries after set_credentials failed: %s", e)
 
     async def set_mode(self, mode: str):
         # Supported modes: 'kite' (live) and 'offline' (no live polling).
@@ -460,9 +469,36 @@ class OITracker:
             return self.kite_service
         return None
 
+    async def seed_default_expiries(self):
+        """Lock nearest expiry for every enabled index so background polls stay warm.
+
+        Without this, the poller used expiry=None (nearest-at-call-time) while the
+        UI sent an explicit expiry after tab select — first /change for SENSEX often
+        missed cache until the user clicked that tab.
+        """
+        if self.mode != "kite" or not self.kite_service:
+            return
+        enabled = self.settings.get("enabled_indices", INDICES)
+        for idx in enabled:
+            if idx not in INDICES:
+                continue
+            if self.selected_expiry.get(idx):
+                continue
+            try:
+                dates = await asyncio.to_thread(self.kite_service.list_expiries, idx)
+                if dates:
+                    self.selected_expiry[idx] = dates[0]
+                    logger.info("Seeded default expiry for %s → %s", idx, dates[0])
+            except Exception as e:
+                logger.warning("seed_default_expiries(%s) failed: %s", idx, e)
+
     async def start(self):
         if self.running:
             return
+        try:
+            await self.seed_default_expiries()
+        except Exception as e:
+            logger.warning("seed_default_expiries on start failed: %s", e)
         self.running = True
         self._task = asyncio.create_task(self._loop())
         logger.info("OI tracker started")
@@ -588,51 +624,48 @@ class OITracker:
             return
 
         svc = self._get_service()
-        enabled = self.settings.get("enabled_indices", INDICES)
-        # Launch all snapshot fetches concurrently (in threadpool)
-        tasks = {}
-        for idx in enabled:
-            if idx not in INDICES:
-                continue
-            exp = self.selected_expiry.get(idx)
-            tasks[idx] = asyncio.create_task(asyncio.to_thread(svc.get_snapshot, idx, exp))
-
-        if not tasks:
+        enabled = [i for i in self.settings.get("enabled_indices", INDICES) if i in INDICES]
+        if not enabled:
             self.last_updated_at = datetime.now(timezone.utc).isoformat()
             return
 
-        # Wait up to 10s for all to complete; pending tasks will be cancelled.
-        done, pending = await asyncio.wait(tasks.values(), timeout=10.0)
-
-        # Cancel any pending tasks (they exceeded the timeout)
-        for p in pending:
+        # Fetch EVERY enabled index concurrently. Each index gets its own timeout
+        # so a slow NIFTY pull cannot cancel SENSEX mid-flight (the previous
+        # shared 10s wait left non-active indices cold until the UI selected them).
+        async def _fetch_one(idx: str):
+            exp = self.selected_expiry.get(idx)
             try:
-                p.cancel()
-            except Exception:
-                pass
+                snap = await asyncio.wait_for(
+                    asyncio.to_thread(svc.get_snapshot, idx, exp),
+                    timeout=15.0,
+                )
+                return idx, snap, None
+            except asyncio.TimeoutError:
+                return idx, None, "timeout"
+            except Exception as e:
+                return idx, None, e
 
-        # Process results per-index (map back from tasks)
-        for idx, task in tasks.items():
-            if task in pending:
+        results = await asyncio.gather(*[_fetch_one(idx) for idx in enabled])
+
+        for idx, snap, err in results:
+            if err == "timeout":
                 self.metrics["poll_timeouts"] += 1
                 logger.error(
-                    "[_poll_once] snapshot TIMEOUT for %s after 10s — skipping this tick.",
+                    "[_poll_once] snapshot TIMEOUT for %s after 15s — skipping this tick.",
                     idx,
                     extra={"metrics": dict(self.metrics)},
                 )
                 self.last_error = f"snapshot timeout for {idx}"
                 continue
-            try:
-                snap = task.result()
-            except Exception as e:
+            if err is not None:
                 self.metrics["snapshot_fetch_errors"] += 1
                 logger.error(
                     "[_poll_once] snapshot failed for %s: %s",
                     idx,
-                    f"{type(e).__name__}: {e}",
+                    f"{type(err).__name__}: {err}",
                     extra={"metrics": dict(self.metrics)},
                 )
-                self.last_error = str(e)
+                self.last_error = str(err)
                 continue
 
             if not snap:

@@ -207,10 +207,18 @@ export default function Dashboard() {
   const seenActivityRef = useRef(new Set());          // dedupe key set per session
   const activeIndexRef = useRef(activeIndex);
   const [liveSpotPrices, setLiveSpotPrices] = useState({});
+  // Warm cache for ALL enabled indices so switching NIFTY ↔ SENSEX is instant.
+  const oiCacheRef = useRef({});          // index -> last /change payload
+  const expiryByIndexRef = useRef({});    // index -> { list, meta, note, selected }
+  const timeframeRef = useRef(timeframe);
+  const selectedExpiryRef = useRef(selectedExpiry);
+  const enabledIndicesRef = useRef(["NIFTY", "SENSEX", "BANKNIFTY"]);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
   }, [activeIndex]);
+  useEffect(() => { timeframeRef.current = timeframe; }, [timeframe]);
+  useEffect(() => { selectedExpiryRef.current = selectedExpiry; }, [selectedExpiry]);
 
   // Force Sell Candidates panel to recompute every minute so scores stay fresh
   // even if the underlying OI snapshot only ticks every 30s.
@@ -324,6 +332,9 @@ export default function Dashboard() {
   const [availableHistoryMin, setAvailableHistoryMin] = useState(0);
   const [changeBundle, setChangeBundle] = useState(null);
   const [expiryReady, setExpiryReady] = useState(false);
+  const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
+  const [enabledIndices, setEnabledIndices] = useState(INDICES);
+  const [oiLoading, setOiLoading] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
@@ -331,63 +342,137 @@ export default function Dashboard() {
   const oiReqGenRef = useRef(0);
   const [warmingTick, setWarmingTick] = useState(Date.now());
   useEffect(() => {
+    enabledIndicesRef.current = enabledIndices.length ? enabledIndices : INDICES;
+  }, [enabledIndices]);
+  useEffect(() => {
     if (historyReady) return undefined;
     const id = setInterval(() => setWarmingTick(Date.now()), 1000);
     return () => clearInterval(id);
   }, [historyReady]);
-  // Poll OI + previous for the active index (batched with huge-shift windows).
-  const loadOI = useCallback(async () => {
-    // Gate until expiries for this index are resolved — prevents sending the
-    // previous index's expiry and mutating wrong-chain data.
-    if (!expiryReady) return;
-    const gen = ++oiReqGenRef.current;
-    const reqIndex = activeIndex;
-    const reqExpiry = selectedExpiry;
-    setOiLoading(true);
-    try {
-      const also = (oiSettings.hugeShiftWindows || [1, 3, 5]).join(",");
-      const data = await fetchOIChange(reqIndex, resolveMinutes(timeframe), {
-        expiry: reqExpiry || undefined,
-        also,
-      });
-      if (gen !== oiReqGenRef.current) return; // stale response
-      if (reqIndex !== activeIndexRef.current) return;
-      setCurrent(data.current);
-      setPrevious(data.previous);
-      setHistoryReady(data.history_ready !== false);
-      setAvailableHistoryMin(Number(data.available_history_minutes || 0));
-      availableFetchedAtRef.current = Date.now();
-      setDataStatus(data.data_status || null);
-      setChangeBundle({
-        current: data.current,
-        also_windows: data.also_windows || {},
-        at: Date.now(),
-      });
-      setLastPulledAt(data.current?.timestamp || new Date().toISOString());
+
+  const applyOiPayload = useCallback((data, { pulse = true } = {}) => {
+    if (!data?.current) return;
+    setCurrent(data.current);
+    setPrevious(data.previous);
+    setHistoryReady(data.history_ready !== false);
+    setAvailableHistoryMin(Number(data.available_history_minutes || 0));
+    availableFetchedAtRef.current = Date.now();
+    setDataStatus(data.data_status || null);
+    setChangeBundle({
+      current: data.current,
+      also_windows: data.also_windows || {},
+      at: Date.now(),
+    });
+    setLastPulledAt(data.current?.timestamp || new Date().toISOString());
+    if (pulse) {
       setPulsePull(true);
       setTimeout(() => setPulsePull(false), 600);
+    }
+  }, []);
+
+  const ensureExpiryForIndex = useCallback(async (idx) => {
+    const cached = expiryByIndexRef.current[idx];
+    if (cached?.selected || cached?.fetched) return cached;
+    try {
+      const r = await api.get(`/expiries/${idx}`);
+      const list = r.data.expiries || [];
+      const meta = r.data.expiries_meta || [];
+      const note = r.data.note || null;
+      const selected = r.data.selected && list.includes(r.data.selected) ? r.data.selected : (list[0] || null);
+      const entry = { list, meta, note, selected, fetched: true };
+      expiryByIndexRef.current[idx] = entry;
+      return entry;
+    } catch (e) {
+      console.error(`loadExpiries(${idx}) failed`, e);
+      const entry = { list: [], meta: [], note: null, selected: null, fetched: true };
+      expiryByIndexRef.current[idx] = entry;
+      return entry;
+    }
+  }, []);
+
+  // Poll OI for ALL enabled indices in the background; UI updates only for the active tab.
+  const loadOI = useCallback(async () => {
+    const indices = enabledIndicesRef.current?.length ? enabledIndicesRef.current : INDICES;
+    const active = activeIndexRef.current;
+    // Active tab still waits for its expiry picker to settle (avoids cross-index expiry).
+    if (active && !expiryReady && !expiryByIndexRef.current[active]?.selected) return;
+
+    const gen = ++oiReqGenRef.current;
+    setOiLoading(true);
+    const also = (oiSettings.hugeShiftWindows || [1, 3, 5]).join(",");
+    const minutes = resolveMinutes(timeframeRef.current);
+
+    try {
+      // Prefetch expiries for every enabled index (cheap + cached after first hit).
+      await Promise.all(indices.map((idx) => ensureExpiryForIndex(idx)));
+
+      const fetches = indices.map(async (idx) => {
+        const exp =
+          idx === active
+            ? (selectedExpiryRef.current || expiryByIndexRef.current[idx]?.selected || undefined)
+            : (expiryByIndexRef.current[idx]?.selected || undefined);
+        try {
+          const data = await fetchOIChange(idx, minutes, {
+            expiry: exp || undefined,
+            also,
+          });
+          oiCacheRef.current[idx] = {
+            current: data.current,
+            previous: data.previous,
+            history_ready: data.history_ready,
+            available_history_minutes: data.available_history_minutes,
+            data_status: data.data_status,
+            also_windows: data.also_windows || {},
+            expiry: exp || null,
+            at: Date.now(),
+          };
+          return { idx, data, ok: true };
+        } catch (e) {
+          console.error(`loadOI(${idx}) failed`, e);
+          return { idx, ok: false };
+        }
+      });
+
+      const results = await Promise.all(fetches);
+      if (gen !== oiReqGenRef.current) return;
+
+      const activeRow = results.find((r) => r.ok && r.idx === activeIndexRef.current);
+      if (activeRow?.data) {
+        applyOiPayload(activeRow.data, { pulse: true });
+      }
     } catch (e) {
       if (gen !== oiReqGenRef.current) return;
       console.error("loadOI failed", e);
     } finally {
       if (gen === oiReqGenRef.current) setOiLoading(false);
     }
-  }, [activeIndex, timeframe, selectedExpiry, expiryReady, oiSettings.hugeShiftWindows]);
+  }, [expiryReady, oiSettings.hugeShiftWindows, ensureExpiryForIndex, applyOiPayload]);
 
-  // Load expiries for the active index
+  // Load expiries for the active index (hydrate from warm cache when available).
   useEffect(() => {
     let cancelled = false;
-    setExpiryReady(false);
-    setSelectedExpiry(null); // clear immediately so we never send the old index's expiry
+    const cached = expiryByIndexRef.current[activeIndex];
+    if (cached?.selected || cached?.fetched) {
+      setExpiries(cached.list || []);
+      setExpiriesMeta(cached.meta || []);
+      setExpiriesNote(cached.note || null);
+      setSelectedExpiry(cached.selected || null);
+      setExpiryReady(true);
+    } else {
+      setExpiryReady(false);
+      setSelectedExpiry(null);
+    }
     api.get(`/expiries/${activeIndex}`).then((r) => {
       if (cancelled) return;
       const list = r.data.expiries || [];
       const meta = r.data.expiries_meta || [];
+      const note = r.data.note || null;
       setExpiries(list);
       setExpiriesMeta(meta);
-      setExpiriesNote(r.data.note || null);
+      setExpiriesNote(note);
       const selected = r.data.selected && list.includes(r.data.selected) ? r.data.selected : (list[0] || null);
       setSelectedExpiry(selected);
+      expiryByIndexRef.current[activeIndex] = { list, meta, note, selected, fetched: true };
       setExpiryReady(true);
     }).catch((e) => {
       console.error("loadExpiries failed", e);
@@ -398,6 +483,8 @@ export default function Dashboard() {
 
   const handleChangeExpiry = async (exp) => {
     setSelectedExpiry(exp);
+    const prev = expiryByIndexRef.current[activeIndex] || {};
+    expiryByIndexRef.current[activeIndex] = { ...prev, selected: exp, fetched: true };
     try {
       await api.post(`/expiries/${activeIndex}`, { expiry: exp });
     } catch (e) {
@@ -438,13 +525,21 @@ export default function Dashboard() {
     }
   }, [alarm, push, activeIndex]);
 
-  // ---- Configurable OI poll interval (15 / 30 / 60 s) — server is source of truth ----
-  const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
-  const [enabledIndices, setEnabledIndices] = useState(INDICES);
-  const [oiLoading, setOiLoading] = useState(false);
-
   // ---- Straddle poll interval (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(60000); // default 1 minute
+
+  // Prefetch expiries for every enabled index once settings land (keeps SENSEX warm on NIFTY tab).
+  useEffect(() => {
+    const indices = enabledIndices.length ? enabledIndices : INDICES;
+    let cancelled = false;
+    (async () => {
+      for (const idx of indices) {
+        if (cancelled) return;
+        await ensureExpiryForIndex(idx);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [enabledIndices, ensureExpiryForIndex]);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -532,16 +627,19 @@ export default function Dashboard() {
     { status, dedupeKey: "dash-alerts" },
   );
 
-  // When index changes, reset strike range but keep last chart visible (opacity)
-  // until the new index's data arrives — avoids a jarring blank flash.
+  // When index changes, hydrate from warm cache immediately so the chart never goes cold.
   const prevIndexRef = useRef(activeIndex);
   useEffect(() => {
-    if (prevIndexRef.current !== activeIndex) {
-      setStrikeRange({ min: null, max: null });
+    if (prevIndexRef.current === activeIndex) return;
+    prevIndexRef.current = activeIndex;
+    setStrikeRange({ min: null, max: null });
+    const cached = oiCacheRef.current[activeIndex];
+    if (cached?.current) {
+      applyOiPayload(cached, { pulse: false });
+    } else {
       setChangeBundle(null);
-      prevIndexRef.current = activeIndex;
     }
-  }, [activeIndex]);
+  }, [activeIndex, applyOiPayload]);
 
   // If enabled_indices no longer includes activeIndex, switch to the first enabled.
   useEffect(() => {
