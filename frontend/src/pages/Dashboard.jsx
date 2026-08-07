@@ -1959,16 +1959,6 @@ export default function Dashboard() {
                     status={status}
                     showOI={showOI}
                     straddlePollMs={straddlePollMs}
-                    suggestion={
-                      <SuggestionBox
-                        indexName={activeIndex}
-                        marketIntel={marketIntel}
-                        changeSummary={changeSummary}
-                        spot={current?.price || current?.atm}
-                        vixNow={current?.vix || status?.vix}
-                        vixOpen={vixSessionOpen}
-                      />
-                    }
                   />
                 </div>
               </div>
