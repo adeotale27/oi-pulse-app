@@ -170,7 +170,7 @@ export default function AuthGate({ children }) {
       try {
         const { data } = await api.get(`/auth/access-request/${pendingRequest.id}`);
         if (cancelled) return;
-        if (data.status === "approved" || data.status === "consumed") && data.token) {
+        if ((data.status === "approved" || data.status === "consumed") && data.token) {
           await admitGuest(data.token, data.name || pendingRequest.name, data.expires_in_seconds);
           return;
         }
