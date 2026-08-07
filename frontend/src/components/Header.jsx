@@ -212,20 +212,34 @@ export default function Header({
                 <span className={`w-2 h-2 rounded-full ${status?.market && status.market.is_market_open ? "bg-emerald-500" : "bg-slate-300"}`} />
                 <span className={`font-semibold ${status?.market && status.market.is_market_open ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}>{nowLabel}</span>
               </div>
-              {dataStatus && !dataStatus.is_live && dataStatus.data_date && (
-                <div className="text-[10px] font-mono-data text-amber-600 dark:text-amber-400 mt-1">
-                  Showing historical data for: <span className="font-semibold">{dataStatus.data_date}</span> · API key required for live updates
-                </div>
-              )}
             </div>
           )}
           <Badge
             data-testid="mode-badge"
             className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
-            title={mode === "kite" ? "Live Kite mode" : "Offline: Kite API key required to fetch live data"}
+            title={mode === "kite" ? "Live Kite mode — credentials configured" : "Offline: Kite API key required for live updates"}
           >
             {mode === "kite" ? "LIVE" : "OFFLINE"}
           </Badge>
+          {/* Compact session/offline chip — never competes with LIVE for space */}
+          {mode !== "kite" && (
+            <span
+              data-testid="offline-hint-chip"
+              className="hidden sm:inline-flex max-w-[9rem] truncate text-[10px] font-mono-data text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
+              title="Kite API key required for live updates. Connect via Kite API."
+            >
+              Needs API key
+            </span>
+          )}
+          {mode === "kite" && dataStatus?.data_date && status?.market && status.market.is_market_open === false && (
+            <span
+              data-testid="session-date-chip"
+              className="hidden sm:inline-flex text-[10px] font-mono-data text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5"
+              title={`Showing last session data for ${dataStatus.data_date}. LIVE credentials are configured; OI polling is paused until next open.`}
+            >
+              Session {dataStatus.data_date}
+            </span>
+          )}
 
           {authState?.is_guest && !isAdmin && (
             (() => {

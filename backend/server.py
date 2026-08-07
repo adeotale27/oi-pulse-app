@@ -8,6 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import asyncio
 import logging
+import math
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -828,6 +829,17 @@ def _session_open_utc_for_anchor(anchor: datetime) -> datetime:
     return session_open_ist.astimezone(timezone.utc)
 
 
+def _session_elapsed_minutes(current_ts: str) -> int:
+    """Minutes from session open (clamped) to the snapshot timestamp — for whole-day bias."""
+    try:
+        anchor = datetime.fromisoformat(current_ts)
+    except Exception:
+        anchor = datetime.now(timezone.utc)
+    session_open = _session_open_utc_for_anchor(anchor)
+    elapsed = max(1.0, (anchor - session_open).total_seconds() / 60.0)
+    return min(1440, int(math.ceil(elapsed)))
+
+
 async def _find_previous_snapshot(
     idx: str,
     current_ts: str,
@@ -980,12 +992,18 @@ async def get_oi_change(
     )
 
     # Batch extra windows for huge-shift monitor (one round-trip).
+    # Also accepts the token "session" → lookback from today's session open
+    # (whole-day bias for the sentiment bar — independent of the UI timeframe pill).
     also_windows: Dict[str, Any] = {}
     if also:
         extra_mins = []
+        want_session = False
         for part in also.split(","):
             part = part.strip()
             if not part:
+                continue
+            if part.lower() == "session":
+                want_session = True
                 continue
             try:
                 m = int(part)
@@ -993,12 +1011,28 @@ async def get_oi_change(
                     extra_mins.append(m)
             except ValueError:
                 continue
+        if want_session:
+            sess_m = _session_elapsed_minutes(current_ts)
+            if sess_m != minutes:
+                extra_mins.append(sess_m)
+            # Always expose under stable key "session" for the frontend.
+            p, ready, avail = await _find_previous_snapshot(idx, current_ts, sess_m, expiry)
+            also_windows["session"] = {
+                "previous": p,
+                "minutes": sess_m,
+                "history_ready": ready,
+                "available_history_minutes": avail,
+                "label": "session",
+            }
         # Deduplicate while preserving order
         seen = set()
         for m in extra_mins:
             if m in seen:
                 continue
             seen.add(m)
+            # Skip if we already stored this as session with same minutes
+            if also_windows.get("session", {}).get("minutes") == m:
+                continue
             p, ready, avail = await _find_previous_snapshot(idx, current_ts, m, expiry)
             also_windows[str(m)] = {
                 "previous": p,
@@ -1006,6 +1040,19 @@ async def get_oi_change(
                 "history_ready": ready,
                 "available_history_minutes": avail,
             }
+
+    # If caller didn't ask for session, still attach it — cheap (one extra DB read)
+    # and keeps whole-day bias available on every change response.
+    if "session" not in also_windows:
+        sess_m = _session_elapsed_minutes(current_ts)
+        p, ready, avail = await _find_previous_snapshot(idx, current_ts, sess_m, expiry)
+        also_windows["session"] = {
+            "previous": p,
+            "minutes": sess_m,
+            "history_ready": ready,
+            "available_history_minutes": avail,
+            "label": "session",
+        }
 
     return {
         "index": idx,

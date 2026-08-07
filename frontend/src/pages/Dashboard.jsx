@@ -427,7 +427,10 @@ export default function Dashboard() {
 
     const gen = ++oiReqGenRef.current;
     setOiLoading(true);
-    const also = (oiSettings.hugeShiftWindows || [1, 3, 5]).join(",");
+    const also = [
+      ...(oiSettings.hugeShiftWindows || [1, 3, 5]),
+      "session", // whole-day bias (9:15 → now) — independent of timeframe pill
+    ].join(",");
     const minutes = resolveMinutes(timeframeRef.current);
 
     try {
@@ -789,6 +792,35 @@ export default function Dashboard() {
     const pePct = basePE > 0 ? (pe / basePE) * 100 : 0;
     return { ce, pe, cePct, pePct, baseCE, basePE, prevAt: previous?.timestamp, intensity, bullish: pe - ce >= 0 };
   }, [filteredCurrent, previous]);
+
+  // Whole-day bias: session open (≈9:15 IST) → latest snapshot.
+  // Independent of the timeframe pill so NIFTY/SENSEX/BANKNIFTY each show
+  // their own day bias with the same methodology.
+  const dayBiasSummary = useMemo(() => {
+    const sessPrev = changeBundle?.also_windows?.session?.previous;
+    if (!filteredCurrent || !sessPrev) return null;
+    const prevMap = new Map();
+    (sessPrev.strikes || []).forEach((s) => prevMap.set(s.strike, s));
+    let ce = 0, pe = 0;
+    for (const s of filteredCurrent.strikes || []) {
+      const p = prevMap.get(s.strike);
+      if (!p) continue;
+      ce += (s.ce_oi || 0) - (p.ce_oi || 0);
+      pe += (s.pe_oi || 0) - (p.pe_oi || 0);
+    }
+    const total = Math.abs(ce) + Math.abs(pe) || 1;
+    const net = pe - ce;
+    const intensity = Math.min(1, Math.abs(net) / total);
+    return {
+      ce,
+      pe,
+      intensity,
+      bullish: net >= 0,
+      minutes: changeBundle?.also_windows?.session?.minutes || null,
+      prevAt: sessPrev.timestamp,
+      asOf: filteredCurrent.timestamp,
+    };
+  }, [filteredCurrent, changeBundle]);
 
   // Frontend-side alert engine: fires a toast + browser notification whenever
   // the aggregated CE / PE change for the CURRENT timeframe crosses a strong
@@ -1306,12 +1338,13 @@ export default function Dashboard() {
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div className="h-full space-y-4 pr-2">
-                {changeSummary && (
+                {(dayBiasSummary || changeSummary) && (
                   <SentimentBar
-                    ceDelta={changeSummary.ce}
-                    peDelta={changeSummary.pe}
-                    timeframeMin={timeframe}
+                    ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}
+                    peDelta={dayBiasSummary?.pe ?? changeSummary?.pe ?? 0}
                     marketOpen={!(status?.market && status.market.is_market_open === false)}
+                    wholeDay
+                    sessionMinutes={dayBiasSummary?.minutes}
                   />
                 )}
                 {!historyReady && (() => {
