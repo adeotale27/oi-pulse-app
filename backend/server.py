@@ -27,6 +27,7 @@ from market_hours import (
     session_anchor_date, session_window_utc, previous_trading_day,
 )
 from gift_vix_service import extra_tickers
+from fii_dii_service import fii_dii
 import event_risk_service as ers
 from fastapi import UploadFile, File, Form
 
@@ -2522,6 +2523,22 @@ async def get_extra_tickers():
     return extra_tickers.snapshot()
 
 
+# ------------------- FII / DII (NSE cash market, EOD) -------------------
+@api_router.get("/market/fii-dii")
+async def get_fii_dii():
+    """Latest provisional FII/FPI & DII cash activity (₹ crores).
+
+    Pulled from NSE `fiidiiTradeReact` around 19:31 IST on trading days.
+    """
+    return fii_dii.snapshot()
+
+
+@api_router.post("/admin/fii-dii/refresh")
+async def admin_refresh_fii_dii(_admin: bool = Depends(require_admin)):
+    """Admin force-refresh of NSE FII/DII (useful if the evening pull missed)."""
+    return await fii_dii.refresh(reason="admin")
+
+
 # ------------------- Admin: refresh today's OI data -------------------
 @api_router.post("/admin/refresh-day")
 async def admin_refresh_day(_admin: bool = Depends(require_admin)):
@@ -3046,6 +3063,8 @@ async def _startup():
         lambda: tracker.kite_service.kite if tracker and tracker.mode == "kite" and tracker.kite_service else None
     )
     await extra_tickers.start()
+    fii_dii.attach_db(db)
+    await fii_dii.start()
     global straddle_sampler_task
     straddle_sampler_task = asyncio.create_task(_straddle_sampler())
 
@@ -3071,6 +3090,7 @@ async def _startup():
 async def _shutdown():
     await tracker.stop()
     await extra_tickers.stop()
+    await fii_dii.stop()
     try:
         if client:
             client.close()

@@ -30,6 +30,7 @@ import UploadModal from "@/components/UploadModal";
 import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
 import MarketImpactBadge from "@/components/MarketImpactBadge";
+import FiiDiiBadge from "@/components/FiiDiiBadge";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
@@ -1337,16 +1338,19 @@ export default function Dashboard() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {/* Holiday & Events badges — equal-width tiles */}
+              {/* Holiday / FII-DII / Events badges — equal-width tiles */}
               <div className="hidden md:flex items-stretch gap-2 ml-auto">
-                <div className="w-56">
+                <div className="w-48">
                   <HolidayBadge onClick={() => setActiveTab("holidays")} />
                 </div>
-                <div className="w-56">
+                <div className="w-48">
+                  <FiiDiiBadge isAdmin={!!authState.is_admin} />
+                </div>
+                <div className="w-48">
                   <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
                 </div>
                 {(authState.is_admin || visiblePages.includes("index-events")) && (
-                  <div className="w-56">
+                  <div className="w-48">
                     <MarketImpactBadge
                       activeIndex={activeIndex}
                       onOpenIndexEvents={() => setActiveTab("index-events")}
