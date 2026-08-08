@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api, clearAdminAuth } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Switch } from "@/components/ui/switch";
@@ -7,6 +7,11 @@ import { Users, LogOut, KeyRound, ChevronDown, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import AccessControlModal from "@/components/AccessControlModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
+
+// Shared across inline + panel instances so we don't double-toast / double-open.
+let sharedPrevPending = null;
+let lastPendingAlertKey = null;
+let lastPendingAlertAt = 0;
 
 /**
  * AdminControls — Public Access toggle + Admin menu.
@@ -34,6 +39,7 @@ export default function AdminControls({
   const [menuOpen, setMenuOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const prevPendingRef = useRef(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,12 +57,42 @@ export default function AdminControls({
     }
   }, [assumedAdmin, publicAccessOpen]);
 
-  // Auth must keep working after EOD — never gate on market hours.
-  useQuiescentAwarePolling(refresh, 30_000, [refresh], {
+  // Poll often while admin is in session so approval popups feel realtime.
+  useQuiescentAwarePolling(refresh, 10_000, [refresh], {
     immediate: true,
     allowDuringQuiescent: true,
     dedupeKey: variant === "panel" ? "admin-controls-panel" : "admin-controls-inline",
   });
+
+  // When a new access request arrives, toast + open Access Control for the admin.
+  useEffect(() => {
+    if (!state?.is_admin && !assumedAdmin) return;
+    const pending = Number(state?.pending_access_count || 0);
+    const prev = sharedPrevPending ?? prevPendingRef.current;
+    if (prev != null && pending > prev) {
+      const alertKey = `${prev}->${pending}`;
+      const now = Date.now();
+      const already =
+        lastPendingAlertKey === alertKey && now - lastPendingAlertAt < 4000;
+      if (!already) {
+        lastPendingAlertKey = alertKey;
+        lastPendingAlertAt = now;
+        const delta = pending - prev;
+        toast.message(delta === 1 ? "New guest access request" : `${delta} new guest access requests`, {
+          description: "Open Access Control to approve or reject.",
+          duration: 12_000,
+          action: {
+            label: "Review",
+            onClick: () => setAccessOpen(true),
+          },
+        });
+        setAccessOpen(true);
+      }
+    }
+    // Seed on first admin poll so we don't popup for already-pending on page load.
+    sharedPrevPending = pending;
+    prevPendingRef.current = pending;
+  }, [state?.is_admin, state?.pending_access_count, assumedAdmin]);
 
   // Sync public flag from parent if we only have the seed state.
   useEffect(() => {

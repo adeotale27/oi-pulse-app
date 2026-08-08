@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import OiPulseLogo from "@/components/OiPulseLogo";
-import { api, fetchExtras, subscribeExtras, unsubscribeExtras, clearGuestAuth } from "@/lib/api";
+import { api, fetchExtras, subscribeExtras, unsubscribeExtras, logoutGuest } from "@/lib/api";
 import { toast } from "sonner";
 
 import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
@@ -309,8 +309,8 @@ export default function Header({
                 return `${s}s`;
               }
               const remainingLabel = remainingMs != null ? fmt(remainingMs) : '';
-              const exitGuest = () => {
-                clearGuestAuth();
+              const exitGuest = async () => {
+                await logoutGuest();
                 window.location.reload();
               };
               return (

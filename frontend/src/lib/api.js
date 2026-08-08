@@ -162,6 +162,20 @@ export function clearGuestAuth() {
   authStorage.remove("oi_guest_token");
   authStorage.remove("oi_guest_name");
   authStorage.remove("oi_guest_expires_at");
+  try {
+    sessionStorage.removeItem("oi_access_request_id");
+    sessionStorage.removeItem("oi_access_request_name");
+  } catch (_) {}
+}
+
+/** Server-side guest Exit: revoke session + IP opt-out so auto-admit does not bounce them back in. */
+export async function logoutGuest() {
+  try {
+    await api.post("/auth/guest/logout");
+  } catch (_) {
+    /* still clear client — best effort */
+  }
+  clearGuestAuth();
 }
 
 export function persistGuestAuth({ token, name, expiresInSeconds }) {

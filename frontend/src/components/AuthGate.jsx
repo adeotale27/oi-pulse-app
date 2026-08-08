@@ -285,6 +285,23 @@ export default function AuthGate({ children }) {
     );
   }
 
+  if (state.ip_blocked && !state.is_admin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 px-6">
+        <div
+          data-testid="guest-ip-blocked"
+          className="max-w-md w-full rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-xl"
+        >
+          <OiPulseLogo className="w-12 h-12 mx-auto mb-4" />
+          <h1 className="text-xl font-semibold text-slate-900">Access blocked</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            This network IP has been blocked by the admin. Contact the admin if you believe this is a mistake.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Admin always passes. Guest only while public access remains open.
   if (state.is_admin) return children;
   if (state.is_guest && state.public_access_open) return children;

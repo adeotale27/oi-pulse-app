@@ -214,12 +214,19 @@ export default function AdminLogin() {
                     onClick={async () => {
                       try {
                         const { data } = await api.get("/auth/state");
+                        if (data?.ip_blocked) {
+                          toast.error("This network is blocked", {
+                            description: "Ask the admin to unblock your IP in Access Control.",
+                            duration: 6000,
+                          });
+                          return;
+                        }
                         if (data?.public_access_open) {
                           navigate("/", { replace: true });
                           return;
                         }
                         toast.error("Ask Admin to give access", {
-                          description: "Public access is currently off. Contact the admin to open access for guests.",
+                          description: "Public access is currently off. Ask the admin to turn Public access ON, then try again.",
                           duration: 6000,
                         });
                       } catch (_) {

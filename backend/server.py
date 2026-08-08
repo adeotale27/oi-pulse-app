@@ -421,7 +421,15 @@ async def _create_guest_session(name: str, ip: Optional[str], ua: str, *, reques
         try:
             await db.guest_ip_names.update_one(
                 {"_id": ip},
-                {"$set": {"name": name, "updated_at": now_iso, "last_token": token}},
+                {
+                    "$set": {
+                        "name": name,
+                        "updated_at": now_iso,
+                        "last_token": token,
+                        "opted_out": False,
+                    },
+                    "$unset": {"opted_out_at": ""},
+                },
                 upsert=True,
             )
         except Exception:
@@ -1609,18 +1617,9 @@ async def auth_login(payload: LoginIn, request: Request):
             "expires_at": (now_utc + timedelta(seconds=REMEMBER_ME_TTL_SECONDS)).isoformat(),
             "user_agent": request.headers.get("user-agent", "")[:200],
         })
-    try:
-        open_, _ = await _get_public_access_state()
-        if open_:
-            await db.settings.update_one(
-                {"_id": "public_access"},
-                {"$set": {"open": False, "expires_at": None}},
-                upsert=True,
-            )
-            await _revoke_guest_sessions("admin_login_public_close")
-            logger.info("Admin logged in — public access auto-closed and guest sessions revoked.")
-    except Exception as e:
-        logger.warning(f"Could not auto-close public access on admin login: {e}")
+    # Do NOT auto-close public access on admin login — that silently undid the
+    # admin's Public access toggle and made "Continue as guest" fail with
+    # "Ask Admin to give access" even when they had just turned it ON.
 
     market_exp = _session_market_expiry_utc(now_utc)
     return {
@@ -1753,6 +1752,20 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
     ua = request.headers.get("user-agent", "")[:200]
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    # Explicit new request clears Exit opt-out so this IP can be admitted again.
+    if ip:
+        try:
+            await db.guest_ip_names.update_one(
+                {"_id": ip},
+                {
+                    "$set": {"name": name, "updated_at": now_iso, "opted_out": False},
+                    "$unset": {"opted_out_at": ""},
+                },
+                upsert=True,
+            )
+        except Exception:
+            pass
+
     # One pending request per IP — reuse instead of flooding the admin queue.
     if ip:
         existing = await db.access_requests.find_one({"ip": ip, "status": "pending"})
@@ -1843,6 +1856,8 @@ async def _try_auto_guest_for_ip(ip: Optional[str], request: Request) -> Optiona
     Order:
       1) Revive a still-valid last_token session
       2) Else mint a fresh session when a prior approved request exists for this IP
+
+    Skipped when the guest explicitly Exit'd (opted_out) until they request again.
     """
     if not ip:
         return None
@@ -1853,6 +1868,8 @@ async def _try_auto_guest_for_ip(ip: Optional[str], request: Request) -> Optiona
         return None
     row = await db.guest_ip_names.find_one({"_id": ip})
     if not row or not row.get("name"):
+        return None
+    if row.get("opted_out"):
         return None
     name = row["name"]
     # 1) Live session still good?
@@ -1895,6 +1912,43 @@ async def _try_auto_guest_for_ip(ip: Optional[str], request: Request) -> Optiona
     guest = await _create_guest_session(name, ip, ua, request_id=prior.get("_id"))
     guest["source"] = "reissue"
     return guest
+
+
+@api_router.post("/auth/guest/logout")
+async def auth_guest_logout(request: Request):
+    """Guest Exit — revoke this session and opt the IP out of auto-re-admit.
+
+    Without opt-out, AuthGate would immediately mint a new guest session for the
+    same IP (returning-guest auto-admit), so Exit appeared broken.
+    """
+    tok = _extract_bearer(request, "x-guest-token")
+    ip = _client_ip(request)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if tok:
+        try:
+            await db.guest_sessions.update_one(
+                {"_id": tok, "revoked_at": {"$exists": False}},
+                {"$set": {"revoked_at": now_iso, "revoked_reason": "guest_logout"}},
+            )
+        except Exception:
+            pass
+    if ip:
+        try:
+            await db.guest_ip_names.update_one(
+                {"_id": ip},
+                {
+                    "$set": {
+                        "opted_out": True,
+                        "opted_out_at": now_iso,
+                        "last_token": None,
+                        "updated_at": now_iso,
+                    }
+                },
+                upsert=True,
+            )
+        except Exception:
+            pass
+    return {"ok": True}
 
 
 @api_router.get("/auth/state")
@@ -2057,15 +2111,30 @@ async def auth_revoke_guest(token: str, _admin: bool = Depends(require_admin)):
     if not tok:
         raise HTTPException(400, "Missing guest token")
     now_iso = datetime.now(timezone.utc).isoformat()
-    r = await db.guest_sessions.update_one(
+    existing = await db.guest_sessions.find_one({"_id": tok})
+    if not existing:
+        raise HTTPException(404, "Guest session not found")
+    await db.guest_sessions.update_one(
         {"_id": tok, "revoked_at": {"$exists": False}},
         {"$set": {"revoked_at": now_iso, "revoked_reason": "admin_kick"}},
     )
-    if r.matched_count == 0:
-        # Already revoked or unknown — still ok for idempotence
-        existing = await db.guest_sessions.find_one({"_id": tok})
-        if not existing:
-            raise HTTPException(404, "Guest session not found")
+    # Stop same-IP auto-re-admit until they request access again.
+    ip = existing.get("ip")
+    if ip:
+        try:
+            await db.guest_ip_names.update_one(
+                {"_id": ip},
+                {
+                    "$set": {
+                        "opted_out": True,
+                        "opted_out_at": now_iso,
+                        "last_token": None,
+                        "updated_at": now_iso,
+                    }
+                },
+            )
+        except Exception:
+            pass
     return {"ok": True, "token": tok, "revoked": True}
 
 
