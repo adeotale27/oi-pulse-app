@@ -79,7 +79,7 @@ export default function DataTruthStrip({
           {asOfLive ? `data as of ${asOfLive} IST` : truth.asOfLabel}
         </span>
         <span className="opacity-80 hidden sm:inline">·</span>
-        <span className="opacity-90 text-[11px] sm:text-xs" data-testid="data-truth-detail">
+        <span className="opacity-90 text-[11px] sm:text-xs hidden sm:inline" data-testid="data-truth-detail">
           {truth.detail}
         </span>
       </div>

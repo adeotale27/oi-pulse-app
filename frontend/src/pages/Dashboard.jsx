@@ -31,6 +31,8 @@ import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
 import MarketImpactBadge from "@/components/MarketImpactBadge";
 import FiiDiiBadge from "@/components/FiiDiiBadge";
+import MobileStickyChrome from "@/components/MobileStickyChrome";
+import MobileMarketStrip from "@/components/MobileMarketStrip";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
@@ -1323,16 +1325,37 @@ export default function Dashboard() {
           />
         )}
 
-        <main className="flex-1 min-h-0 overflow-hidden p-2 sm:p-4 md:p-5 dark:text-slate-200 flex flex-col">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col">
-            <div className="flex items-center justify-between mb-3 sm:mb-4 gap-3 flex-wrap shrink-0">
-              <TabsList className="tabs-scroll bg-transparent p-0 h-auto gap-1 border-b border-slate-200/80 dark:border-slate-700/80 rounded-none justify-start max-w-full">
+        <main className="flex-1 min-h-0 overflow-hidden p-0 sm:p-4 md:p-5 dark:text-slate-200 flex flex-col">
+          <div className="md:hidden shrink-0">
+            <MobileStickyChrome
+              activeIndex={activeIndex}
+              indices={enabledIndices.length ? enabledIndices : INDICES}
+              onSelectIndex={setActiveIndex}
+              spotPrice={liveSpotPrices?.[activeIndex] ?? current?.price}
+              changePct={(() => {
+                const spot = liveSpotPrices?.[activeIndex] ?? current?.price;
+                const prev = current?.day_open ?? current?.prev_close;
+                if (spot == null || !prev) return null;
+                return ((Number(spot) - Number(prev)) / Number(prev)) * 100;
+              })()}
+              tabs={DASHBOARD_PAGES.filter(
+                (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
+              )}
+              activeTab={activeTab}
+              onChangeTab={setActiveTab}
+              marketOpen={status?.market?.is_market_open === true}
+            />
+          </div>
+
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col px-2 pt-0 md:pt-0 sm:px-0">
+            <div className="hidden md:flex items-center justify-between mb-2 sm:mb-4 gap-3 flex-wrap shrink-0 bg-[var(--oi-shell,#f3f8fb)]/95 md:bg-transparent py-1 md:py-0">
+              <TabsList className="tabs-scroll bg-transparent p-0 h-auto gap-1 border-b border-slate-200/80 dark:border-slate-700/80 rounded-none justify-start max-w-full w-full md:w-auto">
                 {DASHBOARD_PAGES.filter((t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))).map((t) => (
                   <TabsTrigger
                     key={t.v}
                     value={t.v}
                     data-testid={`tab-${t.v}`}
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-800 dark:data-[state=active]:border-emerald-400 dark:data-[state=active]:text-emerald-300 data-[state=active]:bg-transparent data-[state=active]:shadow-none text-slate-500 dark:text-slate-400 px-3 py-2 text-sm font-medium hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-800 dark:data-[state=active]:border-emerald-400 dark:data-[state=active]:text-emerald-300 data-[state=active]:bg-transparent data-[state=active]:shadow-none text-slate-500 dark:text-slate-400 px-2.5 sm:px-3 py-2 text-[13px] sm:text-sm font-medium hover:text-slate-800 dark:hover:text-slate-200 transition-colors whitespace-nowrap"
                   >
                     {t.l}
                   </TabsTrigger>
@@ -1362,7 +1385,12 @@ export default function Dashboard() {
 
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full flex-1 min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
-                <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-2">
+                <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2">
+                <MobileMarketStrip
+                  activeIndex={activeIndex}
+                  onSelectIndex={setActiveIndex}
+                  spotPrices={liveSpotPrices}
+                />
                 {(dayBiasSummary || changeSummary) && (
                   <SentimentBar
                     ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}
