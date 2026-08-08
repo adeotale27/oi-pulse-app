@@ -259,26 +259,26 @@ export default function AuthGate({ children }) {
 
   if (state.loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-slate-400 text-sm">Loading…</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#061018]">
+        <div className="text-sm text-slate-400">Loading…</div>
       </div>
     );
   }
 
   if (state.ip_blocked && !state.is_admin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 px-6">
+      <AuthShell mode="guest">
         <div
           data-testid="guest-ip-blocked"
-          className="max-w-md w-full rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-xl"
+          className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-8 text-center text-slate-900 shadow-2xl"
         >
-          <OiPulseLogo className="w-12 h-12 mx-auto mb-4" />
-          <h1 className="text-xl font-semibold text-slate-900">Access blocked</h1>
+          <OiPulseLogo className="mx-auto mb-4 h-12 w-12" />
+          <h1 className="text-xl font-semibold">Access blocked</h1>
           <p className="mt-2 text-sm text-slate-600">
             This network IP has been blocked by the admin. Contact the admin if you believe this is a mistake.
           </p>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
