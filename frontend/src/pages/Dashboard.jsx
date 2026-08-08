@@ -1337,16 +1337,16 @@ export default function Dashboard() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {/* Holiday & Events badges docked to the right of the tab-selector row */}
+              {/* Holiday & Events badges — equal-width tiles */}
               <div className="hidden md:flex items-stretch gap-2 ml-auto">
-                <div className="w-52">
+                <div className="w-56">
                   <HolidayBadge onClick={() => setActiveTab("holidays")} />
                 </div>
-                <div className="w-60">
+                <div className="w-56">
                   <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
                 </div>
                 {(authState.is_admin || visiblePages.includes("index-events")) && (
-                  <div className="w-64">
+                  <div className="w-56">
                     <MarketImpactBadge
                       activeIndex={activeIndex}
                       onOpenIndexEvents={() => setActiveTab("index-events")}

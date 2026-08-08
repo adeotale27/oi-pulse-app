@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { AlertTriangle, TrendingUp, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
+import useClickOutside from "@/hooks/useClickOutside";
 
 /**
  * MarketImpactBadge — small header tile that shows a dropdown of upcoming
@@ -12,9 +13,19 @@ import { api } from "@/lib/api";
  *   • BLUE if only upcoming next week (8–14d)
  *   • Neutral if further out / no events
  */
+
+const INDEX_LABEL = {
+  NIFTY: "Nifty 50",
+  BANKNIFTY: "Bank Nifty",
+  SENSEX: "Sensex",
+};
+
 export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
   const [events, setEvents] = useState([]);
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const close = useCallback(() => setOpen(false), []);
+  useClickOutside(wrapRef, close, open);
 
   useEffect(() => {
     if (!activeIndex) return;
@@ -50,17 +61,20 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
   }, [events]);
 
   const primary = impactful[0];
+  const indexLabel = INDEX_LABEL[activeIndex] || activeIndex || "this index";
 
   const hasThisWeek = impactful.some((e) => e.days_remaining <= 7);
   const hasNextWeek = impactful.some(
     (e) => e.days_remaining > 7 && e.days_remaining <= 14
   );
 
-  const tone = hasThisWeek
-    ? "red"
-    : hasNextWeek
-    ? "blue"
-    : "neutral";
+  const tone = !primary
+    ? "neutral"
+    : hasThisWeek
+      ? "red"
+      : hasNextWeek
+        ? "blue"
+        : "neutral";
 
   const toneCls =
     tone === "red"
@@ -69,23 +83,47 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
       ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200"
       : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300";
 
+  const daysText = (d) =>
+    d === 0 ? "TODAY" : d === 1 ? "TOMORROW" : `in ${d}d`;
+
+  const tileBase =
+    "w-full min-h-[58px] h-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 flex flex-col justify-between";
+
   if (!primary) {
     return (
-      <div className="rounded-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-[10px] text-slate-500 dark:text-slate-400">
-        No index impact events
+      <div className="relative w-full h-full" data-testid="market-impact-badge-wrap" ref={wrapRef}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (typeof onOpenIndexEvents === "function") onOpenIndexEvents();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && typeof onOpenIndexEvents === "function") onOpenIndexEvents();
+          }}
+          data-testid="market-impact-badge"
+          className={`${tileBase} cursor-pointer ${toneCls}`}
+          title={`No upcoming events for ${indexLabel}`}
+        >
+          <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
+            <TrendingUp className="w-3 h-3" />
+            Index Impact
+          </div>
+          <div className="text-xs font-semibold leading-snug mt-0.5" data-testid="market-impact-empty">
+            There are no upcoming events for {indexLabel}
+          </div>
+          <div className="text-[10px] leading-tight opacity-60">Tap to open Index Risk</div>
+        </div>
       </div>
     );
   }
 
-  const daysText = (d) =>
-    d === 0 ? "TODAY" : d === 1 ? "TOMORROW" : `in ${d}d`;
-
   return (
     <div
-      className="relative w-full"
+      className="relative w-full h-full"
       data-testid="market-impact-badge-wrap"
+      ref={wrapRef}
     >
-      {/* Badge */}
       <div
         role="button"
         tabIndex={0}
@@ -94,10 +132,9 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
           if (e.key === "Enter") setOpen((v) => !v);
         }}
         data-testid="market-impact-badge"
-        className={`w-full min-h-[58px] rounded-sm border-2 px-2.5 py-1.5 text-left cursor-pointer transition-colors hover:brightness-95 flex flex-col justify-between ${toneCls}`}
+        className={`${tileBase} cursor-pointer ${toneCls}`}
         title={`${impactful.length} high-impact events for ${activeIndex}`}
       >
-        {/* Header */}
         <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
           {tone === "red" ? (
             <AlertTriangle className="w-3 h-3" />
@@ -117,23 +154,21 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
           </span>
         </div>
 
-        {/* Symbol & Event */}
-<div
-  className="flex items-center text-xs font-semibold leading-tight truncate mt-0.5"
-  data-testid="market-impact-name"
->
-  <span className="truncate">
-    {activeIndex === "SENSEX"
-      ? (primary.constituents || primary.company_name || primary.symbol)
-      : primary.symbol}
-  </span>
+        <div
+          className="flex items-center text-xs font-semibold leading-tight truncate mt-0.5"
+          data-testid="market-impact-name"
+        >
+          <span className="truncate">
+            {activeIndex === "SENSEX"
+              ? (primary.constituents || primary.company_name || primary.symbol)
+              : primary.symbol}
+          </span>
 
-  <span className="ml-3">
-     {primary.event_type}
-  </span>
-</div>
+          <span className="ml-3">
+            {primary.event_type}
+          </span>
+        </div>
 
-        {/* Weightage */}
         <div className="text-[10px] leading-tight opacity-80 font-mono-data">
           {primary.weightage != null
             ? `${primary.weightage.toFixed(2)}% Weightage`
@@ -141,7 +176,6 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
         </div>
       </div>
 
-      {/* Dropdown */}
       {open && (
         <div
           data-testid="market-impact-dropdown"
@@ -152,6 +186,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
 
             {typeof onOpenIndexEvents === "function" && (
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setOpen(false);
@@ -219,12 +254,6 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
                 </li>
               );
             })}
-
-            {impactful.length === 0 && (
-              <li className="px-3 py-3 text-[11px] text-slate-500 text-center">
-                No events
-              </li>
-            )}
           </ul>
         </div>
       )}

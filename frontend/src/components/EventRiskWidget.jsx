@@ -216,7 +216,7 @@ export default function EventRiskWidget({ activeIndex }) {
       <div className="p-3">
         {upcoming.length === 0 && !loading && !err && (
           <p className="text-xs text-slate-500 text-center py-4">
-            No upcoming events for {label} constituents.
+            There are no upcoming events for {label}.
           </p>
         )}
         {upcoming.length > 0 && (

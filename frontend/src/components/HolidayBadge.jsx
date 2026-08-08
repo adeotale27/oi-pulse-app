@@ -4,12 +4,24 @@ import { nextHolidayInfo, formatDatePretty } from "@/lib/holidays";
 
 export default function HolidayBadge({ onClick }) {
   const info = useMemo(() => nextHolidayInfo(), []);
+  const tileBase =
+    "w-full min-h-[58px] h-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 flex flex-col justify-between";
+
   if (!info) {
     return (
-      <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-500 flex items-center gap-1">
-        <CalendarClock className="w-3 h-3" />
-        No upcoming holiday
-      </div>
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid="holiday-badge"
+        className={`${tileBase} border-slate-200 bg-white text-slate-600`}
+      >
+        <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
+          <CalendarClock className="w-3 h-3" />
+          Next Holiday
+        </div>
+        <div className="text-xs font-semibold leading-snug">No upcoming holiday</div>
+        <div className="text-[10px] leading-tight opacity-60">Tap to open holidays</div>
+      </button>
     );
   }
 
@@ -25,15 +37,14 @@ export default function HolidayBadge({ onClick }) {
   const relative =
     info.status === "today" ? "TODAY"
       : info.status === "tomorrow" ? "TOMORROW"
-        : info.daysAway <= 6 ? `in ${info.daysAway} days`
-          : `in ${info.daysAway} days`;
+        : `in ${info.daysAway} days`;
 
   return (
     <button
       type="button"
       onClick={onClick}
       data-testid="holiday-badge"
-      className={`w-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 ${cls}`}
+      className={`${tileBase} ${cls}`}
       title={`${info.name} — ${dateLabel}`}
     >
       <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">

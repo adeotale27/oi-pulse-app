@@ -471,7 +471,31 @@ export default function Sidebar({
       </div>
       {/* Admin note section below the big clock */}
       <div className="p-4 border-t border-slate-200 bg-white">
-        <Label className="text-[10px] uppercase tracking-widest text-slate-500">Note</Label>
+        <div className="flex items-center justify-between gap-2 min-h-[1.25rem]">
+          <Label className="text-[10px] uppercase tracking-widest text-slate-500">Note</Label>
+          {isAdmin && !!note && !isEditing && !loadingNote && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                title="Edit"
+                data-testid="note-edit"
+                className="px-2 py-0.5 text-xs rounded bg-white border border-slate-200 hover:bg-slate-50"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={eraseNote}
+                title="Erase"
+                data-testid="note-erase"
+                className="px-2 py-0.5 text-xs rounded bg-white border border-slate-200 hover:bg-slate-50"
+              >
+                Erase
+              </button>
+            </div>
+          )}
+        </div>
         <div className="mt-2">
           {loadingNote ? (
             <p className="text-sm text-slate-400">Loading…</p>
@@ -490,7 +514,7 @@ export default function Sidebar({
                       <textarea
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
-                        className="w-full min-h-[6rem] p-2 border rounded mt-2 text-sm font-sans"
+                        className="w-full min-h-[6rem] p-2 border rounded text-sm font-sans"
                         placeholder="Write a short sidebar note. When saved, this becomes a tile visible to all users."
                       />
                       <div className="mt-2 flex gap-2 flex-wrap">
@@ -501,13 +525,9 @@ export default function Sidebar({
                       <div className="mt-2 text-xs text-slate-500">Saved at: {noteUpdatedAt ? new Date(noteUpdatedAt).toLocaleString() : '—'}</div>
                     </>
                   ) : (
-                    <div className="mt-2 p-3 border rounded bg-gray-50 shadow-sm relative">
+                    <div className="p-3 border rounded bg-gray-50 shadow-sm">
                       <div className="text-sm text-slate-700 whitespace-pre-wrap">{note}</div>
                       <div className="mt-2 text-xs text-slate-500">Saved at: {noteUpdatedAt ? new Date(noteUpdatedAt).toLocaleString() : '—'}</div>
-                      <div className="absolute top-2 right-2 flex gap-1">
-                        <button type="button" onClick={() => setIsEditing(true)} title="Edit" className="px-2 py-1 text-xs rounded bg-white border">Edit</button>
-                        <button type="button" onClick={eraseNote} title="Erase" className="px-2 py-1 text-xs rounded bg-white border">Erase</button>
-                      </div>
                     </div>
                   )}
                 </div>
