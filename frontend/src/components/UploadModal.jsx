@@ -2,15 +2,43 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { UploadCloud, AlertTriangle, CheckCircle2, FileText } from "lucide-react";
+import { UploadCloud, AlertTriangle, CheckCircle2, FileText, ExternalLink } from "lucide-react";
 import { API } from "@/lib/api";
 import { toast } from "sonner";
 
 const UPLOAD_TYPES = [
-  { value: "nifty50", label: "NIFTY 50 Constituents", endpoint: "/admin/upload/constituents" },
-  { value: "banknifty", label: "Bank Nifty Constituents", endpoint: "/admin/upload/constituents" },
-  { value: "sensex", label: "Sensex Constituents", endpoint: "/admin/upload/constituents" },
-  { value: "events", label: "1 Month NSE Event Calendar", endpoint: "/admin/upload/events" },
+  {
+    value: "nifty50",
+    label: "NIFTY 50 Constituents",
+    endpoint: "/admin/upload/constituents",
+    sourceUrl: "https://www.nseindia.com/static/products-services/indices-nifty50-index",
+    sourceTitle: "Nifty 50 — download constituents",
+    sourceHost: "nseindia.com",
+  },
+  {
+    value: "banknifty",
+    label: "Bank Nifty Constituents",
+    endpoint: "/admin/upload/constituents",
+    sourceUrl: "https://www.niftyindices.com/indices/equity/sectoral-indices/nifty-bank",
+    sourceTitle: "Bank Nifty — download constituents",
+    sourceHost: "niftyindices.com",
+  },
+  {
+    value: "sensex",
+    label: "Sensex Constituents",
+    endpoint: "/admin/upload/constituents",
+    sourceUrl: "https://www.bseindices.com/constituents/code/16",
+    sourceTitle: "Sensex — download constituents",
+    sourceHost: "bseindices.com",
+  },
+  {
+    value: "events",
+    label: "1 Month NSE Event Calendar",
+    endpoint: "/admin/upload/events",
+    sourceUrl: "https://www.nseindia.com/companies-listing/corporate-filings-event-calendar",
+    sourceTitle: "NSE Event Calendar — download CSV/XLSX",
+    sourceHost: "nseindia.com",
+  },
 ];
 
 /**
@@ -44,9 +72,11 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
     setErrors([]); setSuccess(null);
   };
 
+  const selected = UPLOAD_TYPES.find((t) => t.value === uploadType);
+
   const submit = async () => {
     if (!file) { toast.error("Please select a CSV or XLSX file first."); return; }
-    const meta = UPLOAD_TYPES.find((t) => t.value === uploadType);
+    const meta = selected;
     if (!meta) return;
     setBusy(true); setProgress(0); setErrors([]); setSuccess(null);
 
@@ -135,6 +165,29 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
               ))}
             </select>
           </div>
+
+          {selected?.sourceUrl && (
+            <a
+              data-testid="upload-source-link"
+              href={selected.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2.5 text-left transition hover:border-sky-400 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:hover:bg-sky-900/50"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sky-600 text-white">
+                <ExternalLink className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-sky-900 dark:text-sky-100">
+                  {selected.sourceTitle}
+                </div>
+                <div className="truncate text-[11px] text-sky-700/80 dark:text-sky-300/80">
+                  Open {selected.sourceHost} in a new tab to download the file
+                </div>
+              </div>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+            </a>
+          )}
 
           <div>
             <Label className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
