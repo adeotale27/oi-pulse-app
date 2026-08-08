@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,32 @@ import { Label } from "@/components/ui/label";
 import { KeyRound, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
+function passwordScore(pw) {
+  if (!pw) return 0;
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  return score;
+}
+
+const STRENGTH_LABEL = ["Empty", "Weak", "Fair", "Good", "Strong"];
+const STRENGTH_BAR = [
+  "bg-transparent",
+  "bg-rose-500",
+  "bg-amber-500",
+  "bg-sky-500",
+  "bg-emerald-500",
+];
+
 export default function ChangePasswordModal({ open, onOpenChange }) {
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [newPw2, setNewPw2] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const score = useMemo(() => passwordScore(newPw), [newPw]);
 
   const reset = () => { setOldPw(""); setNewPw(""); setNewPw2(""); };
 
@@ -64,6 +85,17 @@ export default function ChangePasswordModal({ open, onOpenChange }) {
               autoComplete="new-password"
               placeholder="min 8 chars"
             />
+            <div className="mt-2" data-testid="cp-strength">
+              <div className="h-1.5 w-full overflow-hidden rounded bg-slate-100">
+                <div
+                  className={`h-full transition-all ${STRENGTH_BAR[score]}`}
+                  style={{ width: `${(score / 4) * 100}%` }}
+                />
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">
+                Strength: {STRENGTH_LABEL[score]}
+              </div>
+            </div>
           </div>
           <div>
             <Label className="text-xs uppercase tracking-wider text-slate-500">Confirm New Password</Label>

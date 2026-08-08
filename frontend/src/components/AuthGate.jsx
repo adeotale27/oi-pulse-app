@@ -1,14 +1,14 @@
 import { useEffect, useState, useRef } from "react";
-import { Navigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { Navigate, Link } from "react-router-dom";
 import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, ShieldCheck, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import OiPulseLogo from "@/components/OiPulseLogo";
+import AuthShell from "@/components/AuthShell";
 
 /**
  * AuthGate — three modes:
@@ -22,8 +22,6 @@ import OiPulseLogo from "@/components/OiPulseLogo";
  */
 export default function AuthGate({ children }) {
   const [state, setState] = useState({ loading: true, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false });
-  const [username, setUsername] = useState("Adeotale");
-  const [password, setPassword] = useState("");
   const [guestName, setGuestName] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingRequest, setPendingRequest] = useState(() => {
@@ -166,24 +164,6 @@ export default function AuthGate({ children }) {
     return () => clearTimeout(timer);
   }, [state.is_admin, state.admin_session_expires_at, state.expire_admin_on_market_close]);
 
-  const doLogin = async (e) => {
-    e?.preventDefault();
-    if (!username.trim() || !password) {
-      toast.error("Input credentials only.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const { data } = await api.post("/auth/login", { username: username.trim(), password });
-      clearGuestAuth();
-      persistAdminSession(data.token);
-      toast.success(`Welcome, ${data.username}`);
-      await refresh();
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "Login failed");
-    } finally { setBusy(false); }
-  };
-
   const admitGuest = async (token, name, expiresIn) => {
     clearAdminAuth({ clearRemember: false });
     persistGuestAuth({ token, name: name || "", expiresInSeconds: expiresIn });
@@ -310,154 +290,89 @@ export default function AuthGate({ children }) {
     clearGuestAuth();
   }
 
-  // Public access open → prompt for guest full name (polished user-facing UI)
+  // Public access open → prompt for guest full name
   if (state.needs_guest_name || state.public_access_open) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+      <AuthShell mode="guest">
+        <div className="w-full max-w-md rounded-2xl border border-white/20 bg-white p-7 text-slate-900 shadow-2xl shadow-black/40 sm:p-8">
+          <div className="mb-6 flex items-center gap-3">
+            <OiPulseLogo className="h-11 w-11" />
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Guest access</h2>
+              <p className="text-sm text-slate-500">Request read-only entry to the desk</p>
+            </div>
+          </div>
 
-            {/* Left marketing panel (large screens) */}
-            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }} className="hidden lg:flex flex-col gap-6">
-              <div className="text-white">
-                <div className="flex items-center gap-3 mb-4">
-                  <OiPulseLogo className="w-12 h-12 bg-white/5 rounded-full p-1" />
-                  <div>
-                    <h2 className="text-4xl font-extrabold tracking-tight">OI Pulse</h2>
-                    <p className="mt-1 text-slate-200">Real-time & reliable</p>
-                  </div>
-                </div>
+          <form onSubmit={doGuest} className="space-y-4" data-testid="guest-form">
+            <div>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500">Full name</Label>
+              {state.suggested_guest_name ? (
+                <p className="mb-1.5 text-xs text-emerald-700" data-testid="guest-welcome-back">
+                  Welcome back — we remembered your name from this device.
+                </p>
+              ) : null}
+              <Input
+                data-testid="guest-name"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                placeholder="e.g. Rahul Sharma"
+                autoFocus
+                disabled={!!pendingRequest}
+                className="mt-1 h-11"
+              />
+            </div>
 
-                <div className="mt-6 bg-white/5 p-4 rounded-xl border border-white/6 shadow-sm">
-                  <div className="flex items-center justify-between text-sm text-slate-200 mb-2">
-                    <div>Realtime OI</div>
-                    <div className="font-semibold">Live</div>
-                  </div>
-                  <div className="h-44 flex items-end">
-                    <svg viewBox="0 0 200 40" className="w-full">
-                      <motion.path d="M0 30 L30 24 L60 14 L90 18 L120 10 L150 6 L180 14 L200 8" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 2 }} />
-                    </svg>
-                  </div>
-                  <div className="mt-3 grid grid-cols-3 gap-3 text-xs text-slate-200">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold">18</div>
-                      <div className="opacity-80">Strikes</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold">3.2k</div>
-                      <div className="opacity-80">Snapshots</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold">60s</div>
-                      <div className="opacity-80">Default Poll</div>
-                    </div>
-                  </div>
+            {pendingRequest || waitStatus === "pending" ? (
+              <div
+                data-testid="guest-waiting-approval"
+                className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900"
+              >
+                <div className="font-semibold">Waiting for admin approval…</div>
+                <div className="text-xs opacity-80">
+                  Requested as <b>{pendingRequest?.name || guestName}</b>. Keep this window open — you&apos;ll enter automatically when approved.
                 </div>
-
-                <div className="mt-6 grid grid-cols-1 gap-3">
-                  <div className="bg-white/6 rounded-lg p-3">
-                    <h3 className="text-sm font-semibold text-white">Trusted & Secure</h3>
-                    <p className="text-xs text-slate-200 mt-1">Credentials are stored locally and can be cleared at any time.</p>
-                  </div>
-                  <div className="bg-white/6 rounded-lg p-3">
-                    <h3 className="text-sm font-semibold text-white">Tailored insights</h3>
-                    <p className="text-xs text-slate-200 mt-1">Choose timeframes and strikes to focus on what matters to you.</p>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  className="pt-1 text-xs underline opacity-70 hover:opacity-100"
+                  onClick={() => {
+                    try {
+                      sessionStorage.removeItem("oi_access_request_id");
+                      sessionStorage.removeItem("oi_access_request_name");
+                    } catch (_) {}
+                    setPendingRequest(null);
+                    setWaitStatus(null);
+                  }}
+                >
+                  Cancel request
+                </button>
               </div>
-            </motion.div>
+            ) : (
+              <Button
+                data-testid="guest-submit"
+                type="submit"
+                className="h-11 w-full rounded-xl bg-emerald-600 text-white hover:bg-emerald-500"
+                disabled={busy}
+              >
+                <span className="inline-flex items-center justify-center gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  {busy ? "Requesting…" : "Request access"}
+                </span>
+              </Button>
+            )}
 
-            {/* Right: guest card */}
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="flex justify-center">
-              <div className={`w-full max-w-md bg-white/95 backdrop-blur-sm border border-slate-200 rounded-2xl shadow-2xl p-8`}> 
+            <p className="text-center text-xs text-slate-500">
+              Admin must approve your request. Guest access is read-only.
+            </p>
+          </form>
 
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <OiPulseLogo className="w-10 h-10" />
-                    <div>
-                      <h1 className="text-xl font-semibold">Open interest insights</h1>
-                      <p className="text-sm text-slate-500">Real-time OI — read-only guest access</p>
-                    </div>
-                  </div>
-                </div>
-
-                <form onSubmit={doGuest} className="space-y-4" data-testid="guest-form">
-                  <div>
-                    <Label className="text-xs uppercase tracking-wider text-slate-500">Full name</Label>
-                    {state.suggested_guest_name ? (
-                      <p className="text-xs text-emerald-700 mb-1.5" data-testid="guest-welcome-back">
-                        Welcome back — we remembered your name from this device.
-                      </p>
-                    ) : null}
-                    <Input
-                      data-testid="guest-name"
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      placeholder="e.g. Rahul Sharma"
-                      autoFocus
-                      disabled={!!pendingRequest}
-                    />
-                  </div>
-
-                  {pendingRequest || waitStatus === "pending" ? (
-                    <div
-                      data-testid="guest-waiting-approval"
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-1"
-                    >
-                      <div className="font-semibold">Waiting for admin approval…</div>
-                      <div className="text-xs opacity-80">
-                        Requested as <b>{pendingRequest?.name || guestName}</b>. Keep this window open — you&apos;ll enter automatically when approved.
-                      </div>
-                      <button
-                        type="button"
-                        className="text-xs underline opacity-70 hover:opacity-100 pt-1"
-                        onClick={() => {
-                          try {
-                            sessionStorage.removeItem("oi_access_request_id");
-                            sessionStorage.removeItem("oi_access_request_name");
-                          } catch (_) {}
-                          setPendingRequest(null);
-                          setWaitStatus(null);
-                        }}
-                      >
-                        Cancel request
-                      </button>
-                    </div>
-                  ) : (
-                    <Button data-testid="guest-submit" type="submit" className={`w-full rounded-lg py-3 bg-emerald-600 hover:bg-emerald-700`} disabled={busy}>
-                      <div className="flex items-center justify-center gap-2">
-                        <UserPlus className="w-4 h-4" />
-                        <span>{busy ? "Requesting…" : "Request access"}</span>
-                      </div>
-                    </Button>
-                  )}
-
-                  <div className="mt-2 text-center text-xs text-slate-500">
-                    Admin must approve your request. Access is read-only for guests.
-                  </div>
-                </form>
-
-                <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-                  <div className="text-[11px] text-slate-600">
-                    <div className="text-2xl">⚡</div>
-                    <div className="mt-1">Real-time OI</div>
-                  </div>
-                  <div className="text-[11px] text-slate-600">
-                    <div className="text-2xl">📈</div>
-                    <div className="mt-1">Clean charts</div>
-                  </div>
-                  <div className="text-[11px] text-slate-600">
-                    <div className="text-2xl">🔔</div>
-                    <div className="mt-1">Alerts</div>
-                  </div>
-                </div>
-
-              </div>
-            </motion.div>
-
+          <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+            Admin?{" "}
+            <Link to="/admin" className="font-medium text-emerald-700 hover:underline">
+              Sign in here
+            </Link>
           </div>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
