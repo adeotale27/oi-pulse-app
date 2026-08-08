@@ -20,9 +20,14 @@ export default function GuestBanner({ guestName, adminName }) {
       <div className="flex items-center gap-2 min-w-0">
         <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-amber-700" />
         <span className="truncate">
-          {guestName ? <b>{guestName}</b> : "Guest"} — <b>Guest access via {adminName || "Adeotale"}</b>
-          {" · "}
-          Read-only view. Configuration and alerts are managed by the admin.
+          {guestName ? <b>{guestName}</b> : "Guest"}
+          <span className="hidden sm:inline">
+            {" — "}
+            <b>Guest access via {adminName || "Adeotale"}</b>
+            {" · "}
+            Read-only view. Configuration and alerts are managed by the admin.
+          </span>
+          <span className="sm:hidden text-amber-800/90"> · Guest · read-only</span>
         </span>
       </div>
       <button

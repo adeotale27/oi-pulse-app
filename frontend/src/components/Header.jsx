@@ -216,6 +216,112 @@ export default function Header({
     >
       <GiftSessionsModal open={giftModalOpen} onOpenChange={setGiftModalOpen} windows={giftSessions} serverIst={extras?.server_time_ist} />
 
+      {/* Mobile: slim tools row only — brand/index/tabs live in MobileStickyChrome */}
+      <div
+        className="md:hidden px-2.5 py-1.5 flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800"
+        data-testid="mobile-header-tools"
+      >
+        <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack-mobile">
+          <Badge
+            data-testid="mode-badge-mobile"
+            className={`rounded-sm text-[10px] px-1.5 py-0 h-5 ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
+          >
+            {mode === "kite" ? (status?.market?.is_market_open ? "KITE · OPEN" : "KITE · CLOSED") : "OFFLINE"}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          {isAdmin && (
+            <Button
+              data-testid="btn-mobile-tools"
+              size="sm"
+              onClick={() => setMobileToolsOpen((v) => !v)}
+              className={`rounded-sm h-8 text-[11px] font-semibold px-2.5 ${
+                mobileToolsOpen
+                  ? "bg-slate-900 text-white hover:bg-slate-800"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }`}
+              title="Admin tools"
+            >
+              {mobileToolsOpen ? "Hide Tools" : "Tools"}
+            </Button>
+          )}
+          <Button
+            data-testid="btn-toggle-compact-mobile"
+            variant="outline" size="sm" className={toolBtn}
+            onClick={onToggleCompact}
+            title={compact ? "Show sidebar" : "Hide sidebar"}
+          >
+            {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+          </Button>
+          <Button
+            data-testid="btn-toggle-dark-mobile"
+            variant="outline" size="sm" className={toolBtn}
+            onClick={onToggleDark}
+            title={darkMode ? "Light mode" : "Dark mode"}
+          >
+            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Button>
+        </div>
+      </div>
+
+      {isAdmin && mobileToolsOpen && (
+        <div
+          data-testid="mobile-admin-tools"
+          className="md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-slate-100 dark:border-slate-800 pt-2 bg-slate-50/80 dark:bg-slate-900/50"
+        >
+          <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
+            Admin tools
+          </div>
+          <div className="w-full basis-full">
+            <AdminControls
+              variant="panel"
+              assumedAdmin={isAdmin}
+              publicAccessOpen={
+                publicAccessOpen != null
+                  ? !!publicAccessOpen
+                  : !!authState.public_access_open
+              }
+            />
+          </div>
+          <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
+            <Settings2 className="w-4 h-4 mr-1.5" />
+            Settings
+          </Button>
+          <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
+            <KeyRound className="w-4 h-4 mr-1.5" />
+            Kite API
+          </Button>
+          <Button
+            data-testid="btn-mobile-fresh-pull"
+            size="sm"
+            onClick={onRefreshDay}
+            disabled={refreshing}
+            className="rounded-sm bg-rose-600 hover:bg-rose-700 text-white"
+          >
+            <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
+            {refreshing ? "Refreshing…" : "Fresh Pull"}
+          </Button>
+          <Button data-testid="btn-mobile-upload" size="sm" onClick={onOpenUpload} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
+            <UploadCloud className="w-4 h-4 mr-1.5" />
+            Upload
+          </Button>
+          <Button data-testid="btn-mobile-telegram" variant="outline" size="sm" className="rounded-sm" onClick={onOpenTelegramPrefs}>
+            <Send className="w-4 h-4 mr-1.5" />
+            Telegram
+          </Button>
+          <Button data-testid="btn-mobile-sounds" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
+            <Volume2 className="w-4 h-4 mr-1.5" />
+            Sounds
+          </Button>
+          <Button data-testid="btn-mobile-csv" variant="outline" size="sm" className="rounded-sm" onClick={onDownloadCsv}>
+            <Download className="w-4 h-4 mr-1.5" />
+            CSV
+          </Button>
+        </div>
+      )}
+
+      {/* Desktop header — unchanged */}
+      <div className="hidden md:block">
       {/* Row 1: brand + status + essential actions */}
       <div className="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3">
         <div className="flex items-center gap-2.5 shrink-0">
@@ -230,7 +336,7 @@ export default function Header({
           </div>
         </div>
 
-        <div className="hidden md:flex items-center gap-6 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
+        <div className="flex items-center gap-6 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
           <Metric label="ATM" value={atm.toLocaleString()} />
           <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
           <ExtraTickerCell
@@ -245,12 +351,12 @@ export default function Header({
         </div>
 
         {/* Desktop tickers sit in the top row */}
-        <div className="hidden md:flex items-stretch gap-2 flex-1 min-w-0 pl-3 border-l border-slate-200 dark:border-slate-700">
+        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-3 border-l border-slate-200 dark:border-slate-700">
           <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} spotPrices={spotPrices} />
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
-          <div className="md:hidden">
+          <div>
             <BigClock compact />
           </div>
           {(lastPulledAt || nowLabel) && (
@@ -433,11 +539,11 @@ export default function Header({
         </div>
       </div>
 
-      {/* Mobile / tablet admin Tools — own row so Public access / Settings are never clipped */}
+      {/* Tablet (md–lg): admin Tools row — phone uses the slim mobile header above */}
       {isAdmin && (
-        <div className="lg:hidden px-3 pb-2 flex items-center gap-2" data-testid="mobile-tools-bar">
+        <div className="hidden md:flex lg:hidden px-3 pb-2 items-center gap-2" data-testid="tablet-tools-bar">
           <Button
-            data-testid="btn-mobile-tools"
+            data-testid="btn-tablet-tools"
             size="sm"
             onClick={() => setMobileToolsOpen((v) => !v)}
             className={`flex-1 rounded-sm h-9 text-xs font-semibold ${
@@ -452,27 +558,10 @@ export default function Header({
         </div>
       )}
 
-      {/* Mobile: VIX / GIFT + index tickers on their own rows */}
-      <div className="md:hidden px-3 pb-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
-        <div className="grid grid-cols-2 gap-2">
-          <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
-          <ExtraTickerCell
-            label="GIFT NIFTY"
-            data={extras.gift_nifty}
-            windows={giftSessions}
-            openNow={extras?.windows?.gift?.open_now}
-            kiteSymbol={extras?.windows?.gift?.kite_symbol || "NSEIX:GIFT NIFTY"}
-            serverIst={extras?.server_time_ist}
-            onOpenSessions={() => setGiftModalOpen(true)}
-          />
-        </div>
-        <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} spotPrices={spotPrices} />
-      </div>
-
       {isAdmin && mobileToolsOpen && (
         <div
-          data-testid="mobile-admin-tools"
-          className="lg:hidden px-3 pb-3 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2 bg-slate-50/80 dark:bg-slate-900/50"
+          data-testid="tablet-admin-tools"
+          className="hidden md:flex lg:hidden px-3 pb-3 flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2 bg-slate-50/80 dark:bg-slate-900/50"
         >
           <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
             Admin tools
@@ -488,28 +577,16 @@ export default function Header({
               }
             />
           </div>
-          <Button
-            data-testid="btn-mobile-settings"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            onClick={onOpenSettings}
-          >
+          <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Settings
           </Button>
-          <Button
-            data-testid="btn-mobile-kite"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            onClick={onOpenCreds}
-          >
+          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
             <KeyRound className="w-4 h-4 mr-1.5" />
             Kite API
           </Button>
           <Button
-            data-testid="btn-mobile-fresh-pull"
+            data-testid="btn-tablet-fresh-pull"
             size="sm"
             onClick={onRefreshDay}
             disabled={refreshing}
@@ -518,47 +595,25 @@ export default function Header({
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh Pull"}
           </Button>
-          <Button
-            data-testid="btn-mobile-upload"
-            size="sm"
-            onClick={onOpenUpload}
-            className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white"
-          >
+          <Button data-testid="btn-tablet-upload" size="sm" onClick={onOpenUpload} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button
-            data-testid="btn-mobile-telegram"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            onClick={onOpenTelegramPrefs}
-          >
+          <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm" onClick={onOpenTelegramPrefs}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>
-          <Button
-            data-testid="btn-mobile-sounds"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            onClick={onOpenSounds}
-          >
+          <Button data-testid="btn-tablet-sounds" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />
             Sounds
           </Button>
-          <Button
-            data-testid="btn-mobile-csv"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            onClick={onDownloadCsv}
-          >
+          <Button data-testid="btn-tablet-csv" variant="outline" size="sm" className="rounded-sm" onClick={onDownloadCsv}>
             <Download className="w-4 h-4 mr-1.5" />
             CSV
           </Button>
         </div>
       )}
+      </div>
     </header>
   );
 }
