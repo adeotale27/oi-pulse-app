@@ -7,8 +7,8 @@
 
 .App {
   min-height: 100vh;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--oi-shell, #f3f8fb);
+  color: #0b1c24;
   font-family: var(--font-ui);
 }
 
@@ -20,18 +20,23 @@
 
 /* Timeframe pill hover */
 .tf-pill {
-  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+  transition: background-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 .tf-pill:hover {
   transform: translateY(-1px);
+  box-shadow: 0 6px 14px -10px rgba(15, 55, 70, 0.35);
 }
 
 /* Sidebar checkbox rows */
 .expiry-row {
-  transition: background-color 120ms ease;
+  transition: background-color 120ms ease, transform 120ms ease;
 }
 .expiry-row:hover {
-  background: #f1f5f9;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.dark .expiry-row:hover {
+  background: rgba(16, 185, 129, 0.1);
 }
 
 /* Bar chart custom recharts styling */
@@ -47,6 +52,15 @@
 }
 .live-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Soft enter for main content panels */
+@keyframes oi-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.oi-rise {
+  animation: oi-rise 320ms ease-out both;
 }
 
 /* Alert flash */
@@ -80,4 +94,24 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+}
+
+/* Subtle live grid under the shell (very light) */
+.oi-shell::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  background-image:
+    linear-gradient(rgba(15, 55, 70, 0.7) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 55, 70, 0.7) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at top, black 10%, transparent 70%);
+}
+.dark .oi-shell::before {
+  opacity: 0.07;
+  background-image:
+    linear-gradient(rgba(148, 210, 200, 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 210, 200, 0.45) 1px, transparent 1px);
 }

@@ -207,21 +207,26 @@ export default function Header({
   const myTicker = (tickerData || []).find((t) => t.index === current?.index);
 
   const toolBtn =
-    "rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 h-8 w-8 p-0 sm:h-9 sm:w-auto sm:px-3";
+    "rounded-lg border-slate-200/80 bg-white/70 hover:bg-emerald-50 hover:border-emerald-200 dark:bg-slate-800/80 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-emerald-950/40 dark:hover:border-emerald-800 h-8 w-8 p-0 sm:h-9 sm:w-auto sm:px-3 transition-colors";
 
   return (
     <header
       data-testid="dashboard-header"
-      className="w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 relative"
+      className="oi-header w-full relative z-20"
     >
       <GiftSessionsModal open={giftModalOpen} onOpenChange={setGiftModalOpen} windows={giftSessions} serverIst={extras?.server_time_ist} />
 
       {/* Row 1: brand + status + essential actions */}
       <div className="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3">
-        <div className="flex items-center gap-2 shrink-0">
-          <OiPulseLogo className="w-8 h-8 sm:w-9 sm:h-9 drop-shadow-sm" />
-          <div className="text-sm font-semibold tracking-tight dark:text-slate-100 bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
-            OI Pulse
+        <div className="flex items-center gap-2.5 shrink-0">
+          <OiPulseLogo className="w-8 h-8 sm:w-9 sm:h-9 drop-shadow-sm ring-2 ring-emerald-500/15 rounded-xl" />
+          <div>
+            <div className="text-sm font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
+              OI Pulse
+            </div>
+            <div className="hidden sm:block text-[10px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+              Live open interest desk
+            </div>
           </div>
         </div>
 

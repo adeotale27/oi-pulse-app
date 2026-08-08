@@ -9,8 +9,8 @@ const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
 const INDEX_THEME = {
   NIFTY: {
     label: "NIFTY",
-    activeCls:   "bg-gradient-to-br from-sky-500 to-indigo-600 text-white border-transparent shadow-lg shadow-indigo-500/25 ring-2 ring-sky-300/60",
-    idleCls:     "bg-gradient-to-br from-sky-50 to-indigo-50 text-indigo-800 border-indigo-100 hover:from-sky-100 hover:to-indigo-100",
+    activeCls:   "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-transparent shadow-lg shadow-sky-500/25 ring-2 ring-sky-300/60",
+    idleCls:     "bg-gradient-to-br from-sky-50 to-cyan-50 text-sky-900 border-sky-100 hover:from-sky-100 hover:to-cyan-100",
     dot:         "bg-sky-500",
   },
   SENSEX: {
@@ -59,7 +59,7 @@ function StepperInput({ testId, value, step, onChange, min = 0, max = Infinity }
         type="button"
         data-testid={`${testId}-dec`}
         onClick={dec}
-        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 active:scale-95 shrink-0 transition-colors"
+        className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-slate-700 hover:bg-emerald-50 hover:border-emerald-200 active:scale-95 shrink-0 transition-colors"
         aria-label="Decrement"
       >
         <Minus className="w-3.5 h-3.5" />
@@ -88,7 +88,7 @@ function StepperInput({ testId, value, step, onChange, min = 0, max = Infinity }
         type="button"
         data-testid={`${testId}-inc`}
         onClick={inc}
-        className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 active:scale-95 shrink-0 transition-colors"
+        className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-slate-700 hover:bg-emerald-50 hover:border-emerald-200 active:scale-95 shrink-0 transition-colors"
         aria-label="Increment"
       >
         <Plus className="w-3.5 h-3.5" />
@@ -241,10 +241,10 @@ export default function Sidebar({
   return (
     <aside
       data-testid="sidebar"
-      className="w-72 shrink-0 bg-white border-r border-slate-200 h-full flex flex-col overflow-y-auto"
+      className="oi-sidebar w-72 shrink-0 h-full flex flex-col overflow-y-auto relative z-10"
     >
       {/* Index search / switcher */}
-      <div className="p-4 border-b border-slate-200">
+      <div className="p-4 border-b border-slate-200/80 dark:border-slate-700/70">
         <Label className="text-[10px] uppercase tracking-widest text-slate-500">Index</Label>
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {indices.map((idx) => {

@@ -15,7 +15,7 @@ export default function GuestBanner({ guestName, adminName }) {
   return (
     <div
       data-testid="guest-banner"
-      className="w-full px-4 py-1.5 text-xs bg-amber-50 border-b border-amber-200 text-amber-900 flex items-center justify-between gap-3"
+      className="w-full px-4 py-1.5 text-xs bg-gradient-to-r from-amber-50 to-emerald-50/60 border-b border-amber-200/80 text-amber-950 flex items-center justify-between gap-3 backdrop-blur-sm"
     >
       <div className="flex items-center gap-2 min-w-0">
         <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-amber-700" />

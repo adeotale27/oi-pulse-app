@@ -1245,7 +1245,7 @@ export default function Dashboard() {
   }, [alerts, activeIndex, pushActivity]);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
+    <div className="oi-shell relative h-screen flex flex-col overflow-hidden">
       {authState.is_guest && (
         <GuestBanner
           guestName={authState.guest_name}
@@ -1323,16 +1323,16 @@ export default function Dashboard() {
           />
         )}
 
-        <main className="flex-1 min-h-0 overflow-hidden p-2 sm:p-4 md:p-5 dark:bg-slate-950 dark:text-slate-200 flex flex-col">
+        <main className="flex-1 min-h-0 overflow-hidden p-2 sm:p-4 md:p-5 dark:text-slate-200 flex flex-col">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col">
             <div className="flex items-center justify-between mb-3 sm:mb-4 gap-3 flex-wrap shrink-0">
-              <TabsList className="tabs-scroll bg-transparent p-0 h-auto gap-1 border-b border-slate-200 dark:border-slate-700 rounded-none justify-start max-w-full">
+              <TabsList className="tabs-scroll bg-transparent p-0 h-auto gap-1 border-b border-slate-200/80 dark:border-slate-700/80 rounded-none justify-start max-w-full">
                 {DASHBOARD_PAGES.filter((t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))).map((t) => (
                   <TabsTrigger
                     key={t.v}
                     value={t.v}
                     data-testid={`tab-${t.v}`}
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-slate-900 dark:data-[state=active]:border-slate-100 data-[state=active]:text-slate-900 dark:data-[state=active]:text-slate-100 data-[state=active]:bg-transparent data-[state=active]:shadow-none text-slate-500 dark:text-slate-400 px-3 py-2 text-sm font-medium"
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-800 dark:data-[state=active]:border-emerald-400 dark:data-[state=active]:text-emerald-300 data-[state=active]:bg-transparent data-[state=active]:shadow-none text-slate-500 dark:text-slate-400 px-3 py-2 text-sm font-medium hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
                   >
                     {t.l}
                   </TabsTrigger>
@@ -1435,8 +1435,8 @@ export default function Dashboard() {
                   );
                 })()}
                 <div
-                  className={`bg-white dark:bg-slate-900 border rounded-md p-4 transition-all duration-700 ${
-                    pulsePull ? "ring-2 ring-sky-300 border-sky-300" : "border-slate-200 dark:border-slate-700"
+                  className={`oi-panel oi-rise p-4 transition-all duration-700 ${
+                    pulsePull ? "ring-2 ring-emerald-300 border-emerald-300" : ""
                   }`}
                   data-testid="oi-change-card"
                   style={
@@ -1826,7 +1826,7 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                <div className="bg-white border border-slate-200 rounded-md p-3 text-xs text-slate-600 flex items-center justify-between">
+                <div className="oi-panel p-3 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
                   <div data-testid="footer-refresh">
                     OI last pulled —{" "}
                     <span className="font-mono-data text-slate-900">
@@ -1936,7 +1936,7 @@ export default function Dashboard() {
                   aria-label="Close side panel backdrop"
                   onClick={() => setMobilePanelOpen(false)}
                 />
-                <div className="h-[88vh] max-h-[88vh] bg-white dark:bg-slate-950 rounded-t-xl shadow-2xl overflow-hidden p-2 pb-[env(safe-area-inset-bottom)]">
+                <div className="h-[88vh] max-h-[88vh] oi-panel rounded-t-2xl shadow-2xl overflow-hidden p-2 pb-[env(safe-area-inset-bottom)]">
                   <RightPanel
                     view={rightPanelView}
                     onChangeView={setRightPanelView}
@@ -2040,7 +2040,7 @@ function IntelCell({ label, value, hint, tone = "slate", tip }) {
         : "text-slate-800 dark:text-slate-100";
   return (
     <div
-      className="rounded-lg border border-slate-200/80 dark:border-slate-700 bg-white/90 dark:bg-slate-900/60 px-3 py-2.5 flex flex-col leading-tight shadow-sm"
+      className="oi-panel px-3 py-2.5 flex flex-col leading-tight"
       data-testid={`intel-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       <span className="uppercase tracking-widest text-[9px] text-slate-400 flex items-center gap-1 font-semibold">
