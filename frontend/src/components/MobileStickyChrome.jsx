@@ -153,7 +153,7 @@ export default function MobileStickyChrome({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                data-testid={`mobile-tab-${t.v}`}
+                data-testid={`tab-${t.v}`}
                 onClick={() => onChangeTab?.(t.v)}
                 className={`shrink-0 whitespace-nowrap border-b-2 px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
                   active
