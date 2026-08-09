@@ -178,7 +178,7 @@ export async function logoutGuest() {
   clearGuestAuth();
 }
 
-export function persistGuestAuth({ token, name, expiresInSeconds }) {
+export function persistGuestAuth({ token, name, expiresInSeconds, expiresAt }) {
   if (!token) return;
   try { sessionStorage.setItem("oi_guest_token", token); } catch (_) {}
   try { localStorage.setItem("oi_guest_token", token); } catch (_) {}
@@ -186,8 +186,15 @@ export function persistGuestAuth({ token, name, expiresInSeconds }) {
     try { sessionStorage.setItem("oi_guest_name", name); } catch (_) {}
     try { localStorage.setItem("oi_guest_name", name); } catch (_) {}
   }
-  if (expiresInSeconds != null) {
-    const expiresMs = Date.now() + (Number(expiresInSeconds) * 1000);
+  let expiresMs = null;
+  if (expiresAt) {
+    const parsed = Date.parse(expiresAt);
+    if (!Number.isNaN(parsed)) expiresMs = parsed;
+  }
+  if (expiresMs == null && expiresInSeconds != null) {
+    expiresMs = Date.now() + (Number(expiresInSeconds) * 1000);
+  }
+  if (expiresMs != null) {
     try { sessionStorage.setItem("oi_guest_expires_at", String(expiresMs)); } catch (_) {}
     try { localStorage.setItem("oi_guest_expires_at", String(expiresMs)); } catch (_) {}
   }

@@ -62,9 +62,9 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     );
   }
 
-  // Header: always keep one horizontal row (no wrap / no vertical stack on zoom).
+  // Header: fit tiles in one row — never show a horizontal scrollbar.
   const stripClass = isHeader
-    ? "flex flex-nowrap items-stretch gap-1.5 min-w-0 overflow-x-auto"
+    ? "flex flex-nowrap items-stretch gap-1 min-w-0 w-full overflow-hidden"
     : dense
       ? "grid grid-cols-3 gap-1.5"
       : "grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-stretch";
@@ -95,13 +95,13 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             data-testid={`ticker-${t.index}`}
             className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} ${
               isHeader
-                ? "px-2 py-1.5 shrink-0 min-w-[108px] max-w-[140px]"
+                ? "px-1.5 py-1.5 flex-1 min-w-0 basis-0"
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
             } hover:brightness-95 transition-all ${
               isActive
-                ? `${s.borderActive} border-2 shadow-sm`
+                ? `${s.borderActive} border shadow-sm ring-1 ring-current/10`
                 : "border-slate-200 dark:border-slate-700"
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}

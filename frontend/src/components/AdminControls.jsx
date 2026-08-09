@@ -127,13 +127,9 @@ export default function AdminControls({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
 
-  const isAdmin = !!(state?.is_admin || assumedAdmin);
+  const isAdmin = state ? !!state.is_admin : !!assumedAdmin;
   if (!isAdmin) {
-    if (assumedAdmin) {
-      // Shouldn't happen — seed above — but never blank the Tools panel.
-    } else {
-      return null;
-    }
+    return null;
   }
 
   const publicOn = !!(state?.public_access_open);
