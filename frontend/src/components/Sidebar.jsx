@@ -330,8 +330,28 @@ export default function Sidebar({
         >
           {orderedExpiries.map((exp, i) => {
             const active = selectedExpiry ? selectedExpiry === exp.date : i === 0;
+            const dte = exp.days_to_expiry;
+            let weekday = null;
+            try {
+              if (exp.date) {
+                const [y, m, d] = String(exp.date).split("-").map(Number);
+                if (y && m && d) {
+                  weekday = new Date(Date.UTC(y, m - 1, d, 6, 30)).toLocaleDateString("en-GB", {
+                    weekday: "short",
+                    timeZone: "UTC",
+                  });
+                }
+              }
+            } catch (_) {
+              weekday = null;
+            }
             const daysLabel =
-              exp.days_to_expiry != null ? `${exp.days_to_expiry} days` : null;
+              dte == null
+                ? null
+                : dte === 0
+                  ? "0d"
+                  : `${dte}d`;
+            const metaLabel = [weekday, daysLabel].filter(Boolean).join(" · ");
             return (
               <button
                 key={exp.date + i}
@@ -342,13 +362,18 @@ export default function Sidebar({
                     ? "bg-gradient-to-r from-indigo-600 to-sky-600 text-white shadow-sm"
                     : "text-slate-700 hover:bg-slate-50"
                 }`}
+                title={
+                  metaLabel
+                    ? `${exp.label || exp.date} · ${metaLabel}${exp.tag === "M" ? " · monthly" : " · weekly"}`
+                    : exp.label || exp.date
+                }
               >
                 <span className={`w-3 h-3 rounded-sm border ${active ? "bg-white border-white" : "border-slate-400"}`} />
-                <span className="text-sm font-mono-data flex-1">
-                  {exp.label || exp.date}
-                  {daysLabel && (
-                    <span className={`ml-1 text-[11px] ${active ? "text-white/80" : "text-slate-500"}`}>
-                      ({daysLabel})
+                <span className="text-sm font-mono-data flex-1 min-w-0">
+                  <span className="truncate">{exp.label || exp.date}</span>
+                  {metaLabel && (
+                    <span className={`ml-1.5 text-[11px] ${active ? "text-white/85" : "text-slate-500"}`}>
+                      {metaLabel}
                     </span>
                   )}
                 </span>

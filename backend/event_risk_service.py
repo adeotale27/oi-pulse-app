@@ -562,21 +562,43 @@ async def save_events(db, rows: List[Dict[str, Any]], source_filename: str = "")
 
 
 async def fetch_upload_meta(db) -> Dict[str, Any]:
-    """Return last-upload stamps for all four Upload categories."""
+    """Return last-upload stamps for all four Upload categories.
+
+    Includes age_days + stale flags so Admin UI can advise refreshes:
+      • NSE events → stale after 15 days
+      • Constituents → stale after 30 days
+    """
     keys = {
-        "nifty50": "constituents_meta_NIFTY",
-        "banknifty": "constituents_meta_BANKNIFTY",
-        "sensex": "constituents_meta_SENSEX",
-        "events": "nse_events_meta",
+        "nifty50": ("constituents_meta_NIFTY", 30),
+        "banknifty": ("constituents_meta_BANKNIFTY", 30),
+        "sensex": ("constituents_meta_SENSEX", 30),
+        "events": ("nse_events_meta", 15),
     }
+    now = datetime.now(timezone.utc)
     out: Dict[str, Any] = {}
-    for key, doc_id in keys.items():
+    for key, (doc_id, stale_after) in keys.items():
         meta = await db.settings.find_one({"_id": doc_id}) or {}
+        uploaded_at = meta.get("uploaded_at")
+        age_days = None
+        never = not uploaded_at
+        if uploaded_at:
+            try:
+                ts = datetime.fromisoformat(str(uploaded_at).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age_days = max(0, int((now - ts).total_seconds() // 86400))
+            except Exception:
+                age_days = None
+                never = True
+        stale = never or (age_days is not None and age_days >= stale_after)
         out[key] = {
-            "uploaded_at": meta.get("uploaded_at"),
+            "uploaded_at": uploaded_at,
             "source_filename": meta.get("source_filename") or None,
             "row_count": meta.get("row_count"),
             "index": meta.get("index"),
+            "age_days": age_days,
+            "stale_after_days": stale_after,
+            "stale": stale,
         }
     return out
 

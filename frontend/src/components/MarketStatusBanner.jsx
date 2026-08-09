@@ -1,15 +1,17 @@
 import { Clock, CalendarOff, Moon, Sunrise } from "lucide-react";
+import { formatIstClock } from "@/lib/dataTruth";
 
 /**
  * MarketStatusBanner — single-line, compact.
  * Renders only when `market.is_market_open === false`.
  */
-export default function MarketStatusBanner({ market, lastPulledAt }) {
+export default function MarketStatusBanner({ market, lastPulledAt, dataDate = null }) {
   if (!market || market.is_market_open) return null;
 
   const phase = market.phase || "post_close";
   const openHm = market.display_open_ist || "09:15";
   const closeHm = market.display_close_ist || "15:40";
+  const sessionDate = dataDate || market.session_anchor_date || null;
   const cfg = {
     pre_open: {
       icon: Sunrise,
@@ -53,6 +55,7 @@ export default function MarketStatusBanner({ market, lastPulledAt }) {
     slate: "text-slate-500 dark:text-slate-400",
   }[cfg.tone];
   const Icon = cfg.icon;
+  const snapClock = lastPulledAt ? formatIstClock(lastPulledAt, false) : null;
 
   return (
     <div
@@ -61,16 +64,28 @@ export default function MarketStatusBanner({ market, lastPulledAt }) {
       role="status"
       aria-live="polite"
     >
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
         <Icon className={`w-3.5 h-3.5 shrink-0 ${iconCls}`} strokeWidth={2} />
         <span className="font-semibold">{cfg.title}</span>
         <span className="opacity-70">·</span>
         <span className="opacity-90">{cfg.short}</span>
-        {lastPulledAt && (
+        {sessionDate && (
+          <>
+            <span className="opacity-70">·</span>
+            <span
+              className="font-mono-data opacity-90"
+              data-testid="market-banner-session-date"
+              title="Board is showing this NSE session date (not live ticks)"
+            >
+              Session {sessionDate}
+            </span>
+          </>
+        )}
+        {snapClock && (
           <>
             <span className="opacity-70 hidden sm:inline">·</span>
             <span className="opacity-75 font-mono-data hidden sm:inline">
-              Last snapshot {new Date(lastPulledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              Last snapshot {snapClock} IST
             </span>
           </>
         )}

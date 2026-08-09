@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { Calendar, AlertTriangle, TrendingUp, Users, Building2, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  UPLOAD_FRESHNESS,
+  uploadAgeDays,
+  isUploadStale,
+  formatUploadAge,
+} from "@/lib/uploadFreshness";
 
 /**
  * EventRiskWidget — shows upcoming index event risk for the current strategy
@@ -107,7 +113,7 @@ function daysLeftText(n) {
   return `${n}d left`;
 }
 
-export default function EventRiskWidget({ activeIndex, refreshKey = 0 }) {
+export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin = false }) {
   const [events, setEvents] = useState([]);
   const [uploadMeta, setUploadMeta] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -200,24 +206,55 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0 }) {
       >
         <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5">
           Last successful upload
+          {isAdmin && (
+            <span className="normal-case tracking-normal ml-1.5 text-slate-400">
+              · events warn at {UPLOAD_FRESHNESS.events.staleAfterDays}d · constituents at {UPLOAD_FRESHNESS.nifty50.staleAfterDays}d
+            </span>
+          )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
           {UPLOAD_STAMP_LABELS.map(({ key, label: stampLabel }) => {
             const meta = uploadMeta?.[key] || {};
             const when = formatUploadStamp(meta.uploaded_at);
             const file = meta.source_filename;
+            const age = uploadAgeDays(meta.uploaded_at);
+            const stale = isUploadStale(key, meta.uploaded_at);
+            const threshold = UPLOAD_FRESHNESS[key]?.staleAfterDays;
             return (
               <div
                 key={key}
-                className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug min-w-0"
+                className={`text-[11px] leading-snug min-w-0 rounded px-1.5 py-1 ${
+                  stale
+                    ? "bg-amber-100/90 text-amber-950 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-100 dark:border-amber-800"
+                    : "text-slate-600 dark:text-slate-300"
+                }`}
                 data-testid={`upload-stamp-${key}`}
-                title={file ? `${stampLabel}: ${file}` : stampLabel}
+                data-stale={stale ? "1" : "0"}
+                title={
+                  stale
+                    ? `${stampLabel}: ${formatUploadAge(age, !meta.uploaded_at)} — refresh recommended (every ${threshold}d)`
+                    : file
+                      ? `${stampLabel}: ${file}`
+                      : stampLabel
+                }
               >
-                <span className="font-semibold text-slate-800 dark:text-slate-100">{stampLabel}</span>
-                <span className="text-slate-400"> · </span>
+                <span className={`font-semibold ${stale ? "" : "text-slate-800 dark:text-slate-100"}`}>
+                  {stampLabel}
+                </span>
+                {stale && (
+                  <span className="ml-1 text-[9px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300">
+                    stale
+                  </span>
+                )}
+                <span className={stale ? "opacity-70" : "text-slate-400"}> · </span>
                 <span className="font-mono-data">{when}</span>
+                {age != null && (
+                  <span className={stale ? "opacity-80" : "text-slate-400"}>
+                    {" "}· {formatUploadAge(age, false)}
+                  </span>
+                )}
                 {file ? (
-                  <span className="text-slate-400 truncate"> · {file}</span>
+                  <span className={`truncate ${stale ? "opacity-70" : "text-slate-400"}`}> · {file}</span>
                 ) : null}
               </div>
             );

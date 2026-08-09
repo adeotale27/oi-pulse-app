@@ -143,12 +143,24 @@ export default function FiiDiiBadge({ isAdmin = false }) {
           if (e.key === "Enter") setOpen((v) => !v);
         }}
         data-testid="fiidii-badge"
-        className={`${tileBase} ${toneCls}`}
-        title="Capital Market FII / DII (₹ crores)"
+        className={`${tileBase} ${toneCls} ${snap?.stale ? "ring-1 ring-amber-400/70" : ""}`}
+        title={
+          snap?.stale
+            ? "Capital Market FII / DII — prior session print (awaiting today's NSE update)"
+            : "Capital Market FII / DII (₹ crores)"
+        }
       >
         <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
           <Building2 className="w-3 h-3" />
           FII · DII
+          {snap?.stale && (
+            <span
+              data-testid="fiidii-stale-chip"
+              className="ml-0.5 rounded px-1 py-0 text-[8px] font-bold tracking-wider bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100"
+            >
+              STALE
+            </span>
+          )}
           <span className="ml-auto inline-flex items-center opacity-70">
             <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
           </span>

@@ -4,7 +4,13 @@ import { Button } from "@/components/ui/button";
 
 function formatTime(iso) {
   try {
-    return new Date(iso).toLocaleTimeString();
+    return new Date(iso).toLocaleTimeString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }) + " IST";
   } catch {
     return iso;
   }

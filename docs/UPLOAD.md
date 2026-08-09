@@ -122,6 +122,15 @@ Typical source: NSE Corporate Filings → Event Calendar export.
 
 ---
 
+### Freshness advisories (admin only)
+
+| Category | Stale after | Why |
+|----------|-------------|-----|
+| NSE events | **15 days** | 1-month calendar drifts; refresh mid-cycle so Index Risk does not miss results |
+| Nifty 50 / Bank Nifty / Sensex constituents | **30 days** | Reconstitution / weightage drift |
+
+`GET /api/upload/meta` returns `age_days`, `stale_after_days`, and `stale` per key. The admin banner + toast nudge never shows to guests. Index Risk stamps highlight amber when stale.
+
 ## Admin UI tips
 
 1. Use **Admin → Upload** in the desktop header (or Tools on tablet/phone).
