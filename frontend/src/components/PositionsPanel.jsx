@@ -3,36 +3,62 @@ import { RefreshCw, PlugZap, AlertTriangle, Building2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { yearsToExpiry, greeks, impliedVol } from "@/lib/blackScholes";
+import {
+  yearsToExpiry,
+  greeks,
+  impliedVol,
+  shortPremiumLeft,
+  extrinsicPremium,
+} from "@/lib/blackScholes";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
+import InfoTip from "@/components/InfoTip";
 
 function fmt(v, dp = 2) {
   if (v == null || Number.isNaN(v)) return "—";
   return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
-// Given a Kite expiry code from tradingsymbol, resolve an approximate expiry
-// date string (YYYY-MM-DD). Handles monthly ("25JUL") and weekly ("25726") codes.
 function resolveExpiryFromCode(yy, mm, activeExpiries = []) {
-  // If mm is 3-letter month like 'JUL', this is a monthly expiry.
   const MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
   const yyyy = 2000 + parseInt(yy, 10);
   if (mm.length === 3 && MON[mm]) {
-    // Monthly → last Thursday of the month
     const m = MON[mm];
-    // Find last Thursday of month.
-    const last = new Date(Date.UTC(yyyy, m, 0)); // last day of month
-    const lastDay = last.getUTCDay(); // 0=Sun..4=Thu
+    const last = new Date(Date.UTC(yyyy, m, 0));
+    const lastDay = last.getUTCDay();
     const offset = (lastDay - 4 + 7) % 7;
     const lastThu = new Date(Date.UTC(yyyy, m - 1, last.getUTCDate() - offset));
     return lastThu.toISOString().slice(0, 10);
   }
-  // Weekly numeric: mm = single digit month like '7', dd next 2 chars... but we
-  // don't parse day robustly. Fallback: pick the nearest activeExpiry.
   if (activeExpiries.length) return activeExpiries[0];
   return null;
 }
+
+const POSITIONS_GUIDE = (
+  <div className="space-y-2">
+    <p>
+      Built for <b>non-directional option sellers</b>. Shorts (qty &lt; 0) earn premium; the desk
+      flags when spot walks too close to a short strike.
+    </p>
+    <p>
+      <b>Adjust @ X% band-covered</b> — we treat a typical defence band as <b>3%</b> of spot from
+      your short strike. As spot moves toward the strike, “band-covered” rises from 0% → 100%.
+      When covered ≥ your Adjust % (default 60%), the row flips to <b>Adjust</b>.
+    </p>
+    <p>
+      <b>Safe</b> — short option that is still outside the Adjust threshold (spot has not eaten
+      enough of the 3% band). Not a guarantee of profit — only a proximity check.
+    </p>
+    <p>
+      <b>Net Δ</b> — portfolio delta (signed qty). Non-directional sellers usually keep this near 0
+      (hedged). <b>Net Θ / day</b> — estimated ₹ theta you earn/pay per calendar day.
+    </p>
+    <p>
+      <b>Premium left (EOD)</b> — for shorts, remaining <i>extrinsic</i> premium × |qty|. On expiry
+      day this is roughly what can still decay in your favour by 15:30 if the option dies toward
+      intrinsic. Not a promise — IV crush / spot moves change it.
+    </p>
+  </div>
+);
 
 export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, activeIndex, expiry, onAdjustmentAlert }) {
   const [positions, setPositions] = useState([]);
@@ -60,48 +86,63 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
     if (!isKiteMode) return;
     const closed = isMarketQuiescent();
     load();
-    if (closed) return; // skip polling during weekend/holiday to avoid useless calls
+    if (closed) return;
     const id = setInterval(load, 30000);
     return () => clearInterval(id);
   }, [isKiteMode, load]);
 
   const spot = current?.price;
 
-  // Enrich each position with derived data
   const rows = useMemo(() => {
     if (!positions.length || !current) return [];
     const S = current.price;
     const activeExp = expiry || current?.expiry;
+    const nowMs = Date.now();
     return positions.map((p) => {
       const isOpt = !!p.strike && !!p.side;
       let dte = null, T = 0, delta = null, theta = null, iv = null;
       let distancePct = null;
+      let extrinsicLeft = null;
+      let thetaToClose = null;
+      let onExpiryDay = false;
       if (isOpt) {
         const expIso = resolveExpiryFromCode(p.expiry_yy, p.expiry_code, activeExp ? [activeExp] : []);
         if (expIso) {
-          T = yearsToExpiry(expIso);
+          T = yearsToExpiry(expIso, nowMs);
           dte = T * 365;
+          onExpiryDay = dte < 1.05;
           const isCall = p.side === "CE";
-          const ivGuess = impliedVol(p.last_price || p.average_price, S, p.strike, T, 0.065, isCall);
+          const px = p.last_price || p.average_price;
+          const ivGuess = impliedVol(px, S, p.strike, T, 0.065, isCall);
           if (ivGuess) {
             iv = ivGuess * 100;
             const g = greeks(S, p.strike, T, 0.065, ivGuess, isCall);
             delta = g.delta;
             theta = g.theta;
           }
+          if (p.quantity < 0) {
+            const left = shortPremiumLeft({
+              marketPrice: px,
+              S,
+              K: p.strike,
+              isCall,
+              quantity: p.quantity,
+              thetaPerUnit: theta,
+              nowMs,
+            });
+            extrinsicLeft = left.extrinsicLeft;
+            thetaToClose = left.thetaToClose;
+          } else if (px != null) {
+            const ext = extrinsicPremium(px, S, p.strike, p.side === "CE");
+            extrinsicLeft = ext != null ? ext * Math.abs(p.quantity) : null;
+          }
         }
         distancePct = ((p.strike - S) / S) * 100;
       }
-      // Adjustment breach detection: for SHORT positions (sold options),
-      // check if spot has approached the short strike by more than threshold%.
-      // For a naked short call at K, spot > K * (1 - (1-threshold)*someBand) triggers.
-      // Simpler: if position is short (qty < 0) and (side matches direction),
-      // then "distance closed" = |atm - K| shrinking.
       const isShort = p.quantity < 0;
       let breachedAdjust = false;
       let breachInfo = null;
       if (isOpt && isShort) {
-        // Distance from spot to short strike as % of a nominal 3% band (typical width).
         const bandPct = 3;
         const distPct = Math.abs((p.strike - S) / S) * 100;
         const covered = 1 - (distPct / bandPct);
@@ -113,11 +154,24 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
           };
         }
       }
-      return { ...p, isOpt, dte, delta, theta, iv, distancePct, isShort, breachedAdjust, breachInfo };
+      return {
+        ...p,
+        isOpt,
+        dte,
+        delta,
+        theta,
+        iv,
+        distancePct,
+        isShort,
+        breachedAdjust,
+        breachInfo,
+        extrinsicLeft,
+        thetaToClose,
+        onExpiryDay,
+      };
     });
   }, [positions, current, expiry, adjustThreshPct]);
 
-  // Emit adjustment alerts (dedupe by tradingsymbol) upstream
   useEffect(() => {
     if (!onAdjustmentAlert) return;
     rows.filter((r) => r.breachedAdjust).forEach((r) => {
@@ -132,19 +186,42 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
     });
   }, [rows, onAdjustmentAlert, spot]);
 
-  // Aggregate stats
   const stats = useMemo(() => {
     let netDelta = 0, netTheta = 0, netPnl = 0, minMinutes = null;
+    let premiumLeft = 0, premiumLeftN = 0;
+    let thetaToClose = 0, thetaToCloseN = 0;
+    let shortCount = 0, adjustCount = 0;
     for (const r of rows) {
       if (r.delta != null) netDelta += r.delta * r.quantity;
       if (r.theta != null) netTheta += r.theta * r.quantity;
       netPnl += r.pnl || 0;
+      if (r.isShort && r.isOpt) {
+        shortCount += 1;
+        if (r.breachedAdjust) adjustCount += 1;
+      }
+      if (r.extrinsicLeft != null && r.isShort) {
+        premiumLeft += r.extrinsicLeft;
+        premiumLeftN += 1;
+      }
+      if (r.thetaToClose != null && r.isShort) {
+        thetaToClose += r.thetaToClose;
+        thetaToCloseN += 1;
+      }
       if (r.dte != null) {
         const mins = r.dte * 24 * 60;
         if (minMinutes == null || mins < minMinutes) minMinutes = mins;
       }
     }
-    return { netDelta, netTheta, netPnl, minMinutes };
+    return {
+      netDelta,
+      netTheta,
+      netPnl,
+      minMinutes,
+      premiumLeft: premiumLeftN ? premiumLeft : null,
+      thetaToClose: thetaToCloseN ? thetaToClose : null,
+      shortCount,
+      adjustCount,
+    };
   }, [rows]);
 
   if (!isKiteMode) {
@@ -161,13 +238,16 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
 
   return (
     <div className="space-y-3" data-testid="positions-panel">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-slate-700" />
           <div className="text-sm font-semibold">Kite Open Positions</div>
           <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm">{positions.length}</span>
+          <InfoTip title="Positions · seller guide" testId="positions-guide-tip">
+            {POSITIONS_GUIDE}
+          </InfoTip>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 text-[10px] text-slate-500">
             <label>Adjust @</label>
             <input
@@ -179,6 +259,14 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
               data-testid="adjust-threshold"
             />
             <span>% band-covered</span>
+            <InfoTip title="Adjust threshold" testId="adjust-threshold-tip">
+              <p>
+                Spot vs short strike is measured inside a fixed <b>3% of spot</b> defence band.
+                When that band is ≥ this % covered (default 60%), Signal becomes <b>Adjust</b>
+                and the row highlights rose. Raise the % to stay “Safe” longer; lower it to get
+                earlier warnings.
+              </p>
+            </InfoTip>
           </div>
           <Button size="sm" variant="outline" className="h-7 rounded-sm" onClick={load} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
@@ -193,10 +281,33 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
         <StatBox label="Net P&L" value={"₹ " + fmt(stats.netPnl)} tone={stats.netPnl >= 0 ? "emerald" : "rose"} />
-        <StatBox label="Net Δ" value={fmt(stats.netDelta, 1)} tone={Math.abs(stats.netDelta) < 10 ? "emerald" : Math.abs(stats.netDelta) < 30 ? "amber" : "rose"} hint={Math.abs(stats.netDelta) < 10 ? "Neutral" : "Directional"} />
-        <StatBox label="Net Θ / day" value={"₹ " + fmt(stats.netTheta * 1, 0)} tone={stats.netTheta >= 0 ? "emerald" : "rose"} hint={stats.netTheta >= 0 ? "Earning premium" : "Paying premium"} />
+        <StatBox
+          label="Net Δ"
+          value={fmt(stats.netDelta, 1)}
+          tone={Math.abs(stats.netDelta) < 10 ? "emerald" : Math.abs(stats.netDelta) < 30 ? "amber" : "rose"}
+          hint={Math.abs(stats.netDelta) < 10 ? "Neutral · good for sellers" : "Directional · hedge?"}
+        />
+        <StatBox
+          label="Net Θ / day"
+          value={"₹ " + fmt(stats.netTheta, 0)}
+          tone={stats.netTheta >= 0 ? "emerald" : "rose"}
+          hint={stats.netTheta >= 0 ? "Earning premium" : "Paying premium"}
+        />
+        <StatBox
+          label="Premium left"
+          value={stats.premiumLeft != null ? "₹ " + fmt(stats.premiumLeft, 0) : "—"}
+          tone="slate"
+          hint="Short extrinsic → EOD / expiry"
+          tip={(
+            <p>
+              Sum of remaining <b>extrinsic</b> premium on short options × |qty|. On expiry day,
+              this is the bulk of what can still decay into your pocket by 15:30 if spots stay away
+              and IV does not spike. Live estimate — not a fill guarantee.
+            </p>
+          )}
+        />
         <OvernightRiskScore
           vix={vix}
           netDelta={stats.netDelta}
@@ -204,6 +315,24 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
           minutesToExpiry={stats.minMinutes}
         />
       </div>
+
+      {stats.shortCount > 0 && (
+        <div className="text-[11px] text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 flex flex-wrap gap-x-4 gap-y-1" data-testid="positions-seller-strip">
+          <span>
+            Shorts <b>{stats.shortCount}</b>
+            {stats.adjustCount > 0 ? (
+              <span className="text-rose-700"> · {stats.adjustCount} need Adjust</span>
+            ) : (
+              <span className="text-emerald-700"> · all Safe vs band</span>
+            )}
+          </span>
+          {stats.thetaToClose != null && (
+            <span title="Theta × minutes left to 15:30 IST">
+              Θ to close today ≈ <b className="font-mono-data">₹ {fmt(stats.thetaToClose, 0)}</b>
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="overflow-auto">
         <table className="w-full text-xs font-mono-data">
@@ -216,14 +345,30 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
               <th className="text-right px-2 py-2">P&amp;L</th>
               <th className="text-right px-2 py-2">Δ</th>
               <th className="text-right px-2 py-2">Θ</th>
+              <th className="text-right px-2 py-2">
+                <span className="inline-flex items-center gap-1">
+                  Prem left
+                  <InfoTip title="Premium left" size="xs" testId="prem-left-col-tip">
+                    Extrinsic × |qty| for shorts — what can still decay by expiry / EOD.
+                  </InfoTip>
+                </span>
+              </th>
               <th className="text-right px-2 py-2">IV</th>
               <th className="text-right px-2 py-2">DTE</th>
-              <th className="text-left px-2 py-2">Signal</th>
+              <th className="text-left px-2 py-2">
+                <span className="inline-flex items-center gap-1">
+                  Signal
+                  <InfoTip title="Safe vs Adjust" size="xs" testId="signal-col-tip">
+                    <b>Safe</b> = short option still outside your Adjust % of the 3% spot band.
+                    <b> Adjust</b> = spot has walked close enough that you should hedge / roll / cut.
+                  </InfoTip>
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={10} className="text-center py-6 text-slate-400 text-xs">No open F&amp;O positions.</td></tr>
+              <tr><td colSpan={11} className="text-center py-6 text-slate-400 text-xs">No open F&amp;O positions.</td></tr>
             ) : rows.map((r) => (
               <tr key={r.tradingsymbol} data-testid="position-row" className={`border-b border-slate-100 ${r.breachedAdjust ? "bg-rose-50" : ""}`}>
                 <td className="px-2 py-1.5">
@@ -236,6 +381,13 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
                 <td className={`text-right px-2 py-1.5 font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</td>
                 <td className="text-right px-2 py-1.5">{r.delta != null ? r.delta.toFixed(2) : "—"}</td>
                 <td className="text-right px-2 py-1.5">{r.theta != null ? r.theta.toFixed(2) : "—"}</td>
+                <td className="text-right px-2 py-1.5 text-slate-700">
+                  {r.isShort && r.extrinsicLeft != null ? (
+                    <span title={r.onExpiryDay ? "Expiry day — extrinsic left to 15:30" : "Extrinsic left"}>
+                      ₹{fmt(r.extrinsicLeft, 0)}
+                    </span>
+                  ) : "—"}
+                </td>
                 <td className="text-right px-2 py-1.5">{r.iv != null ? r.iv.toFixed(1) + "%" : "—"}</td>
                 <td className="text-right px-2 py-1.5">{r.dte != null ? r.dte.toFixed(1) + "d" : "—"}</td>
                 <td className="px-2 py-1.5">
@@ -259,7 +411,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
   );
 }
 
-function StatBox({ label, value, tone = "slate", hint }) {
+function StatBox({ label, value, tone = "slate", hint, tip }) {
   const cls = tone === "emerald"
     ? "border-emerald-200 bg-emerald-50 text-emerald-800"
     : tone === "rose"
@@ -269,7 +421,12 @@ function StatBox({ label, value, tone = "slate", hint }) {
         : "border-slate-200 bg-white text-slate-700";
   return (
     <div className={`rounded-md border px-3 py-2 ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
-      <div className="text-[10px] uppercase tracking-widest opacity-70">{label}</div>
+      <div className="text-[10px] uppercase tracking-widest opacity-70 inline-flex items-center gap-1">
+        {label}
+        {tip && (
+          <InfoTip title={label} size="xs">{tip}</InfoTip>
+        )}
+      </div>
       <div className="text-lg font-semibold font-mono-data leading-tight">{value}</div>
       {hint && <div className="text-[10px] opacity-70 mt-0.5">{hint}</div>}
     </div>

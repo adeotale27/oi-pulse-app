@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { X, Moon, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
+import { X, Moon, AlertTriangle, TrendingUp, TrendingDown, Minimize2, Maximize2 } from "lucide-react";
 import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
 import {
   briefTriggerKey,
@@ -7,8 +7,10 @@ import {
   carryVerdict,
   carryWindowItems,
   dayLabel,
-  dismissStorageKey,
   holidayCarryAdvice,
+  nextSessionOpenMs,
+  readBriefMinimize,
+  writeBriefMinimize,
   sessionBiasFromSnapshots,
   shouldAutoShowBrief,
 } from "@/lib/overnightBrief";
@@ -51,11 +53,13 @@ function fmtDelta(v) {
 /**
  * Sticky “Should I carry?” overnight gap brief.
  * Auto-opens at 15:15 IST on weekdays and Sunday 20:00 IST.
- * One card: whole-day bias per index + events/holidays + GIFT overnight move.
+ * Minimize collapses to a chip until next market open (09:15 trading day);
+ * you can reopen and read until then.
  */
 export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKNIFTY"] }) {
   const [now, setNow] = useState(() => new Date());
-  const [visible, setVisible] = useState(false);
+  const [active, setActive] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const [triggerKey, setTriggerKey] = useState(null);
   const [biases, setBiases] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -81,23 +85,29 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   );
   const holidayNote = useMemo(() => holidayCarryAdvice(ist.weekday), [ist.weekday]);
 
-  // Auto-show when trigger fires and not dismissed for this key.
+  // Auto-show when trigger fires; respect minimize-until-next-open.
   useEffect(() => {
     const key = briefTriggerKey(ist.dateISO, ist.weekday, ist.minutesOfDay);
     if (!key || !shouldAutoShowBrief(ist.weekday, ist.minutesOfDay)) {
+      // Past the carry window / next session started → hide completely.
+      setActive(false);
+      setMinimized(false);
+      setTriggerKey(null);
       return;
     }
-    let dismissed = false;
-    try {
-      dismissed = sessionStorage.getItem(dismissStorageKey(key)) === "1";
-    } catch (_) { /* ignore */ }
-    if (dismissed) return;
     setTriggerKey(key);
-    setVisible(true);
+    const min = readBriefMinimize(key);
+    if (min) {
+      setMinimized(true);
+      setActive(true);
+      return;
+    }
+    setMinimized(false);
+    setActive(true);
   }, [ist.dateISO, ist.weekday, ist.minutesOfDay]);
 
   const loadBiases = useCallback(async () => {
-    if (!visible || !indices?.length) return;
+    if (!active || minimized || !indices?.length) return;
     setLoading(true);
     try {
       const rows = await Promise.all(
@@ -121,10 +131,10 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     } finally {
       setLoading(false);
     }
-  }, [visible, indices]);
+  }, [active, minimized, indices]);
 
   const loadIndexImpacts = useCallback(async () => {
-    if (!visible || !indices?.length) return;
+    if (!active || minimized || !indices?.length) return;
     const packs = await Promise.all(
       indices.map(async (idx) => {
         try {
@@ -136,7 +146,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       }),
     );
     setIndexImpacts(packs);
-  }, [visible, indices]);
+  }, [active, minimized, indices]);
 
   useEffect(() => {
     loadBiases();
@@ -158,16 +168,23 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     [biases, events, giftPct, ist.weekday],
   );
 
-  const dismiss = () => {
-    if (triggerKey) {
-      try {
-        sessionStorage.setItem(dismissStorageKey(triggerKey), "1");
-      } catch (_) { /* ignore */ }
-    }
-    setVisible(false);
+  const minimize = () => {
+    if (!triggerKey) return;
+    const until = nextSessionOpenMs(new Date());
+    writeBriefMinimize(triggerKey, until);
+    setMinimized(true);
   };
 
-  if (!visible) return null;
+  const expand = () => {
+    // Keep minimize record so next refresh still knows window; just expand UI.
+    setMinimized(false);
+  };
+
+  const dismissUntilOpen = () => {
+    minimize();
+  };
+
+  if (!active) return null;
 
   const bandCls =
     verdict.band === "DO_NOT_CARRY"
@@ -188,6 +205,23 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       ? "Overnight gap brief · Sunday night"
       : "Overnight gap brief · Should I carry?";
 
+  if (minimized) {
+    return (
+      <button
+        type="button"
+        data-testid="overnight-gap-brief-chip"
+        onClick={expand}
+        className={`fixed z-50 bottom-3 right-3 flex items-center gap-2 rounded-full border-2 px-3 py-2 shadow-lg text-xs font-semibold ${bandCls}`}
+        title="Open overnight gap brief"
+      >
+        <Moon className="w-3.5 h-3.5" />
+        <span>Carry brief</span>
+        <span className="opacity-70 font-mono-data">{verdict.score}/100</span>
+        <Maximize2 className="w-3.5 h-3.5 opacity-70" />
+      </button>
+    );
+  }
+
   return (
     <div
       data-testid="overnight-gap-brief"
@@ -203,9 +237,19 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         </div>
         <button
           type="button"
-          onClick={dismiss}
+          onClick={minimize}
           className="opacity-60 hover:opacity-100 p-0.5"
-          aria-label="Dismiss overnight brief"
+          aria-label="Minimize overnight brief until next session"
+          title="Minimize until next market open"
+          data-testid="overnight-gap-brief-minimize"
+        >
+          <Minimize2 className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={dismissUntilOpen}
+          className="opacity-60 hover:opacity-100 p-0.5"
+          aria-label="Minimize overnight brief"
           data-testid="overnight-gap-brief-dismiss"
         >
           <X className="w-4 h-4" />
@@ -223,6 +267,9 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         <p className="leading-snug opacity-90" data-testid="overnight-gap-advice">
           {verdict.advice}
         </p>
+        <p className="text-[10px] opacity-60">
+          Minimize keeps a chip until next session open (09:15 trading day). Tap the chip anytime to re-read.
+        </p>
         {holidayNote && (
           <div
             className="rounded border border-amber-400/60 bg-amber-100/70 dark:bg-amber-950/40 px-2 py-1.5 text-[11px] leading-snug"
@@ -232,7 +279,6 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           </div>
         )}
 
-        {/* Per-index whole-day bias */}
         <div>
           <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1">
             Whole-day bias · 9:15 → close
@@ -275,7 +321,6 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           )}
         </div>
 
-        {/* GIFT overnight */}
         <div
           className="flex items-center gap-2 rounded bg-white/60 dark:bg-black/25 px-2 py-1.5"
           data-testid="overnight-gap-gift"
@@ -298,7 +343,6 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           )}
         </div>
 
-        {/* Events / holidays / index impact */}
         <div>
           <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />

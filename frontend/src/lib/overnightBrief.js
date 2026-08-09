@@ -2,7 +2,7 @@
 // Shared by BigClock (15:15 toast) and OvernightGapBrief sticky card.
 
 import { eventsWithinDays } from "@/lib/econCalendar";
-import { upcomingHolidays, todayIST, isHoliday, daysBetweenIST } from "@/lib/holidays";
+import { upcomingHolidays, todayIST, isHoliday, daysBetweenIST, isTradingDayIST } from "@/lib/holidays";
 import { EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
 
 /** Sunday-night auto surface (IST). */
@@ -376,4 +376,83 @@ export function briefTriggerKey(istDateISO, weekday, minutesOfDay) {
 
 export function dismissStorageKey(triggerKey) {
   return `oi_overnight_brief_dismissed_${triggerKey}`;
+}
+
+/** localStorage key for “minimized until next session open”. */
+export function minimizeStorageKey(triggerKey) {
+  return `oi_overnight_brief_minimized_${triggerKey}`;
+}
+
+/**
+ * Next cash/F&O session open as epoch ms (09:15 Asia/Kolkata on the next
+ * trading day). Used so a minimized overnight brief can reopen until then,
+ * then auto-clear.
+ */
+export function nextSessionOpenMs(fromDate = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(fromDate);
+  const get = (t) => Number(parts.find((p) => p.type === t)?.value || 0);
+  let y = get("year");
+  let m = get("month");
+  let d = get("day");
+  const nowM = get("hour") * 60 + get("minute");
+  const openMinute = 9 * 60 + 15;
+
+  for (let i = 0; i < 12; i++) {
+    const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    // 09:15 IST = 03:45 UTC
+    const openUtc = Date.UTC(y, m - 1, d, 3, 45, 0);
+    if (isTradingDayIST(iso)) {
+      if (i > 0 || nowM < openMinute) {
+        return openUtc;
+      }
+    }
+    const next = new Date(Date.UTC(y, m - 1, d + 1));
+    y = next.getUTCFullYear();
+    m = next.getUTCMonth() + 1;
+    d = next.getUTCDate();
+  }
+  return Date.now() + 24 * 60 * 60 * 1000;
+}
+
+export function readBriefMinimize(triggerKey) {
+  if (!triggerKey) return null;
+  try {
+    const raw = localStorage.getItem(minimizeStorageKey(triggerKey));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const until = Number(parsed?.until);
+    if (!Number.isFinite(until)) return null;
+    if (Date.now() >= until) {
+      localStorage.removeItem(minimizeStorageKey(triggerKey));
+      return null;
+    }
+    return { until };
+  } catch {
+    return null;
+  }
+}
+
+export function writeBriefMinimize(triggerKey, untilMs) {
+  if (!triggerKey) return;
+  try {
+    localStorage.setItem(
+      minimizeStorageKey(triggerKey),
+      JSON.stringify({ until: untilMs }),
+    );
+  } catch (_) { /* ignore */ }
+}
+
+export function clearBriefMinimize(triggerKey) {
+  if (!triggerKey) return;
+  try {
+    localStorage.removeItem(minimizeStorageKey(triggerKey));
+  } catch (_) { /* ignore */ }
 }
