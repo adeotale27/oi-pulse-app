@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
 import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut } from "lucide-react";
@@ -360,8 +361,8 @@ export default function Header({
           />
         </div>
 
-        {/* Index tiles — never wrap/stack in the header */}
-        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden [scrollbar-width:none] [-ms-overflow-style:none]">
+        {/* Index tiles — content-sized; leftover space stays empty (no stretch on zoom) */}
+        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden justify-start">
           <TickerStrip
             layout="header"
             activeIndex={activeIndex}
@@ -723,6 +724,7 @@ function VixMetric({ value, sessionOpen, liveVix }) {
 
 function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, openNow, kiteSymbol }) {
   const [hover, setHover] = useState(false);
+  const [tipPos, setTipPos] = useState({ top: 0, left: 0 });
   const hasData = data && data.last != null && data.last > 0;
   const chgPct = hasData ? Number(data.change_pct || 0) : 0;
   const chg = hasData ? Number(data.change || 0) : 0;
@@ -881,12 +883,43 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
 
   const isActive = sess && sess.activeIndex >= 0;
 
+  const showTip = (el) => {
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = 272;
+    const left = Math.min(
+      Math.max(8, r.left + r.width / 2 - width / 2),
+      window.innerWidth - width - 8
+    );
+    setTipPos({ top: r.bottom + 8, left });
+    setHover(true);
+  };
+
   return (
-    <div className="flex flex-col relative" data-testid={`ticker-${label.toLowerCase().replace(/\s+/g, "-")}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <div
+      className="flex flex-col relative"
+      data-testid={`ticker-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      onMouseEnter={(e) => { if (isGift) showTip(e.currentTarget); }}
+      onMouseLeave={() => setHover(false)}
+    >
       <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
         <div className="flex items-center gap-1.5">
-          {/* persistent status dot */}
-          {isGift && <span title={giftTooltip} onClick={() => onOpenSessions && onOpenSessions()} role="button" tabIndex={0} className={`inline-block w-2 h-2 rounded-full cursor-pointer ${isActive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'} mr-1.5`} />}
+          {/* persistent status dot — click opens full sessions modal */}
+          {isGift && (
+            <span
+              title={giftTooltip || "GIFT NIFTY sessions"}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenSessions?.();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onOpenSessions?.();
+              }}
+              role="button"
+              tabIndex={0}
+              className={`inline-block w-2 h-2 rounded-full cursor-pointer ${isActive ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"} mr-1.5`}
+            />
+          )}
           {label}
         </div>
         <div className={`text-[10px] font-mono-data ${toneCls}`}>{hasData ? `${chgPct >= 0 ? "+" : ""}${chgPct.toFixed(2)}%` : "—"}</div>
@@ -899,23 +932,44 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
         </div>
       </div>
 
-      {/* Hover tooltip showing GIFT session status */}
-      {isGift && hover && (
-        <div className="absolute right-0 top-full mt-2 w-64 bg-white text-slate-900 dark:bg-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded shadow-lg p-2 text-xs z-50">
-          <div className="font-semibold mb-1">GIFT NIFTY Sessions</div>
-          <div className="mb-1">{giftTooltip}</div>
-          <div className="text-[11px] text-slate-500 mb-1">
-            Kite symbol: <span className="font-mono">{kiteSymbol || "NSEIX:GIFT NIFTY"}</span>
-            {source ? ` · via ${source}` : ""}
-            {isProxy ? " · proxy (not live GIFT)" : ""}
+      {/* Fixed portal tooltip — header overflow:hidden was clipping the old absolute popover */}
+      {isGift && hover && typeof document !== "undefined" && createPortal(
+        <div
+          data-testid="gift-nifty-hover-tip"
+          className="fixed z-[200] w-[17rem] max-w-[min(92vw,17rem)] rounded-md border border-slate-200 bg-white p-2.5 text-xs text-slate-900 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          style={{ top: tipPos.top, left: tipPos.left }}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+        >
+          <div className="mb-1 font-semibold text-slate-900 dark:text-slate-100">GIFT NIFTY Sessions</div>
+          <div className="mb-1.5 text-slate-700 dark:text-slate-200">{giftTooltip}</div>
+          <div className="mb-1.5 text-[11px] text-slate-500">
+            Kite: <span className="font-mono">{kiteSymbol || "NSEIX:GIFT NIFTY"}</span>
+            {source ? ` · ${source}` : ""}
+            {isProxy ? " · proxy" : ""}
           </div>
-          {data?.note && <div className="text-[10px] text-amber-700 mb-1">{data.note}</div>}
-          <div className="text-[11px] text-slate-500">
-            { (windows || []).map((s, i) => (
-              <div key={i}>{i === 0 ? 'Morning' : i === 1 ? 'Evening' : `Session ${i+1}`}:{' '}{s.start_ist || s.start} – {s.end_ist || s.end} IST { (sess && sess.activeIndex === i) ? '· active' : '' }</div>
-            )) }
+          {data?.note && <div className="mb-1 text-[10px] text-amber-700">{data.note}</div>}
+          <div className="space-y-0.5 text-[11px] text-slate-500">
+            {(windows || []).map((s, i) => (
+              <div key={i}>
+                {i === 0 ? "Morning" : i === 1 ? "Evening" : `Session ${i + 1}`}:{" "}
+                {s.start_ist || s.start} – {s.end_ist || s.end} IST
+                {sess && sess.activeIndex === i ? " · active" : ""}
+              </div>
+            ))}
           </div>
-        </div>
+          <button
+            type="button"
+            className="mt-2 text-[11px] font-semibold text-sky-600 hover:underline"
+            onClick={() => {
+              setHover(false);
+              onOpenSessions?.();
+            }}
+          >
+            Open full schedule →
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );

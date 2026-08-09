@@ -1,11 +1,12 @@
+import { useId } from "react";
+
 /**
- * OI-Pulse logo — minimalist, geometric, high-contrast.
- * A single continuous pulse/heart-beat wave over a soft gradient tile,
- * flanked by a small upward tick — reading as "live signal + market pulse".
- * SVG only. No filters. Crisp at every size.
+ * OI Pulse logo — crisp geometric mark.
+ * Stable gradient id (no Math.random) so the icon never flickers on re-render.
  */
 export default function OiPulseLogo({ className = "w-6 h-6" }) {
-  const gid = "oi-grad-" + Math.random().toString(36).slice(2, 8);
+  const reactId = useId().replace(/:/g, "");
+  const gid = `oi-logo-grad-${reactId}`;
   return (
     <svg
       viewBox="0 0 48 48"
@@ -18,40 +19,35 @@ export default function OiPulseLogo({ className = "w-6 h-6" }) {
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#10B981" />
-          <stop offset="60%" stopColor="#059669" />
-          <stop offset="100%" stopColor="#0284C7" />
+          <stop offset="55%" stopColor="#059669" />
+          <stop offset="100%" stopColor="#0EA5E9" />
         </linearGradient>
       </defs>
 
-      {/* Rounded-square backdrop */}
-      <rect x="2" y="2" width="44" height="44" rx="12" ry="12" fill={`url(#${gid})`} />
-
-      {/* Subtle inner highlight */}
+      <rect x="2" y="2" width="44" height="44" rx="11" ry="11" fill={`url(#${gid})`} />
       <rect
-        x="2.5"
-        y="2.5"
-        width="43"
-        height="43"
-        rx="11.5"
-        ry="11.5"
+        x="3"
+        y="3"
+        width="42"
+        height="42"
+        rx="10"
+        ry="10"
         fill="none"
-        stroke="rgba(255,255,255,0.18)"
+        stroke="rgba(255,255,255,0.22)"
         strokeWidth="1"
       />
 
-      {/* Single clean pulse wave — ─┘¯└─ */}
+      {/* ECG-style pulse: flat → spike up → spike down → flat → live dot */}
       <path
-        d="M8 26 L17 26 L20 18 L24 34 L28 22 L31 26 L40 26"
+        d="M7 25 H14 L17 25 L20 12 L24 36 L28 20 L31 25 H38"
         fill="none"
         stroke="#FFFFFF"
-        strokeWidth="2.6"
+        strokeWidth="2.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-
-      {/* Live dot at end of wave */}
-      <circle cx="40" cy="26" r="2.4" fill="#FFFFFF" />
-      <circle cx="40" cy="26" r="4" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1" />
+      <circle cx="39.5" cy="25" r="2.6" fill="#FFFFFF" />
+      <circle cx="39.5" cy="25" r="4.2" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1" />
     </svg>
   );
 }

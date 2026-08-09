@@ -1,7 +1,6 @@
 /**
  * Shared kite / market mode badge copy.
- * Prefer "market session" language over "KITE · CLOSED", which traders read as
- * a broker outage rather than NSE cash/F&O hours.
+ * Prefer inclusive "markets" language — desk tracks NSE (NIFTY/BANK) and BSE (SENSEX).
  */
 export function kiteModeBadge(mode, marketOpen) {
   if (mode !== "kite") {
@@ -15,19 +14,19 @@ export function kiteModeBadge(mode, marketOpen) {
   }
   if (marketOpen) {
     return {
-      label: "NSE LIVE",
+      label: "MARKETS LIVE",
       short: "LIVE",
       tone: "live",
       title:
-        "NSE LIVE — Kite connected and the NSE cash/F&O session is open. OI polls while the market is open.",
+        "MARKETS LIVE — Kite connected and the cash/F&O session is open (NSE + BSE indices). OI polls while the session is open.",
     };
   }
   return {
-    label: "NSE CLOSED",
+    label: "MARKETS CLOSED",
     short: "CLOSED",
     tone: "closed",
     title:
-      "NSE CLOSED — Kite is connected, but the NSE session is closed (after hours / weekend / holiday). Board shows the last session snapshot; OI polling pauses until next open. GIFT/VIX may still update.",
+      "MARKETS CLOSED — Kite is connected, but the cash/F&O session is closed (after hours / weekend / holiday). Board shows the last session snapshot; OI polling pauses until next open. GIFT/VIX may still update.",
   };
 }
 

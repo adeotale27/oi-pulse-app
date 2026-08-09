@@ -58,6 +58,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions").map((p) => p.id),
           show_writer_defense: true,
           show_suggestion: true,
+          show_chart_signals: false,
           show_strike_range: false,
         });
       });
@@ -481,6 +482,24 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                     <div className="text-sm font-medium">Suggestion window</div>
                     <div className="text-[10px] text-slate-500">
                       Show the OI posture suggestion card pinned under the right panel (with the session date it is based on).
+                    </div>
+                  </div>
+                </label>
+
+                <label
+                  className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                  data-testid="show-chart-signals-row"
+                >
+                  <Checkbox
+                    data-testid="show-chart-signals"
+                    className="mt-0.5"
+                    checked={!!settings.show_chart_signals}
+                    onCheckedChange={(ck) => setSettings({ ...settings, show_chart_signals: !!ck })}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Chart signal chips (gamma / institution)</div>
+                    <div className="text-[10px] text-slate-500">
+                      Show CE/PE gamma-wall, institution, and velocity chips under the OI Change chart (and matching badges on Strike Table). Off by default — thresholds still live under local OI settings below.
                     </div>
                   </div>
                 </label>
