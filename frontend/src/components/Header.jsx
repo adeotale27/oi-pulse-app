@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,7 +15,7 @@ import {
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import OiPulseLogo from "@/components/OiPulseLogo";
-import { api, fetchExtras, subscribeExtras, unsubscribeExtras, logoutGuest } from "@/lib/api";
+import { api, fetchExtras, subscribeExtras, unsubscribeExtras, logoutGuest, clearAdminAuth } from "@/lib/api";
 import { toast } from "sonner";
 
 import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
@@ -335,7 +335,7 @@ export default function Header({
       {/* Desktop header — compact single row for laptop/zoom; tools in a dropdown */}
       <div className="hidden md:block">
       {/* Row 1: brand + status + essential actions */}
-      <div className="px-3 sm:px-4 py-2 flex items-center gap-2 lg:gap-3 flex-nowrap min-w-0">
+      <div className="px-3 sm:px-4 py-2 flex items-center gap-2 lg:gap-3 flex-nowrap min-w-0 overflow-hidden">
         <div className="flex items-center gap-2 shrink-0">
           <OiPulseLogo className="w-8 h-8 drop-shadow-sm ring-2 ring-emerald-500/15 rounded-xl" />
           <div className="leading-tight">
@@ -497,15 +497,15 @@ export default function Header({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Desktop admin: Fresh Pull / Upload / Telegram under Admin menu; Kite stays visible */}
+          {/* Desktop: one Admin menu (tools + account). Public toggle stays compact beside it. */}
           <div className={`hidden lg:flex items-center gap-2 ${isAdmin ? "" : "hidden"}`}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   data-testid="btn-admin-menu"
                   size="sm"
-                  className="rounded-sm bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm"
-                  title="Admin tools: Fresh Pull, Upload, Telegram"
+                  className="rounded-sm bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm h-8"
+                  title="Admin tools"
                 >
                   <Shield className="w-4 h-4 mr-1.5" />
                   Admin
@@ -513,7 +513,7 @@ export default function Header({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52" data-testid="admin-tools-menu">
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
-                  Admin tools
+                  Desk tools
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -538,12 +538,49 @@ export default function Header({
                   <Send className="w-4 h-4" />
                   Telegram
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
+                  Account
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  data-testid="menu-open-access-control"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    window.dispatchEvent(new Event("oi-admin-open-access"));
+                  }}
+                >
+                  <UserCheck className="w-4 h-4" />
+                  Access Control
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-change-password"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    window.dispatchEvent(new Event("oi-admin-open-password"));
+                  }}
+                >
+                  <KeyRound className="w-4 h-4" />
+                  Change Password
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-admin-sign-out"
+                  onSelect={async (e) => {
+                    e.preventDefault();
+                    try { await api.post("/auth/logout"); } catch (_) {}
+                    clearAdminAuth({ clearRemember: true });
+                    toast.success("Signed out.");
+                    window.location.reload();
+                  }}
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign out
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button
               data-testid="btn-open-credentials"
               variant="outline" size="sm"
-              className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+              className="rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
               onClick={onOpenCreds}
             >
               <KeyRound className="w-4 h-4 mr-1.5" />
