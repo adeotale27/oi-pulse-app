@@ -299,7 +299,7 @@ export default function Header({
           </div>
           <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Settings
+            Alert settings
           </Button>
           <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
             <KeyRound className="w-4 h-4 mr-1.5" />
@@ -506,15 +506,6 @@ export default function Header({
                 <Download className="w-4 h-4" />
                 Download CSV
               </DropdownMenuItem>
-              {isAdmin && (
-                <DropdownMenuItem
-                  data-testid="menu-open-settings"
-                  onSelect={(e) => { e.preventDefault(); onOpenSettings?.(); }}
-                >
-                  <Settings2 className="w-4 h-4" />
-                  Alert settings
-                </DropdownMenuItem>
-              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -559,6 +550,13 @@ export default function Header({
                 >
                   <Send className="w-4 h-4" />
                   Telegram
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-settings"
+                  onSelect={(e) => { e.preventDefault(); onOpenSettings?.(); }}
+                >
+                  <Settings2 className="w-4 h-4" />
+                  Alert settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
@@ -681,7 +679,7 @@ export default function Header({
           </div>
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Settings
+            Alert settings
           </Button>
           <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
             <KeyRound className="w-4 h-4 mr-1.5" />

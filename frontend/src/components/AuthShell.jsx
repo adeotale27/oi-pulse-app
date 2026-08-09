@@ -15,41 +15,41 @@ export default function AuthShell({
   return (
     <div
       data-testid={isGuest ? "guest-auth-shell" : "admin-auth-shell"}
-      className="relative min-h-screen overflow-hidden bg-[#061018] text-white"
+      className="relative min-h-screen overflow-hidden bg-[#042016] text-white"
       style={{ fontFamily: "Outfit, system-ui, sans-serif" }}
     >
-      {/* Atmosphere */}
+      {/* Atmosphere — brand emerald like CTA / logo */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 80% 60% at 15% 20%, rgba(16,185,129,0.22), transparent 55%)," +
-            "radial-gradient(ellipse 70% 50% at 90% 80%, rgba(14,165,233,0.16), transparent 50%)," +
-            "linear-gradient(160deg, #061018 0%, #0a1f2e 48%, #07141c 100%)",
+            "radial-gradient(ellipse 85% 65% at 12% 18%, rgba(16,185,129,0.38), transparent 55%)," +
+            "radial-gradient(ellipse 70% 50% at 88% 78%, rgba(5,150,105,0.22), transparent 50%)," +
+            "linear-gradient(160deg, #031a12 0%, #064e3b 42%, #042016 100%)",
         }}
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.14]"
+        className="pointer-events-none absolute inset-0 opacity-[0.12]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(148,163,184,0.35) 1px, transparent 1px)," +
-            "linear-gradient(90deg, rgba(148,163,184,0.35) 1px, transparent 1px)",
+            "linear-gradient(rgba(167,243,208,0.35) 1px, transparent 1px)," +
+            "linear-gradient(90deg, rgba(167,243,208,0.35) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
           maskImage: "radial-gradient(ellipse at center, black 20%, transparent 75%)",
         }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl"
-        animate={{ x: [0, 28, 0], y: [0, -18, 0], opacity: [0.35, 0.55, 0.35] }}
+        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-emerald-400/25 blur-3xl"
+        animate={{ x: [0, 28, 0], y: [0, -18, 0], opacity: [0.4, 0.65, 0.4] }}
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -right-16 bottom-1/4 h-80 w-80 rounded-full bg-sky-500/15 blur-3xl"
-        animate={{ x: [0, -22, 0], y: [0, 20, 0], opacity: [0.25, 0.45, 0.25] }}
+        className="pointer-events-none absolute -right-16 bottom-1/4 h-80 w-80 rounded-full bg-emerald-600/20 blur-3xl"
+        animate={{ x: [0, -22, 0], y: [0, 20, 0], opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
       />
 
@@ -75,7 +75,7 @@ export default function AuthShell({
               <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">OI Pulse</h1>
               <p className="mt-1 text-base text-slate-300 sm:text-lg">
                 {isGuest
-                  ? "Catch the OI shift live — before price catches up."
+                  ? "Spot the OI surge — read bias before the crowd."
                   : "Command the desk. Spot bias. Act on OI."}
               </p>
             </div>
@@ -143,9 +143,9 @@ export default function AuthShell({
           <div className="mt-6 hidden gap-4 text-sm text-slate-300 sm:grid sm:grid-cols-3">
             {(isGuest
               ? [
-                  { icon: BellRing, title: "Huge OI alerts", body: "Instant ping when open interest spikes or unwinds hard" },
-                  { icon: Globe2, title: "Events & impact", body: "Global events + index constituent moves that can swing bias" },
-                  { icon: Landmark, title: "FII / DII pulse", body: "Institutional flow context right beside the live OI desk" },
+                  { icon: BellRing, title: "Huge OI alerts", body: "Instant notification on a huge OI shift or unwind" },
+                  { icon: Globe2, title: "Events & impact", body: "Global events + index constituent moves that swing bias" },
+                  { icon: Landmark, title: "FII / DII data", body: "Institutional flow right beside the live OI desk" },
                 ]
               : [
                   { icon: Lock, title: "Admin desk", body: "Public access, guests, uploads" },
