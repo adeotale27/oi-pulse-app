@@ -374,6 +374,7 @@ export default function Dashboard() {
   const [showStrikeRange, setShowStrikeRange] = useState(false);
   const [showWriterDefense, setShowWriterDefense] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
+  const [showChartSignals, setShowChartSignals] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
@@ -618,6 +619,9 @@ export default function Dashboard() {
         if (typeof res.data.show_suggestion === "boolean") {
           setShowSuggestion(res.data.show_suggestion);
         }
+        if (typeof res.data.show_chart_signals === "boolean") {
+          setShowChartSignals(res.data.show_chart_signals);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch settings", e);
@@ -650,6 +654,9 @@ export default function Dashboard() {
       }
       if (typeof d.show_suggestion === "boolean") {
         setShowSuggestion(d.show_suggestion);
+      }
+      if (typeof d.show_chart_signals === "boolean") {
+        setShowChartSignals(d.show_chart_signals);
       }
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, []);
@@ -1613,7 +1620,7 @@ export default function Dashboard() {
                       showOI={showOI}
                       currentTime={current?.timestamp}
                       prevTime={(replayFrame || previous)?.timestamp}
-                      signalsMap={perStrikeSignals}
+                      signalsMap={showChartSignals ? perStrikeSignals : null}
                     />
                     {marketIntel && (
                       <div
@@ -1795,6 +1802,7 @@ export default function Dashboard() {
                       lotSize={oiSettings.lotSize?.[activeIndex] || 1}
                       expiry={selectedExpiry}
                       vixNow={current?.vix || status?.vix}
+                      showSignals={showChartSignals}
                     />
                     <div className="mt-3 pt-3 border-t border-slate-100">
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
@@ -2129,6 +2137,9 @@ export default function Dashboard() {
           }
           if (typeof settings.show_suggestion === "boolean") {
             setShowSuggestion(settings.show_suggestion);
+          }
+          if (typeof settings.show_chart_signals === "boolean") {
+            setShowChartSignals(settings.show_chart_signals);
           }
         }}
         onLocalSaved={setOiSettings}

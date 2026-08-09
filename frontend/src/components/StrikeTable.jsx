@@ -12,7 +12,7 @@ function formatOI(v) {
   return v.toLocaleString();
 }
 
-export default function StrikeTable({ current, previous, atm, timeframeMin, oiSettings, lotSize, expiry, vixNow }) {
+export default function StrikeTable({ current, previous, atm, timeframeMin, oiSettings, lotSize, expiry, vixNow, showSignals = false }) {
   const rows = useMemo(() => {
     if (!current) return [];
     const prevMap = new Map();
@@ -188,13 +188,15 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
                 className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 ${isAtm ? "bg-amber-50 dark:bg-amber-900/20" : "bg-white dark:bg-slate-900"}`}
               >
                 <td className={`px-2 py-1.5 text-left sticky left-0 z-10 border-r border-slate-200 dark:border-slate-700 ${isAtm ? "bg-amber-50 dark:bg-amber-900/20" : "bg-white dark:bg-slate-900"}`}>
-                  <SignalBadges
-                    velocity={ceV}
-                    velocityValue={r.ce_vel}
-                    gammaWall={r.ce_gamma_wall}
-                    institution={r.ce_inst}
-                    side="CE"
-                  />
+                  {showSignals ? (
+                    <SignalBadges
+                      velocity={ceV}
+                      velocityValue={r.ce_vel}
+                      gammaWall={r.ce_gamma_wall}
+                      institution={r.ce_inst}
+                      side="CE"
+                    />
+                  ) : null}
                 </td>
                 <td className="text-right px-2 py-1.5 text-slate-700 dark:text-slate-300">
                   {r.ce_delta_g != null ? r.ce_delta_g.toFixed(2) : "—"}
@@ -228,13 +230,15 @@ export default function StrikeTable({ current, previous, atm, timeframeMin, oiSe
                   {r.pe_delta_g != null ? r.pe_delta_g.toFixed(2) : "—"}
                 </td>
                 <td className={`px-2 py-1.5 text-left sticky right-0 z-10 border-l border-slate-200 dark:border-slate-700 ${isAtm ? "bg-amber-50 dark:bg-amber-900/20" : "bg-white dark:bg-slate-900"}`}>
-                  <SignalBadges
-                    velocity={peV}
-                    velocityValue={r.pe_vel}
-                    gammaWall={r.pe_gamma_wall}
-                    institution={r.pe_inst}
-                    side="PE"
-                  />
+                  {showSignals ? (
+                    <SignalBadges
+                      velocity={peV}
+                      velocityValue={r.pe_vel}
+                      gammaWall={r.pe_gamma_wall}
+                      institution={r.pe_inst}
+                      side="PE"
+                    />
+                  ) : null}
                 </td>
               </tr>
             );

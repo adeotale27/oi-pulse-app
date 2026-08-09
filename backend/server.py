@@ -538,6 +538,7 @@ class SettingsIn(BaseModel):
     show_strike_range: Optional[bool] = None  # sidebar Strike Range steppers
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
+    show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
 
 
 class LoginIn(BaseModel):
@@ -1639,6 +1640,7 @@ async def get_config():
         "show_strike_range": bool(tracker.settings.get("show_strike_range", False)),
         "show_writer_defense": bool(tracker.settings.get("show_writer_defense", True)),
         "show_suggestion": bool(tracker.settings.get("show_suggestion", True)),
+        "show_chart_signals": bool(tracker.settings.get("show_chart_signals", False)),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
     }
 

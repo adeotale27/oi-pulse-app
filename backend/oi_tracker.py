@@ -149,6 +149,8 @@ DEFAULT_SETTINGS = {
     "show_writer_defense": True,
     # Suggestion posture card under the right panel (admin-togglable)
     "show_suggestion": True,
+    # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
+    "show_chart_signals": False,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",
@@ -263,6 +265,7 @@ class OITracker:
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",
             "show_strike_range", "show_writer_defense", "show_suggestion",
+            "show_chart_signals",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}
         # Explicit alert-index change → mark as today's override

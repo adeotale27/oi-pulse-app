@@ -170,28 +170,24 @@ export default function AdminControls({
     <div
       className={
         isPanel
-          ? "flex flex-row items-center justify-between w-full gap-2"
-          : "flex items-center gap-1.5 h-8 shrink-0"
+          ? "flex flex-row flex-nowrap items-center justify-between w-full gap-2"
+          : "inline-flex flex-row flex-nowrap items-center gap-2 h-8 shrink-0 whitespace-nowrap"
       }
       data-testid="admin-public-row"
     >
-      <div className="flex items-center gap-1.5 min-w-0">
+      <span className="inline-flex flex-row flex-nowrap items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
         <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
-          Public
-        </span>
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
-          {publicOn ? "ON" : "OFF"}
-        </span>
-        <Switch
-          data-testid="admin-public-toggle"
-          checked={publicOn}
-          onCheckedChange={togglePublic}
-          disabled={busy}
-        />
-      </div>
+        Public
+      </span>
+      <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
+        {publicOn ? "ON" : "OFF"}
+      </span>
+      <Switch
+        data-testid="admin-public-toggle"
+        checked={publicOn}
+        onCheckedChange={togglePublic}
+        disabled={busy}
+      />
       {pending > 0 && (
         <button
           type="button"
