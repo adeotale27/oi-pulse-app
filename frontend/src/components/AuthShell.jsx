@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Activity, Eye, Lock, Radio } from "lucide-react";
+import { Activity, BellRing, Globe2, Landmark, Lock, Radio } from "lucide-react";
 import OiPulseLogo from "@/components/OiPulseLogo";
 
 /**
@@ -75,7 +75,7 @@ export default function AuthShell({
               <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">OI Pulse</h1>
               <p className="mt-1 text-base text-slate-300 sm:text-lg">
                 {isGuest
-                  ? "Read-only open interest — ask once, watch live."
+                  ? "Catch the OI shift live — before price catches up."
                   : "Command the desk. Spot bias. Act on OI."}
               </p>
             </div>
@@ -143,9 +143,9 @@ export default function AuthShell({
           <div className="mt-6 hidden gap-4 text-sm text-slate-300 sm:grid sm:grid-cols-3">
             {(isGuest
               ? [
-                  { icon: Eye, title: "Guest view", body: "Charts & OI — no config edits" },
-                  { icon: Radio, title: "Live feed", body: "Same desk data the admin sees" },
-                  { icon: Lock, title: "Approved entry", body: "Admin gates who gets in" },
+                  { icon: BellRing, title: "Huge OI alerts", body: "Instant ping when open interest spikes or unwinds hard" },
+                  { icon: Globe2, title: "Events & impact", body: "Global events + index constituent moves that can swing bias" },
+                  { icon: Landmark, title: "FII / DII pulse", body: "Institutional flow context right beside the live OI desk" },
                 ]
               : [
                   { icon: Lock, title: "Admin desk", body: "Public access, guests, uploads" },
