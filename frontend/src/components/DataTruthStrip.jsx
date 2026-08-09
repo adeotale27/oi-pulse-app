@@ -8,8 +8,8 @@ const TONE = {
     pulse: "bg-white",
   },
   session: {
-    // Match login / brand emerald — distinct from LIVE (brighter) via deeper tone + amber badge
-    bar: "bg-emerald-800 text-emerald-50 border-emerald-900 dark:bg-emerald-900 dark:border-emerald-950",
+    // Dark forest green (not mint) — deeper than LIVE emerald-600
+    bar: "bg-[#022c22] text-emerald-50 border-[#011f18] dark:bg-[#021f18] dark:border-black",
     badge: "bg-amber-400 text-amber-950",
     pulse: "bg-amber-300",
   },

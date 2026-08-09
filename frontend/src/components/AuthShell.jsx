@@ -15,18 +15,18 @@ export default function AuthShell({
   return (
     <div
       data-testid={isGuest ? "guest-auth-shell" : "admin-auth-shell"}
-      className="relative min-h-screen overflow-hidden bg-[#042016] text-white"
+      className="relative min-h-screen overflow-hidden bg-[#061018] text-white"
       style={{ fontFamily: "Outfit, system-ui, sans-serif" }}
     >
-      {/* Atmosphere — brand emerald like CTA / logo */}
+      {/* Atmosphere — dark base with deep forest-green wash (not bright mint) */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 85% 65% at 12% 18%, rgba(16,185,129,0.38), transparent 55%)," +
-            "radial-gradient(ellipse 70% 50% at 88% 78%, rgba(5,150,105,0.22), transparent 50%)," +
-            "linear-gradient(160deg, #031a12 0%, #064e3b 42%, #042016 100%)",
+            "radial-gradient(ellipse 80% 60% at 15% 20%, rgba(6,95,70,0.28), transparent 55%)," +
+            "radial-gradient(ellipse 70% 50% at 90% 80%, rgba(4,47,46,0.35), transparent 50%)," +
+            "linear-gradient(160deg, #040d0b 0%, #0a1a16 48%, #061018 100%)",
         }}
       />
       <div
@@ -34,22 +34,22 @@ export default function AuthShell({
         className="pointer-events-none absolute inset-0 opacity-[0.12]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(167,243,208,0.35) 1px, transparent 1px)," +
-            "linear-gradient(90deg, rgba(167,243,208,0.35) 1px, transparent 1px)",
+            "linear-gradient(rgba(148,163,184,0.35) 1px, transparent 1px)," +
+            "linear-gradient(90deg, rgba(148,163,184,0.35) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
           maskImage: "radial-gradient(ellipse at center, black 20%, transparent 75%)",
         }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-emerald-400/25 blur-3xl"
-        animate={{ x: [0, 28, 0], y: [0, -18, 0], opacity: [0.4, 0.65, 0.4] }}
+        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-emerald-900/40 blur-3xl"
+        animate={{ x: [0, 28, 0], y: [0, -18, 0], opacity: [0.35, 0.55, 0.35] }}
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute -right-16 bottom-1/4 h-80 w-80 rounded-full bg-emerald-600/20 blur-3xl"
-        animate={{ x: [0, -22, 0], y: [0, 20, 0], opacity: [0.3, 0.5, 0.3] }}
+        className="pointer-events-none absolute -right-16 bottom-1/4 h-80 w-80 rounded-full bg-teal-950/50 blur-3xl"
+        animate={{ x: [0, -22, 0], y: [0, 20, 0], opacity: [0.25, 0.4, 0.25] }}
         transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
       />
 
