@@ -79,6 +79,64 @@ export function yearsToExpiry(expiryISO, nowMs = Date.now()) {
   return Math.max(0, years);
 }
 
+/** Minutes remaining until 15:30 IST today (0 if already past). */
+export function minutesToCloseIST(nowMs = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date(nowMs));
+  const get = (t) => Number(parts.find((p) => p.type === t)?.value || 0);
+  const nowM = get("hour") * 60 + get("minute");
+  const closeM = 15 * 60 + 30;
+  return Math.max(0, closeM - nowM);
+}
+
+/** Intrinsic value of a European-style option (spot vs strike). */
+export function intrinsicValue(S, K, isCall) {
+  if (S == null || K == null) return null;
+  return isCall ? Math.max(0, S - K) : Math.max(0, K - S);
+}
+
+/**
+ * Extrinsic (time) premium left in the option price.
+ * For a short seller, this is roughly what can still decay in their favour
+ * if the option expires / goes to intrinsic.
+ */
+export function extrinsicPremium(marketPrice, S, K, isCall) {
+  if (marketPrice == null || marketPrice < 0 || S == null || K == null) return null;
+  const intrinsic = intrinsicValue(S, K, isCall) ?? 0;
+  return Math.max(0, marketPrice - intrinsic);
+}
+
+/**
+ * Estimate remaining premium a short option seller can still collect.
+ * - Extrinsic left × |qty|  (dies by expiry close if held)
+ * - Also θ × fraction of day left × qty (signed; shorts earn +θ)
+ */
+export function shortPremiumLeft({
+  marketPrice,
+  S,
+  K,
+  isCall,
+  quantity,
+  thetaPerUnit = null,
+  nowMs = Date.now(),
+}) {
+  const isShort = quantity < 0;
+  if (!isShort) return { extrinsicLeft: null, thetaToClose: null };
+  const ext = extrinsicPremium(marketPrice, S, K, isCall);
+  const absQty = Math.abs(quantity);
+  const extrinsicLeft = ext != null ? ext * absQty : null;
+  const minsLeft = minutesToCloseIST(nowMs);
+  const thetaToClose =
+    thetaPerUnit != null && minsLeft > 0
+      ? thetaPerUnit * quantity * (minsLeft / (24 * 60))
+      : null;
+  return { extrinsicLeft, thetaToClose, minutesToClose: minsLeft };
+}
+
 // IV rank vs India VIX 52-week range. Since we don't yet persist VIX history,
 // we use conservative static bounds appropriate for India VIX (7 - 35 typical).
 // If backend provides `vix52Low` / `vix52High` later, plug them in.
