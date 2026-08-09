@@ -105,8 +105,9 @@ export default function Header({
   const devForce = (typeof window !== "undefined") && (process.env.NODE_ENV !== "production") && (
     localStorage.getItem("oi_dev_force_admin") === "1" || sessionStorage.getItem("oi_dev_force_admin") === "1"
   );
-  // Guests never see Admin/Kite even if a leftover remember token exists in storage.
-  const isAdmin = devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest);
+  // Guests never see Admin/Kite. Prefer Dashboard's assumedAdmin; never promote guests.
+  const isGuestUser = !!authState.is_guest && !assumedAdmin;
+  const isAdmin = !isGuestUser && (devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest));
   if (devForce) {
     try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }
@@ -413,18 +414,37 @@ export default function Header({
             )}
           </div>
 
-          {authState?.is_guest && !isAdmin && (
+          {isGuestUser && (
             (() => {
-              const guestName = authState.guest_name || (typeof window !== 'undefined' ? sessionStorage.getItem('oi_guest_name') : null) || 'Guest';
+              const guestName = authState.guest_name || (typeof window !== "undefined" ? sessionStorage.getItem("oi_guest_name") : null) || "Guest";
               const exitGuest = async () => {
                 await logoutGuest();
                 window.location.reload();
               };
               return (
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-sm text-slate-800 dark:text-slate-100">
-                  <div className="font-medium">{guestName}</div>
-                  <div className="text-xs text-slate-500">· session until 6:00 AM</div>
-                  <button onClick={exitGuest} className="text-xs text-rose-600 hover:underline ml-2">Exit</button>
+                <div
+                  className="hidden sm:flex flex-col items-end justify-center px-2.5 py-1 rounded-md border border-slate-200/80 bg-slate-50/90 dark:border-slate-700 dark:bg-slate-800/80 leading-tight"
+                  data-testid="guest-session-chip"
+                >
+                  <span className="group relative inline-flex">
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 cursor-default">
+                      {guestName}
+                    </span>
+                    <span
+                      role="tooltip"
+                      className="pointer-events-none absolute right-0 bottom-full z-50 mb-1.5 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow-md group-hover:block dark:bg-slate-700"
+                    >
+                      User auto exits at 6:00 AM
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={exitGuest}
+                    className="text-[10px] font-medium text-rose-600 hover:text-rose-700 hover:underline"
+                    data-testid="guest-session-exit"
+                  >
+                    Exit
+                  </button>
                 </div>
               );
             })()
@@ -498,8 +518,9 @@ export default function Header({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Desktop: one Admin menu (tools + account). Public toggle stays compact beside it. */}
-          <div className={`hidden lg:flex items-center gap-2 ${isAdmin ? "" : "hidden"}`}>
+          {/* Desktop admin only — MUST use conditional render; lg:flex overrides Tailwind `hidden` */}
+          {isAdmin && (
+          <div className="hidden lg:flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -588,6 +609,7 @@ export default function Header({
               Kite API
             </Button>
           </div>
+          )}
         </div>
       </div>
 
