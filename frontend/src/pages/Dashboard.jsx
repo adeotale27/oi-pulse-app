@@ -1369,27 +1369,56 @@ export default function Dashboard() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col px-2 pt-0 md:pt-0 sm:px-0">
-            <div className="hidden md:flex items-stretch justify-between mb-2 sm:mb-3 gap-3 flex-nowrap shrink-0 min-w-0">
-              <OverflowTabBar
-                tabs={DASHBOARD_PAGES.filter(
-                  (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
-                )}
-                value={activeTab}
-                onChange={setActiveTab}
-              />
-              {/* Holiday / FII-DII / Events badges — stay on one row; shrink only when needed */}
-              <div className="hidden lg:flex items-stretch gap-2 shrink-0 max-w-[min(100%,52rem)] overflow-x-auto">
-                <div className="w-40 xl:w-48 shrink-0">
+            {/* Tabs + info tiles. Tile wrappers must NOT use overflow-x-auto — that clips
+                FII/Events/Impact dropdowns and makes clicks look broken. */}
+            <div className="hidden md:flex flex-col gap-2 mb-2 sm:mb-3 shrink-0 min-w-0">
+              <div className="flex items-end gap-3 flex-nowrap min-w-0">
+                <OverflowTabBar
+                  tabs={DASHBOARD_PAGES.filter(
+                    (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
+                  )}
+                  value={activeTab}
+                  onChange={setActiveTab}
+                />
+                <div
+                  className="hidden xl:flex items-stretch gap-2 shrink-0 relative z-30 overflow-visible"
+                  data-testid="dashboard-info-tiles"
+                >
+                  <div className="w-44 2xl:w-48 shrink-0">
+                    <HolidayBadge onClick={() => setActiveTab("holidays")} />
+                  </div>
+                  <div className="w-44 2xl:w-48 shrink-0">
+                    <FiiDiiBadge isAdmin={!!authState.is_admin} />
+                  </div>
+                  <div className="w-44 2xl:w-48 shrink-0">
+                    <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
+                  </div>
+                  {(authState.is_admin || visiblePages.includes("index-events")) && (
+                    <div className="w-44 2xl:w-48 shrink-0">
+                      <MarketImpactBadge
+                        activeIndex={activeIndex}
+                        onOpenIndexEvents={() => setActiveTab("index-events")}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Below xl: tiles on their own row so dropdowns are never clipped by the tab bar */}
+              <div
+                className="xl:hidden flex items-stretch gap-2 relative z-30 overflow-visible"
+                data-testid="dashboard-info-tiles-wrap"
+              >
+                <div className="w-44 shrink-0">
                   <HolidayBadge onClick={() => setActiveTab("holidays")} />
                 </div>
-                <div className="w-40 xl:w-48 shrink-0">
+                <div className="w-44 shrink-0">
                   <FiiDiiBadge isAdmin={!!authState.is_admin} />
                 </div>
-                <div className="w-40 xl:w-48 shrink-0">
+                <div className="w-44 shrink-0">
                   <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
                 </div>
                 {(authState.is_admin || visiblePages.includes("index-events")) && (
-                  <div className="w-40 xl:w-48 shrink-0">
+                  <div className="w-44 shrink-0">
                     <MarketImpactBadge
                       activeIndex={activeIndex}
                       onOpenIndexEvents={() => setActiveTab("index-events")}
@@ -1397,26 +1426,6 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
-            </div>
-            {/* Mid laptop: info tiles under tabs so they never shove the tab row */}
-            <div className="hidden md:flex lg:hidden items-stretch gap-2 mb-2 overflow-x-auto shrink-0 pb-0.5">
-              <div className="w-44 shrink-0">
-                <HolidayBadge onClick={() => setActiveTab("holidays")} />
-              </div>
-              <div className="w-44 shrink-0">
-                <FiiDiiBadge isAdmin={!!authState.is_admin} />
-              </div>
-              <div className="w-44 shrink-0">
-                <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
-              </div>
-              {(authState.is_admin || visiblePages.includes("index-events")) && (
-                <div className="w-44 shrink-0">
-                  <MarketImpactBadge
-                    activeIndex={activeIndex}
-                    onOpenIndexEvents={() => setActiveTab("index-events")}
-                  />
-                </div>
-              )}
             </div>
 
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full flex-1 min-h-0">

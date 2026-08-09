@@ -59,7 +59,7 @@ export default function MarketEventsBadge({ onClick }) {
   const extras = upcoming.filter((e) => !(e.date === primary.date && e.name === primary.name)).slice(0, 8);
 
   return (
-    <div className="relative w-full h-full" data-testid="events-badge-wrap" ref={wrapRef}>
+    <div className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`} data-testid="events-badge-wrap" ref={wrapRef}>
       <div
         role="button"
         tabIndex={0}
@@ -90,7 +90,7 @@ export default function MarketEventsBadge({ onClick }) {
       {open && extras.length > 0 && (
         <div
           data-testid="events-dropdown"
-          className="absolute right-0 top-full mt-1 w-72 rounded-md border border-slate-200 bg-white shadow-xl z-40 max-h-96 overflow-y-auto"
+          className="absolute right-0 top-full mt-1 w-72 rounded-md border border-slate-200 bg-white shadow-xl z-[80] max-h-96 overflow-y-auto"
         >
           <div className="px-3 py-2 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 flex items-center justify-between">
             <span>Upcoming market-moving events</span>
