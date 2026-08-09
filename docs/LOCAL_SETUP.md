@@ -29,6 +29,10 @@ ADMIN_PASSWORD=change-me
 # Optional fixed bootstrap token (otherwise sessions are issued at login):
 # ADMIN_TOKEN=
 
+# Preferred vault encryption key (Fernet key or any passphrase). If unset, vault
+# derives from MONGO_URL+DB_NAME (legacy). Set this in production.
+# CREDENTIALS_FERNET_KEY=
+
 # Optional Kite bootstrap (otherwise configure via UI “Kite API”):
 # KITE_API_KEY=
 # KITE_ACCESS_TOKEN=

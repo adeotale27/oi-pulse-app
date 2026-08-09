@@ -7,6 +7,7 @@ Tests the three tasks from test_result.md (2026-07-17 2nd round):
 3. OI endpoint stability when market is closed (no fresh Kite calls)
 """
 
+import os
 import requests
 import sys
 import time
@@ -18,7 +19,9 @@ API_BASE = f"{BASE_URL}/api"
 
 # Admin credentials from /app/memory/test_credentials.md
 ADMIN_USERNAME = "Adeotale"
-ADMIN_PASSWORD = "MasterApp@123"
+ADMIN_PASSWORD = (os.environ.get("ADMIN_PASSWORD") or "").strip()
+if not ADMIN_PASSWORD:
+    raise SystemExit("Set ADMIN_PASSWORD env var to run this test (do not hardcode secrets).")
 
 # Test counters
 tests_passed = 0

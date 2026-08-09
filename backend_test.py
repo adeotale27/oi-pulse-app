@@ -5,6 +5,7 @@ CRITICAL: DB refresh (Fresh Pull) endpoint exhaustive verification
 User is impatient about this specific feature - be thorough.
 """
 
+import os
 import requests
 import time
 from datetime import datetime
@@ -14,7 +15,9 @@ BASE_URL = "https://oi-api-trace.preview.emergentagent.com/api"
 
 # Admin credentials from /app/memory/test_credentials.md
 ADMIN_USERNAME = "Adeotale"
-ADMIN_PASSWORD = "MasterApp@123"
+ADMIN_PASSWORD = (os.environ.get("ADMIN_PASSWORD") or "").strip()
+if not ADMIN_PASSWORD:
+    raise SystemExit("Set ADMIN_PASSWORD env var to run this test (do not hardcode secrets).")
 
 # Track login attempts (constraint: ≤5 total)
 login_attempts = 0

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
  * Especially important pre-open (before 09:15 IST) so admin fixes login before the bell.
  */
 export default function KiteTokenBanner({ status, isAdmin = false, onOpenCreds }) {
-  if (!status) return null;
+  // Guests never see credential / token troubleshooting — admin-only ops surface.
+  if (!isAdmin || !status) return null;
 
   const market = status.market || {};
   const phase = market.phase;

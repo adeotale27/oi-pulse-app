@@ -1305,7 +1305,7 @@ export default function Dashboard() {
         onOpenCreds={() => { if (authState.is_admin) setCredsOpen(true); }}
         onOpenMorningRefresh={() => { if (authState.is_admin) setMorningRefreshOpen(true); }}
         onOpenTelegramPrefs={() => { if (authState.is_admin) setTelegramPrefsOpen(true); }}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => { if (authState.is_admin) setSettingsOpen(true); }}
         onOpenSounds={() => setSoundsOpen(true)}
         onOpenUpload={() => { if (authState.is_admin) setUploadOpen(true); }}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
@@ -2093,23 +2093,29 @@ export default function Dashboard() {
         </main>
       </div>
 
-      <CredentialsModal
-        open={credsOpen}
-        onOpenChange={setCredsOpen}
-        onSaved={loadStatus}
-      />
+      {authState.is_admin && (
+        <CredentialsModal
+          open={credsOpen}
+          onOpenChange={setCredsOpen}
+          onSaved={loadStatus}
+        />
+      )}
 
-      <MorningRefreshModal
-        open={morningRefreshOpen}
-        onOpenChange={setMorningRefreshOpen}
-        onRefreshed={loadStatus}
-        onNeedFullSetup={() => setCredsOpen(true)}
-      />
+      {authState.is_admin && (
+        <MorningRefreshModal
+          open={morningRefreshOpen}
+          onOpenChange={setMorningRefreshOpen}
+          onRefreshed={loadStatus}
+          onNeedFullSetup={() => setCredsOpen(true)}
+        />
+      )}
 
-      <TelegramPrefsModal
-        open={telegramPrefsOpen}
-        onOpenChange={setTelegramPrefsOpen}
-      />
+      {authState.is_admin && (
+        <TelegramPrefsModal
+          open={telegramPrefsOpen}
+          onOpenChange={setTelegramPrefsOpen}
+        />
+      )}
 
       <SettingsModal
         open={settingsOpen}

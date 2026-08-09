@@ -7,14 +7,14 @@
 
 ## Incorporate User Feedback
 - User explicitly asked to keep existing data and NOT run test files or add unnecessary tests.
-- User wants: (1) OI Change endpoint to actually show a real N-min delta instead of collapsing to 15-second delta; (2) admin password `MasterApp@123`; (3) Kite api_key `79m7qb0mj6bzh9f8` and access_token `rI4mAFkMKYnrNUnhfCF6wT64HToY8GNj` wired up so tracker boots into LIVE mode; (4) OI data for NIFTY, SENSEX, BANKNIFTY all polled every day regardless of which index the user is looking at.
+- User wants: (1) OI Change endpoint to actually show a real N-min delta instead of collapsing to 15-second delta; (2) admin password `[REDACTED_ADMIN_PASSWORD]`; (3) Kite api_key `[REDACTED_KITE_API_KEY]` and access_token `[REDACTED_KITE_ACCESS_TOKEN]` wired up so tracker boots into LIVE mode; (4) OI data for NIFTY, SENSEX, BANKNIFTY all polled every day regardless of which index the user is looking at.
 
 ## Task Summary
 Fix "OI Change" tab that was showing Call OI change: 0 / Put OI change: 0 in the dashboard and always keeping the amber "History warming up — 0.0 min" banner up. Then add stacked-change bar visualization, custom-threshold change alert toast, and a live warming-up countdown, plus wire up admin login + Kite creds via env vars.
 
 ## Backend Changes
 1. Restored `/app/backend/.env` and `/app/frontend/.env` (they were missing — backend was crash-looping on `KeyError: 'MONGO_URL'`).
-2. Added `ADMIN_PASSWORD=MasterApp@123`, `KITE_API_KEY`, `KITE_ACCESS_TOKEN` to `backend/.env`.
+2. Added `ADMIN_PASSWORD=[REDACTED_ADMIN_PASSWORD]`, `KITE_API_KEY`, `KITE_ACCESS_TOKEN` to `backend/.env`.
 3. `oi_tracker.load_credentials()` — added env-var bootstrap: if the `credentials` collection has no Kite entry, seed it (encrypted) from `KITE_API_KEY` + `KITE_ACCESS_TOKEN` env vars, then initialize KiteService and switch to LIVE mode.
 4. `/api/oi/{index}/change` endpoint (`server.py` line ~753) — changed the baseline-snapshot MongoDB sort from `("timestamp", -1)` to `("timestamp", 1)`. This picks the EARLIEST snapshot inside `[N-min-ago, now)` instead of the newest one, so a "15 min change" is truly ~15 min old instead of ~15 s old.
 5. Installed missing kiteconnect runtime deps: `twisted`, `pyOpenSSL`, `pytz`, `autobahn[twisted]==19.11.2`, `service_identity`. Appended to `backend/requirements.txt`.
@@ -33,7 +33,7 @@ Fix "OI Change" tab that was showing Call OI change: 0 / Put OI change: 0 in the
 ## What To Test (Backend Only)
 Please verify these endpoints/behaviors against a running backend:
 
-1. `POST /api/auth/login` with `{"username":"Adeotale","password":"MasterApp@123"}` returns 200 with `is_admin=true` and a `token`.
+1. `POST /api/auth/login` with `{"username":"Adeotale","password":"[REDACTED_ADMIN_PASSWORD]"}` returns 200 with `is_admin=true` and a `token`.
 2. `GET /api/status` returns `mode="kite"` and `has_kite_credentials=true` (Kite bootstrap succeeded from env vars).
 3. `GET /api/oi/NIFTY` — returns a snapshot with a non-null `price`, `atm`, `strikes[]`, `pcr`. Same for SENSEX and BANKNIFTY.
 4. `GET /api/oi/NIFTY/change?minutes=15` — returns `current`, `previous`, `history_ready`, `available_history_minutes`. Fresh install: `history_ready` may be `false` initially (0 min of history) and should become `true` after ~12+ min. The important check is that `previous.timestamp` is NOT identical or ~15 s away from `current.timestamp` once at least 30 s of history exists — it should progressively drift towards ~15 min old as history accumulates (bug fix verification: sort direction should pick earliest doc in window, not newest).
@@ -138,7 +138,7 @@ Please verify these endpoints/behaviors against a running backend:
     - agent: main
       message: |
         Backend now boots into LIVE Kite mode via env-var bootstrap in oi_tracker.load_credentials.
-        Admin password is `MasterApp@123` (username `Adeotale`).
+        Admin password is `[REDACTED_ADMIN_PASSWORD]` (username `Adeotale`).
         DB is being populated with oi_snapshots for NIFTY, SENSEX and BANKNIFTY concurrently every poll cycle.
         Please verify the endpoints listed above. DO NOT create any file-based tests inside /app/tests unless absolutely necessary — the user explicitly asked us not to add test files.
 
