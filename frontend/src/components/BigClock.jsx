@@ -8,6 +8,7 @@ import {
   SUNDAY_BRIEF_MINUTE,
   buildEventWarningCopy,
 } from "@/lib/overnightBrief";
+import { isHoliday, todayIST } from "@/lib/holidays";
 
 const CARRY_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 
@@ -79,10 +80,17 @@ export default function BigClock({ compact = false }) {
   const ampm = h >= 12 ? "PM" : "AM";
 
   const minutesOfDay = h * 60 + m;
+  const holidayToday = isHoliday(todayIST());
   const isWeekend = (weekday === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || weekday === 6 || weekday === 0;
-  const isWeekday = !isWeekend && (weekday >= 1 && weekday <= 5);
+  // Closing-soon / open reminders only on real NSE trading days (not Sat/Sun/holidays).
+  const isTradingDay = !isWeekend && !holidayToday && weekday >= 1 && weekday <= 5;
+  const isWeekday = isTradingDay;
+  const holidayName = holidayToday?.name || null;
 
-  const inAlertWindow = minutesOfDay >= (15 * 60 + 10) && minutesOfDay < FNO_CLOSE_MINUTE;
+  const inAlertWindow =
+    isTradingDay &&
+    minutesOfDay >= (15 * 60 + 10) &&
+    minutesOfDay < FNO_CLOSE_MINUTE;
 
   useEffect(() => {
     const key = new Intl.DateTimeFormat("en-CA", {
@@ -130,6 +138,11 @@ export default function BigClock({ compact = false }) {
     );
 
     if (s !== 0) return;
+
+    // Never fire open/close/reminder toasts on NSE holidays (weekday check alone is not enough).
+    if (holidayName && cur !== hmFromMinutes(SUNDAY_BRIEF_MINUTE)) {
+      return;
+    }
 
     const scheduled = scheduledAlerts.find(
       (alert) => alert.time === cur && alert.days.includes(weekday),
@@ -211,11 +224,30 @@ export default function BigClock({ compact = false }) {
       try { alarm(); } catch (_) { /* ignore */ }
       try { toast.success(`Reminder: ${cur} IST`, { description: "Time to review / exit positions" }); } catch (_) { /* ignore */ }
     }
-  }, [h, m, s, now, push, alarm, isWeekday, weekday]);
+  }, [h, m, s, now, push, alarm, isWeekday, weekday, holidayName]);
+
+  const closedTone = isWeekend || !!holidayName;
+  const statusLine = inAlertWindow
+    ? "Market closing soon — exit or hedge positions"
+    : holidayName
+      ? `NSE holiday — ${holidayName}`
+      : isWeekend
+        ? "Market closed for weekend — have a great weekend"
+        : "Market clock (IST)";
 
   if (compact) {
     return (
-      <div className={`px-2 py-1 rounded-sm flex items-center gap-2 ${inAlertWindow ? "bg-rose-600 text-white" : isWeekend ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-900"}`}>
+      <div
+        className={`px-2 py-1 rounded-sm flex items-center gap-2 ${
+          inAlertWindow
+            ? "bg-rose-600 text-white"
+            : closedTone
+              ? "bg-emerald-100 text-emerald-900"
+              : "bg-slate-100 text-slate-900"
+        }`}
+        title={statusLine}
+        data-testid="big-clock-compact"
+      >
         <div className="font-mono-data font-semibold tabular-nums text-sm">{hour12}:{pad(m)}</div>
         <div className="text-xs opacity-80">{ampm}</div>
         <div className={`w-2 h-2 rounded-full ml-1 ${inAlertWindow ? "bg-white" : "bg-emerald-500"}`} />
@@ -224,9 +256,18 @@ export default function BigClock({ compact = false }) {
   }
 
   return (
-    <div className={`p-3 sm:p-4 border-t border-slate-200 ${inAlertWindow ? "bg-rose-50" : isWeekend ? "bg-emerald-50" : "bg-transparent"}`}>
+    <div className={`p-3 sm:p-4 border-t border-slate-200 ${inAlertWindow ? "bg-rose-50" : closedTone ? "bg-emerald-50" : "bg-transparent"}`}>
       <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Local (IST)</div>
-      <div className={`w-full rounded-md p-2 sm:p-3 text-center flex flex-col items-center justify-center ${inAlertWindow ? "bg-rose-600 text-white" : isWeekend ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-900"}`}>
+      <div
+        className={`w-full rounded-md p-2 sm:p-3 text-center flex flex-col items-center justify-center ${
+          inAlertWindow
+            ? "bg-rose-600 text-white"
+            : closedTone
+              ? "bg-emerald-100 text-emerald-900"
+              : "bg-slate-100 text-slate-900"
+        }`}
+        data-testid="big-clock"
+      >
         <div className="flex items-baseline gap-3">
           <div className="font-mono-data font-bold tracking-tight tabular-nums text-2xl sm:text-3xl md:text-4xl">
             {hour12}:{pad(m)}
@@ -236,11 +277,11 @@ export default function BigClock({ compact = false }) {
         </div>
 
         {inAlertWindow ? (
-          <div className="text-xs sm:text-sm mt-1 font-semibold text-white/90">Market closing soon — exit or hedge positions</div>
-        ) : isWeekend ? (
-          <div className="text-xs sm:text-sm mt-1 font-semibold text-emerald-900">Market closed for weekend — have a great weekend</div>
+          <div className="text-xs sm:text-sm mt-1 font-semibold text-white/90">{statusLine}</div>
+        ) : closedTone ? (
+          <div className="text-xs sm:text-sm mt-1 font-semibold text-emerald-900">{statusLine}</div>
         ) : (
-          <div className="text-xs sm:text-sm mt-1 text-slate-500">Market clock (IST)</div>
+          <div className="text-xs sm:text-sm mt-1 text-slate-500">{statusLine}</div>
         )}
       </div>
     </div>

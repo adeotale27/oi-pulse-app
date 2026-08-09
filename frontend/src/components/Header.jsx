@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import OiPulseLogo from "@/components/OiPulseLogo";
@@ -320,23 +328,21 @@ export default function Header({
         </div>
       )}
 
-      {/* Desktop header — unchanged */}
+      {/* Desktop header — compact single row for laptop/zoom; tools in a dropdown */}
       <div className="hidden md:block">
       {/* Row 1: brand + status + essential actions */}
-      <div className="px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3">
-        <div className="flex items-center gap-2.5 shrink-0">
-          <OiPulseLogo className="w-8 h-8 sm:w-9 sm:h-9 drop-shadow-sm ring-2 ring-emerald-500/15 rounded-xl" />
-          <div>
+      <div className="px-3 sm:px-4 py-2 flex items-center gap-2 lg:gap-3 flex-nowrap min-w-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <OiPulseLogo className="w-8 h-8 drop-shadow-sm ring-2 ring-emerald-500/15 rounded-xl" />
+          <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
               OI Pulse
-            </div>
-            <div className="hidden sm:block text-[10px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-              Live open interest desk
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-6 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
+        {/* ATM / VIX / GIFT — only on wide screens so laptop/zoom keeps tickers readable */}
+        <div className="hidden 2xl:flex items-center gap-4 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
           <Metric label="ATM" value={atm.toLocaleString()} />
           <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
           <ExtraTickerCell
@@ -350,17 +356,22 @@ export default function Header({
           />
         </div>
 
-        {/* Desktop tickers sit in the top row */}
-        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-3 border-l border-slate-200 dark:border-slate-700">
-          <TickerStrip activeIndex={activeIndex} onSelectIndex={onSelectIndex} spotPrices={spotPrices} />
+        {/* Index tiles — never wrap/stack in the header */}
+        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden">
+          <TickerStrip
+            layout="header"
+            activeIndex={activeIndex}
+            onSelectIndex={onSelectIndex}
+            spotPrices={spotPrices}
+          />
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
-          <div>
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          <div className="hidden xl:block">
             <BigClock compact />
           </div>
           {(lastPulledAt || nowLabel) && (
-            <div className="hidden lg:flex flex-col items-start gap-0 bg-transparent text-slate-700 px-3 py-1 rounded-sm leading-tight min-w-[120px]" data-testid="oi-and-time">
+            <div className="hidden 2xl:flex flex-col items-start gap-0 bg-transparent text-slate-700 px-2 py-1 rounded-sm leading-tight min-w-[100px]" data-testid="oi-and-time">
               {lastPulledAt && <div className="text-[10px] font-mono-data uppercase tracking-widest text-slate-500 dark:text-slate-400">OI pulled</div>}
               {lastPulledAt && <div className="text-sm font-semibold font-mono-data text-slate-900 dark:text-slate-100">{new Date(lastPulledAt).toLocaleTimeString()}</div>}
               <div className="text-[10px] font-mono-data text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
@@ -441,57 +452,71 @@ export default function Header({
             />
           </div>
 
-          {/* Always-visible quick tools */}
-          <Button
-            data-testid="btn-toggle-compact"
-            variant="outline" size="sm" className={toolBtn}
-            onClick={onToggleCompact}
-            title={compact ? "Show sidebar (Ctrl+B)" : "Hide sidebar (Ctrl+B)"}
-          >
-            {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-          </Button>
-          <Button
-            data-testid="btn-toggle-dark"
-            variant="outline" size="sm" className={toolBtn}
-            onClick={onToggleDark}
-            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
-          <Button
-            data-testid="btn-toggle-notifications"
-            variant="outline" size="sm" className={`hidden sm:inline-flex ${toolBtn}`}
-            onClick={onToggleNotif}
-            title={notifEnabled ? "Notifications on" : "Enable notifications"}
-          >
-            {notifEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-          </Button>
-          <Button
-            data-testid="btn-open-sounds"
-            variant="outline" size="sm" className={`hidden md:inline-flex ${toolBtn}`}
-            onClick={onOpenSounds}
-            title="Alert sound preferences"
-          >
-            <Volume2 className="w-4 h-4" />
-          </Button>
-          <Button
-            data-testid="btn-download-csv"
-            variant="outline" size="sm" className={`hidden md:inline-flex ${toolBtn}`}
-            onClick={onDownloadCsv}
-            title="Download current OI as CSV"
-          >
-            <Download className="w-4 h-4" />
-          </Button>
-          {isAdmin && (
-            <Button
-              data-testid="btn-open-settings"
-              variant="outline" size="sm" className={`hidden md:inline-flex ${toolBtn}`}
-              onClick={onOpenSettings}
-              title="Alert settings"
-            >
-              <Settings2 className="w-4 h-4" />
-            </Button>
-          )}
+          {/* View / tools dropdown — theme → download (and sidebar / settings) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                data-testid="btn-view-tools"
+                variant="outline"
+                size="sm"
+                className={toolBtn}
+                title="View & tools"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                <span className="hidden xl:inline ml-1.5 text-xs">View</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52" data-testid="view-tools-menu">
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
+                Display &amp; tools
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                data-testid="menu-toggle-compact"
+                onSelect={(e) => { e.preventDefault(); onToggleCompact?.(); }}
+              >
+                {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+                {compact ? "Show sidebar" : "Hide sidebar"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-toggle-dark"
+                onSelect={(e) => { e.preventDefault(); onToggleDark?.(); }}
+              >
+                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {darkMode ? "Light mode" : "Dark mode"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-toggle-notifications"
+                onSelect={(e) => { e.preventDefault(); onToggleNotif?.(); }}
+              >
+                {notifEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                {notifEnabled ? "Notifications on" : "Enable notifications"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-open-sounds"
+                onSelect={(e) => { e.preventDefault(); onOpenSounds?.(); }}
+              >
+                <Volume2 className="w-4 h-4" />
+                Alert sounds
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-download-csv"
+                onSelect={(e) => { e.preventDefault(); onDownloadCsv?.(); }}
+              >
+                <Download className="w-4 h-4" />
+                Download CSV
+              </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem
+                  data-testid="menu-open-settings"
+                  onSelect={(e) => { e.preventDefault(); onOpenSettings?.(); }}
+                >
+                  <Settings2 className="w-4 h-4" />
+                  Alert settings
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Desktop admin action cluster */}
           <div className="hidden lg:flex items-center gap-2">
@@ -537,6 +562,34 @@ export default function Header({
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* Laptop extras row: clock + ATM/VIX/GIFT when they do not fit the top row */}
+      <div
+        className="2xl:hidden px-3 sm:px-4 pb-2 flex items-center gap-3 flex-wrap border-t border-slate-100/80 dark:border-slate-800/80 pt-1.5"
+        data-testid="header-secondary-row"
+      >
+        <div className="xl:hidden">
+          <BigClock compact />
+        </div>
+        <div className="flex items-center gap-4 min-w-0 overflow-x-auto">
+          <Metric label="ATM" value={atm.toLocaleString()} />
+          <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
+          <ExtraTickerCell
+            label="GIFT NIFTY"
+            data={extras.gift_nifty}
+            windows={giftSessions}
+            openNow={extras?.windows?.gift?.open_now}
+            kiteSymbol={extras?.windows?.gift?.kite_symbol || "NSEIX:GIFT NIFTY"}
+            serverIst={extras?.server_time_ist}
+            onOpenSessions={() => setGiftModalOpen(true)}
+          />
+        </div>
+        {lastPulledAt && (
+          <div className="ml-auto text-[10px] font-mono-data text-slate-500 dark:text-slate-400 shrink-0" data-testid="oi-pulled-secondary">
+            OI pulled {new Date(lastPulledAt).toLocaleTimeString()}
+          </div>
+        )}
       </div>
 
       {/* Tablet (md–lg): admin Tools row — phone uses the slim mobile header above */}

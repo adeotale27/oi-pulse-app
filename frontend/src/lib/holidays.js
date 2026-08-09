@@ -77,6 +77,13 @@ export function isHoliday(iso) {
   return HOLIDAYS_RAW.find((h) => h.date === iso) || null;
 }
 
+/** True for weekday IST dates that are not on the NSE holiday list. */
+export function isTradingDayIST(iso = toIST(new Date())) {
+  const wd = weekdayIST(iso);
+  if (wd === 0 || wd === 6) return false;
+  return !isHoliday(iso);
+}
+
 export function todayIST() {
   return toIST(new Date());
 }

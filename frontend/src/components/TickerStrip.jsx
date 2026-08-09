@@ -16,9 +16,10 @@ const INDEX_STYLE = {
   BANKNIFTY: { label: "BANK NIFTY", gradient: "from-emerald-500/10 to-teal-500/10",   ring: "ring-emerald-300", dot: "bg-emerald-500" },
 };
 
-export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false }) {
+export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default" }) {
   const [tickers, setTickers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isHeader = layout === "header";
 
   useEffect(() => {
     let cancelled = false;
@@ -61,15 +62,15 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     );
   }
 
+  // Header: always keep one horizontal row (no wrap / no vertical stack on zoom).
+  const stripClass = isHeader
+    ? "flex flex-nowrap items-stretch gap-1.5 min-w-0 overflow-x-auto"
+    : dense
+      ? "grid grid-cols-3 gap-1.5"
+      : "grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-stretch";
+
   return (
-    <div
-      className={
-        dense
-          ? "grid grid-cols-3 gap-1.5"
-          : "grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-stretch"
-      }
-      data-testid="ticker-strip"
-    >
+    <div className={stripClass} data-testid="ticker-strip">
       {displayTickers.map((t) => {
         const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
         const up = t.change > 0;
@@ -85,6 +86,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const isActive = t.index === activeIndex;
         const shortLabel =
           t.index === "BANKNIFTY" ? "BANK" : t.index === "NIFTY" ? "NIFTY" : "SENSEX";
+        const useCompact = dense || isHeader;
         return (
           <button
             key={t.index}
@@ -92,7 +94,11 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             onClick={() => onSelectIndex?.(t.index)}
             data-testid={`ticker-${t.index}`}
             className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} ${
-              dense ? "px-1.5 py-1.5" : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
+              isHeader
+                ? "px-2 py-1.5 shrink-0 min-w-[108px] max-w-[140px]"
+                : dense
+                  ? "px-1.5 py-1.5"
+                  : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
             } hover:brightness-95 transition-all ${
               isActive
                 ? `border-transparent ring-2 ${s.ring} shadow-sm`
@@ -100,33 +106,33 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
           >
-            <div className={`flex items-center justify-between gap-1 text-[9px] uppercase tracking-widest text-slate-600 dark:text-slate-400 font-semibold ${dense ? "gap-0.5" : "gap-3"}`}>
+            <div className={`flex items-center justify-between gap-1 text-[9px] uppercase tracking-widest text-slate-600 dark:text-slate-400 font-semibold ${useCompact ? "gap-0.5" : "gap-3"}`}>
               <div className="flex items-center gap-1 min-w-0">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-                <span className="truncate">{dense ? shortLabel : s.label}</span>
+                <span className="truncate">{useCompact ? shortLabel : s.label}</span>
               </div>
-              {!dense && (
+              {!useCompact && (
                 <div className={`text-[10px] font-mono-data tabular-nums shrink-0 ${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
                   {t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%
                 </div>
               )}
             </div>
-            <div className={`mt-1 ${dense ? "space-y-0.5" : "flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3 sm:mt-1.5"}`}>
+            <div className={`mt-1 ${useCompact ? "space-y-0.5" : "flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3 sm:mt-1.5"}`}>
               <div
-                className={`${dense ? "text-[11px]" : "text-base sm:text-sm"} font-mono-data font-semibold text-slate-900 dark:text-slate-100 tabular-nums leading-none`}
+                className={`${useCompact ? "text-[11px]" : "text-base sm:text-sm"} font-mono-data font-semibold text-slate-900 dark:text-slate-100 tabular-nums leading-none`}
                 data-testid={`ticker-${t.index}-ltp`}
               >
                 {fmtNum(t.ltp, 2)}
               </div>
               <div
                 className={`inline-flex items-center gap-1 font-mono-data tabular-nums leading-none ${toneCls} ${
-                  dense ? "text-[10px]" : "gap-1.5 text-xs sm:text-[11px]"
+                  useCompact ? "text-[10px]" : "gap-1.5 text-xs sm:text-[11px]"
                 }`}
                 data-testid={`ticker-${t.index}-chg`}
               >
-                {!dense && <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />}
+                {!useCompact && <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />}
                 <span>
-                  {dense
+                  {useCompact
                     ? `${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%`
                     : `${t.change > 0 ? "+" : ""}${fmtNum(t.change, 2)}`}
                 </span>

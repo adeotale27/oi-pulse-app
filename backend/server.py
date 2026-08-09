@@ -475,6 +475,7 @@ class SettingsIn(BaseModel):
     alert_enabled_indices: Optional[List[str]] = None  # weekday-defaulted alert focus
     show_strike_range: Optional[bool] = None  # sidebar Strike Range steppers
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
+    show_suggestion: Optional[bool] = None  # Suggestion window under right panel
 
 
 class LoginIn(BaseModel):
@@ -1529,7 +1530,20 @@ async def ws_spot(websocket: WebSocket):
 
 @api_router.get("/alerts")
 async def get_alerts(limit: int = 50):
-    docs = await db.alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
+    """Return alerts for the active board session only.
+
+    Uses session_anchor_date so weekend/holiday views stay on the last session,
+    and a new trading day no longer surfaces prior-day alerts.
+    """
+    try:
+        anchor = session_anchor_date()
+        start_utc, _ = session_window_utc(anchor)
+        docs = await db.alerts.find(
+            {"created_at": {"$gte": start_utc.isoformat()}},
+            {"_id": 0},
+        ).sort("created_at", -1).to_list(length=limit)
+    except Exception:
+        docs = await db.alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
     return {"alerts": docs}
 
 
@@ -1562,6 +1576,7 @@ async def get_config():
         "market_close_ist": tracker.settings.get("market_close_ist", close_hm),
         "show_strike_range": bool(tracker.settings.get("show_strike_range", False)),
         "show_writer_defense": bool(tracker.settings.get("show_writer_defense", True)),
+        "show_suggestion": bool(tracker.settings.get("show_suggestion", True)),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
     }
 

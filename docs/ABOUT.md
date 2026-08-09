@@ -33,7 +33,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false }` (admin). Gu
 | GET | `/oi/{index}/change` | Current vs N-minutes-ago + multi-window deltas |
 | GET | `/history/{index}` | Snapshot timeline for Replay |
 | GET | `/expiries/{index}` / POST | Expiry list + selection |
-| GET | `/alerts` / DELETE | Reversal alerts |
+| GET | `/alerts` / DELETE | Reversal alerts (session-scoped; prior days purged at new open) |
 | GET | `/tickers` | Index LTP / prev close cards |
 | GET | `/tickers/extras` | India VIX, GIFT NIFTY, session windows |
 | GET | `/market/status` | Open/close helpers |
@@ -41,8 +41,8 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false }` (admin). Gu
 | GET | `/straddle/{index}` (+ `/history`) | ATM straddle series |
 | GET | `/positions` | Open F&O from Kite (admin) |
 | POST | `/admin/refresh-day` | **Fresh Pull** — wipe snapshots, live-pull all **enabled** indices |
-| POST | `/admin/upload/constituents` | CSV/XLSX constituents |
-| POST | `/admin/upload/events` | Event calendar upload |
+| POST | `/admin/upload/constituents` | CSV/XLSX constituents (replaces index bucket on success — see [UPLOAD.md](./UPLOAD.md)) |
+| POST | `/admin/upload/events` | Event calendar upload (full replace on success) |
 | GET | `/events/{index}` / `/constituents/{index}` | Stored event/constituent data |
 
 ### Auth
