@@ -142,7 +142,7 @@ input[type="number"] {
     border-bottom: 1px solid var(--oi-panel-border);
     backdrop-filter: blur(12px) saturate(1.15);
     box-shadow: 0 8px 24px -20px rgba(15, 55, 70, 0.35);
-    overflow-x: hidden;
+    overflow: hidden;
   }
 
   .oi-header * {

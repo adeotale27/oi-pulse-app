@@ -3,7 +3,7 @@ import { api, clearAdminAuth } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Users, LogOut, KeyRound, ChevronDown, UserCheck } from "lucide-react";
+import { Users, LogOut, KeyRound, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import AccessControlModal from "@/components/AccessControlModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
@@ -14,12 +14,10 @@ let lastPendingAlertKey = null;
 let lastPendingAlertAt = 0;
 
 /**
- * AdminControls — Public Access toggle + Admin menu.
+ * AdminControls — Public Access toggle (+ account actions in panel variant).
  *
- * `assumedAdmin` — when parent (Header) already knows the user is admin,
- * render immediately instead of waiting on a second /auth/state fetch.
- * Critical on mobile Tools after market close (quiescent polling / dedupe
- * previously left this widget as null).
+ * Inline header: compact one-line Public toggle only (no second "Admin" button —
+ * Fresh Pull / Access Control / etc. live under Header's single Admin menu).
  */
 export default function AdminControls({
   variant = "inline",
@@ -36,7 +34,6 @@ export default function AdminControls({
       : null
   ));
   const [busy, setBusy] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const prevPendingRef = useRef(null);
@@ -46,7 +43,6 @@ export default function AdminControls({
       const { data } = await api.get("/auth/state");
       setState(data);
     } catch (_) {
-      // keep assumedAdmin seed if the fetch fails while closed
       if (assumedAdmin) {
         setState((prev) => prev || {
           is_admin: true,
@@ -57,14 +53,12 @@ export default function AdminControls({
     }
   }, [assumedAdmin, publicAccessOpen]);
 
-  // Poll often while admin is in session so approval popups feel realtime.
   useQuiescentAwarePolling(refresh, 10_000, [refresh], {
     immediate: true,
     allowDuringQuiescent: true,
     dedupeKey: variant === "panel" ? "admin-controls-panel" : "admin-controls-inline",
   });
 
-  // When a new access request arrives, toast + open Access Control for the admin.
   useEffect(() => {
     if (!state?.is_admin && !assumedAdmin) return;
     const pending = Number(state?.pending_access_count || 0);
@@ -89,26 +83,21 @@ export default function AdminControls({
         setAccessOpen(true);
       }
     }
-    // Seed on first admin poll so we don't popup for already-pending on page load.
     sharedPrevPending = pending;
     prevPendingRef.current = pending;
   }, [state?.is_admin, state?.pending_access_count, assumedAdmin]);
 
-  // Sync public flag from parent if we only have the seed state.
   useEffect(() => {
     if (publicAccessOpen == null) return;
     setState((prev) => {
       if (!prev?.is_admin) return prev;
       if (prev.public_access_open === !!publicAccessOpen) return prev;
-      // Only seed when parent provided a definite value and we haven't fetched yet
-      // or values drifted — prefer server state once refresh lands.
       return { ...prev, public_access_open: !!publicAccessOpen };
     });
   }, [publicAccessOpen]);
 
   useEffect(() => {
     if (!state?.is_admin) return undefined;
-    // Soft client safety-net only — never call /auth/logout (that wipes Remember-me).
     const ttlMs = Math.max(60, Number(state.session_ttl_seconds || 8 * 3600)) * 1000;
     const logoutTimer = setTimeout(() => {
       clearAdminAuth({ clearRemember: false });
@@ -118,14 +107,17 @@ export default function AdminControls({
     return () => clearTimeout(logoutTimer);
   }, [state?.is_admin, state?.session_ttl_seconds]);
 
+  // Header Admin menu can open these modals without a second "Admin" button.
   useEffect(() => {
-    if (!menuOpen) return;
-    const onDoc = (e) => {
-      if (!e.target.closest?.("[data-admin-menu]")) setMenuOpen(false);
+    const onAccess = () => setAccessOpen(true);
+    const onPassword = () => setPwOpen(true);
+    window.addEventListener("oi-admin-open-access", onAccess);
+    window.addEventListener("oi-admin-open-password", onPassword);
+    return () => {
+      window.removeEventListener("oi-admin-open-access", onAccess);
+      window.removeEventListener("oi-admin-open-password", onPassword);
     };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [menuOpen]);
+  }, []);
 
   const isAdmin = state ? !!state.is_admin : !!assumedAdmin;
   if (!isAdmin) {
@@ -159,8 +151,8 @@ export default function AdminControls({
   const logout = async () => {
     try { await api.post("/auth/logout"); } catch (_) {}
     try {
-      const { clearAdminAuth } = await import("@/lib/api");
-      clearAdminAuth({ clearRemember: true });
+      const { clearAdminAuth: clear } = await import("@/lib/api");
+      clear({ clearRemember: true });
     } catch (_) {
       try {
         sessionStorage.removeItem("oi_admin_token");
@@ -174,6 +166,46 @@ export default function AdminControls({
 
   const isPanel = variant === "panel";
 
+  const publicToggle = (
+    <div
+      className={
+        isPanel
+          ? "flex flex-row items-center justify-between w-full gap-2"
+          : "flex items-center gap-1.5 h-8 shrink-0"
+      }
+      data-testid="admin-public-row"
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
+          Public
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
+          {publicOn ? "ON" : "OFF"}
+        </span>
+        <Switch
+          data-testid="admin-public-toggle"
+          checked={publicOn}
+          onCheckedChange={togglePublic}
+          disabled={busy}
+        />
+      </div>
+      {pending > 0 && (
+        <button
+          type="button"
+          data-testid="admin-pending-badge"
+          onClick={() => setAccessOpen(true)}
+          className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] font-semibold hover:bg-amber-200"
+          title="Pending access requests"
+        >
+          {pending}
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div
       className={
@@ -184,93 +216,45 @@ export default function AdminControls({
       data-testid="admin-controls"
       data-variant={variant}
     >
-      <div className={`flex ${isPanel ? "flex-row items-center justify-between w-full" : "flex-col items-start gap-1"} text-xs`}>
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-          <span className="text-slate-600 dark:text-slate-300 font-medium truncate">Public access</span>
-        </div>
-        <div className="flex items-center gap-2 shrink-0 pl-5">
-          <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
-            {publicOn ? "ON" : "OFF"}
-          </span>
-          <Switch
-            data-testid="admin-public-toggle"
-            checked={publicOn}
-            onCheckedChange={togglePublic}
-            disabled={busy}
-          />
-        </div>
-      </div>
+      {publicToggle}
 
-      {pending > 0 && (
-        <button
-          type="button"
-          data-testid="admin-pending-badge"
-          onClick={() => setAccessOpen(true)}
-          className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[11px] font-semibold hover:bg-amber-200 self-start"
-          title="Pending access requests"
-        >
-          {pending} request{pending === 1 ? "" : "s"}
-        </button>
-      )}
-
-      <div className={`relative ${isPanel ? "w-full" : ""}`} data-admin-menu>
-        <Button
-          data-testid="admin-menu-toggle"
-          variant={isPanel ? "outline" : "ghost"}
-          size="sm"
-          onClick={() => setMenuOpen((v) => !v)}
-          className={isPanel ? "w-full justify-between h-9" : "h-7 px-2 text-slate-600 hover:text-slate-900"}
-          title="Admin menu"
-        >
-          <span>Admin</span> <ChevronDown className="w-3 h-3 ml-1" />
-        </Button>
-
-        {menuOpen && (
-          <div
-            data-testid="admin-menu"
-            className={`absolute ${isPanel ? "left-0 right-0" : "right-0"} top-full mt-1 ${isPanel ? "w-full" : "w-52"} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-sm shadow-md z-[60] text-sm`}
+      {isPanel && (
+        <div className="flex flex-col gap-1.5 w-full">
+          <Button
+            data-testid="admin-menu-guests"
+            variant="outline"
+            size="sm"
+            className="w-full justify-start h-9"
+            onClick={() => setAccessOpen(true)}
           >
-            <button
-              data-testid="admin-menu-guests"
-              onClick={() => {
-                setMenuOpen(false);
-                setAccessOpen(true);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Access Control
-              {pending > 0 && (
-                <span className="ml-auto text-[10px] rounded-full bg-amber-100 text-amber-800 px-1.5">{pending}</span>
-              )}
-            </button>
-
-            <button
-              data-testid="admin-menu-change-password"
-              onClick={() => {
-                setMenuOpen(false);
-                setPwOpen(true);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              Change Password
-            </button>
-
-            <div className="border-t border-slate-100 dark:border-slate-800" />
-
-            <button
-              data-testid="admin-menu-logout"
-              onClick={logout}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-rose-50 text-rose-700"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign out
-            </button>
-          </div>
-        )}
-      </div>
+            <UserCheck className="w-3.5 h-3.5 mr-2" />
+            Access Control
+            {pending > 0 && (
+              <span className="ml-auto text-[10px] rounded-full bg-amber-100 text-amber-800 px-1.5">{pending}</span>
+            )}
+          </Button>
+          <Button
+            data-testid="admin-menu-change-password"
+            variant="outline"
+            size="sm"
+            className="w-full justify-start h-9"
+            onClick={() => setPwOpen(true)}
+          >
+            <KeyRound className="w-3.5 h-3.5 mr-2" />
+            Change Password
+          </Button>
+          <Button
+            data-testid="admin-menu-logout"
+            variant="outline"
+            size="sm"
+            className="w-full justify-start h-9 text-rose-700 hover:text-rose-800"
+            onClick={logout}
+          >
+            <LogOut className="w-3.5 h-3.5 mr-2" />
+            Sign out
+          </Button>
+        </div>
+      )}
 
       <AccessControlModal open={accessOpen} onOpenChange={setAccessOpen} />
       <ChangePasswordModal open={pwOpen} onOpenChange={setPwOpen} />
