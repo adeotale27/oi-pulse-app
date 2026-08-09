@@ -61,7 +61,7 @@ async def main():
             for e in errors[:10]:
                 print(f"       - {e}")
             continue
-        res = await save_constituents(db, idx, rows)
+        res = await save_constituents(db, idx, rows, source_filename=path.name)
         print(f"[seed] ✅ {idx}: saved {res['rows_saved']} constituents")
 
     # --- Events ---

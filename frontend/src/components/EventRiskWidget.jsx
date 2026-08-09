@@ -74,6 +74,32 @@ function formatDate(iso) {
   } catch (_) { return iso; }
 }
 
+function formatUploadStamp(iso) {
+  if (!iso) return "never";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "never";
+    return d.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }) + " IST";
+  } catch (_) {
+    return "never";
+  }
+}
+
+const UPLOAD_STAMP_LABELS = [
+  { key: "nifty50", label: "Nifty 50" },
+  { key: "banknifty", label: "Bank Nifty" },
+  { key: "sensex", label: "Sensex" },
+  { key: "events", label: "NSE events" },
+];
+
 function daysLeftText(n) {
   if (n === 0) return "Today";
   if (n === 1) return "Tomorrow";
@@ -81,8 +107,9 @@ function daysLeftText(n) {
   return `${n}d left`;
 }
 
-export default function EventRiskWidget({ activeIndex }) {
+export default function EventRiskWidget({ activeIndex, refreshKey = 0 }) {
   const [events, setEvents] = useState([]);
+  const [uploadMeta, setUploadMeta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [showAll, setShowAll] = useState(false);
@@ -93,11 +120,24 @@ export default function EventRiskWidget({ activeIndex }) {
     let cancelled = false;
     setLoading(true); setErr(null);
     api.get(`/events/${activeIndex}`)
-      .then((r) => { if (!cancelled) setEvents(r.data.events || []); })
+      .then((r) => {
+        if (cancelled) return;
+        setEvents(r.data.events || []);
+        if (r.data.upload_meta) setUploadMeta(r.data.upload_meta);
+      })
       .catch((e) => { if (!cancelled) setErr(e?.response?.data?.detail || e.message || "Failed to load events"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [activeIndex]);
+  }, [activeIndex, refreshKey]);
+
+  // Always refresh the four independent upload stamps (even if events call is cached).
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/upload/meta")
+      .then((r) => { if (!cancelled) setUploadMeta(r.data || null); })
+      .catch(() => { /* keep events payload meta if any */ });
+    return () => { cancelled = true; };
+  }, [refreshKey, activeIndex]);
 
   // ---- Derived data ----
   const upcoming = useMemo(() => events.filter((e) => e.days_remaining >= 0), [events]);
@@ -150,6 +190,38 @@ export default function EventRiskWidget({ activeIndex }) {
         </div>
         <div className="text-[11px] text-slate-500 dark:text-slate-400">
           {loading ? "Loading…" : err ? <span className="text-rose-500">{err}</span> : `${upcoming.length} upcoming`}
+        </div>
+      </div>
+
+      {/* Per-file last upload stamps (independent — files may be refreshed on different days) */}
+      <div
+        className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40"
+        data-testid="upload-last-stamps"
+      >
+        <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5">
+          Last successful upload
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+          {UPLOAD_STAMP_LABELS.map(({ key, label: stampLabel }) => {
+            const meta = uploadMeta?.[key] || {};
+            const when = formatUploadStamp(meta.uploaded_at);
+            const file = meta.source_filename;
+            return (
+              <div
+                key={key}
+                className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug min-w-0"
+                data-testid={`upload-stamp-${key}`}
+                title={file ? `${stampLabel}: ${file}` : stampLabel}
+              >
+                <span className="font-semibold text-slate-800 dark:text-slate-100">{stampLabel}</span>
+                <span className="text-slate-400"> · </span>
+                <span className="font-mono-data">{when}</span>
+                {file ? (
+                  <span className="text-slate-400 truncate"> · {file}</span>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
 

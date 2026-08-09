@@ -201,6 +201,7 @@ export default function Dashboard() {
   });
   const [soundsOpen, setSoundsOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("rightPanelOpen");
@@ -370,6 +371,7 @@ export default function Dashboard() {
   const [oiLoading, setOiLoading] = useState(false);
   const [showStrikeRange, setShowStrikeRange] = useState(false);
   const [showWriterDefense, setShowWriterDefense] = useState(true);
+  const [showSuggestion, setShowSuggestion] = useState(true);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
@@ -611,6 +613,9 @@ export default function Dashboard() {
         if (typeof res.data.show_writer_defense === "boolean") {
           setShowWriterDefense(res.data.show_writer_defense);
         }
+        if (typeof res.data.show_suggestion === "boolean") {
+          setShowSuggestion(res.data.show_suggestion);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch settings", e);
@@ -640,6 +645,9 @@ export default function Dashboard() {
       }
       if (typeof d.show_writer_defense === "boolean") {
         setShowWriterDefense(d.show_writer_defense);
+      }
+      if (typeof d.show_suggestion === "boolean") {
+        setShowSuggestion(d.show_suggestion);
       }
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, []);
@@ -1849,7 +1857,7 @@ export default function Dashboard() {
 
                   {(authState.is_admin || visiblePages.includes("index-events")) && (
                     <TabsContent value="index-events" className="mt-0">
-                      <EventRiskWidget activeIndex={activeIndex} />
+                      <EventRiskWidget activeIndex={activeIndex} refreshKey={uploadRefreshKey} />
                     </TabsContent>
                   )}
                 </div>
@@ -1915,15 +1923,20 @@ export default function Dashboard() {
                       showOI={showOI}
                       // pass configured straddle poll interval (ms)
                       straddlePollMs={straddlePollMs}
+                      uploadRefreshKey={uploadRefreshKey}
                       suggestion={
-                        <SuggestionBox
-                          indexName={activeIndex}
-                          marketIntel={marketIntel}
-                          changeSummary={changeSummary}
-                          spot={current?.price || current?.atm}
-                          vixNow={current?.vix || status?.vix}
-                          vixOpen={vixSessionOpen}
-                        />
+                        showSuggestion ? (
+                          <SuggestionBox
+                            indexName={activeIndex}
+                            marketIntel={marketIntel}
+                            changeSummary={changeSummary}
+                            spot={current?.price || current?.atm}
+                            vixNow={current?.vix || status?.vix}
+                            vixOpen={vixSessionOpen}
+                            sessionDate={dataStatus?.data_date || current?.timestamp || lastPulledAt}
+                            isLiveSession={!!status?.market?.is_market_open}
+                          />
+                        ) : null
                       }
                     />
                   </Panel>
@@ -1993,6 +2006,21 @@ export default function Dashboard() {
                     status={status}
                     showOI={showOI}
                     straddlePollMs={straddlePollMs}
+                    uploadRefreshKey={uploadRefreshKey}
+                    suggestion={
+                      showSuggestion ? (
+                        <SuggestionBox
+                          indexName={activeIndex}
+                          marketIntel={marketIntel}
+                          changeSummary={changeSummary}
+                          spot={current?.price || current?.atm}
+                          vixNow={current?.vix || status?.vix}
+                          vixOpen={vixSessionOpen}
+                          sessionDate={dataStatus?.data_date || current?.timestamp || lastPulledAt}
+                          isLiveSession={!!status?.market?.is_market_open}
+                        />
+                      ) : null
+                    }
                   />
                 </div>
               </div>
@@ -2043,6 +2071,9 @@ export default function Dashboard() {
           if (typeof settings.show_writer_defense === "boolean") {
             setShowWriterDefense(settings.show_writer_defense);
           }
+          if (typeof settings.show_suggestion === "boolean") {
+            setShowSuggestion(settings.show_suggestion);
+          }
         }}
         onLocalSaved={setOiSettings}
       />
@@ -2054,7 +2085,11 @@ export default function Dashboard() {
       />
 
       <SoundSettingsModal open={soundsOpen} onOpenChange={setSoundsOpen} />
-      <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
+      <UploadModal
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onUploaded={() => setUploadRefreshKey((k) => k + 1)}
+      />
     </div>
   );
 }

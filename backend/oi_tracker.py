@@ -28,7 +28,8 @@ except Exception:
     MockService = None
 from market_hours import (
     is_market_open, market_status, now_ist, configure_hours,
-    default_alert_indices_for_today,
+    default_alert_indices_for_today, is_holiday, is_trading_day,
+    session_window_utc, IST,
 )
 import notifier
 
@@ -146,6 +147,8 @@ DEFAULT_SETTINGS = {
     "show_strike_range": False,
     # Writer Defense map on Open Interest tab (admin-togglable)
     "show_writer_defense": True,
+    # Suggestion posture card under the right panel (admin-togglable)
+    "show_suggestion": True,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",
@@ -189,6 +192,8 @@ class OITracker:
         # Per-index single-flight refresh locks so /change never stampedes Kite.
         self._refresh_locks: Dict[str, asyncio.Lock] = {i: asyncio.Lock() for i in INDICES}
         self._refresh_tasks: Dict[str, Optional[asyncio.Task]] = {i: None for i in INDICES}
+        # Track which IST trading date we already purged prior-day alerts for.
+        self._alerts_purged_for: Optional[str] = None
 
     async def load_settings(self):
         doc = await self.db.settings.find_one({"_id": "alerts"})
@@ -257,7 +262,7 @@ class OITracker:
             "market_open_ist", "market_close_ist",
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",
-            "show_strike_range", "show_writer_defense",
+            "show_strike_range", "show_writer_defense", "show_suggestion",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}
         # Explicit alert-index change → mark as today's override
@@ -565,9 +570,13 @@ class OITracker:
             try:
                 poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
                 if FORCE_ALWAYS_POLL or is_market_open():
-                    if not was_open:
+                    if (not was_open):
                         logger.info("Market OPEN — starting polling.")
                         await notifier.alert_market_open()
+                        try:
+                            await self._purge_prior_session_alerts()
+                        except Exception as e:
+                            logger.warning("purge prior-session alerts failed: %s", e)
                         was_open = True
                     await asyncio.sleep(self._seconds_until_next_poll_boundary(poll_interval_seconds))
                     if not self.running:
@@ -598,12 +607,37 @@ class OITracker:
                 await notifier.alert_tracker_error(str(e))
                 await asyncio.sleep(max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS))))
 
+    async def _purge_prior_session_alerts(self):
+        """On a new trading day open, drop alerts from prior sessions.
+
+        Keeps the Alerts panel focused on today's session so weekend/holiday
+        leftovers are not misread as live signals.
+        """
+        dt = now_ist()
+        if not is_trading_day(dt):
+            return
+        today = dt.date().isoformat()
+        if self._alerts_purged_for == today:
+            return
+        start_utc, _ = session_window_utc(dt.date(), dt)
+        cutoff = start_utc.isoformat()
+        result = await self.db.alerts.delete_many({"created_at": {"$lt": cutoff}})
+        deleted = getattr(result, "deleted_count", 0) or 0
+        self._alerts_purged_for = today
+        if deleted:
+            logger.info(
+                "Purged %s prior-session alert(s) before %s (session %s)",
+                deleted,
+                cutoff,
+                today,
+            )
+
     async def _premarket_check(self):
         """Between 8:45 and 9:00 IST on trading days, verify Kite is usable.
         If not, ping the user on Telegram (once per day)."""
         try:
             dt = now_ist()
-            if dt.weekday() >= 5:
+            if dt.weekday() >= 5 or is_holiday(dt):
                 return
             if not (dt.hour == 8 and dt.minute >= 45):
                 return

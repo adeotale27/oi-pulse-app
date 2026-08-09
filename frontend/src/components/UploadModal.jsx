@@ -144,7 +144,7 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
             Upload Data
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Upload a CSV or XLSX file. Existing data for the selected category will be replaced.
+            Upload a CSV or XLSX file. If validation passes with no errors, existing data for this category is removed and replaced by the new file.
           </DialogDescription>
         </DialogHeader>
 

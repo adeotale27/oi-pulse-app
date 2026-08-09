@@ -6,6 +6,7 @@
 
 import React, { useMemo } from "react";
 import { Sparkles, TrendingUp, TrendingDown, Minus, AlertTriangle } from "lucide-react";
+import { formatDatePretty } from "@/lib/holidays";
 
 function toneClass(tone) {
   switch (tone) {
@@ -34,6 +35,23 @@ function fmtOi(n) {
   return `${sign}${Math.round(abs).toLocaleString("en-IN")}`;
 }
 
+function toISODate(value) {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  } catch {
+    return null;
+  }
+}
+
 export default function SuggestionBox({
   indexName,
   marketIntel,
@@ -41,6 +59,10 @@ export default function SuggestionBox({
   spot,
   vixNow,
   vixOpen,
+  /** YYYY-MM-DD (IST session) the OI posture is based on */
+  sessionDate = null,
+  /** true when board is showing a prior session (weekend / holiday / closed) */
+  isLiveSession = true,
 }) {
   const suggestion = useMemo(() => {
     const bullets = [];
@@ -155,16 +177,39 @@ export default function SuggestionBox({
   }, [marketIntel, changeSummary, spot, vixNow, vixOpen]);
 
   const Icon = suggestion.Icon;
+  const iso = toISODate(sessionDate);
+  const prettyDate = iso ? formatDatePretty(iso) : null;
+  const sessionLabel = prettyDate
+    ? (isLiveSession
+      ? `For trading session ${prettyDate}`
+      : `Based on last trading session ${prettyDate} — not a live weekend/holiday read`)
+    : null;
 
   return (
     <div
       className={`rounded-lg border px-3.5 py-3 text-xs space-y-1.5 shadow-sm ${toneClass(suggestion.tone)}`}
       data-testid="suggestion-box"
     >
-      <div className="flex items-center gap-1.5 font-semibold text-sm tracking-tight">
-        <Icon className="w-4 h-4 shrink-0" />
-        <span>Suggestion — {indexName}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-1.5 font-semibold text-sm tracking-tight min-w-0">
+          <Icon className="w-4 h-4 shrink-0" />
+          <span className="truncate">Suggestion — {indexName}</span>
+        </div>
+        {prettyDate && (
+          <span
+            className="shrink-0 text-[10px] font-mono-data px-1.5 py-0.5 rounded border border-current/15 bg-white/40 dark:bg-black/20"
+            data-testid="suggestion-session-date"
+            title={sessionLabel || prettyDate}
+          >
+            {iso}
+          </span>
+        )}
       </div>
+      {sessionLabel && (
+        <div className="text-[10px] opacity-75 leading-snug" data-testid="suggestion-session-label">
+          {sessionLabel}
+        </div>
+      )}
       <div className="text-[13px] font-semibold leading-snug">{suggestion.headline}</div>
       {suggestion.bullets.length > 0 && (
         <ul className="space-y-1 opacity-95">
