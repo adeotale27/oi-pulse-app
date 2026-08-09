@@ -55,7 +55,6 @@ export default function RightPanel({
   // straddle poll interval (ms) supplied by parent/dashboard
   straddlePollMs = 60000,
   uploadRefreshKey = 0,
-  isAdmin = false,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
