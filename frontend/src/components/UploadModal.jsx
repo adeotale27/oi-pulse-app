@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { UploadCloud, AlertTriangle, CheckCircle2, FileText, ExternalLink } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, api } from "@/lib/api";
 import { toast } from "sonner";
+import { isUploadStale, formatUploadAge, uploadAgeDays } from "@/lib/uploadFreshness";
 
 const UPLOAD_TYPES = [
   {
@@ -41,13 +42,24 @@ const UPLOAD_TYPES = [
   },
 ];
 
+function formatLastUploaded(iso) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * UploadModal — admin-only. Upload constituents or event calendar.
- *   • Dropdown for upload type
- *   • File picker (.csv or .xlsx)
- *   • Save posts multipart to backend; shows row-level validation errors when
- *     backend returns { ok:false, errors:[...] }
- *   • On success: toast + optional onUploaded callback
  */
 export default function UploadModal({ open, onOpenChange, onUploaded }) {
   const [uploadType, setUploadType] = useState("nifty50");
@@ -56,10 +68,27 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
   const [progress, setProgress] = useState(0);
   const [errors, setErrors] = useState([]);
   const [success, setSuccess] = useState(null);
+  const [uploadMeta, setUploadMeta] = useState(null);
 
   const reset = () => {
     setFile(null); setBusy(false); setProgress(0); setErrors([]); setSuccess(null);
   };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    api
+      .get("/upload/meta")
+      .then((r) => {
+        if (!cancelled) setUploadMeta(r.data || null);
+      })
+      .catch(() => {
+        if (!cancelled) setUploadMeta(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, success]);
 
   const handleChange = (v) => {
     setUploadType(v);
@@ -73,6 +102,10 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
   };
 
   const selected = UPLOAD_TYPES.find((t) => t.value === uploadType);
+  const typeMeta = uploadMeta?.[uploadType] || {};
+  const lastDate = formatLastUploaded(typeMeta.uploaded_at);
+  const age = uploadAgeDays(typeMeta.uploaded_at);
+  const stale = isUploadStale(uploadType, typeMeta.uploaded_at);
 
   const submit = async () => {
     if (!file) { toast.error("Please select a CSV or XLSX file first."); return; }
@@ -117,6 +150,7 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
           label: meta.label,
           rows: result.rows_saved,
           filename: result.filename || file.name,
+          uploadedAt: result.uploaded_at || new Date().toISOString(),
         });
         toast.success(`${meta.label} uploaded — ${result.rows_saved} rows saved.`);
         if (typeof onUploaded === "function") onUploaded(uploadType, result);
@@ -150,9 +184,28 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
 
         <div className="space-y-3">
           <div>
-            <Label className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Upload Type
-            </Label>
+            <div className="flex items-baseline justify-between gap-2 flex-wrap">
+              <Label className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Upload Type
+              </Label>
+              <span
+                data-testid="upload-last-stamp"
+                className={`text-[11px] font-mono-data ${
+                  stale
+                    ? "text-amber-700 dark:text-amber-300"
+                    : "text-slate-500 dark:text-slate-400"
+                }`}
+                title={
+                  typeMeta.source_filename
+                    ? `${typeMeta.source_filename}${age != null ? ` · ${formatUploadAge(age, false)}` : ""}`
+                    : undefined
+                }
+              >
+                {lastDate
+                  ? `Last uploaded on ${lastDate}${stale ? " · stale" : ""}`
+                  : "Last uploaded on — never"}
+              </span>
+            </div>
             <select
               data-testid="upload-type"
               value={uploadType}

@@ -11,9 +11,9 @@ function fmtNum(v, dp = 2) {
 // Per-index visual identity — matches the new Sidebar selector styling for
 // visual consistency across the app.
 const INDEX_STYLE = {
-  NIFTY:     { label: "NIFTY 50",   gradient: "from-sky-500/10 to-indigo-500/10",     ring: "ring-sky-300",     dot: "bg-sky-500" },
-  SENSEX:    { label: "SENSEX",     gradient: "from-amber-500/10 to-orange-500/10",   ring: "ring-amber-300",   dot: "bg-amber-500" },
-  BANKNIFTY: { label: "BANK NIFTY", gradient: "from-emerald-500/10 to-teal-500/10",   ring: "ring-emerald-300", dot: "bg-emerald-500" },
+  NIFTY:     { label: "NIFTY 50",   gradient: "from-sky-500/10 to-indigo-500/10",     borderActive: "border-sky-400 dark:border-sky-500",     dot: "bg-sky-500" },
+  SENSEX:    { label: "SENSEX",     gradient: "from-amber-500/10 to-orange-500/10",   borderActive: "border-amber-400 dark:border-amber-500",   dot: "bg-amber-500" },
+  BANKNIFTY: { label: "BANK NIFTY", gradient: "from-emerald-500/10 to-teal-500/10",   borderActive: "border-emerald-400 dark:border-emerald-500", dot: "bg-emerald-500" },
 };
 
 export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default" }) {
@@ -101,7 +101,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
             } hover:brightness-95 transition-all ${
               isActive
-                ? `border-transparent ring-2 ${s.ring} shadow-sm`
+                ? `${s.borderActive} border-2 shadow-sm`
                 : "border-slate-200 dark:border-slate-700"
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}

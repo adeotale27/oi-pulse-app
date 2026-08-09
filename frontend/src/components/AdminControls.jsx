@@ -188,12 +188,12 @@ export default function AdminControls({
       data-testid="admin-controls"
       data-variant={variant}
     >
-      <div className={`flex items-center gap-2 text-xs ${isPanel ? "justify-between w-full" : ""}`}>
+      <div className={`flex ${isPanel ? "flex-row items-center justify-between w-full" : "flex-col items-start gap-1"} text-xs`}>
         <div className="flex items-center gap-1.5 min-w-0">
           <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
           <span className="text-slate-600 dark:text-slate-300 font-medium truncate">Public access</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 pl-5">
           <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
             {publicOn ? "ON" : "OFF"}
           </span>
