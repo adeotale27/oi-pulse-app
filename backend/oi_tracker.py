@@ -99,6 +99,13 @@ logger.propagate = False
 
 def _fernet():
     from cryptography.fernet import Fernet
+    explicit = (os.environ.get("CREDENTIALS_FERNET_KEY") or os.environ.get("OI_VAULT_KEY") or "").strip()
+    if explicit:
+        try:
+            return Fernet(explicit.encode() if isinstance(explicit, str) else explicit)
+        except Exception:
+            key = base64.urlsafe_b64encode(hashlib.sha256(explicit.encode()).digest())
+            return Fernet(key)
     seed = os.environ.get("MONGO_URL", "seed") + os.environ.get("DB_NAME", "db")
     key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode()).digest())
     return Fernet(key)

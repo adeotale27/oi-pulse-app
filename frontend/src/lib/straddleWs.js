@@ -19,14 +19,22 @@ export function connectStraddleWS(index, opts = {}, onMessage, onOpen, onClose, 
   if (opts.expiry) params.set("expiry", opts.expiry);
   if (opts.position) params.set("position", opts.position);
   if (opts.qty) params.set("qty", String(opts.qty));
-  // include admin token from sessionStorage if available
+  // Admin token for WS auth (query param required by browser WS API).
+  // Never log the full URL — tokens would leak to DevTools / log shippers.
   try {
     const tok = sessionStorage.getItem("oi_admin_token");
     if (tok) params.set("admin_token", tok);
   } catch (_) {}
 
   const wsUrl = `${urlOrigin}/api/ws/straddle/${encodeURIComponent(index)}?${params.toString()}`;
-  console.log("[Straddle WS] Connecting to:", wsUrl); // Debug log
+  if (process.env.NODE_ENV !== "production") {
+    const safe = new URLSearchParams(params);
+    if (safe.has("admin_token")) safe.set("admin_token", "[redacted]");
+    console.log(
+      "[Straddle WS] Connecting to:",
+      `${urlOrigin}/api/ws/straddle/${encodeURIComponent(index)}?${safe.toString()}`,
+    );
+  }
 
   let ws = null;
   let stopped = false;

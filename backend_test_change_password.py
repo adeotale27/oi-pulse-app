@@ -10,6 +10,7 @@ CRITICAL CONSTRAINTS:
 - At END: ensure public_access_open=false
 """
 
+import os
 import requests
 import time
 from typing import Dict, Any, Optional
@@ -19,7 +20,9 @@ BASE_URL = "https://oi-api-trace.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 ADMIN_USERNAME = "Adeotale"
-ADMIN_PASSWORD = "MasterApp@123"
+ADMIN_PASSWORD = (os.environ.get("ADMIN_PASSWORD") or "").strip()
+if not ADMIN_PASSWORD:
+    raise SystemExit("Set ADMIN_PASSWORD env var to run this test (do not hardcode secrets).")
 
 # Test state
 admin_token: Optional[str] = None
@@ -206,7 +209,7 @@ def test_6_validation_only():
     log_test(6, "Confirm we did NOT actually change the password (validation-only)")
     
     log_info("This test confirms we only tested validation paths and did NOT apply a valid password change")
-    log_info("The password remains: MasterApp@123")
+    log_info("The password remains: [REDACTED — set ADMIN_PASSWORD env]")
     log_warning("CRITICAL: DO NOT actually change the password - test_credentials.md must remain valid")
     log_pass("Validation-only tests completed - password unchanged")
     return True
@@ -324,7 +327,7 @@ def test_11_regression():
         log_fail(f"Login failed - expected 200, got {resp.status_code}")
         return False
     
-    log_pass("Login still works with current password (MasterApp@123)")
+    log_pass("Login still works with current password ([REDACTED — set ADMIN_PASSWORD env])")
     
     # Test app is locked (requires_login=true)
     time.sleep(0.3)
@@ -494,7 +497,7 @@ def main():
     
     print(f"\n{YELLOW}{'='*80}{RESET}")
     print(f"{YELLOW}CRITICAL VERIFICATION:{RESET}")
-    print(f"{YELLOW}  ✓ Password NOT changed (remains: MasterApp@123){RESET}")
+    print(f"{YELLOW}  ✓ Password NOT changed (remains: [REDACTED — set ADMIN_PASSWORD env]){RESET}")
     print(f"{YELLOW}  ✓ Public access closed (test 13 must pass){RESET}")
     print(f"{YELLOW}  ✓ Login attempts: 2 total (within ≤5 limit){RESET}")
     print(f"{YELLOW}{'='*80}{RESET}")

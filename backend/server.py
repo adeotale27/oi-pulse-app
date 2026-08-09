@@ -36,8 +36,17 @@ import base64, hashlib
 
 def _fernet():
     # Import inside function so cryptography is loaded only when vault operations are used.
+    # Prefer dedicated CREDENTIALS_FERNET_KEY / OI_VAULT_KEY (Fernet key or passphrase).
+    # Fallback keeps legacy Mongo-derived key so existing vault rows still decrypt.
     from cryptography.fernet import Fernet
-    seed = os.environ.get('MONGO_URL', 'seed') + os.environ.get('DB_NAME', 'db')
+    explicit = (os.environ.get("CREDENTIALS_FERNET_KEY") or os.environ.get("OI_VAULT_KEY") or "").strip()
+    if explicit:
+        try:
+            return Fernet(explicit.encode() if isinstance(explicit, str) else explicit)
+        except Exception:
+            key = base64.urlsafe_b64encode(hashlib.sha256(explicit.encode()).digest())
+            return Fernet(key)
+    seed = os.environ.get("MONGO_URL", "seed") + os.environ.get("DB_NAME", "db")
     key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode()).digest())
     return Fernet(key)
 
@@ -218,6 +227,26 @@ async def require_admin(request: Request):
     if not await _is_admin_request(request):
         raise HTTPException(401, "Admin only")
     return True
+
+
+async def require_desk_user(request: Request):
+    """Admin or approved guest — blocks fully anonymous callers."""
+    if await _is_admin_request(request):
+        return "admin"
+    guest = await _guest_from_request(request)
+    if guest:
+        return "guest"
+    raise HTTPException(401, "Sign in required")
+
+
+def _sanitize_public_error(err: Optional[str]) -> Optional[str]:
+    """Never echo raw Kite/API exceptions (may include key/token fragments) to guests."""
+    if not err:
+        return None
+    low = str(err).lower()
+    if any(k in low for k in ("token", "api_key", "api key", "secret", "unauthorized", "forbidden", "incorrect", "signature")):
+        return "Kite authentication issue — admin must reconnect"
+    return "Data feed temporarily unavailable"
 
 
 async def _store_oi_snapshot(snapshot: Dict[str, Any], *, index_name: Optional[str] = None) -> None:
@@ -568,8 +597,14 @@ async def root():
 
 
 @api_router.get("/status")
-async def get_status():
-    return await tracker.get_status()
+async def get_status(request: Request):
+    status = await tracker.get_status()
+    # Guests / anonymous never receive raw Kite exception text (may contain key fragments).
+    if not await _is_admin_request(request):
+        status = dict(status)
+        status["last_error"] = _sanitize_public_error(status.get("last_error"))
+        status.pop("metrics", None)
+    return status
 
 
 @api_router.post("/credentials")
@@ -625,10 +660,17 @@ async def vault_status(_admin: bool = Depends(require_admin)):
                 api_key = doc.get("api_key")
         except Exception:
             api_key = None
+    # Build login URL server-side so the UI never reconstructs api_key from a hint.
+    login_url = (
+        f"https://kite.zerodha.com/connect/login?v=3&api_key={api_key}"
+        if api_key
+        else None
+    )
     return {
         "has_api_key": bool(api_key),
         "has_api_secret": bool(doc and doc.get("api_secret_enc")),
         "api_key_hint": (api_key[:4] + "***") if api_key else None,
+        "login_url": login_url,
     }
 
 
@@ -2562,10 +2604,13 @@ class HugeShiftIn(BaseModel):
 
 
 @api_router.post("/telegram/huge-shift")
-async def telegram_huge_shift(payload: HugeShiftIn, request: Request):
-    """Called by the frontend when the HugeShiftModal fires — forwards to Telegram.
-    Kept OPEN (no admin guard) because the browser tab that saw the popup fires it,
-    but rate-limited by the middleware (see _RATE_LIMITED_PREFIXES)."""
+async def telegram_huge_shift(
+    payload: HugeShiftIn,
+    request: Request,
+    _who: str = Depends(require_desk_user),
+):
+    """Forward Huge OI shift alerts to Telegram. Requires admin or guest session
+    (blocks fully anonymous spam). Rate-limited by middleware."""
     if not _notifier.is_configured():
         return {"ok": False, "reason": "telegram_not_configured"}
     try:

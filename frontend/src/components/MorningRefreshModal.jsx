@@ -47,9 +47,9 @@ export default function MorningRefreshModal({ open, onOpenChange, onRefreshed, o
     })();
   }, [open]);
 
-  const kiteLoginUrl = vault?.api_key_hint
-    ? `https://kite.zerodha.com/connect/login?v=3&api_key=${(vault.api_key_hint || "").replace("***", "")}`
-    : "https://kite.zerodha.com/connect/login?v=3";
+  const kiteLoginUrl =
+    vault?.login_url
+    || "https://kite.zerodha.com/connect/login?v=3";
 
   const doRefresh = async () => {
     if (!requestToken.trim()) {
