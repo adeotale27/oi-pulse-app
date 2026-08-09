@@ -2849,12 +2849,15 @@ async def upload_constituents(
             "errors": errors,
             "row_count": 0,
         }
-    res = await ers.save_constituents(db, idx_code, rows)
+    res = await ers.save_constituents(
+        db, idx_code, rows, source_filename=file.filename or ""
+    )
     return {
         "ok": True,
         "index": idx_code,
         "rows_saved": res["rows_saved"],
         "filename": file.filename,
+        "uploaded_at": res.get("uploaded_at"),
     }
 
 
@@ -2878,7 +2881,18 @@ async def upload_events(
     if errors:
         return {"ok": False, "errors": errors, "row_count": 0}
     res = await ers.save_events(db, rows, source_filename=file.filename or "")
-    return {"ok": True, "rows_saved": res["rows_saved"], "filename": file.filename}
+    return {
+        "ok": True,
+        "rows_saved": res["rows_saved"],
+        "filename": file.filename,
+        "uploaded_at": res.get("uploaded_at"),
+    }
+
+
+@api_router.get("/upload/meta")
+async def get_upload_meta():
+    """Last successful upload stamp for each Upload category (public read)."""
+    return await ers.fetch_upload_meta(db)
 
 
 @api_router.get("/events/{index}")
@@ -2892,14 +2906,19 @@ async def get_index_events(index: str):
     if not idx_code:
         raise HTTPException(400, f"Unknown index '{index}'")
     events = await ers.fetch_events_for_index(db, idx_code)
-    # Uploaded_at meta so the UI can show "last refreshed" etc.
-    meta = await db.settings.find_one({"_id": "nse_events_meta"}) or {}
+    meta = await ers.fetch_upload_meta(db)
+    events_meta = meta.get("events") or {}
+    idx_key = {"NIFTY": "nifty50", "BANKNIFTY": "banknifty", "SENSEX": "sensex"}.get(idx_code)
+    constituents_meta = meta.get(idx_key) or {} if idx_key else {}
     return {
         "index": idx_code,
         "count": len(events),
         "events": events,
-        "events_uploaded_at": meta.get("uploaded_at"),
-        "events_source_filename": meta.get("source_filename"),
+        "events_uploaded_at": events_meta.get("uploaded_at"),
+        "events_source_filename": events_meta.get("source_filename"),
+        "constituents_uploaded_at": constituents_meta.get("uploaded_at"),
+        "constituents_source_filename": constituents_meta.get("source_filename"),
+        "upload_meta": meta,
     }
 
 
@@ -2912,7 +2931,16 @@ async def get_index_constituents(index: str):
     docs = await db.index_constituents.find(
         {"index": idx_code}, {"_id": 0}
     ).sort("weightage", -1).to_list(length=500)
-    return {"index": idx_code, "count": len(docs), "constituents": docs}
+    meta = await ers.fetch_upload_meta(db)
+    idx_key = {"NIFTY": "nifty50", "BANKNIFTY": "banknifty", "SENSEX": "sensex"}.get(idx_code)
+    cmeta = meta.get(idx_key) or {} if idx_key else {}
+    return {
+        "index": idx_code,
+        "count": len(docs),
+        "constituents": docs,
+        "uploaded_at": cmeta.get("uploaded_at"),
+        "source_filename": cmeta.get("source_filename"),
+    }
 
 
 # ------------------- Lifecycle -------------------

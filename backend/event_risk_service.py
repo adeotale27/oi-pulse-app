@@ -514,16 +514,33 @@ def build_index_event_dataset(
 # =====================================================================
 # Mongo helpers (used by server.py routes)
 # =====================================================================
-async def save_constituents(db, index_code: str, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+async def save_constituents(
+    db,
+    index_code: str,
+    rows: List[Dict[str, Any]],
+    source_filename: str = "",
+) -> Dict[str, Any]:
     # Replace previous entries for that index — spec: "Replace the previous
     # uploaded file for that category".
     await db.index_constituents.delete_many({"index": index_code})
     if rows:
         await db.index_constituents.insert_many(rows)
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    await db.settings.update_one(
+        {"_id": f"constituents_meta_{index_code}"},
+        {"$set": {
+            "index": index_code,
+            "uploaded_at": uploaded_at,
+            "source_filename": source_filename,
+            "row_count": len(rows),
+        }},
+        upsert=True,
+    )
     return {
         "ok": True,
         "index": index_code,
         "rows_saved": len(rows),
+        "uploaded_at": uploaded_at,
     }
 
 
@@ -531,16 +548,37 @@ async def save_events(db, rows: List[Dict[str, Any]], source_filename: str = "")
     await db.nse_events.delete_many({})
     if rows:
         await db.nse_events.insert_many(rows)
+    uploaded_at = datetime.now(timezone.utc).isoformat()
     await db.settings.update_one(
         {"_id": "nse_events_meta"},
         {"$set": {
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "uploaded_at": uploaded_at,
             "source_filename": source_filename,
             "row_count": len(rows),
         }},
         upsert=True,
     )
-    return {"ok": True, "rows_saved": len(rows)}
+    return {"ok": True, "rows_saved": len(rows), "uploaded_at": uploaded_at}
+
+
+async def fetch_upload_meta(db) -> Dict[str, Any]:
+    """Return last-upload stamps for all four Upload categories."""
+    keys = {
+        "nifty50": "constituents_meta_NIFTY",
+        "banknifty": "constituents_meta_BANKNIFTY",
+        "sensex": "constituents_meta_SENSEX",
+        "events": "nse_events_meta",
+    }
+    out: Dict[str, Any] = {}
+    for key, doc_id in keys.items():
+        meta = await db.settings.find_one({"_id": doc_id}) or {}
+        out[key] = {
+            "uploaded_at": meta.get("uploaded_at"),
+            "source_filename": meta.get("source_filename") or None,
+            "row_count": meta.get("row_count"),
+            "index": meta.get("index"),
+        }
+    return out
 
 
 async def fetch_events_for_index(db, index_code: str) -> List[Dict[str, Any]]:

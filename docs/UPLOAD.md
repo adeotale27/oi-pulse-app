@@ -124,10 +124,21 @@ Typical source: NSE Corporate Filings → Event Calendar export.
 
 ## Admin UI tips
 
-1. Use **Upload** in the header (admin Tools on tablet/phone).
+1. Use **Admin → Upload** in the desktop header (or Tools on tablet/phone).
 2. Pick the upload type, open the source link if needed, choose the CSV/XLSX, then Save.
 3. If the modal lists row errors, fix the file and re-upload — old data stays until a clean file succeeds.
-4. After a successful events upload, Index Risk / market-impact badges refresh from the new calendar.
+4. After a successful upload, Index Risk shows **separate last-upload stamps** for Nifty 50, Bank Nifty, Sensex, and NSE events (`GET /api/upload/meta`). Each category keeps its own timestamp because files are often refreshed on different days.
+
+### Per-category upload meta (Mongo `settings`)
+
+| Category | Settings `_id` |
+|----------|----------------|
+| Nifty 50 | `constituents_meta_NIFTY` |
+| Bank Nifty | `constituents_meta_BANKNIFTY` |
+| Sensex | `constituents_meta_SENSEX` |
+| NSE events | `nse_events_meta` |
+
+Each doc stores `uploaded_at`, `source_filename`, `row_count`.
 
 ---
 

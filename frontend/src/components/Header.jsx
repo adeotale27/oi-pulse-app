@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -518,43 +518,53 @@ export default function Header({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Desktop admin action cluster */}
-          <div className="hidden lg:flex items-center gap-2">
-            <Button
-              data-testid="btn-refresh-day"
-              size="sm"
-              onClick={onRefreshDay}
-              disabled={refreshing}
-              className={`rounded-sm bg-rose-600 hover:bg-rose-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
-              title="Wipe snapshots and live-pull every enabled index in one click"
-            >
-              <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
-              {refreshing ? "Refreshing…" : "Fresh Pull"}
-            </Button>
-            <Button
-              data-testid="btn-open-upload"
-              size="sm"
-              onClick={onOpenUpload}
-              className={`rounded-sm bg-sky-600 hover:bg-sky-700 text-white shadow-sm ${isAdmin ? "" : "hidden"}`}
-              title="Upload Nifty50 / Bank Nifty / Sensex constituents or NSE event calendar"
-            >
-              <UploadCloud className="w-4 h-4 mr-1.5" />
-              Upload
-            </Button>
-            <Button
-              data-testid="btn-open-telegram-prefs"
-              variant="outline" size="sm"
-              className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
-              onClick={onOpenTelegramPrefs}
-              title="Telegram alert preferences"
-            >
-              <Send className="w-4 h-4 mr-1.5" />
-              Telegram
-            </Button>
+          {/* Desktop admin: Fresh Pull / Upload / Telegram under Admin menu; Kite stays visible */}
+          <div className={`hidden lg:flex items-center gap-2 ${isAdmin ? "" : "hidden"}`}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  data-testid="btn-admin-menu"
+                  size="sm"
+                  className="rounded-sm bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm"
+                  title="Admin tools: Fresh Pull, Upload, Telegram"
+                >
+                  <Shield className="w-4 h-4 mr-1.5" />
+                  Admin
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52" data-testid="admin-tools-menu">
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
+                  Admin tools
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-testid="menu-refresh-day"
+                  disabled={refreshing}
+                  onSelect={(e) => { e.preventDefault(); onRefreshDay(); }}
+                >
+                  <Database className={`w-4 h-4 ${refreshing ? "animate-pulse" : ""}`} />
+                  {refreshing ? "Refreshing…" : "Fresh Pull"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-upload"
+                  onSelect={(e) => { e.preventDefault(); onOpenUpload?.(); }}
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  Upload
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-telegram"
+                  onSelect={(e) => { e.preventDefault(); onOpenTelegramPrefs?.(); }}
+                >
+                  <Send className="w-4 h-4" />
+                  Telegram
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               data-testid="btn-open-credentials"
               variant="outline" size="sm"
-              className={`rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 ${isAdmin ? "" : "hidden"}`}
+              className="rounded-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
               onClick={onOpenCreds}
             >
               <KeyRound className="w-4 h-4 mr-1.5" />

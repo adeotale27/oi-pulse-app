@@ -201,6 +201,7 @@ export default function Dashboard() {
   });
   const [soundsOpen, setSoundsOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("rightPanelOpen");
@@ -1856,7 +1857,7 @@ export default function Dashboard() {
 
                   {(authState.is_admin || visiblePages.includes("index-events")) && (
                     <TabsContent value="index-events" className="mt-0">
-                      <EventRiskWidget activeIndex={activeIndex} />
+                      <EventRiskWidget activeIndex={activeIndex} refreshKey={uploadRefreshKey} />
                     </TabsContent>
                   )}
                 </div>
@@ -1922,6 +1923,7 @@ export default function Dashboard() {
                       showOI={showOI}
                       // pass configured straddle poll interval (ms)
                       straddlePollMs={straddlePollMs}
+                      uploadRefreshKey={uploadRefreshKey}
                       suggestion={
                         showSuggestion ? (
                           <SuggestionBox
@@ -2004,6 +2006,7 @@ export default function Dashboard() {
                     status={status}
                     showOI={showOI}
                     straddlePollMs={straddlePollMs}
+                    uploadRefreshKey={uploadRefreshKey}
                     suggestion={
                       showSuggestion ? (
                         <SuggestionBox
@@ -2082,7 +2085,11 @@ export default function Dashboard() {
       />
 
       <SoundSettingsModal open={soundsOpen} onOpenChange={setSoundsOpen} />
-      <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
+      <UploadModal
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onUploaded={() => setUploadRefreshKey((k) => k + 1)}
+      />
     </div>
   );
 }

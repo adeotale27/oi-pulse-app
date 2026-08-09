@@ -43,7 +43,8 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false }` (admin). Gu
 | POST | `/admin/refresh-day` | **Fresh Pull** — wipe snapshots, live-pull all **enabled** indices |
 | POST | `/admin/upload/constituents` | CSV/XLSX constituents (replaces index bucket on success — see [UPLOAD.md](./UPLOAD.md)) |
 | POST | `/admin/upload/events` | Event calendar upload (full replace on success) |
-| GET | `/events/{index}` / `/constituents/{index}` | Stored event/constituent data |
+| GET | `/upload/meta` | Last successful upload stamp per category (Nifty / Bank / Sensex / events) |
+| GET | `/events/{index}` / `/constituents/{index}` | Stored event/constituent data (+ upload timestamps) |
 
 ### Auth
 `/auth/login`, `/auth/remember-login`, `/auth/logout`, `/auth/change-password`, `/auth/guest`, `/auth/state`, `/auth/public-access`, `/auth/guests*`, `/auth/access-requests*`, `/auth/blocked-ips*`, `/auth/access-request/{id}`.

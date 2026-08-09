@@ -54,6 +54,7 @@ export default function RightPanel({
   suggestion,
   // straddle poll interval (ms) supplied by parent/dashboard
   straddlePollMs = 60000,
+  uploadRefreshKey = 0,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -174,7 +175,7 @@ export default function RightPanel({
             </div>
           )}
           {selectedView === "index-events" && (
-            <EventRiskWidget activeIndex={activeIndex} />
+            <EventRiskWidget activeIndex={activeIndex} refreshKey={uploadRefreshKey} />
           )}
         </div>
 
