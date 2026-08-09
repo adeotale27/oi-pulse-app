@@ -44,12 +44,16 @@ Kite Connect ──► OITracker (asyncio poll) ──► oi_snapshots
 
 ### Fresh Pull (`POST /admin/refresh-day`)
 
+Admin-only reset of the **OI board** (not Upload / constituents / events):
+
 1. `delete_many({})` on `oi_snapshots` (full wipe — avoids leftover prior-day history).
 2. Clear in-memory `last_snapshot`.
 3. Resolve `enabled_indices` from settings.
 4. **Kite mode:** parallel live `get_snapshot` per enabled index → store.
 5. **Offline:** no fake backfill; DB stays empty until credentials/live data exist.
 6. Refresh extra tickers (VIX / GIFT).
+
+Refused on weekends/holidays so Friday’s last session is not wiped. Use when today’s chain looks contaminated or you need a clean live tick for every enabled index — not for routine polling (the tracker already polls while NSE is open).
 
 ---
 

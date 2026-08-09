@@ -9,19 +9,19 @@ const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
 const INDEX_THEME = {
   NIFTY: {
     label: "NIFTY",
-    activeCls:   "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-transparent shadow-lg shadow-sky-500/25 ring-2 ring-sky-300/60",
+    activeCls:   "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-sky-300 shadow-md shadow-sky-500/20",
     idleCls:     "bg-gradient-to-br from-sky-50 to-cyan-50 text-sky-900 border-sky-100 hover:from-sky-100 hover:to-cyan-100",
     dot:         "bg-sky-500",
   },
   SENSEX: {
     label: "SENSEX",
-    activeCls:   "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-transparent shadow-lg shadow-orange-500/25 ring-2 ring-amber-300/60",
+    activeCls:   "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-amber-300 shadow-md shadow-orange-500/20",
     idleCls:     "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-800 border-orange-100 hover:from-amber-100 hover:to-orange-100",
     dot:         "bg-amber-500",
   },
   BANKNIFTY: {
     label: "BANK NIFTY",
-    activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-transparent shadow-lg shadow-teal-500/25 ring-2 ring-emerald-300/60",
+    activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-300 shadow-md shadow-emerald-500/20",
     idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-emerald-100",
     dot:         "bg-emerald-500",
   },

@@ -26,6 +26,7 @@ import PositionsPanel from "@/components/PositionsPanel";
 import RightPanel from "@/components/RightPanel";
 import HolidayBadge from "@/components/HolidayBadge";
 import MarketEventsBadge from "@/components/MarketEventsBadge";
+import OverflowTabBar from "@/components/OverflowTabBar";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
 import UploadModal from "@/components/UploadModal";
 import EventRiskWidget from "@/components/EventRiskWidget";
@@ -40,7 +41,7 @@ import InfoTip from "@/components/InfoTip";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1368,32 +1369,27 @@ export default function Dashboard() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col px-2 pt-0 md:pt-0 sm:px-0">
-            <div className="hidden md:flex items-center justify-between mb-2 sm:mb-4 gap-3 flex-wrap shrink-0 bg-[var(--oi-shell,#f3f8fb)]/95 md:bg-transparent py-1 md:py-0">
-              <TabsList className="tabs-scroll bg-transparent p-0 h-auto gap-1 border-b border-slate-200/80 dark:border-slate-700/80 rounded-none justify-start max-w-full w-full md:w-auto">
-                {DASHBOARD_PAGES.filter((t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))).map((t) => (
-                  <TabsTrigger
-                    key={t.v}
-                    value={t.v}
-                    data-testid={`tab-${t.v}`}
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:text-emerald-800 dark:data-[state=active]:border-emerald-400 dark:data-[state=active]:text-emerald-300 data-[state=active]:bg-transparent data-[state=active]:shadow-none text-slate-500 dark:text-slate-400 px-2.5 sm:px-3 py-2 text-[13px] sm:text-sm font-medium hover:text-slate-800 dark:hover:text-slate-200 transition-colors whitespace-nowrap"
-                  >
-                    {t.l}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {/* Holiday / FII-DII / Events badges — equal-width tiles */}
-              <div className="hidden md:flex items-stretch gap-2 ml-auto">
-                <div className="w-48">
+            <div className="hidden md:flex items-stretch justify-between mb-2 sm:mb-3 gap-3 flex-nowrap shrink-0 min-w-0">
+              <OverflowTabBar
+                tabs={DASHBOARD_PAGES.filter(
+                  (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
+                )}
+                value={activeTab}
+                onChange={setActiveTab}
+              />
+              {/* Holiday / FII-DII / Events badges — stay on one row; shrink only when needed */}
+              <div className="hidden lg:flex items-stretch gap-2 shrink-0 max-w-[min(100%,52rem)] overflow-x-auto">
+                <div className="w-40 xl:w-48 shrink-0">
                   <HolidayBadge onClick={() => setActiveTab("holidays")} />
                 </div>
-                <div className="w-48">
+                <div className="w-40 xl:w-48 shrink-0">
                   <FiiDiiBadge isAdmin={!!authState.is_admin} />
                 </div>
-                <div className="w-48">
+                <div className="w-40 xl:w-48 shrink-0">
                   <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
                 </div>
                 {(authState.is_admin || visiblePages.includes("index-events")) && (
-                  <div className="w-48">
+                  <div className="w-40 xl:w-48 shrink-0">
                     <MarketImpactBadge
                       activeIndex={activeIndex}
                       onOpenIndexEvents={() => setActiveTab("index-events")}
@@ -1401,6 +1397,26 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+            </div>
+            {/* Mid laptop: info tiles under tabs so they never shove the tab row */}
+            <div className="hidden md:flex lg:hidden items-stretch gap-2 mb-2 overflow-x-auto shrink-0 pb-0.5">
+              <div className="w-44 shrink-0">
+                <HolidayBadge onClick={() => setActiveTab("holidays")} />
+              </div>
+              <div className="w-44 shrink-0">
+                <FiiDiiBadge isAdmin={!!authState.is_admin} />
+              </div>
+              <div className="w-44 shrink-0">
+                <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
+              </div>
+              {(authState.is_admin || visiblePages.includes("index-events")) && (
+                <div className="w-44 shrink-0">
+                  <MarketImpactBadge
+                    activeIndex={activeIndex}
+                    onOpenIndexEvents={() => setActiveTab("index-events")}
+                  />
+                </div>
+              )}
             </div>
 
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full flex-1 min-h-0">

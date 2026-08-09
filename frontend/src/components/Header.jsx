@@ -20,6 +20,7 @@ import { toast } from "sonner";
 
 import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
+import { kiteModeBadge, kiteModeBadgeClass } from "@/lib/kiteModeLabel";
 
 export default function Header({
   status,
@@ -177,10 +178,15 @@ export default function Header({
   const onRefreshDay = async () => {
     if (!isAdmin) return;
     if (!window.confirm(
-      "Fresh Pull: clear ALL OI snapshots and pull a live tick for every ENABLED index in one click?\n\n" +
-      "• Live (Kite): one parallel pull per enabled index — history before now cannot be recovered.\n" +
-      "• Offline: wipe only (no synthetic/demo backfill).\n" +
-      "Disabled indices in Settings are skipped."
+      "Fresh Pull resets today's OI board for every ENABLED index.\n\n" +
+      "What it does:\n" +
+      "• Deletes ALL stored OI snapshots (cannot undo)\n" +
+      "• Pulls one live Kite tick now for each enabled index\n" +
+      "• Normal polling continues from there\n\n" +
+      "• Live (Kite): real ticks only — history before now cannot be recovered\n" +
+      "• Offline: wipe only (no fake backfill)\n" +
+      "• Disabled indices in Settings are skipped\n" +
+      "• Blocked on weekends/holidays so last session is not wiped"
     )) return;
     setRefreshing(true);
     try {
@@ -214,6 +220,9 @@ export default function Header({
   // "yesterday-close vs live LTP", i.e. today's real % change.
   const myTicker = (tickerData || []).find((t) => t.index === current?.index);
 
+  const modeBadge = kiteModeBadge(mode, !!status?.market?.is_market_open);
+  const modeBadgeCls = kiteModeBadgeClass(modeBadge.tone);
+
   const toolBtn =
     "rounded-lg border-slate-200/80 bg-white/70 hover:bg-emerald-50 hover:border-emerald-200 dark:bg-slate-800/80 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-emerald-950/40 dark:hover:border-emerald-800 h-8 w-8 p-0 sm:h-9 sm:w-auto sm:px-3 transition-colors";
 
@@ -232,9 +241,10 @@ export default function Header({
         <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack-mobile">
           <Badge
             data-testid="mode-badge-mobile"
-            className={`rounded-sm text-[10px] px-1.5 py-0 h-5 ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
+            className={`rounded-sm text-[10px] px-1.5 py-0 h-5 ${modeBadgeCls}`}
+            title={modeBadge.title}
           >
-            {mode === "kite" ? (status?.market?.is_market_open ? "KITE · OPEN" : "KITE · CLOSED") : "OFFLINE"}
+            {modeBadge.short}
           </Badge>
         </div>
         <div className="flex items-center gap-1.5 shrink-0 ml-auto">
@@ -383,16 +393,10 @@ export default function Header({
           <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack">
             <Badge
               data-testid="mode-badge"
-              className={`rounded-sm ${mode === "kite" ? "bg-emerald-600 hover:bg-emerald-600" : "bg-red-600 hover:bg-red-600"}`}
-              title={
-                mode !== "kite"
-                  ? "OFFLINE — no Kite credentials. Connect via Kite API to pull live OI."
-                  : status?.market?.is_market_open
-                    ? "KITE · OPEN — credentials connected and NSE cash/F&O session is open. OI polls while the market is open; the data-truth strip shows LIVE vs lag."
-                    : "KITE · CLOSED — credentials are connected, but the NSE session is closed (post-close / weekend / holiday). Board shows the last session snapshot; OI polling is paused until next open. GIFT/VIX may still update."
-              }
+              className={`rounded-sm ${modeBadgeCls}`}
+              title={modeBadge.title}
             >
-              {mode === "kite" ? (status?.market?.is_market_open ? "KITE · OPEN" : "KITE · CLOSED") : "OFFLINE"}
+              {modeBadge.label}
             </Badge>
             {mode === "kite" && dataStatus?.data_date && status?.market && status.market.is_market_open === false && (
               <span
