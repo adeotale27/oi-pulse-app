@@ -40,7 +40,7 @@ import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -1295,12 +1295,12 @@ export default function Dashboard() {
         dataStatus={dataStatus}
         assumedAdmin={!!authState.is_admin}
         publicAccessOpen={!!authState.public_access_open}
-        onOpenCreds={() => setCredsOpen(true)}
-        onOpenMorningRefresh={() => setMorningRefreshOpen(true)}
-        onOpenTelegramPrefs={() => setTelegramPrefsOpen(true)}
+        onOpenCreds={() => { if (authState.is_admin) setCredsOpen(true); }}
+        onOpenMorningRefresh={() => { if (authState.is_admin) setMorningRefreshOpen(true); }}
+        onOpenTelegramPrefs={() => { if (authState.is_admin) setTelegramPrefsOpen(true); }}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenSounds={() => setSoundsOpen(true)}
-        onOpenUpload={() => setUploadOpen(true)}
+        onOpenUpload={() => { if (authState.is_admin) setUploadOpen(true); }}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
         notifEnabled={notifEnabled}
         onToggleNotif={handleToggleNotif}
@@ -1343,7 +1343,20 @@ export default function Dashboard() {
             showStrikeRange={showStrikeRange}
             lastUpdatedByIndex={lastUpdatedByIndex}
             marketOpen={!(status?.market && status.market.is_market_open === false)}
+            onCollapse={() => setCompact(true)}
           />
+        )}
+        {compact && (
+          <button
+            type="button"
+            data-testid="btn-show-sidebar"
+            onClick={() => setCompact(false)}
+            className="hidden md:flex shrink-0 w-8 flex-col items-center justify-start gap-2 border-r border-slate-200 bg-white/90 px-1 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500 hover:bg-emerald-50 hover:text-emerald-800 dark:border-slate-700 dark:bg-slate-900/90 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200"
+            title="Show sidebar"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+            <span className="[writing-mode:vertical-rl] rotate-180">Sidebar</span>
+          </button>
         )}
 
         <main className="flex-1 min-h-0 overflow-hidden p-0 sm:p-4 md:p-5 dark:text-slate-200 flex flex-col">
@@ -1428,7 +1441,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full flex-1 min-h-0">
+            <div className="relative w-full flex-1 min-h-0">
+            <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2">
                 <MobileMarketStrip
@@ -1989,13 +2003,14 @@ export default function Dashboard() {
                 type="button"
                 onClick={() => setRightPanelOpen(true)}
                 data-testid="btn-open-right-panel"
-                className="fixed right-4 bottom-4 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 px-3 py-2 text-xs font-semibold flex items-center gap-2 z-50"
-                title="Reopen side panel"
+                className="hidden md:flex absolute right-0 top-1/3 z-40 -translate-y-1/2 flex-col items-center gap-2 rounded-l-md border border-r-0 border-slate-200 bg-white/95 px-1.5 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-600 shadow-sm hover:bg-emerald-50 hover:text-emerald-800 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300"
+                title="Show side panel"
               >
                 <PanelRightOpen className="w-4 h-4" />
-                Side Panel
+                <span className="[writing-mode:vertical-rl] rotate-180">Panel</span>
               </button>
             )}
+            </div>
             {isMobile && (
               <button
                 type="button"

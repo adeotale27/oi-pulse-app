@@ -83,6 +83,7 @@ export default function AuthGate({ children }) {
           token: data.auto_guest_token,
           name: data.auto_guest_name || data.suggested_guest_name || "",
           expiresInSeconds: data.auto_guest_expires_in,
+          expiresAt: data.auto_guest_expires_at,
         });
         clearAdminAuth({ clearRemember: false });
         toast.success(`Welcome back, ${data.auto_guest_name || data.suggested_guest_name || "guest"}`);
@@ -164,9 +165,9 @@ export default function AuthGate({ children }) {
     return () => clearTimeout(timer);
   }, [state.is_admin, state.admin_session_expires_at, state.expire_admin_on_market_close]);
 
-  const admitGuest = async (token, name, expiresIn) => {
+  const admitGuest = async (token, name, expiresIn, expiresAt) => {
     clearAdminAuth({ clearRemember: false });
-    persistGuestAuth({ token, name: name || "", expiresInSeconds: expiresIn });
+    persistGuestAuth({ token, name: name || "", expiresInSeconds: expiresIn, expiresAt });
     try {
       sessionStorage.removeItem("oi_access_request_id");
       sessionStorage.removeItem("oi_access_request_name");
@@ -186,7 +187,7 @@ export default function AuthGate({ children }) {
         const { data } = await api.get(`/auth/access-request/${pendingRequest.id}`);
         if (cancelled) return;
         if ((data.status === "approved" || data.status === "consumed") && data.token) {
-          await admitGuest(data.token, data.name || pendingRequest.name, data.expires_in_seconds);
+          await admitGuest(data.token, data.name || pendingRequest.name, data.expires_in_seconds, data.expires_at);
           return;
         }
         if (data.status === "consumed" && !data.token) {
@@ -234,6 +235,11 @@ export default function AuthGate({ children }) {
     setBusy(true);
     try {
       const { data } = await api.post("/auth/guest", { name });
+      // Returning guest — minted immediately (already approved for this IP + name).
+      if (data?.token) {
+        await admitGuest(data.token, data.name || name, data.expires_in_seconds, data.expires_at);
+        return;
+      }
       // New flow: pending until admin approves.
       if (data?.status === "pending" && data.request_id) {
         try {
@@ -244,10 +250,6 @@ export default function AuthGate({ children }) {
         setWaitStatus("pending");
         toast.message("Request sent", { description: "Waiting for admin approval…" });
         return;
-      }
-      // Backward-compatible: immediate token (if server ever returns one)
-      if (data?.token) {
-        await admitGuest(data.token, data.name || name, data.expires_in_seconds);
       }
     } catch (err) {
       const detail = err?.response?.data?.detail || "Could not request access";
@@ -270,12 +272,12 @@ export default function AuthGate({ children }) {
       <AuthShell mode="guest">
         <div
           data-testid="guest-ip-blocked"
-          className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-8 text-center text-slate-900 shadow-2xl"
+          className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-900 shadow-2xl"
         >
           <OiPulseLogo className="mx-auto mb-4 h-12 w-12" />
-          <h1 className="text-xl font-semibold">Access blocked</h1>
+          <h1 className="text-xl font-semibold">Unable to process request</h1>
           <p className="mt-2 text-sm text-slate-600">
-            This network IP has been blocked by the admin. Contact the admin if you believe this is a mistake.
+            Unable to process request at this moment.
           </p>
         </div>
       </AuthShell>
@@ -361,7 +363,7 @@ export default function AuthGate({ children }) {
             )}
 
             <p className="text-center text-xs text-slate-500">
-              Admin must approve your request. Guest access is read-only.
+              New guests need admin approval. Returning guests on this network enter immediately when the same name was approved before.
             </p>
           </form>
 

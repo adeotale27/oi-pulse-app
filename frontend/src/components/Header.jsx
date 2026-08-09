@@ -19,6 +19,7 @@ import { api, fetchExtras, subscribeExtras, unsubscribeExtras, logoutGuest } fro
 import { toast } from "sonner";
 
 import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
+import { isTradingDayIST, todayIST } from "@/lib/holidays";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { kiteModeBadge, kiteModeBadgeClass } from "@/lib/kiteModeLabel";
 
@@ -58,22 +59,11 @@ export default function Header({
   const vix = current?.vix ?? 0;
   const mode = status?.mode ?? "offline";
 
-  function hasAdminToken() {
-    try {
-      return !!(
-        sessionStorage.getItem("oi_admin_token") ||
-        localStorage.getItem("oi_admin_token") ||
-        localStorage.getItem("oi_admin_remember_token")
-      );
-    } catch {
-      return false;
-    }
-  }
-
-  // Auth state — used to hide sensitive buttons from guests.
-  // Must keep refreshing after EOD (Tools / Public toggle still needed).
+  // Auth state — hide Admin / Kite / Public controls from guests.
+  // Trust server `is_admin` / Dashboard assumedAdmin only — never remember-me tokens.
   const [authState, setAuthState] = useState({
-    is_admin: !!(assumedAdmin || hasAdminToken()),
+    is_admin: !!assumedAdmin,
+    is_guest: false,
     public_access_open: !!publicAccessOpen,
   });
   {
@@ -81,13 +71,10 @@ export default function Header({
     const load = async () => {
       try {
         const { data } = await api.get("/auth/state");
-        if (alive) {
-          setAuthState(data);
-        }
+        if (alive) setAuthState(data);
       } catch (err) {
         console.error("[Header] auth_state fetch failed", err);
-        // Keep assumed admin seed so Tools never disappears after a failed poll.
-        if (alive && (assumedAdmin || hasAdminToken())) {
+        if (alive && assumedAdmin) {
           setAuthState((prev) => ({
             ...prev,
             is_admin: true,
@@ -104,23 +91,21 @@ export default function Header({
     useEffect(() => () => { alive = false; }, []);
   }
 
-  // Stay in sync when Dashboard already knows admin / public flag.
   useEffect(() => {
-    if (!assumedAdmin && publicAccessOpen == null) return;
     setAuthState((prev) => ({
       ...prev,
-      is_admin: assumedAdmin || prev.is_admin || hasAdminToken(),
+      ...(assumedAdmin ? { is_admin: true, is_guest: false } : {}),
       public_access_open:
         publicAccessOpen != null ? !!publicAccessOpen : prev.public_access_open,
     }));
   }, [assumedAdmin, publicAccessOpen]);
 
   // Dev override: allow forcing admin UI without X-Admin-Token for local debugging.
-  // Guard behind NODE_ENV !== 'production' so production builds are not affected.
   const devForce = (typeof window !== "undefined") && (process.env.NODE_ENV !== "production") && (
     localStorage.getItem("oi_dev_force_admin") === "1" || sessionStorage.getItem("oi_dev_force_admin") === "1"
   );
-  const isAdmin = devForce || !!authState.is_admin || !!assumedAdmin || hasAdminToken();
+  // Guests never see Admin/Kite even if a leftover remember token exists in storage.
+  const isAdmin = devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest);
   if (devForce) {
     try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }
@@ -185,12 +170,21 @@ export default function Header({
       "• Normal polling continues from there\n\n" +
       "• Live (Kite): real ticks only — history before now cannot be recovered\n" +
       "• Offline: wipe only (no fake backfill)\n" +
-      "• Disabled indices in Settings are skipped\n" +
-      "• Blocked on weekends/holidays so last session is not wiped"
+      "• Disabled indices in Settings are skipped"
     )) return;
+    const closedDay = !isTradingDayIST(todayIST());
+    let force = false;
+    if (closedDay) {
+      if (!window.confirm(
+        "Markets are closed (weekend or holiday).\n\n" +
+        "Fresh Pull will wipe the last trading session from the board.\n\n" +
+        "Are you sure you want to continue?"
+      )) return;
+      force = true;
+    }
     setRefreshing(true);
     try {
-      const { data } = await api.post("/admin/refresh-day", {});
+      const { data } = await api.post("/admin/refresh-day", { force });
       const enabled = (data.enabled_indices || []).join(", ") || "none";
       const pulled = (data.live_indices_pulled || data.indices_backfilled || []).join(", ") || "none";
       toast.success(
@@ -367,7 +361,7 @@ export default function Header({
         </div>
 
         {/* Index tiles — never wrap/stack in the header */}
-        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden [scrollbar-width:none] [-ms-overflow-style:none]">
           <TickerStrip
             layout="header"
             activeIndex={activeIndex}
@@ -421,20 +415,6 @@ export default function Header({
           {authState?.is_guest && !isAdmin && (
             (() => {
               const guestName = authState.guest_name || (typeof window !== 'undefined' ? sessionStorage.getItem('oi_guest_name') : null) || 'Guest';
-              const expiresAt = typeof window !== 'undefined' ? Number(sessionStorage.getItem('oi_guest_expires_at') || 0) : 0;
-              const remainingMs = expiresAt ? Math.max(0, expiresAt - Date.now()) : null;
-              function fmt(ms) {
-                if (!ms && ms !== 0) return '';
-                const s = Math.floor(ms / 1000);
-                if (s >= 3600) {
-                  const h = Math.floor(s / 3600);
-                  const m = Math.floor((s % 3600) / 60);
-                  return `${h}h ${m}m`;
-                }
-                if (s >= 60) return `${Math.floor(s/60)}m ${s%60}s`;
-                return `${s}s`;
-              }
-              const remainingLabel = remainingMs != null ? fmt(remainingMs) : '';
               const exitGuest = async () => {
                 await logoutGuest();
                 window.location.reload();
@@ -442,19 +422,21 @@ export default function Header({
               return (
                 <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-sm text-slate-800 dark:text-slate-100">
                   <div className="font-medium">{guestName}</div>
-                  {remainingLabel && <div className="text-xs text-slate-500">· expires in {remainingLabel}</div>}
+                  <div className="text-xs text-slate-500">· session until 6:00 AM</div>
                   <button onClick={exitGuest} className="text-xs text-rose-600 hover:underline ml-2">Exit</button>
                 </div>
               );
             })()
           )}
 
-          <div className="hidden sm:block">
-            <AdminControls
-              assumedAdmin={isAdmin}
-              publicAccessOpen={!!authState.public_access_open}
-            />
-          </div>
+          {isAdmin && (
+            <div className="hidden sm:block">
+              <AdminControls
+                assumedAdmin={isAdmin}
+                publicAccessOpen={!!authState.public_access_open}
+              />
+            </div>
+          )}
 
           {/* View / tools dropdown — theme → download (and sidebar / settings) */}
           <DropdownMenu>
@@ -475,13 +457,6 @@ export default function Header({
                 Display &amp; tools
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                data-testid="menu-toggle-compact"
-                onSelect={(e) => { e.preventDefault(); onToggleCompact?.(); }}
-              >
-                {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-                {compact ? "Show sidebar" : "Hide sidebar"}
-              </DropdownMenuItem>
               <DropdownMenuItem
                 data-testid="menu-toggle-dark"
                 onSelect={(e) => { e.preventDefault(); onToggleDark?.(); }}
@@ -586,7 +561,7 @@ export default function Header({
         <div className="xl:hidden">
           <BigClock compact />
         </div>
-        <div className="flex items-center gap-4 min-w-0 overflow-x-auto">
+        <div className="flex items-center gap-4 min-w-0 overflow-hidden flex-wrap">
           <Metric label="ATM" value={atm.toLocaleString()} />
           <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
           <ExtraTickerCell
