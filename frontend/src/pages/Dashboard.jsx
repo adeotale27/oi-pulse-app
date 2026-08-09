@@ -6,6 +6,7 @@ import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import GuestBanner from "@/components/GuestBanner";
 import MarketStatusBanner from "@/components/MarketStatusBanner";
+import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import DataTruthStrip from "@/components/DataTruthStrip";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
@@ -1269,7 +1270,18 @@ export default function Dashboard() {
         snapshotTs={current?.timestamp || dataStatus?.as_of}
         emphasize={!!authState.is_guest}
       />
-      <MarketStatusBanner market={status?.market} lastPulledAt={lastPulledAt} />
+      <MarketStatusBanner
+        market={status?.market}
+        lastPulledAt={lastPulledAt}
+        dataDate={dataStatus?.data_date || status?.market?.session_anchor_date}
+      />
+      {authState.is_admin && (
+        <AdminUploadAdvisor
+          isAdmin
+          refreshKey={uploadRefreshKey}
+          onOpenUpload={() => setUploadOpen(true)}
+        />
+      )}
       <KiteTokenBanner
         status={status}
         isAdmin={authState.is_admin}
@@ -1857,7 +1869,11 @@ export default function Dashboard() {
 
                   {(authState.is_admin || visiblePages.includes("index-events")) && (
                     <TabsContent value="index-events" className="mt-0">
-                      <EventRiskWidget activeIndex={activeIndex} refreshKey={uploadRefreshKey} />
+                      <EventRiskWidget
+                        activeIndex={activeIndex}
+                        refreshKey={uploadRefreshKey}
+                        isAdmin={!!authState.is_admin}
+                      />
                     </TabsContent>
                   )}
                 </div>
