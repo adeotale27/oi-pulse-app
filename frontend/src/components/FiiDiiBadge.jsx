@@ -134,7 +134,7 @@ export default function FiiDiiBadge({ isAdmin = false }) {
   };
 
   return (
-    <div className="relative w-full h-full" data-testid="fiidii-badge-wrap" ref={wrapRef}>
+    <div className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`} data-testid="fiidii-badge-wrap" ref={wrapRef}>
       <div
         role="button"
         tabIndex={0}
@@ -199,7 +199,7 @@ export default function FiiDiiBadge({ isAdmin = false }) {
       {open && (
         <div
           data-testid="fiidii-dropdown"
-          className="absolute left-0 top-full z-50 mt-1 w-[22rem] overflow-hidden rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"
+          className="absolute left-0 top-full z-[80] mt-1 w-[22rem] overflow-hidden rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"
         >
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
             <span>Capital Market · ₹ crores</span>

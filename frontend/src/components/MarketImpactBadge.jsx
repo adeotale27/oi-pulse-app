@@ -120,7 +120,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
 
   return (
     <div
-      className="relative w-full h-full"
+      className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`}
       data-testid="market-impact-badge-wrap"
       ref={wrapRef}
     >
@@ -179,7 +179,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
       {open && (
         <div
           data-testid="market-impact-dropdown"
-          className="absolute right-0 top-full mt-1 z-50 w-72 bg-white dark:bg-slate-800 rounded-md shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
+          className="absolute right-0 top-full mt-1 z-[80] w-72 bg-white dark:bg-slate-800 rounded-md shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
         >
           <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
             <span>Upcoming High-Impact Events</span>
