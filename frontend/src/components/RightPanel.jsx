@@ -55,6 +55,9 @@ export default function RightPanel({
   // straddle poll interval (ms) supplied by parent/dashboard
   straddlePollMs = 60000,
   uploadRefreshKey = 0,
+  vixOpen = null,
+  vrp = null,
+  indexStep = 50,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -151,11 +154,15 @@ export default function RightPanel({
           {selectedView === "positions" && (
             <PositionsPanel
               isKiteMode={isKiteMode}
-              current={current}
+              current={filteredCurrent || current}
+              previous={previous}
               vix={vixNow}
+              vixOpen={vixOpen}
               oiSettings={oiSettings}
               activeIndex={activeIndex}
               expiry={selectedExpiry}
+              step={indexStep}
+              vrp={vrp}
             />
           )}
           {selectedView === "oichart" && (

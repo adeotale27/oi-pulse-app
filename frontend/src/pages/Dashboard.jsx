@@ -1437,27 +1437,38 @@ export default function Dashboard() {
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {!compact && (
-          <Sidebar
-            indices={enabledIndices.length ? enabledIndices : INDICES}
-            activeIndex={activeIndex}
-            onChangeIndex={setActiveIndex}
-            current={current}
-            strikesAround={strikesAround}
-            onChangeStrikesAround={applyStrikesAround}
-            strikeRange={strikeRange}
-            onChangeStrikeRange={handleStrikeRangeChange}
-            onReset={handleReset}
-            expiries={expiries}
-            expiriesMeta={expiriesMeta}
-            expiriesNote={expiriesNote}
-            selectedExpiry={selectedExpiry}
-            onChangeExpiry={handleChangeExpiry}
-            showStrikeRange={showStrikeRange}
-            lastUpdatedByIndex={lastUpdatedByIndex}
-            marketOpen={!(status?.market && status.market.is_market_open === false)}
-            onCollapse={() => setCompact(true)}
-            layoutNonce={layoutNonce}
-          />
+          <>
+            <button
+              type="button"
+              className="md:hidden fixed inset-0 z-40 bg-slate-950/40"
+              aria-label="Close sidebar"
+              data-testid="sidebar-mobile-backdrop"
+              onClick={() => setCompact(true)}
+            />
+            <div className="fixed md:static inset-y-0 left-0 z-50 md:z-auto max-w-[90vw] shadow-xl md:shadow-none">
+              <Sidebar
+                indices={enabledIndices.length ? enabledIndices : INDICES}
+                activeIndex={activeIndex}
+                onChangeIndex={setActiveIndex}
+                current={current}
+                strikesAround={strikesAround}
+                onChangeStrikesAround={applyStrikesAround}
+                strikeRange={strikeRange}
+                onChangeStrikeRange={handleStrikeRangeChange}
+                onReset={handleReset}
+                expiries={expiries}
+                expiriesMeta={expiriesMeta}
+                expiriesNote={expiriesNote}
+                selectedExpiry={selectedExpiry}
+                onChangeExpiry={handleChangeExpiry}
+                showStrikeRange={showStrikeRange}
+                lastUpdatedByIndex={lastUpdatedByIndex}
+                marketOpen={!(status?.market && status.market.is_market_open === false)}
+                onCollapse={() => setCompact(true)}
+                layoutNonce={layoutNonce}
+              />
+            </div>
+          </>
         )}
         {compact && (
           <button
@@ -1950,11 +1961,15 @@ export default function Dashboard() {
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
                       isKiteMode={status?.mode === "kite"}
-                      current={current}
+                      current={filteredCurrent || current}
+                      previous={previous}
                       vix={current?.vix || status?.vix}
+                      vixOpen={vixSessionOpen}
                       oiSettings={oiSettings}
                       activeIndex={activeIndex}
                       expiry={selectedExpiry}
+                      step={INDEX_STEP[activeIndex] || 50}
+                      vrp={vrp}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "huge-shift",
@@ -2073,6 +2088,9 @@ export default function Dashboard() {
                       lotSize={oiSettings.lotSize?.[activeIndex] || 1}
                       selectedExpiry={selectedExpiry}
                       vixNow={current?.vix || status?.vix}
+                      vixOpen={vixSessionOpen}
+                      vrp={vrp}
+                      indexStep={INDEX_STEP[activeIndex] || 50}
                       activity={activity}
                       activityFilter={activityFilter}
                       setActivityFilter={setActivityFilter}
@@ -2120,10 +2138,11 @@ export default function Dashboard() {
                 type="button"
                 onClick={() => setMobilePanelOpen(true)}
                 data-testid="btn-mobile-side-panel"
-                className="fixed right-4 bottom-4 rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 px-3 py-2 text-xs font-semibold flex items-center gap-2 z-50 md:hidden"
+                className="fixed right-4 bottom-4 mb-[env(safe-area-inset-bottom)] rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 h-11 w-11 flex items-center justify-center z-50 md:hidden"
+                title="Side panel"
+                aria-label="Open side panel"
               >
-                <PanelRightOpen className="w-4 h-4" />
-                Side Panel
+                <PanelRightOpen className="w-5 h-5" />
               </button>
             )}
             {isMobile && mobilePanelOpen && (
@@ -2158,6 +2177,9 @@ export default function Dashboard() {
                     lotSize={oiSettings.lotSize?.[activeIndex] || 1}
                     selectedExpiry={selectedExpiry}
                     vixNow={current?.vix || status?.vix}
+                    vixOpen={vixSessionOpen}
+                    vrp={vrp}
+                    indexStep={INDEX_STEP[activeIndex] || 50}
                     activity={activity}
                     activityFilter={activityFilter}
                     setActivityFilter={setActivityFilter}
