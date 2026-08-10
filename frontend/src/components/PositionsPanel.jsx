@@ -775,7 +775,7 @@ export default function PositionsPanel({
         {rows.length === 0 ? (
           <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No open F&amp;O positions.</div>
         ) : rows.map((r) => {
-          const thetaInr = r.theta != null ? r.theta * r.quantity : null;
+          const thetaInr = Number.isFinite(r.theta) ? r.theta * r.quantity : null;
           return (
             <div
               key={r.tradingsymbol}
@@ -875,7 +875,7 @@ export default function PositionsPanel({
             {rows.length === 0 ? (
               <tr><td colSpan={11} className="text-center py-6 text-slate-400 text-xs bg-white">No open F&amp;O positions.</td></tr>
             ) : rows.map((r) => {
-              const thetaInr = r.theta != null ? r.theta * r.quantity : null;
+              const thetaInr = Number.isFinite(r.theta) ? r.theta * r.quantity : null;
               return (
               <tr key={r.tradingsymbol} data-testid="position-row" className={`border-b border-slate-100 bg-white ${r.breachedAdjust ? "bg-rose-50/80" : ""}`}>
                 <td className="px-2 py-1.5">
