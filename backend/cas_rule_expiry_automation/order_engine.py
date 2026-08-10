@@ -105,6 +105,13 @@ class OrderEngine:
             logger.exception("MARKET SELL failed %s", leg.tradingsymbol)
             err = exc
             order_id = None
+            try:
+                # Bubble the broker message into day status so Live ops see it.
+                from cas_rule_expiry_automation.state import get_store
+
+                get_store().set_error(f"MARKET SELL {leg.tradingsymbol}: {exc}")
+            except Exception:
+                pass
 
         ack_at = _iso_ms()
         latency = (time.perf_counter() - fire_started_at) * 1000

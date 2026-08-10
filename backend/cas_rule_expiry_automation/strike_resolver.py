@@ -1,4 +1,11 @@
-"""ATM / OTM strike resolution with pre-warm cache for low-latency fire."""
+"""ATM / OTM strike resolution with pre-warm cache for low-latency fire.
+
+Symbol source of truth (same idea as oi_service):
+  1. Kite ``instruments`` row with ``name`` == NIFTY|SENSEX and matching segment
+  2. Exact strike + CE/PE on the chosen weekly expiry (IST calendar day)
+  3. Local ``instruments.db`` cache when present (same filters)
+  4. Never invent tradingsymbols — only broker instrument rows
+"""
 
 from __future__ import annotations
 
@@ -10,6 +17,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from cas_rule_expiry_automation.expiry_calendar import INDEX_META
+from cas_rule_expiry_automation.time_utils import get_ist_now
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +80,50 @@ def _db_path() -> str:
     )
 
 
+def _as_date(exp) -> Optional[date]:
+    if exp is None:
+        return None
+    if isinstance(exp, date) and not isinstance(exp, datetime):
+        return exp
+    if hasattr(exp, "date"):
+        try:
+            return exp.date()
+        except Exception:
+            return None
+    try:
+        return date.fromisoformat(str(exp)[:10])
+    except Exception:
+        return None
+
+
+def _is_index_option(inst: Dict[str, Any], meta: Dict[str, Any]) -> bool:
+    """True only for this index's CE/PE — not NIFTYNXT / FINNIFTY / etc."""
+    if inst.get("instrument_type") not in ("CE", "PE"):
+        return False
+    name = str(inst.get("name") or "").strip().upper()
+    want = str(meta["name"]).upper()
+    if name:
+        # Prefer exact Kite ``name`` (same filter oi_service uses).
+        if name != want:
+            return False
+    else:
+        # Rare fallback: symbol must start with index name and not a longer sibling.
+        sym = str(inst.get("tradingsymbol") or "")
+        if not sym.startswith(want):
+            return False
+        # Reject NIFTYNXT50… when looking for NIFTY
+        siblings = ("NIFTYNXT", "FINNIFTY", "MIDCPNIFTY", "BANKNIFTY")
+        if any(sym.startswith(s) for s in siblings if s != want and s.startswith(want)):
+            return False
+        if want == "NIFTY" and sym.startswith("NIFTYNXT"):
+            return False
+    seg = str(inst.get("segment") or "").strip().upper()
+    want_seg = str(meta.get("segment") or "").strip().upper()
+    if want_seg and seg and seg != want_seg:
+        return False
+    return True
+
+
 def common_prefix(symbols: List[str]) -> str:
     if not symbols:
         return ""
@@ -87,43 +139,24 @@ def common_prefix(symbols: List[str]) -> str:
 def detect_expiry_prefix(kite: Any, index: str, on_date: Optional[date] = None) -> Optional[str]:
     """Find option symbol prefix for ``index``.
 
-    Prefers contracts expiring on ``on_date`` (today). If none (non-expiry /
+    Prefers contracts expiring on ``on_date`` (IST today). If none (non-expiry /
     paper practice day), falls back to the nearest upcoming weekly expiry so
     strike resolve still works for latency tests.
     """
     meta = INDEX_META[index]
-    target = on_date or date.today()
+    target = on_date or get_ist_now().date()
     instruments = kite.instruments(meta["exchange"])
-    name = meta["name"]
-    typed = [
-        i
-        for i in instruments
-        if str(i.get("tradingsymbol", "")).startswith(name)
-        and i.get("instrument_type") in ("CE", "PE")
-        and i.get("expiry")
-    ]
-
-    def _as_date(exp) -> Optional[date]:
-        if exp is None:
-            return None
-        if isinstance(exp, date) and not isinstance(exp, datetime):
-            return exp
-        if hasattr(exp, "date"):
-            try:
-                return exp.date()
-            except Exception:
-                return None
-        try:
-            return date.fromisoformat(str(exp)[:10])
-        except Exception:
-            return None
+    typed = [i for i in instruments if _is_index_option(i, meta) and i.get("expiry")]
 
     by_expiry: Dict[date, List[str]] = {}
     for i in typed:
         ed = _as_date(i.get("expiry"))
         if ed is None:
             continue
-        by_expiry.setdefault(ed, []).append(i["tradingsymbol"])
+        sym = str(i.get("tradingsymbol") or "").strip()
+        if not sym:
+            continue
+        by_expiry.setdefault(ed, []).append(sym)
 
     symbols = by_expiry.get(target) or []
     if not symbols:
@@ -145,6 +178,22 @@ def detect_expiry_prefix(kite: Any, index: str, on_date: Optional[date] = None) 
     if not symbols:
         return None
     return common_prefix(symbols)
+
+
+def _validate_leg_symbol(tradingsymbol: str, opt: str, strike: int) -> str:
+    sym = (tradingsymbol or "").strip()
+    if not sym:
+        raise RuntimeError("empty tradingsymbol from instruments")
+    if not sym.endswith(opt):
+        raise RuntimeError(f"symbol {sym} does not end with {opt}")
+    # Strike digits appear in Zerodha weekly symbols (…24500CE). Soft-check only.
+    if str(int(strike)) not in sym:
+        logger.warning(
+            "symbol %s may not contain strike %s — still using broker row",
+            sym,
+            strike,
+        )
+    return sym
 
 
 class StrikeCache:
@@ -242,11 +291,16 @@ class StrikeCache:
             row = self._from_kite(kite, meta, prefix, strike, opt)
         if row is None:
             return None
+        try:
+            sym = _validate_leg_symbol(str(row["tradingsymbol"]), opt, int(strike))
+        except RuntimeError as exc:
+            logger.error("reject instrument row: %s", exc)
+            return None
         return Leg(
             index=index,
             opt_type=opt,
             strike=int(row.get("strike") or strike),
-            tradingsymbol=row["tradingsymbol"],
+            tradingsymbol=sym,
             exchange=meta["exchange"],
             instrument_token=int(row.get("instrument_token") or 0),
             lot_size=int(row.get("lot_size") or meta["default_lot"]),
@@ -260,17 +314,39 @@ class StrikeCache:
             conn = sqlite3.connect(_db_path())
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT * FROM instruments
-                WHERE tradingsymbol LIKE ?
-                  AND instrument_type = ?
-                  AND segment = ?
-                  AND ABS(strike - ?) < 0.01
-                LIMIT 1
-                """,
-                (f"{prefix}%", opt, meta["segment"], float(strike)),
-            )
+            # Prefer exact name + segment (oi_service style). Fall back if schema is older.
+            cols = {r[1] for r in cur.execute("PRAGMA table_info(instruments)").fetchall()}
+            if "name" in cols and "segment" in cols:
+                cur.execute(
+                    """
+                    SELECT * FROM instruments
+                    WHERE name = ?
+                      AND instrument_type = ?
+                      AND segment = ?
+                      AND ABS(strike - ?) < 0.01
+                      AND tradingsymbol LIKE ?
+                    LIMIT 1
+                    """,
+                    (
+                        meta["name"],
+                        opt,
+                        meta["segment"],
+                        float(strike),
+                        f"{prefix}%",
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT * FROM instruments
+                    WHERE tradingsymbol LIKE ?
+                      AND instrument_type = ?
+                      AND segment = ?
+                      AND ABS(strike - ?) < 0.01
+                    LIMIT 1
+                    """,
+                    (f"{prefix}%", opt, meta["segment"], float(strike)),
+                )
             row = cur.fetchone()
             conn.close()
             return dict(row) if row else None
@@ -282,12 +358,17 @@ class StrikeCache:
     ) -> Optional[Dict[str, Any]]:
         try:
             for inst in kite.instruments(meta["exchange"]):
-                if (
-                    inst["tradingsymbol"].startswith(prefix)
-                    and inst.get("instrument_type") == opt
-                    and abs(float(inst.get("strike") or 0) - strike) < 0.01
-                ):
-                    return inst
+                if not _is_index_option(inst, meta):
+                    continue
+                if inst.get("instrument_type") != opt:
+                    continue
+                if abs(float(inst.get("strike") or 0) - strike) >= 0.01:
+                    continue
+                sym = str(inst.get("tradingsymbol") or "").strip()
+                # Prefer rows that match the prewarmed weekly prefix.
+                if prefix and not sym.startswith(prefix):
+                    continue
+                return inst
         except Exception:
             return None
         return None

@@ -31,7 +31,60 @@ _SETTINGS: Dict[str, Any] = {
     "product": "NRML",
     "live_trading": False,
     "paper_any_day": True,
+    "debug_mode": False,
+    "watch_indexes": ["NIFTY", "SENSEX"],
 }
+_EGRESS_CACHE: Dict[str, Any] = {"ip": None, "at": 0.0, "error": None}
+
+
+def detect_backend_egress_ip(*, force: bool = False) -> Dict[str, Any]:
+    """Public IP Zerodha sees for Live place_order from THIS backend process.
+
+    Not your laptop IP when the app is hosted on Emergent/cloud — whitelist
+    the server egress IP. Cached ~10 minutes.
+    """
+    import time
+    import urllib.request
+
+    now = time.time()
+    if (
+        not force
+        and _EGRESS_CACHE.get("ip")
+        and now - float(_EGRESS_CACHE.get("at") or 0) < 600
+    ):
+        return {
+            "ip": _EGRESS_CACHE["ip"],
+            "source": "cache",
+            "note": _EGRESS_CACHE.get("note"),
+            "error": None,
+        }
+    ip = None
+    err = None
+    for url in (
+        "https://api.ipify.org",
+        "https://ifconfig.me/ip",
+        "https://icanhazip.com",
+    ):
+        try:
+            with urllib.request.urlopen(url, timeout=3) as resp:
+                cand = (resp.read() or b"").decode("utf-8", errors="ignore").strip()
+            # basic IPv4/IPv6 sanity
+            if cand and " " not in cand and 3 <= len(cand) <= 45:
+                ip = cand
+                break
+        except Exception as exc:
+            err = str(exc)
+            continue
+    note = (
+        "Whitelist this IP in Kite developer Profile → IP Whitelist. "
+        "It is the backend/server egress IP (Emergent host if the API runs there), "
+        "NOT your home/office PC IP unless you run the backend locally."
+    )
+    _EGRESS_CACHE["ip"] = ip
+    _EGRESS_CACHE["at"] = now
+    _EGRESS_CACHE["error"] = None if ip else err
+    _EGRESS_CACHE["note"] = note
+    return {"ip": ip, "source": "live", "note": note, "error": None if ip else err}
 
 
 def _ensure_state_dir() -> None:
@@ -48,7 +101,11 @@ def _build_config(
     overrides: Optional[Dict[str, Any]] = None,
 ) -> AppConfig:
     o = {**_SETTINGS, **(overrides or {})}
-    return AppConfig(
+    debug = bool(o.get("debug_mode"))
+    live = bool(o.get("live_trading"))
+    # Debug + paper: rehearse any day / any hour (no real orders).
+    paper_any = bool(o.get("paper_any_day", True)) or (debug and not live)
+    cfg = AppConfig(
         api_key=(api_key or "").strip(),
         api_secret=(api_secret or "").strip(),
         access_token=(access_token or "").strip(),
@@ -56,8 +113,8 @@ def _build_config(
         ce_otm_steps=max(0, int(o.get("ce_otm_steps") or 1)),
         pe_otm_steps=max(0, int(o.get("pe_otm_steps") or 1)),
         product=str(o.get("product") or "NRML").strip().upper() or "NRML",
-        live_trading=bool(o.get("live_trading")),
-        paper_any_day=bool(o.get("paper_any_day", True)),
+        live_trading=live,
+        paper_any_day=paper_any,
         paper_latency_probe=True,
         fire_on_cas_move=True,
         fire_on_close_update=True,
@@ -72,6 +129,23 @@ def _build_config(
         market_close=dtime(15, 41),
         config_path="",  # memory mode — never write config.ini
     )
+    # Attach oi-pulse-only knobs (not in original AppConfig dataclass fields
+    # that load_config knows — set as attributes for engine/strategy).
+    cfg.debug_mode = debug  # type: ignore[attr-defined]
+    watch = o.get("watch_indexes") or ["NIFTY", "SENSEX"]
+    cfg.watch_indexes = [  # type: ignore[attr-defined]
+        str(x).upper() for x in watch if str(x).upper() in ("NIFTY", "SENSEX")
+    ] or ["NIFTY", "SENSEX"]
+    # Paper+debug: widen windows so Activate outside market hours still streams
+    # and can dry-run on LTP moves (never for live money).
+    if debug and not live:
+        cfg.watch_start = dtime(0, 0)
+        cfg.watch_end = dtime(23, 59, 59)
+        cfg.move_window_start = dtime(0, 0)
+        cfg.move_window_end = dtime(23, 59, 59)
+        cfg.market_close = dtime(23, 59, 59)
+        cfg.expiry_only = False
+    return cfg
 
 
 def _apply_config_to_engine(engine: AutomationEngine, cfg: AppConfig) -> None:
@@ -144,8 +218,113 @@ def get_status(tracker=None) -> Dict[str, Any]:
     engine = get_engine()
     status = engine.status()
     status["settings"] = dict(_SETTINGS)
+    status["live_readiness"] = _live_readiness(status)
     status["plain"] = _plain_status(status)
     return status
+
+
+def _live_readiness(status: Dict[str, Any]) -> Dict[str, Any]:
+    """Checklist vs Zerodha live MARKET-order requirements (ops + code)."""
+    from cas_rule_expiry_automation.kite_client import (
+        kiteconnect_supports_market_protection,
+    )
+
+    cfg = status.get("config") or {}
+    has_token = bool(cfg.get("has_token"))
+    has_key = bool(cfg.get("has_key"))
+    mp_ok = kiteconnect_supports_market_protection()
+    egress = detect_backend_egress_ip()
+    egress_ip = egress.get("ip")
+    checks = [
+        {
+            "id": "api_key",
+            "ok": has_key,
+            "label": "Kite api_key present",
+            "fix": "Connect via Kite API in the header" if not has_key else "OK",
+        },
+        {
+            "id": "access_token",
+            "ok": has_token,
+            "label": "Valid access_token session",
+            "fix": (
+                "Re-login if token expired or you logged in elsewhere"
+                if not has_token
+                else "OK — re-login daily / if session drops"
+            ),
+        },
+        {
+            "id": "market_protection",
+            "ok": mp_ok,
+            "label": "SDK supports market_protection (−1 auto)",
+            "fix": (
+                "Upgrade kiteconnect to ≥5.2.0"
+                if not mp_ok
+                else "CAS sends MARKET + market_protection=-1 + validity=DAY"
+            ),
+        },
+        {
+            "id": "fno_symbol",
+            "ok": True,
+            "label": "F&O symbol resolve (CE/PE)",
+            "fix": (
+                "Uses Kite instruments name=NIFTY|SENSEX + segment + strike + CE/PE "
+                "(same idea as OI desk). Never invents symbols."
+            ),
+        },
+        {
+            "id": "static_ip",
+            "ok": None,  # detected ≠ whitelisted; still an ops step
+            "label": "Static IP to whitelist (backend egress)",
+            "fix": (
+                f"Detected backend egress IP: {egress_ip}. "
+                f"{egress.get('note') or ''}"
+                if egress_ip
+                else (
+                    "Could not detect egress IP automatically. "
+                    "From the machine running the API, open https://api.ipify.org "
+                    "and whitelist that value — Emergent server IP if hosted there, "
+                    "not your laptop (unless backend runs on your laptop)."
+                )
+            ),
+        },
+        {
+            "id": "order_shape",
+            "ok": True,
+            "label": "CAS order shape (MARKET SELL CE+PE)",
+            "fix": (
+                "variety=regular · order_type=MARKET · no price/trigger · "
+                f"product={cfg.get('product') or 'NRML'} · tag=CASRULE · parallel legs"
+            ),
+        },
+        {
+            "id": "rate_limits",
+            "ok": True,
+            "label": "Order rate limits",
+            "fix": (
+                "CAS fires ~2 MARKET sells per index per day — well under "
+                "400/min and 5000/day. Avoid spam Activate/Debug probes on Live."
+            ),
+        },
+    ]
+    blockers = [c for c in checks if c.get("ok") is False]
+    return {
+        "ready_for_code": has_key and has_token and mp_ok,
+        "needs_ops_ip_whitelist": True,
+        "egress_ip": egress_ip,
+        "egress": egress,
+        "checks": checks,
+        "blockers": [c["id"] for c in blockers],
+        "summary": (
+            f"Code path is Live-capable. Whitelist backend IP {egress_ip} in Kite "
+            "developer Profile before Activate Live."
+            if has_key and has_token and mp_ok and egress_ip
+            else (
+                "Code path is Live-capable. Confirm static IP whitelist before Activate Live."
+                if has_key and has_token and mp_ok
+                else "Fix blockers below before Live Activate."
+            )
+        ),
+    }
 
 
 def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
@@ -153,21 +332,29 @@ def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
     day = status.get("day") or {}
     state = status.get("state") or {}
     cfg = status.get("config") or {}
+    settings = status.get("settings") or {}
     activated = bool(state.get("activated"))
     live = bool(cfg.get("live_trading"))
+    debug = bool(settings.get("debug_mode") or getattr(cfg, "debug_mode", False) or cfg.get("debug_mode"))
     indexes = day.get("indexes") or []
     fired = state.get("fired_indexes") or []
     if activated and live:
-        mode_label = "LIVE — real MARKET sells armed"
+        mode_label = "LIVE armed — real MARKET sells"
+    elif activated and debug:
+        mode_label = "PAPER + DEBUG armed — dry-run · any-time feed"
     elif activated:
-        mode_label = "PAPER — watching; dry-run sells only"
+        mode_label = "PAPER armed — dry-run sells only"
+    elif debug:
+        mode_label = "Debug on — Activate anytime (Paper safe)"
     else:
-        mode_label = "Off — click Activate to arm the CAS window"
+        mode_label = "Off — pick Paper or Live, then Activate"
 
+    readiness = status.get("live_readiness") or {}
     return {
         "mode_label": mode_label,
         "activated": activated,
         "live": live,
+        "debug": debug,
         "is_expiry_day": bool(day.get("is_expiry_day")),
         "watching": indexes,
         "fired": fired,
@@ -177,6 +364,9 @@ def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
         "ws_connected": bool((state.get("ws_connected"))),
         "fills_today": len(state.get("fills") or []),
         "last_error": state.get("last_error"),
+        "ticks": (status.get("ws") or {}).get("ticks_received") or state.get("ticks_seen") or 0,
+        "live_ready_code": bool(readiness.get("ready_for_code")),
+        "live_ready_summary": readiness.get("summary"),
     }
 
 
@@ -195,6 +385,18 @@ def update_settings(patch: Dict[str, Any], tracker=None, *, allow_live: bool = F
             _SETTINGS["product"] = prod
         if "paper_any_day" in patch:
             _SETTINGS["paper_any_day"] = bool(patch["paper_any_day"])
+        if "debug_mode" in patch:
+            _SETTINGS["debug_mode"] = bool(patch["debug_mode"])
+            # Live + debug is still allowed for activate-after-hours, but we never
+            # widen fire windows while live_trading is on.
+        if "watch_indexes" in patch:
+            raw = patch["watch_indexes"] or []
+            if isinstance(raw, str):
+                raw = [x.strip() for x in raw.split(",") if x.strip()]
+            cleaned = [str(x).upper() for x in raw if str(x).upper() in ("NIFTY", "SENSEX")]
+            if not cleaned:
+                raise ValueError("Pick at least one index: NIFTY or SENSEX")
+            _SETTINGS["watch_indexes"] = cleaned
         if "live_trading" in patch:
             if bool(patch["live_trading"]) and not allow_live:
                 raise PermissionError("Only admin can enable Live trading")
@@ -222,9 +424,26 @@ def activate(tracker, *, by: str = "admin", require_live_confirm: bool = False) 
         raise RuntimeError("Kite not connected. Open Kite API in the header and connect first.")
     if engine.config.live_trading and not require_live_confirm:
         raise RuntimeError("Live mode needs an explicit confirm flag.")
-    if get_ist_now().time() >= engine.config.market_close:
-        raise RuntimeError("Market is closed for CAS (after 15:41 IST). Try again tomorrow.")
-    get_store().activate(by=by)
+    debug = bool(getattr(engine.config, "debug_mode", False) or _SETTINGS.get("debug_mode"))
+    if (not debug) and get_ist_now().time() >= engine.config.market_close:
+        raise RuntimeError(
+            "Market is closed for CAS (after 15:41 IST). Turn on Debug to rehearse, or try tomorrow."
+        )
+    if engine.config.live_trading:
+        from cas_rule_expiry_automation.kite_client import (
+            kiteconnect_supports_market_protection,
+        )
+
+        if not kiteconnect_supports_market_protection():
+            raise RuntimeError(
+                "kiteconnect is too old for Live MARKET sells (needs market_protection). "
+                "Upgrade to kiteconnect>=5.2.0."
+            )
+        logger.warning(
+            "LIVE CAS activate — ensure Kite developer static IP is whitelisted for this host’s "
+            "public egress IP or place_order will be rejected"
+        )
+    get_store().activate(by=by + ("+debug" if debug else ""))
     return get_status(tracker)
 
 
@@ -247,9 +466,11 @@ def run_backtest(
     end: Optional[str] = None,
     lots: Optional[int] = None,
     capital: Optional[float] = None,
+    indexes: Optional[list] = None,
 ) -> Dict[str, Any]:
     sync_credentials_from_tracker(tracker)
     from cas_rule_expiry_automation.backtest_ws import run_ws_backtest
+    from copy import copy
     from dataclasses import asdict
 
     engine = get_engine()
@@ -259,13 +480,24 @@ def run_backtest(
 
     start_d = date.fromisoformat(start) if start else None
     end_d = date.fromisoformat(end) if end else None
+    idx_filter = None
+    if indexes:
+        idx_filter = [str(x).upper() for x in indexes if str(x).upper() in ("NIFTY", "SENSEX")]
+        if not idx_filter:
+            raise ValueError("indexes must include NIFTY and/or SENSEX")
+    # Backtest selection overrides live watch_indexes for this run only.
+    bt_cfg = copy(engine.config)
+    bt_cfg.watch_indexes = list(idx_filter or ["NIFTY", "SENSEX"])  # type: ignore[attr-defined]
+    # Keep expiry calendar for historical days (do not widen via debug).
+    bt_cfg.expiry_only = True
     result = run_ws_backtest(
         kite=kite,
-        config=engine.config,
+        config=bt_cfg,
         start=start_d,
         end=end_d,
         capital=capital,
         lots=lots if lots is not None else _SETTINGS["lots"],
+        indexes=idx_filter,
     )
     # BacktestResult is a dataclass
     if hasattr(result, "__dataclass_fields__"):

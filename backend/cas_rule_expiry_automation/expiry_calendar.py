@@ -41,16 +41,27 @@ INDEX_META = {
 }
 
 
+def _watch_filter(cfg: AppConfig, indexes: List[str]) -> List[str]:
+    """Optionally restrict to user-selected underlyings (NIFTY / SENSEX)."""
+    watch = getattr(cfg, "watch_indexes", None)
+    if not watch:
+        return indexes
+    allowed = {str(x).upper() for x in watch if str(x).strip()}
+    if not allowed:
+        return indexes
+    return [i for i in indexes if str(i).upper() in allowed]
+
+
 def indexes_for_date(d: date, cfg: AppConfig) -> List[str]:
     """Return which underlyings to trade on date ``d`` (strict expiry calendar)."""
     if not cfg.expiry_only:
-        return ["NIFTY", "SENSEX"]
+        return _watch_filter(cfg, ["NIFTY", "SENSEX"])
     out: List[str] = []
     if d.weekday() == cfg.nifty_expiry_weekday:
         out.append("NIFTY")
     if d.weekday() == cfg.sensex_expiry_weekday:
         out.append("SENSEX")
-    return out
+    return _watch_filter(cfg, out)
 
 
 def today_indexes(cfg: AppConfig, now: Optional[datetime] = None) -> List[str]:
@@ -65,7 +76,7 @@ def today_indexes(cfg: AppConfig, now: Optional[datetime] = None) -> List[str]:
     if indexes:
         return indexes
     if (not cfg.live_trading) and getattr(cfg, "paper_any_day", True):
-        return ["NIFTY", "SENSEX"]
+        return _watch_filter(cfg, ["NIFTY", "SENSEX"])
     return []
 
 

@@ -20,11 +20,31 @@ for p in (_ROOT, _VENDOR):
         sys.path.insert(0, p)
 
 
+def _kite_error_message(exc: BaseException) -> str:
+    """Normalize kiteconnect / HTTP errors into a short operator-facing string."""
+    msg = getattr(exc, "message", None) or str(exc) or exc.__class__.__name__
+    et = getattr(exc, "error_type", None)
+    if et and str(et) not in str(msg):
+        return f"{et}: {msg}"
+    return str(msg)
+
+
 def _KiteConnect():
     ensure_kite_deps()
     from kiteconnect import KiteConnect
 
     return KiteConnect
+
+
+def kiteconnect_supports_market_protection() -> bool:
+    """True when installed kiteconnect.place_order accepts market_protection."""
+    try:
+        import inspect
+
+        KC = _KiteConnect()
+        return "market_protection" in inspect.signature(KC.place_order).parameters
+    except Exception:
+        return False
 
 
 class KiteClient:
@@ -189,51 +209,91 @@ class KiteClient:
         tag: str = "CASRULE",
         live: bool = False,
     ) -> Any:
-        """Punch a MARKET SELL per Kite Connect v3 rules.
+        """Punch a MARKET SELL per Kite Connect v3 + SEBI algo rules.
 
-        Official place_order for MARKET:
+        Required for live MARKET / SL-M via API (Apr 2025+):
           - order_type=MARKET
+          - market_protection != 0  (−1 = auto system protection)
           - do NOT send price (LIMIT-only) or trigger_price (SL/SL-M only)
-          - market_protection is required (-1 = auto); protection=0 is rejected
+          - requests must come from a Kite-developer **static IP whitelist**
+          - valid access_token + active F&O tradingsymbol (no trailing spaces)
 
-        Matches Kite Connect MARKET place_order (no price/trigger_price).
-        SDK strips None kwargs before POST.
+        Official example payload shape:
+          variety=regular, transaction_type=SELL, validity=DAY,
+          product=NRML|MIS, market_protection=-1
         """
         if not self.kite:
             self.connect()
+
+        symbol = (tradingsymbol or "").strip()
+        if not symbol:
+            raise ValueError("tradingsymbol is empty")
+        qty = int(quantity)
+        if qty <= 0:
+            raise ValueError(f"quantity must be > 0, got {qty}")
+        exch = (exchange or "").strip().upper()
+        prod = (product or "NRML").strip().upper() or "NRML"
+        if prod not in ("NRML", "MIS"):
+            raise ValueError(f"product must be NRML or MIS, got {prod}")
+
         if not live:
             logger.warning(
-                "[DRY-RUN] MARKET SELL %s x%d %s/%s",
-                tradingsymbol,
-                quantity,
-                exchange,
-                product,
+                "[DRY-RUN] MARKET SELL %s x%d %s/%s (no broker call)",
+                symbol,
+                qty,
+                exch,
+                prod,
             )
-            return f"DRY-{tradingsymbol}-{int(time.time()*1000)%100000}"
+            return f"DRY-{symbol}-{int(time.time()*1000)%100000}"
 
         # Never pass price=0 / trigger_price=0 — those are LIMIT/SL fields and
         # the pykiteconnect client omits only None (0 would be sent to Kite).
-        protection = getattr(self.kite, "MARKET_PROTECTION_AUTO", -1)
+        protection = int(getattr(self.kite, "MARKET_PROTECTION_AUTO", -1) or -1)
+        if protection == 0:
+            # 0 is rejected by Kite as unprotected MARKET
+            protection = -1
+        validity = getattr(self.kite, "VALIDITY_DAY", "DAY")
+
+        # kiteconnect>=5.2 accepts market_protection; older wheels TypeError.
+        kwargs: dict = {
+            "variety": self.kite.VARIETY_REGULAR,
+            "exchange": exch,
+            "tradingsymbol": symbol,
+            "transaction_type": self.kite.TRANSACTION_TYPE_SELL,
+            "quantity": qty,
+            "product": prod,
+            "order_type": self.kite.ORDER_TYPE_MARKET,
+            "validity": validity,
+            "tag": (tag or "CASRULE")[:20],
+            "market_protection": protection,
+        }
         logger.info(
-            "Kite place_order MARKET SELL %s/%s x%d product=%s protection=%s",
-            exchange,
-            tradingsymbol,
-            quantity,
-            product,
+            "Kite place_order MARKET SELL %s/%s x%d product=%s validity=%s protection=%s",
+            exch,
+            symbol,
+            qty,
+            prod,
+            validity,
             protection,
         )
-        return self.kite.place_order(
-            variety=self.kite.VARIETY_REGULAR,
-            exchange=exchange,
-            tradingsymbol=tradingsymbol,
-            transaction_type=self.kite.TRANSACTION_TYPE_SELL,
-            quantity=int(quantity),
-            product=product,
-            order_type=self.kite.ORDER_TYPE_MARKET,
-            tag=(tag or "CASRULE")[:20],
-            market_protection=protection,
-            # price / trigger_price intentionally omitted (None → stripped by SDK)
-        )
+        try:
+            return self.kite.place_order(**kwargs)
+        except TypeError as exc:
+            # Fallback if an older kiteconnect build lacks market_protection kw.
+            if "market_protection" not in str(exc):
+                raise
+            logger.error(
+                "kiteconnect place_order lacks market_protection — upgrade to >=5.2.0"
+            )
+            raise RuntimeError(
+                "Installed kiteconnect cannot send market_protection. "
+                "Upgrade to kiteconnect>=5.2.0 or Live MARKET sells will be rejected."
+            ) from exc
+        except Exception as exc:
+            # Surface Zerodha message clearly (token / IP / symbol / margin / …)
+            msg = _kite_error_message(exc)
+            logger.exception("Kite MARKET SELL rejected: %s", msg)
+            raise RuntimeError(msg) from exc
 
     def clear_local_session(self) -> None:
         """Drop in-memory kite client (does not touch config.ini)."""

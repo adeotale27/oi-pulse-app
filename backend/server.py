@@ -3387,6 +3387,8 @@ class CasSettingsIn(BaseModel):
     product: Optional[str] = None
     live_trading: Optional[bool] = None
     paper_any_day: Optional[bool] = None
+    debug_mode: Optional[bool] = None
+    watch_indexes: Optional[List[str]] = None
 
 
 class CasActivateIn(BaseModel):
@@ -3398,6 +3400,7 @@ class CasBacktestIn(BaseModel):
     end: Optional[str] = None
     lots: Optional[int] = None
     capital: Optional[float] = None
+    indexes: Optional[List[str]] = None
 
 
 @api_router.get("/cas/status")
@@ -3415,12 +3418,21 @@ async def cas_status(role: str = Depends(require_desk_user)):
         plain = status.get("plain") or {}
         if plain.get("last_error"):
             plain = {**plain, "last_error": _sanitize_public_error(plain.get("last_error"))}
+        state = status.get("state") or {}
         status = {
             "plain": plain,
             "day": status.get("day"),
+            "settings": {
+                "lots": (status.get("settings") or {}).get("lots"),
+                "live_trading": (status.get("settings") or {}).get("live_trading"),
+                "debug_mode": (status.get("settings") or {}).get("debug_mode"),
+                "watch_indexes": (status.get("settings") or {}).get("watch_indexes"),
+            },
             "config": {
                 "lots": (status.get("config") or {}).get("lots"),
                 "live_trading": (status.get("config") or {}).get("live_trading"),
+                "debug_mode": (status.get("config") or {}).get("debug_mode"),
+                "watch_indexes": (status.get("config") or {}).get("watch_indexes"),
                 "product": (status.get("config") or {}).get("product"),
                 "watch_start": (status.get("config") or {}).get("watch_start"),
                 "watch_end": (status.get("config") or {}).get("watch_end"),
@@ -3429,14 +3441,20 @@ async def cas_status(role: str = Depends(require_desk_user)):
                 "has_token": (status.get("config") or {}).get("has_token"),
             },
             "state": {
-                "activated": (status.get("state") or {}).get("activated"),
-                "fired_indexes": (status.get("state") or {}).get("fired_indexes"),
-                "fills": (status.get("state") or {}).get("fills") or [],
-                "last_ltp": (status.get("state") or {}).get("last_ltp") or {},
-                "baseline_close": (status.get("state") or {}).get("baseline_close") or {},
-                "ws_connected": (status.get("state") or {}).get("ws_connected"),
+                "activated": state.get("activated"),
+                "fired_indexes": state.get("fired_indexes"),
+                "fills": state.get("fills") or [],
+                "timings": state.get("timings") or [],
+                "last_ltp": state.get("last_ltp") or {},
+                "baseline_close": state.get("baseline_close") or {},
+                "last_index_move_at": state.get("last_index_move_at") or {},
+                "last_close": state.get("last_close") or {},
+                "ws_connected": state.get("ws_connected"),
+                "ticks_seen": state.get("ticks_seen"),
             },
+            "ws": status.get("ws") or {},
             "market_closed": status.get("market_closed"),
+            "live_readiness": status.get("live_readiness"),
             "role": "guest",
         }
     else:
@@ -3520,6 +3538,7 @@ async def cas_backtest(payload: CasBacktestIn, role: str = Depends(require_desk_
             end=payload.end,
             lots=payload.lots,
             capital=payload.capital,
+            indexes=payload.indexes,
         )
         return {"ok": True, "role": role, "result": result}
     except Exception as e:

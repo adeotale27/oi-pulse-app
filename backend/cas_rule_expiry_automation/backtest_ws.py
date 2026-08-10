@@ -145,14 +145,18 @@ def _find_option_token(
     except Exception as exc:
         logger.warning("instruments(%s) failed: %s", meta["exchange"], exc)
         return None
+    from cas_rule_expiry_automation.strike_resolver import _as_date, _is_index_option
+
     for inst in instruments:
-        if (
-            str(inst.get("tradingsymbol", "")).startswith(meta["name"])
-            and inst.get("expiry") == expiry
-            and inst.get("instrument_type") == opt_type
-            and abs(float(inst.get("strike") or 0) - float(strike)) < 0.01
-        ):
-            return inst
+        if not _is_index_option(inst, meta):
+            continue
+        if inst.get("instrument_type") != opt_type:
+            continue
+        if _as_date(inst.get("expiry")) != expiry:
+            continue
+        if abs(float(inst.get("strike") or 0) - float(strike)) >= 0.01:
+            continue
+        return inst
     return None
 
 
@@ -554,6 +558,7 @@ def run_ws_backtest(
     capital: Optional[float] = None,
     close_overrides: Optional[Dict[str, float]] = None,
     lots: Optional[int] = None,
+    indexes: Optional[List[str]] = None,
 ) -> BacktestResult:
     """Run expiry-day WebSocket replay backtest.
 
@@ -563,6 +568,7 @@ def run_ws_backtest(
               - ``YYYY-MM-DD`` (applies to that day's index)
               - ``YYYY-MM-DD:SENSEX`` / ``YYYY-MM-DD:NIFTY``
               - bare index name ``SENSEX`` / ``NIFTY`` (applies every day)
+        indexes: Optional filter — only run NIFTY and/or SENSEX when provided.
     """
     cfg = config or load_config()
     end = end or date.today()
@@ -570,6 +576,7 @@ def run_ws_backtest(
     capital = float(capital or cfg.default_capital)
     trade_lots = max(int(lots if lots is not None else cfg.lots), 1)
     overrides = {str(k).upper(): float(v) for k, v in (close_overrides or {}).items()}
+    index_filter = {str(x).upper() for x in (indexes or []) if str(x).strip()}
     notes = [
         "LIVE fires the instant a WebSocket tick carries the new CAS close — not chart time.",
         (
@@ -615,7 +622,10 @@ def run_ws_backtest(
 
     d = start
     while d <= end:
-        for index in indexes_for_date(d, cfg):
+        day_indexes = indexes_for_date(d, cfg)
+        if index_filter:
+            day_indexes = [i for i in day_indexes if str(i).upper() in index_filter]
+        for index in day_indexes:
             meta = INDEX_META[index]
             token = int(meta["token"])
             gap = int(meta["strike_gap"])
