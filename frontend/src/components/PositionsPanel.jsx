@@ -1,5 +1,18 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { RefreshCw, PlugZap, AlertTriangle, Building2, Zap, ShieldAlert, Crosshair, Pin, LineChart } from "lucide-react";
+import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
+import {
+  RefreshCw,
+  PlugZap,
+  AlertTriangle,
+  Building2,
+  Zap,
+  ShieldAlert,
+  Crosshair,
+  Pin,
+  LineChart,
+  Columns3,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
@@ -22,6 +35,12 @@ import {
   effectiveAdjustThreshold,
   nearestWeeklyExpiry,
 } from "@/lib/positionsSellerInsights";
+import {
+  POSITIONS_COLUMN_DEFS,
+  loadColumnVisibility,
+  saveColumnVisibility,
+  visibleColumnIds,
+} from "@/lib/positionsColumns";
 import { resolvePositionSpot, positionExpiryISO } from "@/lib/positionPayoff";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
 import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
@@ -62,10 +81,27 @@ function ExitedChip() {
   return (
     <span
       title="Squared off today — booked P&L stays in Today’s total until end of day"
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-300/80 bg-white/60 text-slate-500 text-[10px] font-semibold tracking-wide"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-200 bg-slate-100 text-slate-400 text-[10px] font-semibold tracking-wide"
       data-testid="status-exited"
     >
       Exited
+    </span>
+  );
+}
+
+/** Zerodha-style product badge — muted when exited. */
+function ProductBadge({ product, exited }) {
+  const p = String(product || "—").toUpperCase();
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${
+        exited
+          ? "bg-slate-100 text-slate-400 border border-slate-200/80"
+          : "bg-violet-100 text-violet-700 border border-violet-200/70"
+      }`}
+      data-testid="product-badge"
+    >
+      {p}
     </span>
   );
 }
@@ -181,6 +217,9 @@ export default function PositionsPanel({
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [secsLeft, setSecsLeft] = useState(() => Math.max(1, Math.round(positionsPollMs / 1000)));
+  const [colVis, setColVis] = useState(() => loadColumnVisibility());
+  const [colsOpen, setColsOpen] = useState(false);
+  const colsMenuRef = useRef(null);
   const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
   const loadGen = useRef(0);
 
@@ -191,6 +230,30 @@ export default function PositionsPanel({
       return next;
     });
   }, []);
+
+  const setCol = useCallback((id, on) => {
+    setColVis((prev) => {
+      const def = POSITIONS_COLUMN_DEFS.find((c) => c.id === id);
+      if (def?.required) return prev;
+      const next = { ...prev, [id]: !!on };
+      saveColumnVisibility(next);
+      return next;
+    });
+  }, []);
+
+  const shownCols = useMemo(() => visibleColumnIds(colVis), [colVis]);
+  const colOn = useCallback((id) => shownCols.includes(id), [shownCols]);
+
+  useEffect(() => {
+    if (!colsOpen) return undefined;
+    const onDoc = (e) => {
+      if (colsMenuRef.current && !colsMenuRef.current.contains(e.target)) {
+        setColsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [colsOpen]);
 
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 30_000);
@@ -622,6 +685,53 @@ export default function PositionsPanel({
             <LineChart className="w-3.5 h-3.5 mr-1" />
             Analyze
           </Button>
+          <div className="relative" ref={colsMenuRef}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-sm bg-white min-h-[28px] px-2"
+              onClick={() => setColsOpen((v) => !v)}
+              data-testid="btn-positions-columns"
+              title="Show / hide columns"
+            >
+              <Columns3 className="w-3.5 h-3.5 mr-1" />
+              Columns
+              {colsOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+            </Button>
+            {colsOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-40 w-52 rounded-md border border-slate-200 bg-white shadow-lg p-2"
+                data-testid="positions-columns-menu"
+              >
+                <div className="text-[10px] uppercase tracking-wider text-slate-400 px-1.5 pb-1.5">
+                  Table columns
+                </div>
+                <div className="max-h-64 overflow-auto space-y-0.5">
+                  {POSITIONS_COLUMN_DEFS.map((c) => (
+                    <label
+                      key={c.id}
+                      className={`flex items-center gap-2 px-1.5 py-1 rounded-sm text-[11px] ${
+                        c.required
+                          ? "text-slate-400 cursor-default"
+                          : "text-slate-700 hover:bg-slate-50 cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-emerald-600"
+                        checked={c.required || colVis[c.id] !== false}
+                        disabled={!!c.required}
+                        onChange={(e) => setCol(c.id, e.target.checked)}
+                        data-testid={`col-toggle-${c.id}`}
+                      />
+                      {c.label}
+                      {c.required ? <span className="text-[9px] text-slate-400">always</span> : null}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -937,22 +1047,27 @@ export default function PositionsPanel({
               key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}
               data-testid="position-card"
               data-exited={r.exited ? "1" : "0"}
-              className={`rounded-md border px-3 py-2.5 ${
+              className={`rounded-lg border px-3 py-2.5 transition-colors ${
                 r.exited
-                  ? "border-slate-200/80 bg-slate-100/70 text-slate-500 shadow-none"
+                  ? "border-slate-100 bg-slate-50/90 text-slate-400 shadow-none opacity-80"
                   : r.breachedAdjust
-                    ? "border-rose-300 bg-rose-50/80"
-                    : "border-slate-200 bg-white"
+                    ? "border-rose-300 bg-rose-50/80 shadow-sm"
+                    : "border-slate-200/80 bg-white shadow-sm"
               }`}
             >
-              <div className={`flex items-start justify-between gap-2 ${r.exited ? "opacity-70" : ""}`}>
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className={`text-sm font-semibold truncate ${r.exited ? "text-slate-500" : "text-slate-900"}`}>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <ProductBadge product={r.product} exited={r.exited} />
+                    {r.exited ? (
+                      <span className="text-[9px] uppercase tracking-wide text-slate-400">Booked today</span>
+                    ) : null}
+                  </div>
+                  <div className={`text-sm font-semibold truncate ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
                     {positionLabel(r)}
                   </div>
-                  <div className="text-[10px] text-slate-400">
-                    {r.product} · {r.exchange}
-                    {r.exited ? " · booked today" : ""}
+                  <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
+                    {r.exchange}
                   </div>
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1">
@@ -960,7 +1075,7 @@ export default function PositionsPanel({
                   <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
                 </div>
               </div>
-              <div className={`mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data ${r.exited ? "opacity-75" : ""}`}>
+              <div className={`mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data ${r.exited ? "text-slate-400" : ""}`}>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Qty</div>
                   <div className={r.exited ? "text-slate-400 font-semibold" : r.isShort ? "text-rose-600 font-semibold" : "text-sky-700 font-semibold"}>
@@ -973,7 +1088,7 @@ export default function PositionsPanel({
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">P&amp;L</div>
-                  <div className={`font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-90" : ""}`}>
+                  <div className={`font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
                     {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
                   </div>
                 </div>
@@ -998,135 +1113,198 @@ export default function PositionsPanel({
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block overflow-auto rounded-md border border-slate-100">
-        <table className="w-full text-xs font-mono-data bg-white">
-          <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
-            <tr>
-              <th className="text-left px-2 py-2">Instrument</th>
-              <th className="text-right px-2 py-2">Qty</th>
-              <th className="text-right px-2 py-2">Avg</th>
-              <th className="text-right px-2 py-2">LTP</th>
-              <th className="text-right px-2 py-2">P&amp;L</th>
-              <th className="text-right px-2 py-2">
-                <span className="inline-flex items-center gap-1">
-                  Tilt
-                  <InfoTip title="Direction tilt" size="xs" testId="delta-col-tip">
-                    Does this leg push you to bet up or down? Near 0 is calmer for sellers.
-                  </InfoTip>
-                </span>
-              </th>
-              <th className="text-right px-2 py-2">
-                <span className="inline-flex items-center gap-1">
-                  ₹/day
-                  <InfoTip title="Daily time money" size="xs" testId="theta-col-tip">
-                    Rough ₹ this leg earns or costs each day as time passes. Sold options usually earn.
-                  </InfoTip>
-                </span>
-              </th>
-              <th className="text-right px-2 py-2">
-                <span className="inline-flex items-center gap-1">
-                  Still earn
-                  <InfoTip title="Still to earn" size="xs" testId="prem-left-col-tip">
-                    Premium left on a sold option that can still decay into your pocket if the market stays away.
-                  </InfoTip>
-                </span>
-              </th>
-              <th className="text-right px-2 py-2">IV</th>
-              <th className="text-right px-2 py-2">
-                <span className="inline-flex items-center gap-1">
-                  Days left
-                  <InfoTip title="Days left" size="xs" testId="dte-col-tip">
-                    How many days until this option expires (rough).
-                  </InfoTip>
-                </span>
-              </th>
-              <th className="text-left px-2 py-2">
-                <span className="inline-flex items-center gap-1">
-                  Status
-                  <InfoTip title="OK vs Too close" size="xs" testId="signal-col-tip">
-                    <p><b>OK</b> — market still away from your sold strike. Hold for now.</p>
-                    <p className="mt-1"><b>Too close</b> — market walked near that strike. Hedge, roll, or exit.</p>
-                  </InfoTip>
-                </span>
-              </th>
-              <th className="text-right px-2 py-2">
-                <span className="inline-flex items-center gap-1">
-                  ATM Dist
-                  <InfoTip title="ATM Distance" size="xs" testId="atm-dist-col-tip">
-                    <p>
-                      How far the market (ATM) is from <b>this strike</b>.
-                    </p>
-                    <p className="mt-1">
-                      <b>+</b> means your strike is above ATM · <b>−</b> means below.
-                      Green on sold options usually means you are still out-of-the-money.
-                    </p>
-                  </InfoTip>
-                </span>
-              </th>
+      <div className="hidden md:block overflow-auto rounded-lg border border-slate-200/80 shadow-sm bg-white">
+        <table className="w-full text-xs font-mono-data">
+          <thead className="bg-slate-50/90 text-slate-500 uppercase tracking-wider text-[10px] sticky top-0 z-10">
+            <tr className="border-b border-slate-200/80">
+              {colOn("product") && <th className="text-left px-2 py-2.5 font-semibold">Product</th>}
+              {colOn("instrument") && <th className="text-left px-2 py-2.5 font-semibold">Instrument</th>}
+              {colOn("qty") && <th className="text-right px-2 py-2.5 font-semibold">Qty</th>}
+              {colOn("avg") && <th className="text-right px-2 py-2.5 font-semibold">Avg</th>}
+              {colOn("ltp") && <th className="text-right px-2 py-2.5 font-semibold">LTP</th>}
+              {colOn("pnl") && <th className="text-right px-2 py-2.5 font-semibold">P&amp;L</th>}
+              {colOn("tilt") && (
+                <th className="text-right px-2 py-2.5 font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    Tilt
+                    <InfoTip title="Direction tilt" size="xs" testId="delta-col-tip">
+                      Does this leg push you to bet up or down? Near 0 is calmer for sellers.
+                    </InfoTip>
+                  </span>
+                </th>
+              )}
+              {colOn("theta") && (
+                <th className="text-right px-2 py-2.5 font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    ₹/day
+                    <InfoTip title="Daily time money" size="xs" testId="theta-col-tip">
+                      Rough ₹ this leg earns or costs each day as time passes. Sold options usually earn.
+                    </InfoTip>
+                  </span>
+                </th>
+              )}
+              {colOn("stillEarn") && (
+                <th className="text-right px-2 py-2.5 font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    Still earn
+                    <InfoTip title="Still to earn" size="xs" testId="prem-left-col-tip">
+                      Premium left on a sold option that can still decay into your pocket if the market stays away.
+                    </InfoTip>
+                  </span>
+                </th>
+              )}
+              {colOn("iv") && <th className="text-right px-2 py-2.5 font-semibold">IV</th>}
+              {colOn("dte") && (
+                <th className="text-right px-2 py-2.5 font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    Days left
+                    <InfoTip title="Days left" size="xs" testId="dte-col-tip">
+                      How many days until this option expires (rough).
+                    </InfoTip>
+                  </span>
+                </th>
+              )}
+              {colOn("status") && (
+                <th className="text-left px-2 py-2.5 font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    Status
+                    <InfoTip title="OK vs Too close" size="xs" testId="signal-col-tip">
+                      <p><b>OK</b> — market still away from your sold strike. Hold for now.</p>
+                      <p className="mt-1"><b>Too close</b> — market walked near that strike. Hedge, roll, or exit.</p>
+                    </InfoTip>
+                  </span>
+                </th>
+              )}
+              {colOn("atmDist") && (
+                <th className="text-right px-2 py-2.5 font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    ATM Dist
+                    <InfoTip title="ATM Distance" size="xs" testId="atm-dist-col-tip">
+                      <p>How far the market (ATM) is from <b>this strike</b>.</p>
+                      <p className="mt-1"><b>+</b> above ATM · <b>−</b> below. Green on sold options usually means still OTM.</p>
+                    </InfoTip>
+                  </span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={12} className="text-center py-6 text-slate-400 text-xs bg-white">No F&amp;O positions today.</td></tr>
-            ) : rows.map((r) => {
-              const thetaInr = !r.exited && Number.isFinite(r.theta) ? r.theta * r.quantity : null;
-              return (
-              <tr
-                key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}
-                data-testid="position-row"
-                data-exited={r.exited ? "1" : "0"}
-                className={`border-b border-slate-100 ${
-                  r.exited
-                    ? "bg-slate-100/80 text-slate-500"
-                    : r.breachedAdjust
-                      ? "bg-rose-50/80"
-                      : "bg-white"
-                }`}
-              >
-                <td className={`px-2 py-1.5 ${r.exited ? "opacity-75" : ""}`}>
-                  <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-500" : "text-slate-900"}`}>
-                    {positionLabel(r)}
-                  </div>
-                  <div className="text-[10px] text-slate-400">
-                    {r.product} · {r.exchange}
-                    {r.exited ? " · booked today" : ""}
-                  </div>
-                </td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "text-slate-400 opacity-75" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
-                  {r.exited ? 0 : r.quantity}
-                </td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-75" : ""}`}>
-                  <AvgCell row={r} />
-                </td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-75" : ""}`}>{fmt(r.last_price)}</td>
-                <td className={`text-right px-2 py-1.5 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-90" : ""}`}>
-                  {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
-                </td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>{Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}</td>
-                <td className={`text-right px-2 py-1.5 font-semibold ${thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-60" : ""}`}>
-                  {thetaInr != null ? fmt(thetaInr, 0) : "—"}
-                </td>
-                <td className={`text-right px-2 py-1.5 text-slate-700 ${r.exited ? "opacity-60" : ""}`}>
-                  {!r.exited && r.isShort && r.extrinsicLeft != null ? (
-                    <span title={r.onExpiryDay ? "Expiry day — extrinsic left to 15:30" : "Extrinsic left"}>
-                      ₹{fmt(r.extrinsicLeft, 0)}
-                    </span>
-                  ) : "—"}
-                </td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>{Number.isFinite(r.iv) ? r.iv.toFixed(1) + "%" : "—"}</td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>{r.dte != null ? r.dte.toFixed(1) + "d" : "—"}</td>
-                <td className="px-2 py-1.5">
-                  <div className="flex flex-wrap items-center gap-1">
-                    <GreeksHealthChip health={r.greeksHealth} />
-                    <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
-                    {!r.exited && !r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
-                  </div>
-                </td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>
-                  <AtmDistanceCell row={r} />
+              <tr>
+                <td colSpan={Math.max(shownCols.length, 1)} className="text-center py-8 text-slate-400 text-xs bg-white">
+                  No F&amp;O positions today.
                 </td>
               </tr>
-            );})}
+            ) : rows.map((r, idx) => {
+              const thetaInr = !r.exited && Number.isFinite(r.theta) ? r.theta * r.quantity : null;
+              const prev = rows[idx - 1];
+              const showExitedDivider = r.exited && prev && !prev.exited;
+              return (
+              <Fragment key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}>
+              {showExitedDivider && (
+                <tr data-testid="exited-section-divider">
+                  <td
+                    colSpan={Math.max(shownCols.length, 1)}
+                    className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-y border-slate-100"
+                  >
+                    Exited today · shadowed like Zerodha (qty 0)
+                  </td>
+                </tr>
+              )}
+              <tr
+                data-testid="position-row"
+                data-exited={r.exited ? "1" : "0"}
+                className={`border-b border-slate-100/80 ${
+                  r.exited
+                    ? "bg-slate-50 text-slate-400"
+                    : r.breachedAdjust
+                      ? "bg-rose-50/70"
+                      : idx % 2 === 0
+                        ? "bg-white"
+                        : "bg-slate-50/40"
+                }`}
+              >
+                {colOn("product") && (
+                  <td className="px-2 py-2">
+                    <ProductBadge product={r.product} exited={r.exited} />
+                  </td>
+                )}
+                {colOn("instrument") && (
+                  <td className="px-2 py-2">
+                    <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
+                      {positionLabel(r)}
+                    </div>
+                    <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
+                      {r.exchange}
+                      {r.exited ? " · booked today" : ""}
+                    </div>
+                  </td>
+                )}
+                {colOn("qty") && (
+                  <td className={`text-right px-2 py-2 font-semibold ${r.exited ? "text-slate-400" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
+                    {r.exited ? 0 : r.quantity}
+                  </td>
+                )}
+                {colOn("avg") && (
+                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>
+                    <AvgCell row={r} />
+                  </td>
+                )}
+                {colOn("ltp") && (
+                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
+                )}
+                {colOn("pnl") && (
+                  <td className={`text-right px-2 py-2 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
+                    {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
+                  </td>
+                )}
+                {colOn("tilt") && (
+                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                    {Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}
+                  </td>
+                )}
+                {colOn("theta") && (
+                  <td className={`text-right px-2 py-2 font-semibold ${thetaInr == null ? (r.exited ? "text-slate-300" : "") : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-50" : ""}`}>
+                    {thetaInr != null ? fmt(thetaInr, 0) : "—"}
+                  </td>
+                )}
+                {colOn("stillEarn") && (
+                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : "text-slate-700"}`}>
+                    {!r.exited && r.isShort && r.extrinsicLeft != null ? (
+                      <span title={r.onExpiryDay ? "Expiry day — extrinsic left to 15:30" : "Extrinsic left"}>
+                        ₹{fmt(r.extrinsicLeft, 0)}
+                      </span>
+                    ) : "—"}
+                  </td>
+                )}
+                {colOn("iv") && (
+                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                    {Number.isFinite(r.iv) ? `${r.iv.toFixed(1)}%` : "—"}
+                  </td>
+                )}
+                {colOn("dte") && (
+                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                    {r.dte != null ? `${r.dte.toFixed(1)}d` : "—"}
+                  </td>
+                )}
+                {colOn("status") && (
+                  <td className="px-2 py-2">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <GreeksHealthChip health={r.greeksHealth} />
+                      <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
+                      {!r.exited && !r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
+                    </div>
+                  </td>
+                )}
+                {colOn("atmDist") && (
+                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                    {r.exited ? "—" : <AtmDistanceCell row={r} />}
+                  </td>
+                )}
+              </tr>
+              </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
