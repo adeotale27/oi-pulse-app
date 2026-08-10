@@ -49,7 +49,7 @@ import {
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen, PanelLeftOpen } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen, ChevronDown, ChevronUp, LayoutGrid } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -227,6 +227,13 @@ export default function Dashboard() {
     // Phones: keep chart full-width — side panel was crushing the layout.
     try { return !window.matchMedia("(max-width: 768px)").matches; } catch { return true; }
   });
+  const [infoTilesOpen, setInfoTilesOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem("oiInfoTilesOpen");
+      if (stored === "1" || stored === "0") return stored === "1";
+    } catch { /* noop */ }
+    return true;
+  });
   const [rightPanelView, setRightPanelView] = useState(() => {
     try { return localStorage.getItem("rightPanelView") || "alerts"; } catch { return "alerts"; }
   });
@@ -289,6 +296,9 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem("rightPanelOpen", rightPanelOpen ? "1" : "0"); } catch (_) { /* noop */ }
   }, [rightPanelOpen]);
+  useEffect(() => {
+    try { localStorage.setItem("oiInfoTilesOpen", infoTilesOpen ? "1" : "0"); } catch (_) { /* noop */ }
+  }, [infoTilesOpen]);
   useEffect(() => {
     try { localStorage.setItem("rightPanelView", rightPanelView); } catch (_) { /* noop */ }
   }, [rightPanelView]);
@@ -1533,7 +1543,38 @@ export default function Dashboard() {
                   onMove={handleMoveTab}
                   onResetLayout={handleResetLayout}
                 />
-                <div className="hidden xl:block shrink-0 relative z-30 overflow-visible">
+                <button
+                  type="button"
+                  onClick={() => setInfoTilesOpen((v) => !v)}
+                  className="shrink-0 mb-0.5 inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[10px] font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
+                  title={infoTilesOpen ? "Hide holiday / FII / event tiles" : "Show holiday / FII / event tiles"}
+                  data-testid="btn-toggle-info-tiles"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  Tiles
+                  {infoTilesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+                {infoTilesOpen && (
+                  <div className="hidden xl:block shrink-0 relative z-30 overflow-visible">
+                    <InfoTilesRow
+                      order={tileOrder}
+                      onReorder={handleReorderTiles}
+                      onFavorite={handleFavoriteTile}
+                      onMove={handleMoveTile}
+                      isAdmin={!!authState.is_admin}
+                      showImpact={showImpactTile}
+                      activeIndex={activeIndex}
+                      onOpenHolidays={openHolidaysTab}
+                      onOpenIndexEvents={openIndexEventsTab}
+                      wide
+                      testId="dashboard-info-tiles"
+                    />
+                  </div>
+                )}
+              </div>
+              {/* Below xl: tiles on their own row so dropdowns are never clipped by the tab bar */}
+              {infoTilesOpen && (
+                <div className="xl:hidden relative z-30 overflow-visible">
                   <InfoTilesRow
                     order={tileOrder}
                     onReorder={handleReorderTiles}
@@ -1544,26 +1585,10 @@ export default function Dashboard() {
                     activeIndex={activeIndex}
                     onOpenHolidays={openHolidaysTab}
                     onOpenIndexEvents={openIndexEventsTab}
-                    wide
-                    testId="dashboard-info-tiles"
+                    testId="dashboard-info-tiles-wrap"
                   />
                 </div>
-              </div>
-              {/* Below xl: tiles on their own row so dropdowns are never clipped by the tab bar */}
-              <div className="xl:hidden relative z-30 overflow-visible">
-                <InfoTilesRow
-                  order={tileOrder}
-                  onReorder={handleReorderTiles}
-                  onFavorite={handleFavoriteTile}
-                  onMove={handleMoveTile}
-                  isAdmin={!!authState.is_admin}
-                  showImpact={showImpactTile}
-                  activeIndex={activeIndex}
-                  onOpenHolidays={openHolidaysTab}
-                  onOpenIndexEvents={openIndexEventsTab}
-                  testId="dashboard-info-tiles-wrap"
-                />
-              </div>
+              )}
             </div>
 
             <div className="relative w-full flex-1 min-h-0">

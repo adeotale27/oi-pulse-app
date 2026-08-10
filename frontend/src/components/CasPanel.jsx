@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   Bug,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   FlaskConical,
   Play,
@@ -14,6 +16,8 @@ import {
   Zap,
   RefreshCw,
   Shield,
+  ClipboardCheck,
+  X,
 } from "lucide-react";
 
 const ALL_INDEXES = ["NIFTY", "SENSEX"];
@@ -86,6 +90,13 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
   const [btIndexes, setBtIndexes] = useState(["NIFTY", "SENSEX"]);
   const [btResult, setBtResult] = useState(null);
   const [btBusy, setBtBusy] = useState(false);
+  const [readinessOpen, setReadinessOpen] = useState(() => {
+    try {
+      return localStorage.getItem("casLiveReadinessOpen") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -180,6 +191,15 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
   const setDebugMode = async (on) => {
     if (!isAdmin) return;
     await patchSettings({ debug_mode: !!on });
+  };
+
+  const toggleReadiness = (open) => {
+    setReadinessOpen(open);
+    try {
+      localStorage.setItem("casLiveReadinessOpen", open ? "1" : "0");
+    } catch {
+      /* noop */
+    }
   };
 
   const setWatch = async (next) => {
@@ -504,56 +524,87 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
             )}
           </div>
 
-          {/* Live readiness vs Zerodha MARKET rules */}
-          <section
-            className="rounded-md border border-slate-200 bg-white p-3 space-y-2"
-            data-testid="cas-live-readiness"
-          >
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+          {/* Live readiness — collapsed by default; open on demand */}
+          <div className="rounded-md border border-slate-200 bg-white" data-testid="cas-live-readiness">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50/80"
+              onClick={() => toggleReadiness(!readinessOpen)}
+              data-testid="cas-live-readiness-toggle"
+            >
+              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-emerald-700">
+                <ClipboardCheck className="w-3.5 h-3.5" />
                 Live order readiness
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {readiness.summary ||
-                  "CAS places regular MARKET SELLs (CE+PE) with market_protection=-1."}
-              </p>
-              {readiness.egress_ip && (
-                <p
-                  className="text-[12px] font-mono-data text-slate-800 mt-1.5 bg-slate-50 border border-slate-100 rounded-sm px-2 py-1.5"
-                  data-testid="cas-egress-ip"
-                >
-                  Backend egress IP to whitelist: <b>{readiness.egress_ip}</b>
-                  <span className="block text-[10px] text-slate-500 font-sans mt-0.5">
-                    This is the server that calls Zerodha (Emergent host if API is there) — not your
-                    computer&apos;s IP unless you run the backend locally.
+                {readiness.ready_for_code ? (
+                  <span className="normal-case font-semibold text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-sm">
+                    code OK
                   </span>
-                </p>
-              )}
-            </div>
-            <ul className="space-y-1.5">
-              {(readiness.checks || []).map((c) => (
-                <li
-                  key={c.id}
-                  className="flex items-start gap-2 text-[11px] text-slate-700"
-                  data-testid={`cas-ready-${c.id}`}
-                >
-                  <span className="mt-0.5 shrink-0">
-                    {c.ok === true ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : c.ok === false ? (
-                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                    ) : (
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                    )}
+                ) : (
+                  <span className="normal-case font-semibold text-[10px] text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-sm">
+                    check
                   </span>
-                  <span>
-                    <b>{c.label}</b>
-                    <span className="text-slate-500"> — {c.fix}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                {readinessOpen ? "Hide" : "Show"}
+                {readinessOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </span>
+            </button>
+            {readinessOpen && (
+              <div className="px-3 pb-3 space-y-2 border-t border-slate-100 pt-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[11px] text-slate-500">
+                    {readiness.summary ||
+                      "CAS places regular MARKET SELLs (CE+PE) with market_protection=-1."}
+                  </p>
+                  <button
+                    type="button"
+                    className="shrink-0 p-1 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                    onClick={() => toggleReadiness(false)}
+                    title="Hide readiness"
+                    data-testid="cas-live-readiness-close"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {readiness.egress_ip && (
+                  <p
+                    className="text-[12px] font-mono-data text-slate-800 bg-slate-50 border border-slate-100 rounded-sm px-2 py-1.5"
+                    data-testid="cas-egress-ip"
+                  >
+                    Backend egress IP to whitelist: <b>{readiness.egress_ip}</b>
+                    <span className="block text-[10px] text-slate-500 font-sans mt-0.5">
+                      This is the server that calls Zerodha (Emergent host if API is there) — not your
+                      computer&apos;s IP unless you run the backend locally.
+                    </span>
+                  </p>
+                )}
+                <ul className="space-y-1.5">
+                  {(readiness.checks || []).map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex items-start gap-2 text-[11px] text-slate-700"
+                      data-testid={`cas-ready-${c.id}`}
+                    >
+                      <span className="mt-0.5 shrink-0">
+                        {c.ok === true ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : c.ok === false ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                        )}
+                      </span>
+                      <span>
+                        <b>{c.label}</b>
+                        <span className="text-slate-500"> — {c.fix}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
 
           {/* TODAY's RUN */}
           <section className="rounded-md border border-slate-200 bg-white p-3 space-y-2" data-testid="cas-today-run">
