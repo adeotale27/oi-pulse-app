@@ -1505,7 +1505,11 @@ export default function Dashboard() {
           </button>
         )}
 
-        <main className="flex-1 min-h-0 overflow-hidden p-0 sm:p-4 md:p-5 dark:text-slate-200 flex flex-col">
+        <main
+          className={`flex-1 min-h-0 overflow-hidden p-0 sm:px-4 md:px-5 dark:text-slate-200 flex flex-col ${
+            infoTilesOpen ? "sm:pt-4 md:pt-5 sm:pb-4 md:pb-5" : "sm:pt-1.5 md:pt-2 sm:pb-4 md:pb-5"
+          }`}
+        >
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
               activeIndex={activeIndex}
@@ -1534,12 +1538,16 @@ export default function Dashboard() {
                 Closing tiles drops their row height so Positions / OI / CAS etc. rise into the freed space. */}
             <div
               className={`hidden md:flex flex-col shrink-0 min-w-0 ${
-                infoTilesOpen ? "mb-2 sm:mb-3" : "mb-0.5"
+                infoTilesOpen ? "mb-2 sm:mb-3" : "mb-0"
               }`}
               data-testid="dashboard-chrome-row"
             >
-              <div className="flex items-stretch gap-0 flex-nowrap min-w-0 w-full">
-                <div className="min-w-0 flex-1 flex items-end">
+              <div
+                className={`flex gap-0 flex-nowrap min-w-0 w-full ${
+                  infoTilesOpen ? "items-stretch" : "items-center"
+                }`}
+              >
+                <div className="min-w-0 flex-1 flex items-center">
                   <OverflowTabBar
                     tabs={dashboardTabs}
                     value={activeTab}
@@ -1582,7 +1590,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : (
-                  /* Collapsed: one slim rail on the tabs row (no second row) so the desk jumps up */
+                  /* Collapsed: chevron-only reopen — keep tabs row as short as a single tab line */
                   <button
                     type="button"
                     onClick={() => setInfoTilesOpen(true)}
@@ -1590,10 +1598,9 @@ export default function Dashboard() {
                     aria-label="Show info tiles"
                     aria-expanded="false"
                     data-testid="btn-toggle-info-tiles"
-                    className="shrink-0 flex flex-col items-center justify-center gap-1 self-stretch ml-1 w-6 min-h-[36px] border-l border-slate-200 bg-transparent px-0 py-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400 hover:bg-emerald-50/80 hover:text-emerald-700 hover:border-emerald-400 transition-colors"
+                    className="shrink-0 inline-flex items-center justify-center h-7 w-7 ml-0.5 rounded-sm border border-transparent text-slate-400 hover:border-slate-200 hover:bg-emerald-50/80 hover:text-emerald-700 transition-colors"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
-                    <span className="[writing-mode:vertical-rl] rotate-180 leading-none">Info</span>
                   </button>
                 )}
               </div>
@@ -2049,6 +2056,7 @@ export default function Dashboard() {
                       expiriesMeta={expiriesMeta}
                       onPinNearestWeekly={handleChangeExpiry}
                       positionsPollMs={positionsPollMs}
+                      onOpenKite={authState.is_admin ? () => setCredsOpen(true) : undefined}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "huge-shift",
@@ -2119,6 +2127,7 @@ export default function Dashboard() {
                       <CasPanel
                         isAdmin={!!authState.is_admin}
                         isKiteMode={status?.mode === "kite"}
+                        onOpenKite={authState.is_admin ? () => setCredsOpen(true) : undefined}
                       />
                     </TabsContent>
                   )}

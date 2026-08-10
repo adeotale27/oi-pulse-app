@@ -76,7 +76,50 @@ function toggleIndex(list, name) {
   return ALL_INDEXES.filter((x) => set.has(x));
 }
 
-export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
+/** Parse "HH:MM:SS" or "HH:MM" against today's IST clock → ms until / since. */
+function istWindowPhase(nowMs, startStr, endStr) {
+  const parts = (s, fallback) => {
+    const m = String(s || fallback).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return { h: 15, mi: 27, se: 0 };
+    return { h: Number(m[1]), mi: Number(m[2]), se: Number(m[3] || 0) };
+  };
+  const start = parts(startStr, "15:27:00");
+  const end = parts(endStr, "15:35:00");
+  // Convert epoch → IST wall clock via Intl (no extra deps).
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const bits = Object.fromEntries(fmt.formatToParts(new Date(nowMs)).map((p) => [p.type, p.value]));
+  const h = Number(bits.hour);
+  const mi = Number(bits.minute);
+  const se = Number(bits.second);
+  const nowSec = h * 3600 + mi * 60 + se;
+  const startSec = start.h * 3600 + start.mi * 60 + start.se;
+  const endSec = end.h * 3600 + end.mi * 60 + end.se;
+  if (nowSec < startSec) {
+    return { phase: "before", secs: startSec - nowSec, label: "to watch" };
+  }
+  if (nowSec <= endSec) {
+    return { phase: "inside", secs: endSec - nowSec, label: "left in window" };
+  }
+  return { phase: "after", secs: nowSec - endSec, label: "past window" };
+}
+
+function fmtCountdown(secs) {
+  const s = Math.max(0, Math.floor(Number(secs) || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKite }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -90,6 +133,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
   const [btIndexes, setBtIndexes] = useState(["NIFTY", "SENSEX"]);
   const [btResult, setBtResult] = useState(null);
   const [btBusy, setBtBusy] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [readinessOpen, setReadinessOpen] = useState(() => {
     try {
       return localStorage.getItem("casLiveReadinessOpen") === "1";
@@ -100,6 +144,11 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
   const statusGen = useRef(0);
   const busyRef = useRef(false);
   const lotsDirty = useRef(false);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const applyStatus = useCallback((data, gen) => {
     if (gen != null && gen !== statusGen.current) return; // stale
@@ -293,10 +342,14 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
     slate: "border-slate-200 bg-slate-50 text-slate-800",
   }[modeTone];
 
-  const watchStart = (cfg.watch_start || "15:27:00").slice(0, 5);
-  const watchEnd = (cfg.watch_end || "15:35:00").slice(0, 5);
+  const watchStart = (cfg.watch_start || "15:27:00").slice(0, 8);
+  const watchEnd = (cfg.watch_end || "15:35:00").slice(0, 8);
   const moveStart = (cfg.move_window_start || "15:28:00").slice(0, 5);
   const moveEnd = (cfg.move_window_end || "15:30:00").slice(0, 5);
+  const windowPhase = useMemo(
+    () => istWindowPhase(nowMs, watchStart, watchEnd),
+    [nowMs, watchStart, watchEnd],
+  );
 
   return (
     <div className="space-y-4" data-testid="cas-panel">
@@ -348,25 +401,105 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
 
       {error && (
         <div
-          className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
+          className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 flex flex-wrap items-center gap-2"
           data-testid="cas-error"
         >
-          {error}
+          <span className="flex-1 min-w-0">{error}</span>
+          {typeof onOpenKite === "function" && /kite|token|auth|credential|session/i.test(String(error)) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-sm border-rose-300 bg-white text-rose-800"
+              onClick={onOpenKite}
+              data-testid="cas-error-reconnect"
+            >
+              Reconnect Kite
+            </Button>
+          )}
         </div>
       )}
 
       {!isKiteMode && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <div>
-            <b>Kite not connected.</b> Open <b>Kite API</b> in the header and connect first.
-            Paper and Live both use the same credentials.
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <b>Kite not connected.</b> Paper and Live both need credentials.
           </div>
+          {typeof onOpenKite === "function" && (
+            <Button
+              size="sm"
+              className="h-7 rounded-sm bg-amber-700 hover:bg-amber-800 text-white"
+              onClick={onOpenKite}
+              data-testid="cas-reconnect-kite"
+            >
+              Reconnect Kite
+            </Button>
+          )}
         </div>
       )}
 
       {tab === "live" && (
         <>
+          <div
+            className={`sticky top-0 z-20 rounded-md border px-3 py-2 shadow-sm backdrop-blur-sm ${toneBox}`}
+            data-testid="cas-panic-strip"
+          >
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px]">
+              <span
+                className={`inline-flex items-center gap-1 font-bold uppercase tracking-wide ${
+                  activated ? (live ? "text-rose-800" : "text-emerald-800") : "text-slate-600"
+                }`}
+                data-testid="cas-panic-armed"
+              >
+                {activated ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Armed
+                  </>
+                ) : (
+                  <>
+                    <Clock3 className="w-3.5 h-3.5" />
+                    Idle
+                  </>
+                )}
+              </span>
+              <span
+                className={`inline-flex items-center px-1.5 py-0.5 rounded-sm border text-[10px] font-semibold ${
+                  live
+                    ? "border-rose-400 bg-rose-100 text-rose-900"
+                    : "border-emerald-400 bg-emerald-100 text-emerald-900"
+                }`}
+                data-testid="cas-panic-mode"
+              >
+                {live ? "LIVE" : "PAPER"}
+                {debug ? " · DEBUG" : ""}
+              </span>
+              <span className="font-mono-data text-slate-800" data-testid="cas-panic-countdown">
+                {windowPhase.phase === "before" && (
+                  <>⏱ {fmtCountdown(windowPhase.secs)} <span className="text-slate-500">{windowPhase.label}</span></>
+                )}
+                {windowPhase.phase === "inside" && (
+                  <>
+                    <span className="text-amber-900 font-semibold">IN WINDOW</span>
+                    {" · "}
+                    {fmtCountdown(windowPhase.secs)} {windowPhase.label}
+                  </>
+                )}
+                {windowPhase.phase === "after" && (
+                  <span className="text-slate-500">Window closed</span>
+                )}
+                <span className="text-slate-400"> · {String(watchStart).slice(0, 5)}–{String(watchEnd).slice(0, 5)} IST</span>
+              </span>
+              <span className="ml-auto font-mono-data text-slate-600" data-testid="cas-panic-ticks">
+                {state.ws_connected ? "Feed ·" : activated ? "Waiting feed ·" : "Feed off ·"}
+                {" "}ticks {ticks}
+                {plain.last_error ? (
+                  <span className="text-rose-700"> · err</span>
+                ) : null}
+              </span>
+            </div>
+          </div>
+
           <div className={`rounded-md border px-4 py-3 ${toneBox}`} data-testid="cas-status-banner">
             <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
               {activated ? <CheckCircle2 className="w-4 h-4" /> : <Clock3 className="w-4 h-4" />}
