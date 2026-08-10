@@ -27,7 +27,15 @@ const DASHBOARD_PAGES = [
   { id: "cas", label: "CAS Expiry" },
 ];
 
-export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSaved, isAdmin = false }) {
+export default function SettingsModal({
+  open,
+  onOpenChange,
+  onSaved,
+  onLocalSaved,
+  isAdmin = false,
+  headerRail = true,
+  onHeaderRailChange,
+}) {
   const [settings, setSettings] = useState(null);
   const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
@@ -444,6 +452,43 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                       </label>
                     ))}
                   </div>
+                </div>
+              </section>
+
+              <section className="space-y-4 pt-2 border-t border-slate-200">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+                  Header density
+                </div>
+                <div className="text-xs text-slate-500">
+                  Slim puts VIX, GIFT, and indexes on one short row (ATM stays in the sidebar). Normal restores the taller index tiles from before.
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="header-density-options">
+                  <button
+                    type="button"
+                    data-testid="header-density-slim"
+                    onClick={() => onHeaderRailChange?.(true)}
+                    className={`text-left rounded-sm border px-3 py-2.5 transition-colors ${
+                      headerRail
+                        ? "border-emerald-400 bg-emerald-50/80 ring-1 ring-emerald-200"
+                        : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="text-sm font-semibold text-slate-900">Slim header</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Single-line status rail · more chart space</div>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="header-density-normal"
+                    onClick={() => onHeaderRailChange?.(false)}
+                    className={`text-left rounded-sm border px-3 py-2.5 transition-colors ${
+                      !headerRail
+                        ? "border-emerald-400 bg-emerald-50/80 ring-1 ring-emerald-200"
+                        : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="text-sm font-semibold text-slate-900">Normal header</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Tall NIFTY / SENSEX / BANK tiles</div>
+                  </button>
                 </div>
               </section>
 
