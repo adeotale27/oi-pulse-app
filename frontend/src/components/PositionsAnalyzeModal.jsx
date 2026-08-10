@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, LineChart, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  X,
+  LineChart,
+  ChevronDown,
+  ChevronRight,
+  Target,
+  Clock3,
+  RotateCcw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import {
   computeIndexPayoff,
   groupPositionsByIndex,
@@ -39,18 +48,25 @@ function PayoffSvg({
   oiBars = [],
   sd = null,
   width = 640,
-  height = 280,
+  height = 300,
 }) {
   if (!spots?.length) {
-    return <div className="h-[280px] flex items-center justify-center text-xs text-slate-400">No payoff data — select legs</div>;
+    return (
+      <div className="h-[280px] flex items-center justify-center text-xs text-slate-400">
+        Select open legs to draw the book payoff
+      </div>
+    );
   }
-  const pad = { l: 48, r: 16, t: 16, b: 28 };
+  const pad = { l: 52, r: 18, t: 20, b: 30 };
   const w = width - pad.l - pad.r;
   const h = height - pad.t - pad.b;
   const allY = [...expiryPnl, ...targetPnl, 0];
   let yMin = Math.min(...allY);
   let yMax = Math.max(...allY);
-  if (yMin === yMax) { yMin -= 1; yMax += 1; }
+  if (yMin === yMax) {
+    yMin -= 1;
+    yMax += 1;
+  }
   const xMin = spots[0];
   const xMax = spots[spots.length - 1];
   const xScale = (x) => pad.l + ((x - xMin) / (xMax - xMin)) * w;
@@ -60,8 +76,8 @@ function PayoffSvg({
   const zeroY = yScale(0);
   const spotX = xScale(spot);
   const tgtX = targetSpot != null ? xScale(targetSpot) : null;
-  const barMaxH = h * 0.35;
-  const barW = Math.max(2, Math.min(10, w / Math.max(oiBars.length * 2.2, 1)));
+  const barMaxH = h * 0.32;
+  const barW = Math.max(2, Math.min(9, w / Math.max(oiBars.length * 2.2, 1)));
 
   const sdLines = sd
     ? [
@@ -74,6 +90,17 @@ function PayoffSvg({
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" data-testid="payoff-svg">
+      <defs>
+        <linearGradient id="oiPut" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="#10b981" stopOpacity="0.05" />
+        </linearGradient>
+        <linearGradient id="oiCall" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.05" />
+        </linearGradient>
+      </defs>
+
       {oiBars.map((b) => {
         const cx = xScale(b.strike);
         if (cx < pad.l || cx > width - pad.r) return null;
@@ -81,51 +108,154 @@ function PayoffSvg({
         const peH = b.pe * barMaxH;
         return (
           <g key={`oi-${b.strike}`}>
-            <rect x={cx - barW - 0.5} y={height - pad.b - ceH} width={barW} height={ceH} fill="#fda4af" opacity="0.45" />
-            <rect x={cx + 0.5} y={height - pad.b - peH} width={barW} height={peH} fill="#6ee7b7" opacity="0.45" />
+            <rect x={cx - barW - 0.5} y={height - pad.b - ceH} width={barW} height={ceH} fill="url(#oiCall)" />
+            <rect x={cx + 0.5} y={height - pad.b - peH} width={barW} height={peH} fill="url(#oiPut)" />
           </g>
         );
       })}
 
-      <line x1={pad.l} x2={width - pad.r} y1={zeroY} y2={zeroY} stroke="#cbd5e1" strokeWidth="1" />
+      <line x1={pad.l} x2={width - pad.r} y1={zeroY} y2={zeroY} stroke="#e2e8f0" strokeWidth="1.25" />
 
       {sdLines.map((d) => (
         <g key={d.label}>
-          <line x1={xScale(d.x)} x2={xScale(d.x)} y1={pad.t} y2={height - pad.b} stroke={d.color} strokeWidth="1" strokeDasharray="2 3" />
-          <text x={xScale(d.x) + 2} y={height - pad.b - 4} fill={d.color} style={{ fontSize: 9 }}>{d.label}</text>
+          <line
+            x1={xScale(d.x)}
+            x2={xScale(d.x)}
+            y1={pad.t}
+            y2={height - pad.b}
+            stroke={d.color}
+            strokeWidth="1"
+            strokeDasharray="2 4"
+          />
+          <text x={xScale(d.x) + 3} y={pad.t + 10} fill={d.color} style={{ fontSize: 9 }}>
+            {d.label}
+          </text>
         </g>
       ))}
 
-      <line x1={spotX} x2={spotX} y1={pad.t} y2={height - pad.b} stroke="#10b981" strokeWidth="1.5" strokeDasharray="4 3" />
+      <line
+        x1={spotX}
+        x2={spotX}
+        y1={pad.t}
+        y2={height - pad.b}
+        stroke="#059669"
+        strokeWidth="1.5"
+        strokeDasharray="5 4"
+      />
       {tgtX != null && Math.abs((targetSpot || 0) - spot) > 0.5 && (
-        <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#2563eb" strokeWidth="1.5" />
+        <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#0f766e" strokeWidth="1.75" />
       )}
-      <path d={pathOf(expiryPnl)} fill="none" stroke="#e11d48" strokeWidth="2" />
-      <path d={pathOf(targetPnl)} fill="none" stroke="#2563eb" strokeWidth="2" />
-      <text x={spotX + 4} y={pad.t + 12} className="fill-emerald-700" style={{ fontSize: 10 }}>
+      <path d={pathOf(expiryPnl)} fill="none" stroke="#be123c" strokeWidth="2.25" />
+      <path d={pathOf(targetPnl)} fill="none" stroke="#0f766e" strokeWidth="2.25" />
+      <text x={spotX + 5} y={pad.t + 12} fill="#047857" style={{ fontSize: 10, fontWeight: 600 }}>
         Spot {Math.round(spot)}
       </text>
       {projected != null && tgtX != null && (
         <g>
-          <rect x={tgtX + 4} y={yScale(projected) - 18} width={118} height={16} rx="2" fill="#ecfdf5" stroke="#10b981" />
-          <text x={tgtX + 8} y={yScale(projected) - 6} className="fill-emerald-800" style={{ fontSize: 9 }}>
-            Projected {fmt(projected, 0)}
+          <rect
+            x={Math.min(tgtX + 6, width - pad.r - 128)}
+            y={yScale(projected) - 20}
+            width={122}
+            height={18}
+            rx="3"
+            fill="#ecfdf5"
+            stroke="#059669"
+          />
+          <text
+            x={Math.min(tgtX + 10, width - pad.r - 124)}
+            y={yScale(projected) - 7}
+            fill="#065f46"
+            style={{ fontSize: 10, fontWeight: 600 }}
+          >
+            At target {fmt(projected, 0)}
           </text>
         </g>
       )}
-      <text x={pad.l} y={height - 8} className="fill-slate-400" style={{ fontSize: 10 }}>{Math.round(xMin)}</text>
-      <text x={width - pad.r - 36} y={height - 8} className="fill-slate-400" style={{ fontSize: 10 }}>{Math.round(xMax)}</text>
-      <text x={8} y={pad.t + 8} className="fill-slate-400" style={{ fontSize: 10 }}>{fmt(yMax, 0)}</text>
-      <text x={8} y={height - pad.b} className="fill-slate-400" style={{ fontSize: 10 }}>{fmt(yMin, 0)}</text>
+      <text x={pad.l} y={height - 8} fill="#94a3b8" style={{ fontSize: 10 }}>
+        {Math.round(xMin)}
+      </text>
+      <text x={width - pad.r - 40} y={height - 8} fill="#94a3b8" style={{ fontSize: 10 }}>
+        {Math.round(xMax)}
+      </text>
+      <text x={8} y={pad.t + 8} fill="#94a3b8" style={{ fontSize: 10 }}>
+        {fmt(yMax, 0)}
+      </text>
+      <text x={8} y={height - pad.b} fill="#94a3b8" style={{ fontSize: 10 }}>
+        {fmt(yMin, 0)}
+      </text>
     </svg>
   );
 }
 
+function ScenarioSlider({
+  icon: Icon,
+  label,
+  hint,
+  valueLabel,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  presets = [],
+  testId,
+  disabled = false,
+}) {
+  return (
+    <div
+      className="rounded-lg border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/40 to-emerald-50/30 px-3 py-3 shadow-sm"
+      data-testid={testId ? `${testId}-wrap` : undefined}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2.5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
+            {Icon ? <Icon className="w-3.5 h-3.5 text-emerald-700" /> : null}
+            {label}
+          </div>
+          {hint ? <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">{hint}</div> : null}
+        </div>
+        <div className="shrink-0 rounded-md border border-emerald-200/80 bg-white px-2 py-1 font-mono-data text-[12px] font-semibold text-emerald-900 tabular-nums">
+          {valueLabel}
+        </div>
+      </div>
+
+      <Slider
+        value={[value]}
+        min={min}
+        max={max}
+        step={step}
+        disabled={disabled}
+        onValueChange={(vals) => onChange(vals[0])}
+        data-testid={testId}
+      />
+
+      {presets.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {presets.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(p.value)}
+              className={`h-6 px-2 rounded-md text-[10px] font-semibold border transition-colors ${
+                Math.abs(value - p.value) <= (step || 1) * 0.6
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+              data-testid={p.testId}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
- * Sensibull-style multi-index analyze:
- * - Collapsible index groups (NIFTY / SENSEX)
- * - Per-leg checkboxes recompute payoff + greeks instantly
- * - Target price + time-to-expiry sliders
+ * Positions Analyze — desk payoff studio for the selected book.
+ * Index groups on the left, scenario chart in the center, book read on the right.
  */
 export default function PositionsAnalyzeModal({
   open,
@@ -155,12 +285,9 @@ export default function PositionsAnalyzeModal({
 
   useEffect(() => {
     if (!open) return;
-    // Default-select open (non-exited) legs for the active index only.
     const legs = byIndex.get(activeIndex) || [];
     setSelected(
-      new Set(
-        legs.filter((l) => !l.exited && Number(l.quantity) !== 0).map((l) => l.tradingsymbol),
-      ),
+      new Set(legs.filter((l) => !l.exited && Number(l.quantity) !== 0).map((l) => l.tradingsymbol)),
     );
   }, [open, activeIndex, byIndex]);
 
@@ -260,43 +387,81 @@ export default function PositionsAnalyzeModal({
   };
   const selectNone = () => setSelected(new Set());
 
-  const spotLo = spot != null ? spot * 0.94 : 0;
-  const spotHi = spot != null ? spot * 1.06 : 1;
+  const spotLo = spot != null ? Math.round(spot * 0.94) : 0;
+  const spotHi = spot != null ? Math.round(spot * 1.06) : 1;
+  const spotStep = Math.max(1, Math.round((spotHi - spotLo) / 200));
   const tgt = targetSpot ?? spot ?? 0;
   const tgtPct = spot ? ((tgt - spot) / spot) * 100 : 0;
+  const timePct = Math.round(targetFrac * 100);
+
+  const resetScenario = () => {
+    if (spot != null) setTargetSpot(spot);
+    setTargetFrac(0);
+  };
+
+  const beLines = payoff.summary.breakevens?.length
+    ? payoff.summary.breakevens.map((b) => {
+        const pct = spot ? (((b - spot) / spot) * 100).toFixed(1) : null;
+        return { level: Math.round(b), pct };
+      })
+    : [];
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-2 sm:p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-2 sm:p-4 backdrop-blur-[2px]"
       data-testid="positions-analyze-modal"
       role="dialog"
       aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
     >
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl max-h-[92vh] overflow-hidden flex flex-col border border-slate-200">
-        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-slate-50 shrink-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 min-w-0">
-            <LineChart className="w-4 h-4 text-orange-600 shrink-0" />
-            <span className="truncate">
-              Analyze · {activeIndex}
-              {spot != null ? ` ${Number(spot).toFixed(2)}` : ""}
-            </span>
-            <span
-              className={`font-mono-data text-xs ${selectedPnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}
-              data-testid="analyze-selected-pnl"
-            >
-              {fmt(selectedPnl, 0)}
-            </span>
-            <span className="text-[10px] font-normal text-slate-400">
-              {activeLegs.length} selected
-            </span>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[92vh] overflow-hidden flex flex-col border border-slate-200">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ecfdf5_55%,#fff_100%)] shrink-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-600 text-white shadow-sm">
+                <LineChart className="w-3.5 h-3.5" />
+              </span>
+              <span className="truncate">Book Analyze</span>
+              <span className="hidden sm:inline text-[11px] font-medium text-slate-500 truncate">
+                {activeIndex}
+                {spot != null ? ` · ${Number(spot).toFixed(2)}` : ""}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+              <span
+                className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-mono-data font-semibold ${
+                  selectedPnl >= 0 ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"
+                }`}
+                data-testid="analyze-selected-pnl"
+              >
+                Live {fmt(selectedPnl, 0)}
+              </span>
+              <span className="text-slate-500">
+                {activeLegs.length} leg{activeLegs.length === 1 ? "" : "s"} in scenario
+              </span>
+            </div>
           </div>
-          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={onClose} data-testid="analyze-close">
-            <X className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-md text-[11px] hidden sm:inline-flex"
+              onClick={resetScenario}
+              data-testid="analyze-reset-scenario"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1" />
+              Reset
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={onClose} data-testid="analyze-close">
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[240px_1fr_200px]">
-          {/* Left: collapsible indices + checkboxes */}
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[230px_minmax(0,1fr)_210px]">
+          {/* Legs */}
           <div className="border-r border-slate-200 overflow-auto bg-white" data-testid="analyze-leg-panel">
             {indices.length === 0 ? (
               <div className="text-[11px] text-slate-400 p-3">No option legs</div>
@@ -315,13 +480,13 @@ export default function PositionsAnalyzeModal({
                   .filter((l) => selected.has(l.tradingsymbol) && !l.exited)
                   .reduce((a, l) => a + (Number(l.pnl) || 0), 0);
                 return (
-                  <div key={idx} className={`border-b border-slate-100 ${isActive ? "bg-emerald-50/40" : ""}`}>
+                  <div key={idx} className={`border-b border-slate-100 ${isActive ? "bg-emerald-50/50" : ""}`}>
                     <button
                       type="button"
                       onClick={() => toggleExpand(idx)}
                       onDoubleClick={() => selectIndex(idx)}
                       data-testid={`analyze-index-${idx}`}
-                      className="w-full flex items-center gap-1.5 px-2 py-2 text-left hover:bg-slate-50"
+                      className="w-full flex items-center gap-1.5 px-2.5 py-2.5 text-left hover:bg-slate-50"
                     >
                       {isOpen ? (
                         <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
@@ -333,33 +498,44 @@ export default function PositionsAnalyzeModal({
                           <span className={`text-xs font-bold ${isActive ? "text-emerald-900" : "text-slate-800"}`}>
                             {idx}
                           </span>
-                          <span className={`text-[11px] font-mono-data ${idxSelectedPnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                          <span
+                            className={`text-[11px] font-mono-data ${
+                              idxSelectedPnl >= 0 ? "text-emerald-700" : "text-rose-700"
+                            }`}
+                          >
                             {fmt(idxSelectedPnl, 0)}
                           </span>
                         </div>
                         <div className="text-[10px] text-slate-400 font-mono-data">
                           {idxSpot != null ? Number(idxSpot).toFixed(2) : "—"} · {openLegs.length} open
-                          {!isOpen ? " · collapsed" : ""}
                         </div>
                       </div>
                     </button>
                     {isOpen && (
-                      <div className="px-2 pb-2 space-y-0.5">
-                        {isActive && (
-                          <div className="flex gap-2 px-1 pb-1">
-                            <button type="button" className="text-[10px] text-sky-700 hover:underline" onClick={selectAllOpen} data-testid="analyze-select-all">
-                              Select all
+                      <div className="px-2.5 pb-2.5 space-y-0.5">
+                        {isActive ? (
+                          <div className="flex gap-2 px-1 pb-1.5">
+                            <button
+                              type="button"
+                              className="text-[10px] font-medium text-emerald-700 hover:underline"
+                              onClick={selectAllOpen}
+                              data-testid="analyze-select-all"
+                            >
+                              All open
                             </button>
-                            <button type="button" className="text-[10px] text-slate-500 hover:underline" onClick={selectNone} data-testid="analyze-select-none">
+                            <button
+                              type="button"
+                              className="text-[10px] text-slate-500 hover:underline"
+                              onClick={selectNone}
+                              data-testid="analyze-select-none"
+                            >
                               Clear
                             </button>
-                            {!isActive && null}
                           </div>
-                        )}
-                        {!isActive && (
+                        ) : (
                           <button
                             type="button"
-                            className="text-[10px] text-emerald-700 px-1 pb-1 hover:underline"
+                            className="text-[10px] font-medium text-emerald-700 px-1 pb-1 hover:underline"
                             onClick={() => selectIndex(idx)}
                           >
                             Analyze this index →
@@ -371,11 +547,11 @@ export default function PositionsAnalyzeModal({
                           return (
                             <label
                               key={l.tradingsymbol}
-                              className={`flex items-start gap-2 px-1 py-1 text-[11px] rounded-sm ${
+                              className={`flex items-start gap-2 px-1.5 py-1.5 text-[11px] rounded-md ${
                                 exited
-                                  ? "text-slate-400 opacity-70 cursor-default"
-                                  : "cursor-pointer hover:bg-white/80"
-                              } ${!checked && !exited ? "opacity-60" : ""}`}
+                                  ? "text-slate-400 opacity-60 cursor-default"
+                                  : "cursor-pointer hover:bg-white"
+                              } ${!checked && !exited ? "opacity-55" : ""}`}
                             >
                               <input
                                 type="checkbox"
@@ -389,14 +565,29 @@ export default function PositionsAnalyzeModal({
                                 data-testid={`analyze-leg-${l.tradingsymbol}`}
                               />
                               <span className="min-w-0 flex-1">
-                                <span className={`font-bold ${exited ? "text-slate-400" : l.quantity < 0 ? "text-rose-600" : "text-sky-700"}`}>
+                                <span
+                                  className={`inline-flex h-4 min-w-[1rem] items-center justify-center rounded-[3px] px-0.5 text-[9px] font-bold ${
+                                    exited
+                                      ? "bg-slate-100 text-slate-400"
+                                      : l.quantity < 0
+                                        ? "bg-rose-100 text-rose-700"
+                                        : "bg-sky-100 text-sky-700"
+                                  }`}
+                                >
                                   {exited ? "X" : l.quantity < 0 ? "S" : "B"}
                                 </span>{" "}
                                 <span className="font-mono-data">{exited ? 0 : Math.abs(l.quantity)}×</span>{" "}
-                                <span>{l.strike}{l.side}</span>
-                                <div className={`font-mono-data ${exited ? "text-slate-400" : l.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                                <span className="font-medium">
+                                  {l.strike}
+                                  {l.side}
+                                </span>
+                                <div
+                                  className={`font-mono-data ${
+                                    exited ? "text-slate-400" : l.pnl >= 0 ? "text-emerald-700" : "text-rose-700"
+                                  }`}
+                                >
                                   {fmt(l.pnl, 0)}
-                                  {exited ? " · booked" : ""}
+                                  {exited ? " · closed" : ""}
                                 </div>
                               </span>
                             </label>
@@ -408,121 +599,177 @@ export default function PositionsAnalyzeModal({
                 );
               })
             )}
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-3 py-2 flex justify-between text-xs font-semibold">
-              <span className="text-slate-500">Selected P&amp;L</span>
-              <span className={`font-mono-data ${selectedPnl >= 0 ? "text-emerald-700" : "text-rose-700"}`} data-testid="analyze-total-selected">
+            <div className="sticky bottom-0 bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2.5 flex justify-between text-xs font-semibold">
+              <span className="text-slate-500">Selected</span>
+              <span
+                className={`font-mono-data ${selectedPnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}
+                data-testid="analyze-total-selected"
+              >
                 {fmt(selectedPnl, 0)}
               </span>
             </div>
           </div>
 
-          {/* Center */}
-          <div className="overflow-auto p-3 space-y-3 bg-white">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <Metric label="Max profit" value={fmt(payoff.summary.maxProfit, 0)} tone="emerald" />
+          {/* Chart + scenario */}
+          <div className="overflow-auto p-3 sm:p-4 space-y-3 bg-[#fbfcfd]">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
               <Metric
-                label="Profit left"
+                label="Best case"
+                sub="Max profit on path"
+                value={fmt(payoff.summary.maxProfit, 0)}
+                tone="emerald"
+              />
+              <Metric
+                label="Room left"
+                sub="Premium still to earn"
                 value={payoff.summary.profitLeft != null ? fmt(payoff.summary.profitLeft, 0) : "—"}
                 tone="slate"
               />
               <Metric
-                label="Max loss"
-                value={payoff.summary.unlimitedLoss ? "Unlimited" : fmt(payoff.summary.maxLoss, 0)}
+                label="Worst case"
+                sub="Max loss on path"
+                value={payoff.summary.unlimitedLoss ? "Open-ended" : fmt(payoff.summary.maxLoss, 0)}
                 tone="rose"
               />
               <Metric
-                label="Projected"
+                label="At target"
+                sub="Scenario P&L"
                 value={projected != null ? fmt(projected, 0) : fmt(selectedPnl, 0)}
                 tone={(projected ?? selectedPnl) >= 0 ? "emerald" : "rose"}
               />
             </div>
-            <div className="text-[11px] text-slate-600">
-              Breakeven:{" "}
-              {payoff.summary.breakevens?.length
-                ? payoff.summary.breakevens.map((b) => Math.round(b)).join(", ")
-                : "—"}
-              {spot != null && payoff.summary.breakevens?.length > 0 && (
-                <span className="text-slate-400">
-                  {" "}
-                  (
-                  {payoff.summary.breakevens
-                    .map((b) => `${(((b - spot) / spot) * 100).toFixed(1)}%`)
-                    .join(", ")}
-                  )
-                </span>
-              )}
-            </div>
-            <div className="rounded-md border border-slate-200 p-2">
-              <div className="flex flex-wrap items-center gap-3 text-[10px] mb-1">
-                <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-rose-500 inline-block" /> On expiry</span>
-                <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-600 inline-block" /> Target date</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 bg-rose-300/80 inline-block" /> Call OI</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 bg-emerald-300/80 inline-block" /> Put OI</span>
+
+            {beLines.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                <span className="font-semibold text-slate-700">Breakevens</span>
+                {beLines.map((b) => (
+                  <span key={b.level} className="font-mono-data rounded-md bg-white border border-slate-200 px-1.5 py-0.5">
+                    {b.level}
+                    {b.pct != null ? (
+                      <span className="text-slate-400"> ({Number(b.pct) >= 0 ? "+" : ""}{b.pct}%)</span>
+                    ) : null}
+                  </span>
+                ))}
               </div>
-              <PayoffSvg
-                spots={payoff.spots}
-                expiryPnl={payoff.expiryPnl}
-                targetPnl={payoff.targetPnl}
-                spot={payoff.spot || spot || 0}
-                targetSpot={tgt}
-                projected={projected}
-                oiBars={oiBars}
-                sd={sd}
-              />
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                  <label className="shrink-0 w-24">{activeIndex} target</label>
-                  <input
-                    type="range"
-                    min={spotLo}
-                    max={spotHi}
-                    step={Math.max(1, Math.round((spotHi - spotLo) / 200))}
-                    value={tgt}
-                    disabled={spot == null}
-                    onChange={(e) => setTargetSpot(Number(e.target.value))}
-                    className="flex-1"
-                    data-testid="analyze-spot-slider"
-                  />
-                  <span className="font-mono-data w-24 text-right">
-                    {Math.round(tgt)}{" "}
-                    <span className="text-slate-400">({tgtPct >= 0 ? "+" : ""}{tgtPct.toFixed(1)}%)</span>
+            )}
+
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/70">
+                <div className="text-[11px] font-semibold text-slate-700">Payoff vs spot</div>
+                <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-0.5 w-3.5 bg-rose-700 inline-block rounded-full" /> Expiry
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-0.5 w-3.5 bg-teal-700 inline-block rounded-full" /> Scenario date
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-[2px] bg-rose-300/80 inline-block" /> Call OI
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-[2px] bg-emerald-300/80 inline-block" /> Put OI
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                  <label className="shrink-0 w-24">Time → expiry</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round(targetFrac * 100)}
-                    onChange={(e) => setTargetFrac(Number(e.target.value) / 100)}
-                    className="flex-1"
-                    data-testid="analyze-time-slider"
-                  />
-                  <span className="font-mono-data w-24 text-right">{Math.round(targetFrac * 100)}%</span>
-                </div>
               </div>
+              <div className="p-2 sm:p-3">
+                <PayoffSvg
+                  spots={payoff.spots}
+                  expiryPnl={payoff.expiryPnl}
+                  targetPnl={payoff.targetPnl}
+                  spot={payoff.spot || spot || 0}
+                  targetSpot={tgt}
+                  projected={projected}
+                  oiBars={oiBars}
+                  sd={sd}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+              <ScenarioSlider
+                icon={Target}
+                label={`${activeIndex} target`}
+                hint="Where do you think spot settles for this scenario?"
+                valueLabel={`${Math.round(tgt)} · ${tgtPct >= 0 ? "+" : ""}${tgtPct.toFixed(1)}%`}
+                value={tgt}
+                min={spotLo}
+                max={spotHi}
+                step={spotStep}
+                disabled={spot == null}
+                onChange={setTargetSpot}
+                testId="analyze-spot-slider"
+                presets={
+                  spot == null
+                    ? []
+                    : [
+                        { id: "m2", label: "−2%", value: Math.round(spot * 0.98), testId: "spot-preset-m2" },
+                        { id: "m1", label: "−1%", value: Math.round(spot * 0.99), testId: "spot-preset-m1" },
+                        { id: "now", label: "Spot", value: Math.round(spot), testId: "spot-preset-now" },
+                        { id: "p1", label: "+1%", value: Math.round(spot * 1.01), testId: "spot-preset-p1" },
+                        { id: "p2", label: "+2%", value: Math.round(spot * 1.02), testId: "spot-preset-p2" },
+                      ]
+                }
+              />
+              <ScenarioSlider
+                icon={Clock3}
+                label="Time to expiry"
+                hint="0% = now · 100% = full time decay to expiry"
+                valueLabel={`${timePct}%`}
+                value={timePct}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(v) => setTargetFrac(v / 100)}
+                testId="analyze-time-slider"
+                presets={[
+                  { id: "now", label: "Now", value: 0, testId: "time-preset-now" },
+                  { id: "mid", label: "Halfway", value: 50, testId: "time-preset-mid" },
+                  { id: "exp", label: "Expiry", value: 100, testId: "time-preset-exp" },
+                ]}
+              />
             </div>
           </div>
 
-          {/* Right */}
-          <div className="border-l border-slate-200 p-3 space-y-3 overflow-auto bg-slate-50/50">
-            <div className="text-[10px] uppercase tracking-widest text-slate-500">Summary</div>
-            <div className="text-xs space-y-1.5">
-              <Row k="POP (range)" v={`${payoff.summary.popHint ?? "—"}%`} />
-              <Row k="Spot" v={spot != null ? Number(spot).toFixed(2) : "—"} />
-              <Row k="Target" v={tgt ? Number(tgt).toFixed(2) : "—"} />
-              <Row k="Selected P&L" v={fmt(selectedPnl, 0)} />
-            </div>
-            <div className="text-[10px] uppercase tracking-widest text-slate-500 pt-2">Greeks (selected)</div>
-            <div className="text-xs space-y-1.5 font-mono-data">
-              <Row k="Net Δ" v={payoff.greeks.delta?.toFixed?.(2) ?? "—"} />
-              <Row k="Net Γ" v={payoff.greeks.gamma != null ? `${(payoff.greeks.gamma * 1e4).toFixed(2)}e-4` : "—"} />
-              <Row k="Net Θ / day" v={payoff.greeks.theta != null ? fmt(payoff.greeks.theta, 0) : "—"} />
-              <Row k="Net Vega" v={payoff.greeks.vega?.toFixed?.(1) ?? "—"} />
-            </div>
-            <p className="text-[10px] text-slate-400 leading-snug pt-2">
-              Tick / untick legs — chart &amp; Greeks update instantly (Sensibull-style). Collapse an index to hide its legs; open another index to analyze it.
+          {/* Book read */}
+          <div className="border-l border-slate-200 p-3 sm:p-4 space-y-4 overflow-auto bg-white">
+            <section>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400 font-semibold mb-2">
+                Scenario
+              </div>
+              <div className="space-y-2 text-[12px]">
+                <Row k="Chance in band" v={`${payoff.summary.popHint ?? "—"}%`} tip="Rough POP inside ±1σ" />
+                <Row k="Spot now" v={spot != null ? Number(spot).toFixed(2) : "—"} />
+                <Row k="Your target" v={tgt ? Number(tgt).toFixed(2) : "—"} />
+                <Row k="Live P&L" v={fmt(selectedPnl, 0)} strong />
+              </div>
+            </section>
+
+            <section>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400 font-semibold mb-2">
+                Book pulse
+              </div>
+              <div className="space-y-2 text-[12px] font-mono-data">
+                <Row
+                  k="Tilt (Δ)"
+                  v={payoff.greeks.delta?.toFixed?.(2) ?? "—"}
+                  tip="Direction lean — sellers usually want near 0"
+                />
+                <Row
+                  k="Curve (Γ)"
+                  v={payoff.greeks.gamma != null ? `${(payoff.greeks.gamma * 1e4).toFixed(2)}e-4` : "—"}
+                />
+                <Row
+                  k="Time ₹/day (Θ)"
+                  v={payoff.greeks.theta != null ? fmt(payoff.greeks.theta, 0) : "—"}
+                  tip="Rough rupees from one day of time"
+                />
+                <Row k="Vega" v={payoff.greeks.vega?.toFixed?.(1) ?? "—"} />
+              </div>
+            </section>
+
+            <p className="text-[10px] text-slate-500 leading-relaxed border-t border-slate-100 pt-3">
+              Tick the legs you want in the scenario. The chart and book pulse update live. Use target
+              and time controls to stress the book — not a broker clone, just a clear desk read.
             </p>
           </div>
         </div>
@@ -531,26 +778,27 @@ export default function PositionsAnalyzeModal({
   );
 }
 
-function Metric({ label, value, tone }) {
+function Metric({ label, sub, value, tone }) {
   const cls =
     tone === "emerald"
-      ? "text-emerald-800"
+      ? "border-emerald-200/80 bg-emerald-50/70 text-emerald-950"
       : tone === "rose"
-        ? "text-rose-800"
-        : "text-slate-800";
+        ? "border-rose-200/80 bg-rose-50/70 text-rose-950"
+        : "border-slate-200 bg-white text-slate-900";
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
-      <div className="text-[9px] uppercase tracking-widest text-slate-400">{label}</div>
-      <div className={`font-mono-data font-semibold ${cls}`}>{value}</div>
+    <div className={`rounded-lg border px-2.5 py-2 shadow-sm ${cls}`}>
+      <div className="text-[9px] uppercase tracking-[0.14em] opacity-70 font-semibold">{label}</div>
+      <div className="font-mono-data font-semibold text-[15px] leading-tight mt-0.5">{value}</div>
+      {sub ? <div className="text-[10px] opacity-60 mt-0.5">{sub}</div> : null}
     </div>
   );
 }
 
-function Row({ k, v }) {
+function Row({ k, v, tip, strong = false }) {
   return (
-    <div className="flex justify-between gap-2">
-      <span className="text-slate-500">{k}</span>
-      <span className="font-semibold text-slate-800">{v}</span>
+    <div className="flex justify-between gap-2 items-baseline" title={tip || undefined}>
+      <span className="text-slate-500 text-[11px]">{k}</span>
+      <span className={`${strong ? "font-bold" : "font-semibold"} text-slate-900 tabular-nums`}>{v}</span>
     </div>
   );
 }

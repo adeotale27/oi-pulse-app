@@ -12,11 +12,13 @@ import {
   Columns3,
   ChevronDown,
   ChevronUp,
+  Receipt,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   yearsToExpiry,
   greeks,
@@ -72,7 +74,7 @@ const POSITIONS_GUIDE = (
     </p>
     <p>
       <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
-      <b> Fees today</b> — what Zerodha charged today (read-only).
+      <b> Day charges</b> — brokerage + STT + GST + exchange fees (Zerodha contract note, read-only).
     </p>
   </div>
 );
@@ -81,10 +83,10 @@ function ExitedChip() {
   return (
     <span
       title="Squared off today — booked P&L stays in Today’s total until end of day"
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-200 bg-slate-100 text-slate-400 text-[10px] font-semibold tracking-wide"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-200/80 bg-slate-100/80 text-slate-400 text-[10px] font-semibold tracking-wide"
       data-testid="status-exited"
     >
-      Exited
+      Closed
     </span>
   );
 }
@@ -96,7 +98,7 @@ function ProductBadge({ product, exited }) {
     <span
       className={`inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${
         exited
-          ? "bg-slate-100 text-slate-400 border border-slate-200/80"
+          ? "bg-slate-100 text-slate-400 border border-slate-200/60"
           : "bg-violet-100 text-violet-700 border border-violet-200/70"
       }`}
       data-testid="product-badge"
@@ -113,16 +115,8 @@ function positionLabel(r) {
 
 function AvgCell({ row }) {
   if (row?.exited) {
-    const b = Number(row.buy_price);
-    const s = Number(row.sell_price);
-    if (Number.isFinite(b) && Number.isFinite(s) && (b > 0 || s > 0)) {
-      return (
-        <span className="text-slate-500" title="Buy avg → Sell avg (booked)">
-          {fmt(b)}→{fmt(s)}
-        </span>
-      );
-    }
-    return <span className="text-slate-400">—</span>;
+    // Kite shows 0.00 average on flat / squared-off rows.
+    return <span className="text-slate-400">0.00</span>;
   }
   return <span>{fmt(row?.average_price)}</span>;
 }
@@ -212,7 +206,9 @@ export default function PositionsPanel({
   const [brokerage, setBrokerage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [errorHard, setErrorHard] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const stickyKiteRef = useRef(!!isKiteMode);
   const [adjustThreshPct, setAdjustThreshPct] = useState(60);
   const [toggles, setToggles] = useState(() => loadPositionsToggles());
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -289,47 +285,77 @@ export default function PositionsPanel({
   const load = useCallback(async () => {
     const gen = ++loadGen.current;
     setLoading(true);
-    setError(null);
     try {
       const { data } = await api.get("/positions");
       if (gen !== loadGen.current) return;
-      setPositions(data.positions || []);
-      setFunds(data.funds || null);
-      setPnlToday(data.pnl_today || null);
-      setSpotByIndex(data.spot && typeof data.spot === "object" ? data.spot : {});
-      setOiByIndex(data.oi && typeof data.oi === "object" ? data.oi : {});
-      if (data.error) setError(data.error);
+      const next = data.positions || [];
+      const hard =
+        data.token_issue === true
+        || data.kite_connected === false
+        || /not connected|connect kite|tokenexception|invalid token|api_key|unauthorized|forbidden/i.test(
+          String(data.error || ""),
+        );
+      // Keep last good book on transient Kite blips — do not wipe the table.
+      if (next.length > 0 || !data.error || hard) {
+        setPositions(next);
+        if (data.funds) setFunds(data.funds);
+        if (data.pnl_today) setPnlToday(data.pnl_today);
+        if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
+        if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
+      }
+      if (data.error) {
+        setError(data.error);
+        setErrorHard(hard || data.transient === false);
+      } else {
+        setError(null);
+        setErrorHard(false);
+      }
       setLastRefresh(new Date().toISOString());
       setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     } catch (e) {
       if (gen !== loadGen.current) return;
-      setError(e?.response?.data?.detail || e.message);
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail || e.message;
+      setError(detail);
+      setErrorHard(status === 401 || status === 403);
     } finally {
       if (gen === loadGen.current) setLoading(false);
     }
   }, [pollMs]);
 
   useEffect(() => {
-    if (!isKiteMode) return;
+    if (isKiteMode) stickyKiteRef.current = true;
+  }, [isKiteMode]);
+
+  const kiteReady = isKiteMode || stickyKiteRef.current;
+
+  useEffect(() => {
+    if (!kiteReady) return undefined;
     const closed = isMarketQuiescent();
     load();
     loadBrokerage();
-    if (closed) return;
+    if (closed) return undefined;
     const id = setInterval(() => {
       load();
-      loadBrokerage();
     }, pollMs);
-    return () => clearInterval(id);
-  }, [isKiteMode, load, loadBrokerage, pollMs]);
+    // Charges change with fills — refresh less often than the live book.
+    const chargesId = setInterval(() => {
+      loadBrokerage();
+    }, Math.max(pollMs * 4, 120_000));
+    return () => {
+      clearInterval(id);
+      clearInterval(chargesId);
+    };
+  }, [kiteReady, load, loadBrokerage, pollMs]);
 
   useEffect(() => {
-    if (!isKiteMode || isMarketQuiescent()) return;
+    if (!kiteReady || isMarketQuiescent()) return;
     setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     const id = setInterval(() => {
       setSecsLeft((s) => Math.max(0, s - 1));
     }, 1000);
     return () => clearInterval(id);
-  }, [isKiteMode, pollMs, lastRefresh]);
+  }, [kiteReady, pollMs, lastRefresh]);
 
   const spot = current?.price;
 
@@ -488,7 +514,11 @@ export default function PositionsPanel({
     let openCount = 0, exitedCount = 0;
     let openPnl = 0, exitedPnl = 0;
     for (const r of rows) {
-      const rowPnl = Number(r.exited && r.booked_pnl != null ? r.booked_pnl : r.pnl) || 0;
+      const rowPnl = (() => {
+        const raw = r.exited && r.booked_pnl != null ? r.booked_pnl : r.pnl;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : 0;
+      })();
       if (r.exited) {
         exitedCount += 1;
         exitedPnl += rowPnl;
@@ -519,9 +549,13 @@ export default function PositionsPanel({
       }
     }
     if (pnlToday && typeof pnlToday === "object") {
-      if (pnlToday.open != null) openPnl = Number(pnlToday.open) || openPnl;
-      if (pnlToday.exited != null) exitedPnl = Number(pnlToday.exited) || exitedPnl;
-      netPnl = pnlToday.total != null ? (Number(pnlToday.total) || openPnl + exitedPnl) : openPnl + exitedPnl;
+      const openN = Number(pnlToday.open);
+      const exitedN = Number(pnlToday.exited);
+      const totalN = Number(pnlToday.total);
+      // Prefer server totals; never use `x || fallback` (0 is a valid P&L).
+      if (Number.isFinite(openN)) openPnl = openN;
+      if (Number.isFinite(exitedN)) exitedPnl = exitedN;
+      netPnl = Number.isFinite(totalN) ? totalN : openPnl + exitedPnl;
     } else {
       netPnl = openPnl + exitedPnl;
     }
@@ -626,7 +660,7 @@ export default function PositionsPanel({
     { key: "assignmentWatch", label: "Exercise risk" },
   ];
 
-  if (!isKiteMode) {
+  if (!kiteReady) {
     return (
       <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center" data-testid="positions-kite-required">
         <PlugZap className="w-8 h-8 mx-auto text-slate-400 mb-2" />
@@ -642,7 +676,7 @@ export default function PositionsPanel({
             data-testid="btn-positions-reconnect-kite"
           >
             <PlugZap className="w-3.5 h-3.5 mr-1.5" />
-            Reconnect Kite
+            Connect Kite
           </Button>
         )}
       </div>
@@ -687,21 +721,87 @@ export default function PositionsPanel({
               </p>
             </InfoTip>
           </div>
-          <div
-            className="inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-slate-200 bg-slate-50 text-[11px] text-slate-600"
-            data-testid="positions-brokerage-day"
-            title={
-              brokerage?.error ||
-              (brokerage?.charges_total != null
-                ? `Brokerage ₹ ${fmt(brokerage.brokerage, 0)} · all charges ₹ ${fmt(brokerage.charges_total, 0)}`
-                : "Today’s trading fees from Zerodha (read-only)")
-            }
-          >
-            <span className="text-slate-400">Fees</span>
-            <span className="font-mono-data font-semibold text-slate-800">
-              {brokerage?.brokerage != null ? `₹${fmt(brokerage.brokerage, 0)}` : "—"}
-            </span>
-          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[11px] text-slate-600 hover:border-emerald-300 hover:bg-emerald-50/50 hover:text-emerald-900 transition-colors"
+                data-testid="positions-brokerage-day"
+                title="Today’s trading charges — click for breakdown"
+              >
+                <Receipt className="w-3 h-3 text-slate-400" />
+                <span className="text-slate-400">Charges</span>
+                <span className="font-mono-data font-semibold text-slate-800">
+                  {brokerage?.charges_total != null
+                    ? `₹${fmt(brokerage.charges_total, 0)}`
+                    : brokerage?.brokerage != null
+                      ? `₹${fmt(brokerage.brokerage, 0)}`
+                      : "—"}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-80 p-0"
+              data-testid="positions-charges-breakdown"
+            >
+              <div className="border-b border-slate-100 px-3 py-2.5">
+                <div className="text-xs font-semibold text-slate-900">Day charges</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Zerodha virtual contract note ·{" "}
+                  {brokerage?.order_count != null
+                    ? `${brokerage.order_count} completed order${brokerage.order_count === 1 ? "" : "s"}`
+                    : "today"}
+                </div>
+              </div>
+              {brokerage?.error ? (
+                <div className="px-3 py-3 text-[11px] text-rose-700">{brokerage.error}</div>
+              ) : (
+                <div className="px-3 py-2 space-y-1.5">
+                  {(brokerage?.breakdown || []).map((row) => (
+                    <div
+                      key={row.key}
+                      className="flex items-center justify-between gap-3 text-[12px]"
+                      data-testid={`charge-row-${row.key}`}
+                    >
+                      <span className="text-slate-500">{row.label}</span>
+                      <span className="font-mono-data font-medium text-slate-800">
+                        ₹{fmt(row.amount, 2)}
+                      </span>
+                    </div>
+                  ))}
+                  {(!brokerage?.breakdown || brokerage.breakdown.length === 0) && (
+                    <div className="text-[11px] text-slate-400 py-2">
+                      {brokerage?.charges_total == null
+                        ? "Charges not available yet."
+                        : "No charge lines returned."}
+                    </div>
+                  )}
+                  {brokerage?.gst && (brokerage.gst.igst || brokerage.gst.cgst || brokerage.gst.sgst) ? (
+                    <div className="rounded-sm bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 space-y-0.5">
+                      <div className="font-semibold uppercase tracking-wider text-slate-400">GST detail</div>
+                      {brokerage.gst.igst ? (
+                        <div className="flex justify-between"><span>IGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.igst, 2)}</span></div>
+                      ) : null}
+                      {brokerage.gst.cgst ? (
+                        <div className="flex justify-between"><span>CGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.cgst, 2)}</span></div>
+                      ) : null}
+                      {brokerage.gst.sgst ? (
+                        <div className="flex justify-between"><span>SGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.sgst, 2)}</span></div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              <div className="border-t border-slate-100 px-3 py-2.5 flex items-center justify-between bg-slate-50/80">
+                <span className="text-xs font-semibold text-slate-700">Total today</span>
+                <span className="font-mono-data text-sm font-bold text-slate-900" data-testid="charges-total">
+                  {brokerage?.charges_total != null ? `₹${fmt(brokerage.charges_total, 2)}` : "—"}
+                </span>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button
             size="sm"
             variant="outline"
@@ -774,12 +874,18 @@ export default function PositionsPanel({
 
       {error && (
         <div
-          className="rounded-md border border-rose-200 bg-rose-50 text-rose-800 px-3 py-2 text-xs flex flex-wrap items-center gap-2"
+          className={`rounded-md border px-3 py-2 text-xs flex flex-wrap items-center gap-2 ${
+            errorHard
+              ? "border-rose-200 bg-rose-50 text-rose-800"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
           data-testid="positions-error"
         >
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="flex-1 min-w-0">{error}</span>
-          {typeof onOpenKite === "function" && (
+          <span className="flex-1 min-w-0">
+            {errorHard ? error : `Temporary Kite hiccup — keeping last book. ${error}`}
+          </span>
+          {errorHard && typeof onOpenKite === "function" && (
             <Button
               size="sm"
               variant="outline"
@@ -789,6 +895,18 @@ export default function PositionsPanel({
             >
               <PlugZap className="w-3.5 h-3.5 mr-1" />
               Reconnect
+            </Button>
+          )}
+          {!errorHard && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-sm border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+              onClick={() => { load(); loadBrokerage(); }}
+              data-testid="btn-positions-error-retry"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1" />
+              Retry
             </Button>
           )}
         </div>
@@ -803,19 +921,19 @@ export default function PositionsPanel({
             stats.exitedCount > 0
               ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
               : brokerage?.charges_total != null
-                ? `After fees ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
+                ? `After charges ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
                 : "Open + booked exits"
           }
           tip={(
             <div className="space-y-1.5">
               <p>
                 <b>Today P&amp;L</b> = open positions + same-day <b>exited</b> booked P&amp;L
-                (Kite-style — exited legs stay in the list until end of day).
+                (exited legs stay in the list until end of day).
               </p>
               <p>
                 Open: ₹ {fmt(stats.openPnl, 0)} · Exited: ₹ {fmt(stats.exitedPnl, 0)}
                 {brokerage?.charges_total != null
-                  ? ` · Fees today ₹ ${fmt(brokerage.charges_total, 0)}`
+                  ? ` · Day charges ₹ ${fmt(brokerage.charges_total, 0)}`
                   : ""}
               </p>
             </div>
@@ -916,7 +1034,7 @@ export default function PositionsPanel({
               data-exited={r.exited ? "1" : "0"}
               className={`rounded-lg border px-3 py-2.5 transition-colors ${
                 r.exited
-                  ? "border-slate-100 bg-slate-50/90 text-slate-400 shadow-none opacity-80"
+                  ? "border-slate-200/70 bg-slate-100/80 text-slate-400 shadow-none opacity-[0.58]"
                   : r.breachedAdjust
                     ? "border-rose-300 bg-rose-50/80 shadow-sm"
                     : "border-slate-200/80 bg-white shadow-sm"
@@ -927,7 +1045,7 @@ export default function PositionsPanel({
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <ProductBadge product={r.product} exited={r.exited} />
                     {r.exited ? (
-                      <span className="text-[9px] uppercase tracking-wide text-slate-400">Booked today</span>
+                      <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
                     ) : null}
                   </div>
                   <div className={`text-sm font-semibold truncate ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
@@ -1074,7 +1192,7 @@ export default function PositionsPanel({
                     colSpan={Math.max(shownCols.length, 1)}
                     className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-y border-slate-100"
                   >
-                    Exited today · shadowed like Zerodha (qty 0)
+                    Exited today · Kite-style shadowed (qty 0)
                   </td>
                 </tr>
               )}
@@ -1083,7 +1201,7 @@ export default function PositionsPanel({
                 data-exited={r.exited ? "1" : "0"}
                 className={`border-b border-slate-100/80 ${
                   r.exited
-                    ? "bg-slate-50 text-slate-400"
+                    ? "bg-slate-100/70 text-slate-400 opacity-[0.58]"
                     : r.breachedAdjust
                       ? "bg-rose-50/70"
                       : idx % 2 === 0
@@ -1103,7 +1221,7 @@ export default function PositionsPanel({
                     </div>
                     <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
                       {r.exchange}
-                      {r.exited ? " · booked today" : ""}
+                      {r.exited ? " · squared off" : ""}
                     </div>
                   </td>
                 )}
@@ -1121,7 +1239,7 @@ export default function PositionsPanel({
                   <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
                 )}
                 {colOn("pnl") && (
-                  <td className={`text-right px-2 py-2 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
+                  <td className={`text-right px-2 py-2 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
                     {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
                   </td>
                 )}

@@ -191,14 +191,17 @@ export default function AuthGate({ children }) {
           return;
         }
         if (data.status === "consumed" && !data.token) {
-          // Approved earlier but token already claimed — clear wait state.
+          // Token already handed off (other tab) — try auto-guest revive, else re-prompt.
           try {
             sessionStorage.removeItem("oi_access_request_id");
             sessionStorage.removeItem("oi_access_request_name");
           } catch (_) {}
           setPendingRequest(null);
           setWaitStatus(null);
-          toast.message("Already approved — enter your name again if you were signed out.");
+          await refresh();
+          toast.message("Already approved", {
+            description: "If you are not in yet, enter the same full name once more.",
+          });
           return;
         }
         if (data.status === "rejected") {
@@ -212,12 +215,27 @@ export default function AuthGate({ children }) {
           return;
         }
         setWaitStatus("pending");
-      } catch (_) {
-        // keep waiting; request may be briefly unavailable
+      } catch (err) {
+        const status = err?.response?.status;
+        if (status === 403) {
+          setWaitStatus("pending");
+          toast.error("This approval link is tied to another network. Stay on the same connection you used to request access.");
+          return;
+        }
+        if (status === 404) {
+          try {
+            sessionStorage.removeItem("oi_access_request_id");
+            sessionStorage.removeItem("oi_access_request_name");
+          } catch (_) {}
+          setPendingRequest(null);
+          setWaitStatus(null);
+          toast.error("Access request expired. Please request again.");
+        }
+        // other transient errors — keep waiting
       }
     };
     poll();
-    pendingPollRef.current = setInterval(poll, 3000);
+    pendingPollRef.current = setInterval(poll, 2000);
     return () => {
       cancelled = true;
       if (pendingPollRef.current) clearInterval(pendingPollRef.current);
@@ -324,14 +342,38 @@ export default function AuthGate({ children }) {
               />
             </div>
 
-            {pendingRequest || waitStatus === "pending" ? (
+            {waitStatus === "rejected" ? (
+              <div
+                data-testid="guest-rejected"
+                className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-950"
+              >
+                <div className="font-semibold">Request declined</div>
+                <div className="text-xs opacity-80">
+                  The admin rejected this access request. You can submit a new request with your full name.
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 w-full rounded-xl border-rose-200 bg-white text-rose-900 hover:bg-rose-50"
+                  onClick={() => {
+                    setWaitStatus(null);
+                    setPendingRequest(null);
+                  }}
+                >
+                  Request again
+                </Button>
+              </div>
+            ) : pendingRequest || waitStatus === "pending" ? (
               <div
                 data-testid="guest-waiting-approval"
                 className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900"
               >
-                <div className="font-semibold">Waiting for admin approval…</div>
+                <div className="flex items-center gap-2 font-semibold">
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                  Waiting for admin approval…
+                </div>
                 <div className="text-xs opacity-80">
-                  Requested as <b>{pendingRequest?.name || guestName}</b>. Keep this window open — you&apos;ll enter automatically when approved.
+                  Requested as <b>{pendingRequest?.name || guestName}</b>. Keep this window open — you&apos;ll enter automatically when approved. No refresh needed.
                 </div>
                 <button
                   type="button"

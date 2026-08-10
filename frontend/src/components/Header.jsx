@@ -418,7 +418,7 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-auto">
-          <div className={headerRail ? "hidden md:block scale-90 origin-right" : "hidden xl:block"}>
+          <div className={headerRail ? "hidden md:block origin-right" : "hidden xl:block"}>
             <BigClock compact />
           </div>
           {lastPulledAt && (
