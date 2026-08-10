@@ -575,6 +575,7 @@ class SettingsIn(BaseModel):
     enabled_indices: Optional[List[str]] = None
     oi_poll_interval_seconds: Optional[int] = None  # OI data pull interval (15/30/60)
     straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
+    positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (15/30/60)
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
     market_open_ist: Optional[str] = None   # e.g. "09:15"
@@ -933,6 +934,9 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
     if "straddle_poll_interval_seconds" in patch:
         if int(patch["straddle_poll_interval_seconds"]) not in (30, 60, 120):
             raise HTTPException(400, "straddle_poll_interval_seconds must be 30, 60, or 120")
+    if "positions_poll_interval_seconds" in patch:
+        if int(patch["positions_poll_interval_seconds"]) not in (15, 30, 60):
+            raise HTTPException(400, "positions_poll_interval_seconds must be 15, 30, or 60")
     for key in ("market_open_ist", "market_close_ist"):
         if key in patch:
             try:
@@ -1697,12 +1701,14 @@ async def get_config():
             pass
     poll_interval_seconds = max(1, int(tracker.settings.get("oi_poll_interval_seconds", 15)))
     straddle_poll = max(1, int(tracker.settings.get("straddle_poll_interval_seconds", 60)))
+    positions_poll = max(1, int(tracker.settings.get("positions_poll_interval_seconds", 30)))
     open_hm, close_hm = display_hours()
     return {
         "indices": INDEX_CONFIG,
         "poll_interval_seconds": poll_interval_seconds,
         "oi_poll_interval_seconds": poll_interval_seconds,
         "straddle_poll_interval_seconds": straddle_poll,
+        "positions_poll_interval_seconds": positions_poll,
         "enabled_indices": tracker.settings.get("enabled_indices", list(INDEX_CONFIG.keys())),
         "straddle_enabled_indices": tracker.settings.get("straddle_enabled_indices", STRADDLE_INDICES),
         "alert_enabled_indices": tracker.settings.get("alert_enabled_indices"),
@@ -3001,7 +3007,6 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             "error": "Not in Kite mode. Connect Kite API first.",
         }
     try:
-        import re
         kite = tracker.kite_service.kite
         raw = await asyncio.to_thread(kite.positions)
         net = raw.get("net", []) if isinstance(raw, dict) else raw
@@ -3033,33 +3038,14 @@ async def get_positions(_admin: bool = Depends(require_admin)):
     except Exception as e:
         logger.warning("kite.margins failed: %s", e)
 
-    # Parse tradingsymbol like  NIFTY26JUL2426800CE  -> {index, expiry, strike, side}
-    # Supported patterns (NSE/BSE weekly & monthly):
-    #   <IDX><YY><MMM><DD><STRIKE><CE|PE>   e.g. NIFTY26JUL2426800CE
-    #   <IDX><YY><M><DD><STRIKE><CE|PE>     weekly single-digit month e.g. NIFTY26J1424800CE (rare)
-    #   <IDX><YY><MMM><STRIKE><CE|PE>       monthly  e.g. NIFTY26JUL24800CE
-    OPT_RE = re.compile(
-        r"^(?P<idx>NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX|BANKEX)"
-        r"(?P<yy>\d{2})"
-        r"(?P<mm>[A-Z]{3}|\d{1,2}|[A-Z]\d{1,2})"
-        r"(?P<strike>\d{3,7})"
-        r"(?P<side>CE|PE)$"
-    )
+    from fno_symbol import parse_fno_option_symbol
+
     out = []
     for p in net:
         if int(p.get("quantity", 0)) == 0:
             continue  # skip closed positions with 0 net qty
         ts = p.get("tradingsymbol", "")
-        m = OPT_RE.match(ts)
-        parsed = {}
-        if m:
-            parsed = {
-                "index": m.group("idx"),
-                "strike": int(m.group("strike")),
-                "side": m.group("side"),
-                "expiry_code": m.group("mm"),
-                "expiry_yy": m.group("yy"),
-            }
+        parsed = parse_fno_option_symbol(ts) or {}
         out.append({
             "tradingsymbol": ts,
             "exchange": p.get("exchange"),
@@ -3075,7 +3061,7 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             "sell_price": float(p.get("sell_price", 0) or 0),
             **parsed,
         })
-    # Fresh spot for each index in the positions
+    # Fresh spot for each index in the positions (numeric price + atm)
     idx_spot = {}
     for pos in out:
         idx = pos.get("index")
@@ -3084,6 +3070,105 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             if snap:
                 idx_spot[idx] = {"price": snap.get("price"), "atm": snap.get("atm")}
     return {"mode": tracker.mode, "positions": out, "spot": idx_spot, "funds": funds}
+
+
+def _ist_today_ymd() -> str:
+    from datetime import datetime, timezone, timedelta
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist).strftime("%Y-%m-%d")
+
+
+@api_router.get("/positions/brokerage-day")
+async def get_brokerage_day(_admin: bool = Depends(require_admin)):
+    """Day's brokerage via Kite virtual contract note (read-only).
+
+    Uses kite.orders() + get_virtual_contract_note — never returns API keys,
+    secrets, or access tokens. Admin-only.
+    """
+    if tracker.mode != "kite" or not tracker.kite_service:
+        return {
+            "ok": False,
+            "brokerage": None,
+            "charges_total": None,
+            "order_count": 0,
+            "error": "Not in Kite mode.",
+        }
+    try:
+        kite = tracker.kite_service.kite
+        orders = await asyncio.to_thread(kite.orders)
+    except Exception as e:
+        return {
+            "ok": False,
+            "brokerage": None,
+            "charges_total": None,
+            "order_count": 0,
+            "error": f"Kite orders: {type(e).__name__}: {e}",
+        }
+
+    today = _ist_today_ymd()
+    params = []
+    for o in orders or []:
+        if (o.get("status") or "").upper() != "COMPLETE":
+            continue
+        # order_timestamp like '2026-08-10 10:15:00'
+        ts = str(o.get("order_timestamp") or o.get("exchange_timestamp") or "")
+        if ts and not ts.startswith(today):
+            continue
+        avg = float(o.get("average_price") or 0)
+        qty = int(o.get("filled_quantity") or o.get("quantity") or 0)
+        if qty <= 0 or avg < 0:
+            continue
+        params.append({
+            "order_id": str(o.get("order_id") or len(params) + 1),
+            "exchange": o.get("exchange") or "NFO",
+            "tradingsymbol": o.get("tradingsymbol"),
+            "transaction_type": o.get("transaction_type") or "BUY",
+            "variety": o.get("variety") or "regular",
+            "product": o.get("product") or "NRML",
+            "order_type": o.get("order_type") or "MARKET",
+            "quantity": qty,
+            "average_price": avg,
+        })
+
+    if not params:
+        return {
+            "ok": True,
+            "brokerage": 0.0,
+            "charges_total": 0.0,
+            "order_count": 0,
+            "source": "kite_virtual_contract",
+            "note": "No completed orders today.",
+        }
+
+    # Cap to 500 per Zerodha virtual contract note limits
+    params = params[:500]
+    try:
+        notes = await asyncio.to_thread(kite.get_virtual_contract_note, params)
+    except Exception as e:
+        logger.warning("get_virtual_contract_note failed: %s", e)
+        return {
+            "ok": False,
+            "brokerage": None,
+            "charges_total": None,
+            "order_count": len(params),
+            "error": f"Charges API: {type(e).__name__}: {e}",
+        }
+
+    brokerage = 0.0
+    charges_total = 0.0
+    for row in notes or []:
+        ch = (row or {}).get("charges") or {}
+        brokerage += float(ch.get("brokerage") or 0)
+        charges_total += float(ch.get("total") or 0)
+
+    return {
+        "ok": True,
+        "brokerage": round(brokerage, 2),
+        "charges_total": round(charges_total, 2),
+        "order_count": len(params),
+        "source": "kite_virtual_contract",
+        # Never include order payload / credentials in response
+    }
 
 
 # ================================================================

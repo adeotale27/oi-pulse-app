@@ -152,6 +152,7 @@ DEFAULT_SETTINGS = {
     "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"],  # which indices to poll
     "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
     "straddle_poll_interval_seconds": 60,  # Straddle data pull interval (default 60 = 1 minute)
+    "positions_poll_interval_seconds": 30,  # Positions desk auto-refresh (admin)
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
     "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "alerts", "activity", "holidays", "straddle", "index-events"],
     # Sidebar Strike Range steppers — off by default (ATM quick-picks cover most use)
@@ -274,6 +275,7 @@ class OITracker:
         allowed = {
             "threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices",
             "oi_poll_interval_seconds", "straddle_poll_interval_seconds",
+            "positions_poll_interval_seconds",
             "straddle_enabled_indices", "visible_pages",
             "market_open_ist", "market_close_ist",
             "expire_admin_on_market_close", "admin_session_ttl_minutes",

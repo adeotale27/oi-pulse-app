@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { RefreshCw, PlugZap, AlertTriangle, Building2, Zap, ShieldAlert, Crosshair, Pin } from "lucide-react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { RefreshCw, PlugZap, AlertTriangle, Building2, Zap, ShieldAlert, Crosshair, Pin, LineChart } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
@@ -22,27 +22,14 @@ import {
   effectiveAdjustThreshold,
   nearestWeeklyExpiry,
 } from "@/lib/positionsSellerInsights";
+import { resolvePositionSpot, positionExpiryISO } from "@/lib/positionPayoff";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
+import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import InfoTip from "@/components/InfoTip";
 
 function fmt(v, dp = 2) {
   if (v == null || Number.isNaN(v)) return "—";
   return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
-}
-
-function resolveExpiryFromCode(yy, mm, activeExpiries = []) {
-  const MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
-  const yyyy = 2000 + parseInt(yy, 10);
-  if (mm.length === 3 && MON[mm]) {
-    const m = MON[mm];
-    const last = new Date(Date.UTC(yyyy, m, 0));
-    const lastDay = last.getUTCDay();
-    const offset = (lastDay - 4 + 7) % 7;
-    const lastThu = new Date(Date.UTC(yyyy, m - 1, last.getUTCDate() - offset));
-    return lastThu.toISOString().slice(0, 10);
-  }
-  if (activeExpiries.length) return activeExpiries[0];
-  return null;
 }
 
 const POSITIONS_GUIDE = (
@@ -100,16 +87,22 @@ export default function PositionsPanel({
   expiriesMeta = [],
   onPinNearestWeekly,
   onAdjustmentAlert,
+  positionsPollMs = 30000,
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
   const [funds, setFunds] = useState(null);
+  const [brokerage, setBrokerage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [adjustThreshPct, setAdjustThreshPct] = useState(60);
   const [toggles, setToggles] = useState(() => loadPositionsToggles());
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
+  const [secsLeft, setSecsLeft] = useState(() => Math.max(1, Math.round(positionsPollMs / 1000)));
+  const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
+  const loadGen = useRef(0);
 
   const setToggle = useCallback((key, on) => {
     setToggles((prev) => {
@@ -124,31 +117,57 @@ export default function PositionsPanel({
     return () => clearInterval(id);
   }, []);
 
+  const loadBrokerage = useCallback(async () => {
+    try {
+      const { data } = await api.get("/positions/brokerage-day");
+      setBrokerage(data || null);
+    } catch {
+      setBrokerage(null);
+    }
+  }, []);
+
   const load = useCallback(async () => {
+    const gen = ++loadGen.current;
     setLoading(true);
     setError(null);
     try {
       const { data } = await api.get("/positions");
+      if (gen !== loadGen.current) return;
       setPositions(data.positions || []);
       setFunds(data.funds || null);
       setSpotByIndex(data.spot && typeof data.spot === "object" ? data.spot : {});
       if (data.error) setError(data.error);
       setLastRefresh(new Date().toISOString());
+      setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     } catch (e) {
+      if (gen !== loadGen.current) return;
       setError(e?.response?.data?.detail || e.message);
     } finally {
-      setLoading(false);
+      if (gen === loadGen.current) setLoading(false);
     }
-  }, []);
+  }, [pollMs]);
 
   useEffect(() => {
     if (!isKiteMode) return;
     const closed = isMarketQuiescent();
     load();
+    loadBrokerage();
     if (closed) return;
-    const id = setInterval(load, 30000);
+    const id = setInterval(() => {
+      load();
+      loadBrokerage();
+    }, pollMs);
     return () => clearInterval(id);
-  }, [isKiteMode, load]);
+  }, [isKiteMode, load, loadBrokerage, pollMs]);
+
+  useEffect(() => {
+    if (!isKiteMode || isMarketQuiescent()) return;
+    setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
+    const id = setInterval(() => {
+      setSecsLeft((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isKiteMode, pollMs, lastRefresh]);
 
   const spot = current?.price;
 
@@ -164,9 +183,9 @@ export default function PositionsPanel({
       let extrinsicLeft = null;
       let thetaToClose = null;
       let onExpiryDay = false;
-      const S = (p.index && spotByIndex[p.index]) || fallbackS;
-      if (isOpt && S) {
-        const expIso = resolveExpiryFromCode(p.expiry_yy, p.expiry_code, activeExp ? [activeExp] : []);
+      const S = resolvePositionSpot(p, spotByIndex, fallbackS);
+      if (isOpt && S != null && Number(S) > 0) {
+        const expIso = positionExpiryISO(p, activeExp);
         if (expIso) {
           T = yearsToExpiry(expIso, nowMs);
           dte = T * 365;
@@ -177,9 +196,9 @@ export default function PositionsPanel({
           if (ivGuess) {
             iv = ivGuess * 100;
             const g = greeks(S, p.strike, T, 0.065, ivGuess, isCall);
-            delta = g.delta;
-            theta = g.theta;
-            gamma = g.gamma;
+            delta = Number.isFinite(g.delta) ? g.delta : null;
+            theta = Number.isFinite(g.theta) ? g.theta : null;
+            gamma = Number.isFinite(g.gamma) ? g.gamma : null;
           }
           if (p.quantity < 0) {
             const left = shortPremiumLeft({
@@ -266,8 +285,8 @@ export default function PositionsPanel({
     let thetaToClose = 0, thetaToCloseN = 0;
     let shortCount = 0, adjustCount = 0;
     for (const r of rows) {
-      if (r.delta != null) netDelta += r.delta * r.quantity;
-      if (r.theta != null) netTheta += r.theta * r.quantity;
+      if (r.delta != null && Number.isFinite(r.delta)) netDelta += r.delta * r.quantity;
+      if (r.theta != null && Number.isFinite(r.theta)) netTheta += r.theta * r.quantity;
       netPnl += r.pnl || 0;
       if (r.isShort && r.isOpt) {
         shortCount += 1;
@@ -427,9 +446,38 @@ export default function PositionsPanel({
               </p>
             </InfoTip>
           </div>
-          <Button size="sm" variant="outline" className="h-8 rounded-sm bg-white min-h-[32px]" onClick={load} disabled={loading} data-testid="btn-refresh-positions">
+          <div
+            className="flex flex-col items-end leading-tight px-2 py-1 rounded-sm border border-slate-200 bg-slate-50"
+            data-testid="positions-brokerage-day"
+            title={brokerage?.error || "Today’s brokerage from Kite virtual contract note (read-only)"}
+          >
+            <span className="text-[9px] uppercase tracking-wider text-slate-500">Brokerage today</span>
+            <span className="text-xs font-mono-data font-semibold text-slate-800">
+              {brokerage?.brokerage != null ? `₹ ${fmt(brokerage.brokerage, 0)}` : "—"}
+            </span>
+            {brokerage?.charges_total != null && (
+              <span className="text-[9px] text-slate-400">all charges ₹ {fmt(brokerage.charges_total, 0)}</span>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-sm bg-white min-h-[32px] text-orange-700 border-orange-200 hover:bg-orange-50"
+            onClick={() => setAnalyzeOpen(true)}
+            disabled={!rows.length}
+            data-testid="btn-analyze-positions"
+          >
+            <LineChart className="w-3.5 h-3.5 mr-1" />
+            Analyze
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 rounded-sm bg-white min-h-[32px]" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
+            {!isMarketQuiescent() && (
+              <span className="ml-1.5 font-mono-data text-[10px] text-slate-500" data-testid="positions-refresh-countdown">
+                {secsLeft}s
+              </span>
+            )}
           </Button>
         </div>
       </div>
@@ -962,7 +1010,11 @@ export default function PositionsPanel({
           <div className="text-[11px] text-slate-500 italic">
             {sellIdeas?.expiryStale
               ? "Pick a live weekly expiry in the sidebar for sell ideas."
-              : "Waiting for chain data / no high-score CE·PE to suggest right now."}
+              : !sellIdeas?.verdict?.tradeable
+                ? "Chain is live — sell scoring paused while the day is Cautious / skip (see reasons above)."
+                : !current?.strikes?.length
+                  ? "Waiting for option-chain snapshot for this expiry."
+                  : "No CE·PE cleared the sell-score threshold right now."}
           </div>
         )}
           </>
@@ -973,6 +1025,15 @@ export default function PositionsPanel({
       {lastRefresh && (
         <div className="text-[10px] text-slate-400 text-right">Last refresh {new Date(lastRefresh).toLocaleTimeString()}</div>
       )}
+
+      <PositionsAnalyzeModal
+        open={analyzeOpen}
+        onClose={() => setAnalyzeOpen(false)}
+        rows={rows}
+        spotByIndex={spotByIndex}
+        fallbackSpot={spot}
+        oiByIndex={{ [activeIndex]: current }}
+      />
     </div>
   );
 }

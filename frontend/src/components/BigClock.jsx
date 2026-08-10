@@ -256,33 +256,78 @@ export default function BigClock({ compact = false }) {
   }
 
   return (
-    <div className={`p-3 sm:p-4 border-t border-slate-200 ${inAlertWindow ? "bg-rose-50" : closedTone ? "bg-emerald-50" : "bg-transparent"}`}>
-      <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Local (IST)</div>
+    <div
+      className={`relative p-3 sm:p-4 border-t overflow-hidden ${
+        inAlertWindow
+          ? "border-rose-200"
+          : closedTone
+            ? "border-emerald-200"
+            : "border-slate-200"
+      }`}
+    >
+      {/* Atmospheric market-desk backdrop */}
       <div
-        className={`w-full rounded-md p-2 sm:p-3 text-center flex flex-col items-center justify-center ${
+        aria-hidden
+        className={`pointer-events-none absolute inset-0 ${
           inAlertWindow
-            ? "bg-rose-600 text-white"
+            ? "bg-[radial-gradient(ellipse_at_top,_#fecaca_0%,_#fff1f2_45%,_#ffffff_100%)]"
             : closedTone
-              ? "bg-emerald-100 text-emerald-900"
-              : "bg-slate-100 text-slate-900"
+              ? "bg-[radial-gradient(ellipse_at_top,_#a7f3d0_0%,_#ecfdf5_40%,_#ffffff_100%)]"
+              : "bg-[radial-gradient(ellipse_at_30%_0%,_#bbf7d0_0%,_transparent_50%),radial-gradient(ellipse_at_80%_100%,_#fed7aa_0%,_transparent_45%),linear-gradient(165deg,#f8fafc_0%,#ecfdf5_55%,#fff7ed_100%)]"
         }`}
-        data-testid="big-clock"
-      >
-        <div className="flex items-baseline gap-3">
-          <div className="font-mono-data font-bold tracking-tight tabular-nums text-2xl sm:text-3xl md:text-4xl">
-            {hour12}:{pad(m)}
-          </div>
-          <div className="font-mono-data font-medium tracking-tight tabular-nums text-lg text-slate-500 hidden sm:inline">:{pad(s)}</div>
-          <div className="text-sm sm:text-base font-semibold ml-1">{ampm}</div>
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(90deg, transparent, transparent 11px, rgba(15,23,42,0.04) 11px, rgba(15,23,42,0.04) 12px)",
+        }}
+      />
+      <div className="relative">
+        <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 mb-1.5 font-semibold">
+          Local (IST)
         </div>
+        <div
+          className={`w-full rounded-md p-3 sm:p-4 text-center flex flex-col items-center justify-center border shadow-sm ${
+            inAlertWindow
+              ? "bg-rose-600/95 text-white border-rose-500"
+              : closedTone
+                ? "bg-white/80 text-emerald-950 border-emerald-200 backdrop-blur-sm"
+                : "bg-white/75 text-slate-900 border-emerald-200/80 backdrop-blur-sm"
+          }`}
+          data-testid="big-clock"
+        >
+          <div className="flex items-baseline gap-2 sm:gap-3">
+            <div className="font-mono-data font-bold tracking-tight tabular-nums text-3xl sm:text-4xl md:text-5xl">
+              {hour12}:{pad(m)}
+            </div>
+            <div
+              className={`font-mono-data font-medium tracking-tight tabular-nums text-lg sm:text-xl hidden sm:inline ${
+                inAlertWindow ? "text-white/70" : "text-slate-500"
+              }`}
+            >
+              :{pad(s)}
+            </div>
+            <div
+              className={`text-sm sm:text-base font-bold ml-0.5 px-1.5 py-0.5 rounded-sm ${
+                inAlertWindow
+                  ? "bg-white/15"
+                  : "bg-emerald-600/10 text-emerald-900"
+              }`}
+            >
+              {ampm}
+            </div>
+          </div>
 
-        {inAlertWindow ? (
-          <div className="text-xs sm:text-sm mt-1 font-semibold text-white/90">{statusLine}</div>
-        ) : closedTone ? (
-          <div className="text-xs sm:text-sm mt-1 font-semibold text-emerald-900">{statusLine}</div>
-        ) : (
-          <div className="text-xs sm:text-sm mt-1 text-slate-500">{statusLine}</div>
-        )}
+          {inAlertWindow ? (
+            <div className="text-xs sm:text-sm mt-2 font-semibold text-white/95">{statusLine}</div>
+          ) : closedTone ? (
+            <div className="text-xs sm:text-sm mt-2 font-semibold text-emerald-900">{statusLine}</div>
+          ) : (
+            <div className="text-xs sm:text-sm mt-2 text-slate-600 font-medium">{statusLine}</div>
+          )}
+        </div>
       </div>
     </div>
   );

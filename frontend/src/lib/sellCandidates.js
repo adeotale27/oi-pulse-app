@@ -400,16 +400,16 @@ export function computeSellCandidates({
 
   let ce = [];
   let pe = [];
-  if (tradeable) {
-    for (const s of strikes) {
-      const c = scoreStrike(s, "CE");
-      if (c && c.score >= 30) ce.push(c);
-      const p = scoreStrike(s, "PE");
-      if (p && p.score >= 30) pe.push(p);
-    }
-    ce.sort((a, b) => b.score - a.score);
-    pe.sort((a, b) => b.score - a.score);
+  // Always score when we have a chain — even on Cautious days — so the desk
+  // still sees ranked strikes; the verdict badge remains the go/no-go gate.
+  for (const s of strikes) {
+    const c = scoreStrike(s, "CE");
+    if (c && c.score >= (tradeable ? 30 : 20)) ce.push(c);
+    const p = scoreStrike(s, "PE");
+    if (p && p.score >= (tradeable ? 30 : 20)) pe.push(p);
   }
+  ce.sort((a, b) => b.score - a.score);
+  pe.sort((a, b) => b.score - a.score);
 
   return {
     verdict: { tradeable, reasons, advisories, dangerousQuadrant },

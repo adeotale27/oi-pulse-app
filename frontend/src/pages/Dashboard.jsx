@@ -681,8 +681,9 @@ export default function Dashboard() {
     }
   }, [alarm, push, activeIndex]);
 
-  // ---- Straddle poll interval (from API settings) ----
+  // ---- Straddle + Positions poll intervals (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(60000); // default 1 minute
+  const [positionsPollMs, setPositionsPollMs] = useState(30000);
 
   // Prefetch expiries for every enabled index once settings land (keeps SENSEX warm on NIFTY tab).
   useEffect(() => {
@@ -708,6 +709,10 @@ export default function Dashboard() {
         if (res.data.straddle_poll_interval_seconds) {
           const next = res.data.straddle_poll_interval_seconds * 1000;
           setStraddlePollMs((prev) => (prev === next ? prev : next));
+        }
+        if (typeof res.data.positions_poll_interval_seconds === "number") {
+          const next = res.data.positions_poll_interval_seconds * 1000;
+          setPositionsPollMs((prev) => (prev === next ? prev : next));
         }
         if (Array.isArray(res.data.visible_pages)) {
           setVisiblePages(res.data.visible_pages);
@@ -744,6 +749,9 @@ export default function Dashboard() {
       }
       if (typeof d.straddle_poll_interval_seconds === "number") {
         setStraddlePollMs(d.straddle_poll_interval_seconds * 1000);
+      }
+      if (typeof d.positions_poll_interval_seconds === "number") {
+        setPositionsPollMs(d.positions_poll_interval_seconds * 1000);
       }
       if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
         setEnabledIndices(d.enabled_indices);
@@ -1972,6 +1980,7 @@ export default function Dashboard() {
                       vrp={vrp}
                       expiriesMeta={expiriesMeta}
                       onPinNearestWeekly={handleChangeExpiry}
+                      positionsPollMs={positionsPollMs}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "huge-shift",
@@ -2095,6 +2104,7 @@ export default function Dashboard() {
                       indexStep={INDEX_STEP[activeIndex] || 50}
                       expiriesMeta={expiriesMeta}
                       onPinNearestWeekly={handleChangeExpiry}
+                      positionsPollMs={positionsPollMs}
                       activity={activity}
                       activityFilter={activityFilter}
                       setActivityFilter={setActivityFilter}
@@ -2186,6 +2196,7 @@ export default function Dashboard() {
                     indexStep={INDEX_STEP[activeIndex] || 50}
                     expiriesMeta={expiriesMeta}
                     onPinNearestWeekly={handleChangeExpiry}
+                    positionsPollMs={positionsPollMs}
                     activity={activity}
                     activityFilter={activityFilter}
                     setActivityFilter={setActivityFilter}

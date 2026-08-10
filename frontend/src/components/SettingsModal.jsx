@@ -49,6 +49,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           straddle_enabled_indices: ["NIFTY", "SENSEX"],
           oi_poll_interval_seconds: 15,
           straddle_poll_interval_seconds: 60,
+          positions_poll_interval_seconds: 30,
           market_open_ist: "09:15",
           market_close_ist: "15:40",
           expire_admin_on_market_close: false,
@@ -393,6 +394,29 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                         size="sm"
                         onClick={() => setSettings({ ...settings, straddle_poll_interval_seconds: val })}
                         className="flex-1 text-xs"
+                      >
+                        {val}s
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
+                    Positions Auto-Refresh
+                    <InfoTip title="Positions Poll Interval">
+                      How often the Positions desk reloads open Kite positions. Countdown shows on the Refresh button. Default 30s.
+                    </InfoTip>
+                  </Label>
+                  <div className="flex gap-2">
+                    {[15, 30, 60].map((val) => (
+                      <Button
+                        key={val}
+                        variant={settings.positions_poll_interval_seconds === val ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSettings({ ...settings, positions_poll_interval_seconds: val })}
+                        className="flex-1 text-xs"
+                        data-testid={`positions-poll-${val}`}
                       >
                         {val}s
                       </Button>
