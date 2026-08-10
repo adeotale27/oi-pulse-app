@@ -244,23 +244,22 @@ export default function Sidebar({
       data-testid="sidebar"
       className="oi-sidebar w-72 shrink-0 h-full flex flex-col overflow-y-auto relative z-10"
     >
-      {typeof onCollapse === "function" && (
-        <div className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-slate-200/80 bg-white/95 px-3 py-1.5 dark:border-slate-700/70 dark:bg-slate-900/95 backdrop-blur-sm">
-          <span className="text-[10px] uppercase tracking-widest text-slate-500">Sidebar</span>
-          <button
-            type="button"
-            data-testid="btn-hide-sidebar"
-            onClick={onCollapse}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            title="Hide sidebar"
-          >
-            Hide
-          </button>
-        </div>
-      )}
-      {/* Index search / switcher */}
+      {/* Index search / switcher — Hide sits on the INDEX row (no "Sidebar" label when open) */}
       <div className="p-4 border-b border-slate-200/80 dark:border-slate-700/70">
-        <Label className="text-[10px] uppercase tracking-widest text-slate-500">Index</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label className="text-[10px] uppercase tracking-widest text-slate-500">Index</Label>
+          {typeof onCollapse === "function" && (
+            <button
+              type="button"
+              data-testid="btn-hide-sidebar"
+              onClick={onCollapse}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              title="Hide sidebar"
+            >
+              Hide
+            </button>
+          )}
+        </div>
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {indices.map((idx) => {
             const active = idx === activeIndex;

@@ -5,11 +5,14 @@ import useClickOutside from "@/hooks/useClickOutside";
 /**
  * Progressive tab overflow: as width shrinks, trailing tabs move into a
  * trailing "More" dropdown one-by-one (never dump all tabs at once).
+ *
+ * Tabs are drag-and-drop reorderable when `onReorder` is provided.
  */
 export default function OverflowTabBar({
   tabs = [],
   value,
   onChange,
+  onReorder,
   className = "",
   testId = "dashboard-tab-bar",
 }) {
@@ -18,9 +21,14 @@ export default function OverflowTabBar({
   const moreMeasureRef = useRef(null);
   const [visibleCount, setVisibleCount] = useState(tabs.length);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const skipClickRef = useRef(false);
   const menuRef = useRef(null);
 
   useClickOutside(menuRef, () => setMenuOpen(false), menuOpen);
+
+  const canReorder = typeof onReorder === "function";
 
   const recalculate = useCallback(() => {
     const wrap = wrapRef.current;
@@ -84,12 +92,73 @@ export default function OverflowTabBar({
   const overflow = useMemo(() => tabs.slice(visibleCount), [tabs, visibleCount]);
   const activeInOverflow = overflow.some((t) => t.v === value);
 
-  const triggerCls = (active) =>
-    `rounded-none border-b-2 px-2.5 sm:px-3 py-2 text-[13px] sm:text-sm font-medium whitespace-nowrap transition-colors ${
-      active
-        ? "border-emerald-500 text-emerald-800 dark:border-emerald-400 dark:text-emerald-300 bg-transparent shadow-none"
-        : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+  const triggerCls = (active, id) => {
+    const isOver = canReorder && overId === id && draggingId && draggingId !== id;
+    const isDrag = canReorder && draggingId === id;
+    return `rounded-none border-b-2 px-2.5 sm:px-3 py-2 text-[13px] sm:text-sm font-medium whitespace-nowrap transition-colors ${
+      canReorder ? "cursor-grab active:cursor-grabbing" : ""
+    } ${isDrag ? "opacity-40" : ""} ${
+      isOver
+        ? "border-emerald-400 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
+        : active
+          ? "border-emerald-500 text-emerald-800 dark:border-emerald-400 dark:text-emerald-300 bg-transparent shadow-none"
+          : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
     }`;
+  };
+
+  const onDragStart = (e, id) => {
+    if (!canReorder) return;
+    skipClickRef.current = false;
+    setDraggingId(id);
+    try {
+      e.dataTransfer.setData("text/plain", id);
+      e.dataTransfer.effectAllowed = "move";
+    } catch {
+      /* noop */
+    }
+  };
+
+  const onDragEnd = () => {
+    setDraggingId(null);
+    setOverId(null);
+  };
+
+  const onDragOverTab = (e, id) => {
+    if (!canReorder || !draggingId) return;
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "move";
+    } catch {
+      /* noop */
+    }
+    if (overId !== id) setOverId(id);
+  };
+
+  const onDropTab = (e, dropId) => {
+    if (!canReorder) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let from = draggingId;
+    try {
+      from = e.dataTransfer.getData("text/plain") || from;
+    } catch {
+      /* noop */
+    }
+    setDraggingId(null);
+    setOverId(null);
+    if (from && dropId && from !== dropId) {
+      skipClickRef.current = true;
+      onReorder(from, dropId);
+    }
+  };
+
+  const onTabClick = (id) => {
+    if (skipClickRef.current) {
+      skipClickRef.current = false;
+      return;
+    }
+    onChange?.(id);
+  };
 
   return (
     <div ref={wrapRef} className={`relative min-w-0 flex-1 overflow-visible ${className}`} data-testid={testId}>
@@ -114,7 +183,11 @@ export default function OverflowTabBar({
         </div>
       </div>
 
-      <div className="flex items-end gap-1 border-b border-slate-200/80 dark:border-slate-700/80 min-w-0 overflow-visible">
+      <div
+        className="flex items-end gap-1 border-b border-slate-200/80 dark:border-slate-700/80 min-w-0 overflow-visible"
+        role="tablist"
+        aria-label="Dashboard views — drag tabs to reorder"
+      >
         {visible.map((t) => (
           <button
             key={t.v}
@@ -122,8 +195,17 @@ export default function OverflowTabBar({
             role="tab"
             aria-selected={t.v === value}
             data-testid={`tab-${t.v}`}
-            onClick={() => onChange?.(t.v)}
-            className={triggerCls(t.v === value)}
+            draggable={canReorder}
+            onDragStart={(e) => onDragStart(e, t.v)}
+            onDragEnd={onDragEnd}
+            onDragOver={(e) => onDragOverTab(e, t.v)}
+            onDragLeave={() => {
+              if (overId === t.v) setOverId(null);
+            }}
+            onDrop={(e) => onDropTab(e, t.v)}
+            onClick={() => onTabClick(t.v)}
+            title={canReorder ? "Drag to reorder · click to open" : undefined}
+            className={triggerCls(t.v === value, t.v)}
           >
             {t.l}
           </button>
@@ -135,7 +217,9 @@ export default function OverflowTabBar({
               type="button"
               data-testid="tab-more"
               onClick={() => setMenuOpen((v) => !v)}
-              className={`${triggerCls(activeInOverflow)} inline-flex items-center gap-1`}
+              className={`${triggerCls(activeInOverflow, "__more__")} inline-flex items-center gap-1 ${
+                canReorder ? "cursor-pointer" : ""
+              }`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               title={`${overflow.length} more page${overflow.length === 1 ? "" : "s"}`}
@@ -157,11 +241,23 @@ export default function OverflowTabBar({
                     type="button"
                     role="menuitem"
                     data-testid={`tab-more-${t.v}`}
+                    draggable={canReorder}
+                    onDragStart={(e) => onDragStart(e, t.v)}
+                    onDragEnd={onDragEnd}
+                    onDragOver={(e) => onDragOverTab(e, t.v)}
+                    onDrop={(e) => onDropTab(e, t.v)}
                     onClick={() => {
-                      onChange?.(t.v);
+                      onTabClick(t.v);
                       setMenuOpen(false);
                     }}
+                    title={canReorder ? "Drag to reorder · click to open" : undefined}
                     className={`flex w-full items-center px-3 py-2 text-left text-sm ${
+                      canReorder ? "cursor-grab active:cursor-grabbing" : ""
+                    } ${draggingId === t.v ? "opacity-40" : ""} ${
+                      overId === t.v && draggingId && draggingId !== t.v
+                        ? "bg-emerald-50 dark:bg-emerald-950/40"
+                        : ""
+                    } ${
                       t.v === value
                         ? "bg-emerald-50 font-semibold text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
                         : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
