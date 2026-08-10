@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Building2, ChevronDown, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
-import useClickOutside from "@/hooks/useClickOutside";
+import usePortaledMenu from "@/hooks/usePortaledMenu";
 import { toast } from "sonner";
+
+const MENU_WIDTH = 352; // w-[22rem]
 
 const fmtCr = (n) => {
   if (n == null || Number.isNaN(Number(n))) return "—";
@@ -71,9 +74,17 @@ export default function FiiDiiBadge({ isAdmin = false }) {
   const [snap, setSnap] = useState(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const wrapRef = useRef(null);
+  const anchorRef = useRef(null);
+  const panelRef = useRef(null);
   const close = useCallback(() => setOpen(false), []);
-  useClickOutside(wrapRef, close, open);
+  const { pos, place } = usePortaledMenu({
+    open,
+    onClose: close,
+    anchorRef,
+    panelRef,
+    width: MENU_WIDTH,
+    align: "left",
+  });
 
   const load = useCallback(async () => {
     try {
@@ -133,14 +144,22 @@ export default function FiiDiiBadge({ isAdmin = false }) {
     }
   };
 
+  const toggle = () => {
+    setOpen((v) => {
+      if (!v) place();
+      return !v;
+    });
+  };
+
   return (
-    <div className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`} data-testid="fiidii-badge-wrap" ref={wrapRef}>
+    <div className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`} data-testid="fiidii-badge-wrap">
       <div
+        ref={anchorRef}
         role="button"
         tabIndex={0}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         onKeyDown={(e) => {
-          if (e.key === "Enter") setOpen((v) => !v);
+          if (e.key === "Enter") toggle();
         }}
         data-testid="fiidii-badge"
         className={`${tileBase} ${toneCls} ${snap?.stale ? "ring-1 ring-amber-400/70" : ""}`}
@@ -149,6 +168,8 @@ export default function FiiDiiBadge({ isAdmin = false }) {
             ? "Capital Market FII / DII — prior session print (awaiting today's NSE update)"
             : "Capital Market FII / DII (₹ crores)"
         }
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
           <Building2 className="w-3 h-3" />
@@ -196,10 +217,13 @@ export default function FiiDiiBadge({ isAdmin = false }) {
         )}
       </div>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
+          ref={panelRef}
           data-testid="fiidii-dropdown"
-          className="absolute left-0 top-full z-[80] mt-1 w-[22rem] overflow-hidden rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"
+          role="menu"
+          className="fixed z-[240] w-[22rem] overflow-hidden rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"
+          style={{ top: pos.top, left: pos.left }}
         >
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
             <span>Capital Market · ₹ crores</span>
@@ -255,7 +279,8 @@ export default function FiiDiiBadge({ isAdmin = false }) {
               </a>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

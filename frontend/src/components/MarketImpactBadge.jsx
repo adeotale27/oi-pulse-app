@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, TrendingUp, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
-import useClickOutside from "@/hooks/useClickOutside";
+import usePortaledMenu from "@/hooks/usePortaledMenu";
 
 /**
  * MarketImpactBadge — small header tile that shows a dropdown of upcoming
@@ -20,12 +21,22 @@ const INDEX_LABEL = {
   SENSEX: "Sensex",
 };
 
+const MENU_WIDTH = 288;
+
 export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
   const [events, setEvents] = useState([]);
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
+  const anchorRef = useRef(null);
+  const panelRef = useRef(null);
   const close = useCallback(() => setOpen(false), []);
-  useClickOutside(wrapRef, close, open);
+  const { pos, place } = usePortaledMenu({
+    open,
+    onClose: close,
+    anchorRef,
+    panelRef,
+    width: MENU_WIDTH,
+    align: "right",
+  });
 
   useEffect(() => {
     if (!activeIndex) return;
@@ -91,7 +102,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
 
   if (!primary) {
     return (
-      <div className="relative w-full h-full" data-testid="market-impact-badge-wrap" ref={wrapRef}>
+      <div className="relative w-full h-full" data-testid="market-impact-badge-wrap">
         <div
           role="button"
           tabIndex={0}
@@ -118,22 +129,31 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
     );
   }
 
+  const toggle = () => {
+    setOpen((v) => {
+      if (!v) place();
+      return !v;
+    });
+  };
+
   return (
     <div
       className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`}
       data-testid="market-impact-badge-wrap"
-      ref={wrapRef}
     >
       <div
+        ref={anchorRef}
         role="button"
         tabIndex={0}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         onKeyDown={(e) => {
-          if (e.key === "Enter") setOpen((v) => !v);
+          if (e.key === "Enter") toggle();
         }}
         data-testid="market-impact-badge"
         className={`${tileBase} cursor-pointer ${toneCls}`}
         title={`${impactful.length} high-impact events for ${activeIndex}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
           {tone === "red" ? (
@@ -176,10 +196,13 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
         </div>
       </div>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
+          ref={panelRef}
           data-testid="market-impact-dropdown"
-          className="absolute right-0 top-full mt-1 z-[80] w-72 bg-white dark:bg-slate-800 rounded-md shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
+          role="menu"
+          className="fixed z-[240] w-72 bg-white dark:bg-slate-800 rounded-md shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
+          style={{ top: pos.top, left: pos.left }}
         >
           <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
             <span>Upcoming High-Impact Events</span>
@@ -189,7 +212,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setOpen(false);
+                  close();
                   onOpenIndexEvents();
                 }}
                 className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline font-semibold"
@@ -255,7 +278,8 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
               );
             })}
           </ul>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

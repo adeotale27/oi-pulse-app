@@ -1,20 +1,31 @@
 import { useMemo, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, CalendarClock, ChevronDown } from "lucide-react";
 import { upcomingEvents, eventsWithinDays, eventBadgeTone } from "@/lib/econCalendar";
 import { formatDatePretty } from "@/lib/holidays";
-import useClickOutside from "@/hooks/useClickOutside";
+import usePortaledMenu from "@/hooks/usePortaledMenu";
 
 // Shows the next major event(s) that could move the market.
 // - If 1 event within 3 days: shows it inline.
 // - If multiple: shows the earliest inline + a dropdown chevron listing others.
 // - Red boxed if any event is today or tomorrow.
+const MENU_WIDTH = 288;
+
 export default function MarketEventsBadge({ onClick }) {
   const near = useMemo(() => eventsWithinDays(3), []);
   const upcoming = useMemo(() => upcomingEvents(10), []);
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
+  const anchorRef = useRef(null);
+  const panelRef = useRef(null);
   const close = useCallback(() => setOpen(false), []);
-  useClickOutside(wrapRef, close, open);
+  const { pos, place } = usePortaledMenu({
+    open,
+    onClose: close,
+    anchorRef,
+    panelRef,
+    width: MENU_WIDTH,
+    align: "right",
+  });
 
   const primary = near[0] || upcoming[0];
   const tileBase =
@@ -58,16 +69,30 @@ export default function MarketEventsBadge({ onClick }) {
   // Dropdown list = upcoming events beyond the primary, capped 8.
   const extras = upcoming.filter((e) => !(e.date === primary.date && e.name === primary.name)).slice(0, 8);
 
+  const toggle = () => {
+    if (!extras.length) {
+      onClick?.();
+      return;
+    }
+    setOpen((v) => {
+      if (!v) place();
+      return !v;
+    });
+  };
+
   return (
-    <div className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`} data-testid="events-badge-wrap" ref={wrapRef}>
+    <div className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`} data-testid="events-badge-wrap">
       <div
+        ref={anchorRef}
         role="button"
         tabIndex={0}
-        onClick={() => { if (extras.length) setOpen((v) => !v); else onClick?.(); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { if (extras.length) setOpen((v) => !v); else onClick?.(); } }}
+        onClick={toggle}
+        onKeyDown={(e) => { if (e.key === "Enter") toggle(); }}
         data-testid="events-badge"
         className={`${tileBase} cursor-pointer ${cls}`}
         title={`${primary.name} — ${formatDatePretty(primary.date)}`}
+        aria-haspopup={extras.length > 0 ? "menu" : undefined}
+        aria-expanded={extras.length > 0 ? open : undefined}
       >
         <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
           {urgent ? <AlertTriangle className="w-3 h-3" /> : <CalendarClock className="w-3 h-3" />}
@@ -87,14 +112,17 @@ export default function MarketEventsBadge({ onClick }) {
         </div>
       </div>
 
-      {open && extras.length > 0 && (
+      {open && extras.length > 0 && typeof document !== "undefined" && createPortal(
         <div
+          ref={panelRef}
           data-testid="events-dropdown"
-          className="absolute right-0 top-full mt-1 w-72 rounded-md border border-slate-200 bg-white shadow-xl z-[80] max-h-96 overflow-y-auto"
+          role="menu"
+          className="fixed w-72 rounded-md border border-slate-200 bg-white shadow-xl z-[240] max-h-96 overflow-y-auto"
+          style={{ top: pos.top, left: pos.left }}
         >
           <div className="px-3 py-2 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 flex items-center justify-between">
             <span>Upcoming market-moving events</span>
-            <button type="button" className="text-slate-400 hover:text-slate-800" onClick={() => setOpen(false)}>✕</button>
+            <button type="button" className="text-slate-400 hover:text-slate-800" onClick={close}>✕</button>
           </div>
           <div className="divide-y divide-slate-100">
             {extras.map((e) => (
@@ -112,13 +140,14 @@ export default function MarketEventsBadge({ onClick }) {
             <button
               type="button"
               className="text-[10px] text-sky-600 hover:underline"
-              onClick={() => { setOpen(false); onClick?.(); }}
+              onClick={() => { close(); onClick?.(); }}
               data-testid="events-dropdown-more"
             >
               See full calendar →
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
