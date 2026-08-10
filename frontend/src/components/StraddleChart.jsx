@@ -11,12 +11,19 @@ import {
 } from "recharts";
 import { fetchStraddle, fetchStraddleHistory } from "../lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
+import { sessionAnchorDateIST } from "@/lib/holidays";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const SESSION_OPEN_MIN = 9 * 60 + 15; // 09:15 IST
 
 function formatTimeShort(ts) {
   try {
-    return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(ts));
   } catch {
     return "-";
   }
@@ -32,7 +39,7 @@ function daysToExpiryLabel(expiryISO) {
     const [y, m, d] = String(expiryISO).split("-").map(Number);
     if (!y || !m || !d) return null;
     // Expiry close ~15:30 IST
-    const expiryMs = Date.UTC(y, m - 1, d, 10, 0) ; // 15:30 IST = 10:00 UTC
+    const expiryMs = Date.UTC(y, m - 1, d, 10, 0); // 15:30 IST = 10:00 UTC
     const now = Date.now();
     const days = (expiryMs - now) / (24 * 60 * 60 * 1000);
     if (!Number.isFinite(days)) return null;
@@ -102,9 +109,39 @@ function toIstDateString(ts) {
 }
 
 function istDateToUtcMs(dateStr, hour, minute) {
-  const [year, month, day] = dateStr.split("-").map(Number);
+  const [year, month, day] = String(dateStr || "").split("-").map(Number);
   if (!year || !month || !day) return null;
   return Date.UTC(year, month - 1, day, hour, minute) - IST_OFFSET_MS;
+}
+
+/** Session window [09:15, 15:40] IST for a trade date. */
+function sessionWindowMs(tradeDate) {
+  const start = istDateToUtcMs(tradeDate, 9, 15);
+  const end = istDateToUtcMs(tradeDate, 15, 40);
+  if (start == null || end == null) return null;
+  return { start, end };
+}
+
+/** Keep only samples inside the NSE cash/F&O session for `tradeDate`. */
+function filterSessionPoints(arr, tradeDate) {
+  const win = sessionWindowMs(tradeDate);
+  if (!win || !arr?.length) return [];
+  // Allow 09:14 pre-open poll tick through to first 09:15 bucket.
+  const lo = win.start - 60_000;
+  return arr
+    .filter((p) => Number.isFinite(p.ts) && p.ts >= lo && p.ts <= win.end)
+    .map((p) => (p.ts < win.start ? { ...p, ts: win.start } : p))
+    .sort((a, b) => a.ts - b.ts);
+}
+
+function buildSessionTicks(start, end) {
+  if (start == null || end == null || end <= start) return [start].filter(Boolean);
+  const span = end - start;
+  const step = span <= 90 * 60_000 ? 15 * 60_000 : 45 * 60_000;
+  const ticks = [start];
+  for (let t = start + step; t < end - step / 2; t += step) ticks.push(t);
+  if (ticks[ticks.length - 1] !== end) ticks.push(end);
+  return ticks;
 }
 
 export default function StraddleChart({
@@ -118,8 +155,26 @@ export default function StraddleChart({
 }) {
   const [points, setPoints] = useState([]);
   const [meta, setMeta] = useState(null);
+  const [tradeDate, setTradeDate] = useState(() => sessionAnchorDateIST(new Date(), SESSION_OPEN_MIN));
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const wsRef = useRef(null);
+  const tradeDateRef = useRef(tradeDate);
   const bucketMs = Math.max(30_000, Number(pollMs) || 60_000);
+
+  useEffect(() => {
+    tradeDateRef.current = tradeDate;
+  }, [tradeDate]);
+
+  // Advance the right edge during live session; also flip session date at open.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now();
+      setNowMs(now);
+      const nextAnchor = sessionAnchorDateIST(new Date(now), SESSION_OPEN_MIN);
+      setTradeDate((prev) => (prev === nextAnchor ? prev : nextAnchor));
+    }, 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   const isMarketOpen = () => {
     const now = new Date();
@@ -135,8 +190,18 @@ export default function StraddleChart({
 
   const pushLivePoint = (raw) => {
     const now = raw.ts ? (typeof raw.ts === "number" ? raw.ts : Date.parse(raw.ts)) : Date.now();
+    if (!Number.isFinite(now)) return;
+
+    const pointDate = toIstDateString(now);
+    const activeDate = tradeDateRef.current;
+    // Never stitch yesterday's close onto today's live series.
+    if (pointDate !== activeDate) return;
+
+    const win = sessionWindowMs(activeDate);
+    if (!win || now < win.start - 60_000 || now > win.end) return;
+
     const point = {
-      ts: now,
+      ts: Math.max(now, win.start),
       premium: raw.premium,
       underlying: raw.underlying,
       strike: raw.atm ?? raw.strike,
@@ -154,7 +219,8 @@ export default function StraddleChart({
       premium: raw.premium,
     });
     setPoints((prev) => {
-      const next = upsertBucketed(prev, point, bucketMs);
+      const sessionPrev = filterSessionPoints(prev, activeDate);
+      const next = upsertBucketed(sessionPrev, point, bucketMs);
       if (next.length > maxPoints) return next.slice(next.length - maxPoints);
       return next;
     });
@@ -213,14 +279,19 @@ export default function StraddleChart({
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, expiry, position, qty, pollMs, maxPoints, useWs, bucketMs]);
+  }, [index, expiry, position, qty, pollMs, maxPoints, useWs, bucketMs, tradeDate]);
 
   useEffect(() => {
     let cancelled = false;
     const loadHistory = async () => {
       try {
-        const h = await fetchStraddleHistory(index, null, { expiry });
+        const h = await fetchStraddleHistory(index, null, { expiry, date: tradeDate });
         if (cancelled) return;
+        const resolvedDate = h.trade_date || tradeDate;
+        if (resolvedDate && resolvedDate !== tradeDate) {
+          setTradeDate(resolvedDate);
+        }
+        const sessionDate = resolvedDate || tradeDate;
         const arr = (h.history || []).map((s) => ({
           ts: typeof s.ts === "number" ? s.ts : Date.parse(s.ts),
           premium: s.premium,
@@ -231,7 +302,10 @@ export default function StraddleChart({
           strike: s.atm,
           synthetic: s.underlying + ((s.ce_ltp || 0) - (s.pe_ltp || 0)),
         }));
-        const sliced = downsampleToBuckets(arr, bucketMs).slice(-maxPoints);
+        const sliced = downsampleToBuckets(
+          filterSessionPoints(arr, sessionDate),
+          bucketMs,
+        ).slice(-maxPoints);
         setPoints(sliced);
         if (sliced.length) {
           const last = sliced[sliced.length - 1];
@@ -251,29 +325,43 @@ export default function StraddleChart({
     return () => {
       cancelled = true;
     };
-  }, [index, expiry, maxPoints, bucketMs]);
+  }, [index, expiry, maxPoints, bucketMs, tradeDate]);
 
-  const chartDate = useMemo(() => {
-    const sourceTs = points.length ? points[0].ts : Date.now();
-    const tradeDate = toIstDateString(sourceTs) || toIstDateString(Date.now());
-    const dayStart = istDateToUtcMs(tradeDate, 9, 15);
-    const dayEnd = istDateToUtcMs(tradeDate, 15, 40);
-    let end = dayStart + 15 * 60000;
-    if (points.length) {
-      end = Math.min(dayEnd, Math.max(end, points[points.length - 1].ts + bucketMs));
-    }
-    return {
-      start: dayStart,
-      end,
-      label: "09:15 IST → live",
+  const chartWindow = useMemo(() => {
+    const win = sessionWindowMs(tradeDate) || {
+      start: istDateToUtcMs(sessionAnchorDateIST(), 9, 15),
+      end: istDateToUtcMs(sessionAnchorDateIST(), 15, 40),
     };
-  }, [points, bucketMs]);
+    const liveToday = toIstDateString(nowMs) === tradeDate;
+    let end = win.end;
+    if (liveToday && nowMs >= win.start && nowMs < win.end) {
+      // Live session: right edge tracks "now" (with a small pad), like FinanceDeft.
+      end = Math.min(win.end, Math.max(win.start + 15 * 60_000, nowMs + bucketMs));
+      if (points.length) {
+        end = Math.max(end, Math.min(win.end, points[points.length - 1].ts + bucketMs));
+      }
+    }
+    const start = win.start;
+    const ticks = buildSessionTicks(start, end);
+    const isLive = liveToday && nowMs >= win.start && nowMs <= win.end + 60_000;
+    return {
+      start,
+      end,
+      ticks,
+      label: isLive ? "09:15 IST → live" : `09:15 – 15:40 IST · ${tradeDate}`,
+    };
+  }, [tradeDate, nowMs, bucketMs, points]);
+
+  const sessionPoints = useMemo(
+    () => filterSessionPoints(points, tradeDate),
+    [points, tradeDate],
+  );
 
   const yDomain = useMemo(() => {
-    if (!points.length) return [0, 1];
+    if (!sessionPoints.length) return [0, 1];
     let lo = Infinity;
     let hi = -Infinity;
-    for (const p of points) {
+    for (const p of sessionPoints) {
       const v = Number(p.premium);
       if (Number.isFinite(v)) {
         if (v < lo) lo = v;
@@ -283,12 +371,13 @@ export default function StraddleChart({
     if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [0, 1];
     const pad = Math.max(0.5, (hi - lo) * 0.12);
     return [Math.max(0, lo - pad), hi + pad];
-  }, [points]);
+  }, [sessionPoints]);
 
-  const lastPoint = points.length ? points[points.length - 1] : null;
+  const lastPoint = sessionPoints.length ? sessionPoints[sessionPoints.length - 1] : null;
   const dte = daysToExpiryLabel(expiry);
   const lastUpdated = meta?.ts
     ? new Date(meta.ts).toLocaleString([], {
+        timeZone: "Asia/Kolkata",
         day: "2-digit",
         month: "short",
         year: "numeric",
@@ -297,8 +386,8 @@ export default function StraddleChart({
       })
     : null;
   const synthetic =
-    meta && meta.strike != null && meta.ce_ltp != null && meta.pe_ltp != null
-      ? meta.strike + (meta.ce_ltp - meta.pe_ltp)
+    meta && meta.underlying != null && meta.ce_ltp != null && meta.pe_ltp != null
+      ? Number(meta.underlying) + (Number(meta.ce_ltp) - Number(meta.pe_ltp))
       : null;
 
   return (
@@ -313,6 +402,7 @@ export default function StraddleChart({
             <div className="text-xs font-mono text-slate-500">
               {meta
                 ? new Date(meta.ts || Date.now()).toLocaleTimeString([], {
+                    timeZone: "Asia/Kolkata",
                     hour: "numeric",
                     minute: "2-digit",
                     second: "2-digit",
@@ -327,22 +417,22 @@ export default function StraddleChart({
 
         <div className="px-4 py-3 h-[340px] bg-white relative">
           <ResponsiveContainer>
-            <LineChart data={points} margin={{ top: 12, right: 28, left: 0, bottom: 22 }}>
+            <LineChart data={sessionPoints} margin={{ top: 12, right: 36, left: 0, bottom: 22 }}>
               <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical={false} />
               <XAxis
                 dataKey="ts"
                 type="number"
                 scale="time"
-                domain={[chartDate.start, chartDate.end]}
+                domain={[chartWindow.start, chartWindow.end]}
+                ticks={chartWindow.ticks}
                 tickFormatter={formatTimeShort}
                 tick={{ fontSize: 11, fill: "#94a3b8" }}
                 stroke="#e2e8f0"
                 axisLine={false}
                 tickLine={false}
-                tickCount={6}
-                interval="preserveStartEnd"
+                allowDataOverflow
                 label={{
-                  value: chartDate.label,
+                  value: chartWindow.label,
                   position: "insideBottomRight",
                   offset: -8,
                   fill: "#94a3b8",
@@ -367,6 +457,7 @@ export default function StraddleChart({
                 dot={false}
                 strokeWidth={2.25}
                 isAnimationActive={false}
+                connectNulls={false}
               />
               {lastPoint && lastPoint.premium != null && (
                 <ReferenceDot

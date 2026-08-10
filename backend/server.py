@@ -14,7 +14,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta, date, time as dtime
 
 # Delay motor client creation until startup to avoid heavy connection objects during import.
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -1452,6 +1452,53 @@ def _resolve_straddle_trade_date(requested_date: Optional[str] = None) -> date:
     return session_anchor_date(now)
 
 
+def _parse_straddle_ts(value) -> Optional[datetime]:
+    """Parse a straddle sample timestamp into an aware UTC datetime."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        # ms vs seconds heuristic
+        ts = float(value)
+        if ts > 1e12:
+            ts = ts / 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        text = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _filter_straddle_session_docs(docs: list, trade_date: date) -> list:
+    """Keep only samples inside the NSE session (09:15–15:40 IST) for trade_date.
+
+    Drops overnight / prior-close points that would otherwise draw a diagonal
+    gap on the intraday straddle chart. Allows a 1-minute pre-open poll tick
+    (09:14) and clamps it to 09:15 so the series starts at market open.
+    """
+    start_utc, end_utc = session_window_utc(trade_date)
+    # session_window_utc end is close-1min from poll close; prefer explicit 15:40 display close.
+    end_utc = datetime.combine(trade_date, dtime(15, 40), IST).astimezone(timezone.utc)
+    preopen_utc = start_utc - timedelta(minutes=1)
+    out = []
+    for doc in docs or []:
+        ts = _parse_straddle_ts(doc.get("ts") or doc.get("created_at"))
+        if ts is None:
+            continue
+        if ts < preopen_utc or ts > end_utc:
+            continue
+        if ts < start_utc:
+            clamped = dict(doc)
+            clamped["ts"] = start_utc.isoformat()
+            out.append(clamped)
+        else:
+            out.append(doc)
+    return out
+
+
 @api_router.get("/straddle/{index_name}/history")
 async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(None, ge=1, le=24*60), expiry: Optional[str] = None, date: Optional[str] = None):
     idx = index_name.upper()
@@ -1475,8 +1522,12 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
             query["trade_date"] = previous_date.isoformat()
             query.pop("created_at", None)
             docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=5000)
+            target_date = previous_date
 
-    return {"index": idx, "trade_date": query["trade_date"], "count": len(docs), "history": docs}
+    # Intraday chart only — never return overnight / prior-close points.
+    docs = _filter_straddle_session_docs(docs, target_date)
+
+    return {"index": idx, "trade_date": target_date.isoformat(), "count": len(docs), "history": docs}
 
 
 @api_router.websocket("/ws/straddle/{index_name}")
