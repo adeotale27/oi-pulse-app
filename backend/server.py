@@ -565,7 +565,7 @@ class ModeIn(BaseModel):
 DASHBOARD_PAGE_KEYS = {
     "oi-change", "open-interest", "strike-table", "sell-candidates",
     "buildup", "positions", "alerts", "activity", "holidays",
-    "straddle", "index-events",
+    "straddle", "index-events", "cas",
 }
 
 class SettingsIn(BaseModel):
@@ -3348,6 +3348,154 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
         "source": "kite_virtual_contract",
         # Never include order payload / credentials in response
     }
+
+
+# ------------------- CAS Rule Expiry (paper / live) -------------------
+class CasSettingsIn(BaseModel):
+    lots: Optional[int] = None
+    ce_otm_steps: Optional[int] = None
+    pe_otm_steps: Optional[int] = None
+    product: Optional[str] = None
+    live_trading: Optional[bool] = None
+    paper_any_day: Optional[bool] = None
+
+
+class CasActivateIn(BaseModel):
+    confirm_live: bool = False
+
+
+class CasBacktestIn(BaseModel):
+    start: Optional[str] = None
+    end: Optional[str] = None
+    lots: Optional[int] = None
+    capital: Optional[float] = None
+
+
+@api_router.get("/cas/status")
+async def cas_status(role: str = Depends(require_desk_user)):
+    """CAS desk status — admin + guest (read-only for guests)."""
+    import cas_bridge
+
+    try:
+        status = await asyncio.to_thread(cas_bridge.get_status, tracker)
+    except Exception as e:
+        logger.warning("cas status failed: %s", e, exc_info=True)
+        raise HTTPException(500, "CAS status unavailable")
+    # Guests never see raw kite errors that might leak broker details
+    if role == "guest":
+        plain = status.get("plain") or {}
+        if plain.get("last_error"):
+            plain = {**plain, "last_error": _sanitize_public_error(plain.get("last_error"))}
+        status = {
+            "plain": plain,
+            "day": status.get("day"),
+            "config": {
+                "lots": (status.get("config") or {}).get("lots"),
+                "live_trading": (status.get("config") or {}).get("live_trading"),
+                "product": (status.get("config") or {}).get("product"),
+                "watch_start": (status.get("config") or {}).get("watch_start"),
+                "watch_end": (status.get("config") or {}).get("watch_end"),
+                "move_window_start": (status.get("config") or {}).get("move_window_start"),
+                "move_window_end": (status.get("config") or {}).get("move_window_end"),
+                "has_token": (status.get("config") or {}).get("has_token"),
+            },
+            "state": {
+                "activated": (status.get("state") or {}).get("activated"),
+                "fired_indexes": (status.get("state") or {}).get("fired_indexes"),
+                "fills": (status.get("state") or {}).get("fills") or [],
+                "last_ltp": (status.get("state") or {}).get("last_ltp") or {},
+                "baseline_close": (status.get("state") or {}).get("baseline_close") or {},
+                "ws_connected": (status.get("state") or {}).get("ws_connected"),
+            },
+            "market_closed": status.get("market_closed"),
+            "role": "guest",
+        }
+    else:
+        status = {**status, "role": "admin"}
+    return status
+
+
+@api_router.post("/cas/settings")
+async def cas_settings(payload: CasSettingsIn, _admin: bool = Depends(require_admin)):
+    """Update CAS lots / paper-live — admin only."""
+    import cas_bridge
+
+    patch = {k: v for k, v in payload.model_dump().items() if v is not None}
+    try:
+        return await asyncio.to_thread(
+            cas_bridge.update_settings, patch, tracker, allow_live=True
+        )
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.warning("cas settings failed: %s", e, exc_info=True)
+        raise HTTPException(500, "Could not update CAS settings")
+
+
+@api_router.post("/cas/activate")
+async def cas_activate(payload: CasActivateIn = CasActivateIn(), _admin: bool = Depends(require_admin)):
+    """Arm the CAS window. Live mode requires confirm_live=true."""
+    import cas_bridge
+
+    try:
+        # Sync first so we know live flag
+        status = await asyncio.to_thread(cas_bridge.get_status, tracker)
+        live = bool((status.get("config") or {}).get("live_trading"))
+        return await asyncio.to_thread(
+            cas_bridge.activate,
+            tracker,
+            by="admin",
+            require_live_confirm=(payload.confirm_live if live else True),
+        )
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.warning("cas activate failed: %s", e, exc_info=True)
+        raise HTTPException(500, "Could not activate CAS")
+
+
+@api_router.post("/cas/deactivate")
+async def cas_deactivate(_admin: bool = Depends(require_admin)):
+    import cas_bridge
+
+    try:
+        return await asyncio.to_thread(cas_bridge.deactivate, tracker, by="admin")
+    except Exception as e:
+        logger.warning("cas deactivate failed: %s", e, exc_info=True)
+        raise HTTPException(500, "Could not deactivate CAS")
+
+
+@api_router.post("/cas/reset")
+async def cas_reset(_admin: bool = Depends(require_admin)):
+    import cas_bridge
+
+    try:
+        return await asyncio.to_thread(cas_bridge.reset_day, tracker)
+    except Exception as e:
+        logger.warning("cas reset failed: %s", e, exc_info=True)
+        raise HTTPException(500, "Could not reset CAS day state")
+
+
+@api_router.post("/cas/backtest")
+async def cas_backtest(payload: CasBacktestIn, role: str = Depends(require_desk_user)):
+    """Run CAS expiry-day backtest (no live orders)."""
+    import cas_bridge
+
+    try:
+        result = await asyncio.to_thread(
+            cas_bridge.run_backtest,
+            tracker,
+            start=payload.start,
+            end=payload.end,
+            lots=payload.lots,
+            capital=payload.capital,
+        )
+        return {"ok": True, "role": role, "result": result}
+    except Exception as e:
+        logger.warning("cas backtest failed: %s", e, exc_info=True)
+        raise HTTPException(500, f"Backtest failed: {type(e).__name__}")
 
 
 # ================================================================
