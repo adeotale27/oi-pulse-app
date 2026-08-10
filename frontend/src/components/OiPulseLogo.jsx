@@ -25,17 +25,6 @@ export default function OiPulseLogo({ className = "w-6 h-6" }) {
       </defs>
 
       <rect x="2" y="2" width="44" height="44" rx="11" ry="11" fill={`url(#${gid})`} />
-      <rect
-        x="3"
-        y="3"
-        width="42"
-        height="42"
-        rx="10"
-        ry="10"
-        fill="none"
-        stroke="rgba(255,255,255,0.22)"
-        strokeWidth="1"
-      />
 
       {/* ECG-style pulse: flat → spike up → spike down → flat → live dot */}
       <path
@@ -47,7 +36,7 @@ export default function OiPulseLogo({ className = "w-6 h-6" }) {
         strokeLinejoin="round"
       />
       <circle cx="39.5" cy="25" r="2.6" fill="#FFFFFF" />
-      <circle cx="39.5" cy="25" r="4.2" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1" />
+      <circle cx="39.5" cy="25" r="4.2" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1" />
     </svg>
   );
 }

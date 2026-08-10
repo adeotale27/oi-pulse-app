@@ -95,7 +95,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             data-testid={`ticker-${t.index}`}
             className={`text-left rounded-md border bg-gradient-to-br ${s.gradient} ${
               isHeader
-                ? "px-2 py-1.5 shrink-0 min-w-[7.25rem] max-w-[9rem]"
+                ? "px-2 py-1.5 shrink-0 min-w-[7.75rem] max-w-[10rem]"
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
@@ -111,11 +111,9 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
                 <span className="truncate">{useCompact ? shortLabel : s.label}</span>
               </div>
-              {!useCompact && (
-                <div className={`text-[10px] font-mono-data tabular-nums shrink-0 ${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
-                  {t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%
-                </div>
-              )}
+              <div className={`text-[10px] font-mono-data tabular-nums shrink-0 ${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
+                {t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%
+              </div>
             </div>
             <div className={`mt-1 ${useCompact ? "space-y-0.5" : "flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3 sm:mt-1.5"}`}>
               <div
@@ -132,9 +130,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               >
                 {!useCompact && <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />}
                 <span>
-                  {useCompact
-                    ? `${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%`
-                    : `${t.change > 0 ? "+" : ""}${fmtNum(t.change, 2)}`}
+                  {t.change > 0 ? "+" : ""}{fmtNum(t.change, 2)}
                 </span>
               </div>
             </div>

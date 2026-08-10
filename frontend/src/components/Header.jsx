@@ -339,7 +339,7 @@ export default function Header({
       {/* Row 1: brand + status + essential actions */}
       <div className="px-3 sm:px-4 py-2 flex items-center gap-2 lg:gap-3 flex-nowrap min-w-0 overflow-hidden">
         <div className="flex items-center gap-2 shrink-0">
-          <OiPulseLogo className="w-8 h-8 drop-shadow-sm ring-2 ring-emerald-500/15 rounded-xl" />
+          <OiPulseLogo className="w-8 h-8" />
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
               OI Pulse
