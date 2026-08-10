@@ -888,6 +888,10 @@ export default function PositionsPanel({
                   <div className="text-[9px] uppercase text-slate-400">Still earn</div>
                   <div>{r.isShort && r.extrinsicLeft != null ? `₹${fmt(r.extrinsicLeft, 0)}` : "—"}</div>
                 </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">ATM dist</div>
+                  <div><AtmDistanceCell row={r} /></div>
+                </div>
               </div>
             </div>
           );
@@ -946,11 +950,25 @@ export default function PositionsPanel({
                   </InfoTip>
                 </span>
               </th>
+              <th className="text-right px-2 py-2">
+                <span className="inline-flex items-center gap-1">
+                  ATM Dist
+                  <InfoTip title="ATM Distance" size="xs" testId="atm-dist-col-tip">
+                    <p>
+                      How far the market (ATM) is from <b>this strike</b>.
+                    </p>
+                    <p className="mt-1">
+                      <b>+</b> means your strike is above ATM · <b>−</b> means below.
+                      Green on sold options usually means you are still out-of-the-money.
+                    </p>
+                  </InfoTip>
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={11} className="text-center py-6 text-slate-400 text-xs bg-white">No open F&amp;O positions.</td></tr>
+              <tr><td colSpan={12} className="text-center py-6 text-slate-400 text-xs bg-white">No open F&amp;O positions.</td></tr>
             ) : rows.map((r) => {
               const thetaInr = Number.isFinite(r.theta) ? r.theta * r.quantity : null;
               return (
@@ -982,6 +1000,9 @@ export default function PositionsPanel({
                     <StatusChip breached={r.breachedAdjust} isShortOpt={r.isShort && r.isOpt} />
                     {!r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
                   </div>
+                </td>
+                <td className="text-right px-2 py-1.5">
+                  <AtmDistanceCell row={r} />
                 </td>
               </tr>
             );})}
