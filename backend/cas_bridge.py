@@ -148,21 +148,71 @@ def _build_config(
     return cfg
 
 
-def _apply_config_to_engine(engine: AutomationEngine, cfg: AppConfig) -> None:
-    """Hot-apply config without reading config.ini."""
+def _config_fingerprint(cfg: AppConfig) -> tuple:
+    """Cheap identity for hot-apply — avoid nuking strategy on every status poll."""
+    return (
+        (cfg.api_key or "").strip(),
+        (cfg.access_token or "").strip(),
+        int(cfg.lots),
+        int(cfg.ce_otm_steps),
+        int(cfg.pe_otm_steps),
+        str(cfg.product),
+        bool(cfg.live_trading),
+        bool(cfg.paper_any_day),
+        bool(getattr(cfg, "debug_mode", False)),
+        tuple(getattr(cfg, "watch_indexes", None) or ()),
+        cfg.watch_start.isoformat(),
+        cfg.watch_end.isoformat(),
+        cfg.move_window_start.isoformat() if getattr(cfg, "move_window_start", None) else "",
+        cfg.move_window_end.isoformat() if getattr(cfg, "move_window_end", None) else "",
+        cfg.market_close.isoformat(),
+        bool(cfg.expiry_only),
+    )
+
+
+def _apply_config_to_engine(
+    engine: AutomationEngine, cfg: AppConfig, *, force: bool = False
+) -> bool:
+    """Hot-apply config. Returns True if anything meaningful changed.
+
+    Status polling must NOT clear pre-move LTP / indexes on every tick — that
+    breaks Debug+Paper move detection and makes Paper/Live toggles feel flaky.
+    """
+    prev = getattr(engine, "_cas_cfg_fp", None)
+    fp = _config_fingerprint(cfg)
+    settings_changed = force or prev != fp
+    creds_changed = force or prev is None or (
+        prev[0] != fp[0] or prev[1] != fp[1]
+    )
+
     engine.config = cfg
-    engine._indexes_day = None
-    engine._indexes_cache = []
-    engine._baselines_pulled = False
-    engine._dep_error_logged = False
-    engine._next_retry_at = 0.0
-    if engine.strategy:
-        engine.strategy.config = cfg
-        engine.strategy.orders.lots = cfg.lots
-        engine.strategy.orders.product = cfg.product
-        engine.strategy.orders.live_trading = cfg.live_trading
     if engine.client:
         engine.client.config = cfg
+
+    if settings_changed:
+        # Window / lots / live / debug changed — refresh bounds without wiping
+        # day baselines unless credentials actually changed.
+        if engine.strategy:
+            engine.strategy.config = cfg
+            engine.strategy.orders.lots = cfg.lots
+            engine.strategy.orders.product = cfg.product
+            engine.strategy.orders.live_trading = cfg.live_trading
+            try:
+                engine.strategy._refresh_window_bounds()
+            except Exception:
+                pass
+            # Indexes may change when watch_indexes / expiry_only / paper_any flip.
+            engine._indexes_day = None
+            engine._indexes_cache = []
+        engine._cas_cfg_fp = fp
+
+    if creds_changed:
+        engine._baselines_pulled = False
+        engine._dep_error_logged = False
+        engine._next_retry_at = 0.0
+        engine._cas_cfg_fp = fp
+
+    return settings_changed or creds_changed
 
 
 def sync_credentials_from_tracker(tracker) -> Dict[str, Any]:
@@ -334,8 +384,13 @@ def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
     cfg = status.get("config") or {}
     settings = status.get("settings") or {}
     activated = bool(state.get("activated"))
-    live = bool(cfg.get("live_trading"))
-    debug = bool(settings.get("debug_mode") or getattr(cfg, "debug_mode", False) or cfg.get("debug_mode"))
+    if "live_trading" in cfg:
+        live = bool(cfg.get("live_trading"))
+    elif "live_trading" in settings:
+        live = bool(settings.get("live_trading"))
+    else:
+        live = False
+    debug = bool(settings.get("debug_mode") or cfg.get("debug_mode"))
     indexes = day.get("indexes") or []
     fired = state.get("fired_indexes") or []
     if activated and live:
@@ -344,10 +399,14 @@ def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
         mode_label = "PAPER + DEBUG armed — dry-run · any-time feed"
     elif activated:
         mode_label = "PAPER armed — dry-run sells only"
+    elif debug and live:
+        mode_label = "Debug on · Live selected — Activate anytime (REAL orders)"
     elif debug:
-        mode_label = "Debug on — Activate anytime (Paper safe)"
+        mode_label = "Debug on · Paper selected — Activate anytime (safe dry-run)"
+    elif live:
+        mode_label = "Live selected — Activate in market hours for real sells"
     else:
-        mode_label = "Off — pick Paper or Live, then Activate"
+        mode_label = "Paper selected — Activate to dry-run"
 
     readiness = status.get("live_readiness") or {}
     return {
@@ -422,7 +481,8 @@ def activate(tracker, *, by: str = "admin", require_live_confirm: bool = False) 
     engine = get_engine()
     if not (engine.config.api_key and engine.config.access_token):
         raise RuntimeError("Kite not connected. Open Kite API in the header and connect first.")
-    if engine.config.live_trading and not require_live_confirm:
+    # Always gate on the *current* live flag after sync (never trust a stale pre-check).
+    if bool(engine.config.live_trading) and not require_live_confirm:
         raise RuntimeError("Live mode needs an explicit confirm flag.")
     debug = bool(getattr(engine.config, "debug_mode", False) or _SETTINGS.get("debug_mode"))
     if (not debug) and get_ist_now().time() >= engine.config.market_close:
