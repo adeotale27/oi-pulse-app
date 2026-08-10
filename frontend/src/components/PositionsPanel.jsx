@@ -897,7 +897,7 @@ export default function PositionsPanel({
                     </span>
                   ) : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5">{r.iv != null ? r.iv.toFixed(1) + "%" : "—"}</td>
+                <td className="text-right px-2 py-1.5">{Number.isFinite(r.iv) ? r.iv.toFixed(1) + "%" : "—"}</td>
                 <td className="text-right px-2 py-1.5">{r.dte != null ? r.dte.toFixed(1) + "d" : "—"}</td>
                 <td className="px-2 py-1.5">
                   {r.breachedAdjust ? (
