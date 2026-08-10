@@ -186,6 +186,8 @@ class OITracker:
         self.last_updated_at: Optional[str] = None
         self.settings: Dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.selected_expiry: Dict[str, Optional[str]] = {i: None for i in INDICES}
+        # Throttle straddle history to ~1 sample per straddle_poll_interval (default 60s).
+        self._last_straddle_sample_at: Dict[str, datetime] = {}
         self.metrics = Counter({
             "poll_cycles": 0,
             "poll_timeouts": 0,
@@ -800,6 +802,16 @@ class OITracker:
 
     async def _store_straddle_sample(self, index_name: str, snap: Dict[str, Any]):
         try:
+            # Keep chart density at ~1-minute (configurable), even if OI polls faster.
+            try:
+                interval = max(30, int(self.settings.get("straddle_poll_interval_seconds", 60)))
+            except Exception:
+                interval = 60
+            now_utc = datetime.now(timezone.utc)
+            last = self._last_straddle_sample_at.get(index_name)
+            if last is not None and (now_utc - last).total_seconds() < max(5, interval - 2):
+                return
+
             atm = int(snap.get("atm") or 0)
             price = float(snap.get("price") or 0.0)
             strikes = snap.get("strikes", [])
@@ -820,7 +832,6 @@ class OITracker:
             ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
             pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
             premium = round(ce_p + pe_p, 2)
-            now_utc = datetime.now(timezone.utc)
             trade_date = now_ist().date().isoformat()
             await self.db.straddle_samples.insert_one({
                 "index": index_name,
@@ -834,6 +845,7 @@ class OITracker:
                 "pe_ltp": round(pe_p, 2),
                 "created_at": now_utc.isoformat(),
             })
+            self._last_straddle_sample_at[index_name] = now_utc
             await self._prune_straddle_history(index_name)
         except Exception as e:
             self.metrics["straddle_store_errors"] += 1
