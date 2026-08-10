@@ -83,21 +83,21 @@ export function computeBookVerdict({
   const absD = Math.abs(netDelta);
   if (absD < 10) {
     score += 20;
-    bullets.push(`Net Δ ${netDelta.toFixed(1)} — near flat (good for non-directional).`);
+    bullets.push(`Net Δ ${netDelta.toFixed(1)} — near flat (good — not betting up or down).`);
   } else if (absD < 30) {
     score += 5;
-    bullets.push(`Net Δ ${netDelta.toFixed(1)} — mild drift; consider a small hedge.`);
+    bullets.push(`Net Δ ${netDelta.toFixed(1)} — mild tilt; a small hedge may help.`);
   } else {
     score -= 20;
-    bullets.push(`Net Δ ${netDelta.toFixed(1)} — book is directional; flatten before selling more.`);
+    bullets.push(`Net Δ ${netDelta.toFixed(1)} — book is leaning one way; flatten before selling more.`);
   }
 
   if (netTheta > 0) {
     score += 15;
-    bullets.push(`Net Θ ₹${Math.round(netTheta)}/day — time decay is working for you.`);
+    bullets.push(`Daily time money ₹${Math.round(netTheta)} — time is paying you.`);
   } else if (netTheta < 0) {
     score -= 15;
-    bullets.push(`Net Θ ₹${Math.round(netTheta)}/day — paying premium (longs dominate).`);
+    bullets.push(`Daily time money ₹${Math.round(netTheta)} — time is costing you (longs dominate).`);
   }
 
   if (shortCount > 0) {
@@ -113,17 +113,17 @@ export function computeBookVerdict({
       bullets.push(`${adjustCount}/${shortCount} sold option(s) too close — book is under pressure.`);
     }
   } else {
-    bullets.push("No open short options — nothing collecting premium yet.");
+    bullets.push("No open sold options — nothing collecting premium yet.");
   }
 
   if (itmShortCount > 0) {
     score -= 15;
-    bullets.push(`${itmShortCount} short(s) ITM / assignment risk — watch extrinsic closely.`);
+    bullets.push(`${itmShortCount} sold option(s) already in the money — higher exercise risk.`);
   }
 
   if (premiumLeft != null && premiumLeft > 0 && shortCount > 0) {
     score += 5;
-    bullets.push(`~₹${Math.round(premiumLeft)} extrinsic left on shorts (decay runway).`);
+    bullets.push(`~₹${Math.round(premiumLeft)} still to earn on sold options (decay runway).`);
   }
 
   if (pnl > 0) score += 5;
