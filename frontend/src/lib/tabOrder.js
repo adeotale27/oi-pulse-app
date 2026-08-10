@@ -130,3 +130,38 @@ export function moveIdBefore(ids, dragId, dropId) {
   next.splice(to, 0, dragId);
   return next;
 }
+
+/** Move id left (-1) or right (+1) by one slot; clamps at ends. */
+export function moveIdByOffset(ids, id, delta) {
+  const list = Array.isArray(ids) ? ids.slice() : [];
+  const i = list.indexOf(id);
+  if (i < 0 || !delta) return list;
+  const j = Math.max(0, Math.min(list.length - 1, i + delta));
+  if (j === i) return list;
+  list.splice(i, 1);
+  list.splice(j, 0, id);
+  return list;
+}
+
+/** Pin id to the front (favorite). */
+export function pinIdFirst(ids, id) {
+  const list = Array.isArray(ids) ? ids.slice() : [];
+  if (!id || !list.includes(id)) return list;
+  return [id, ...list.filter((x) => x !== id)];
+}
+
+/** Clear saved layout prefs and restore factory defaults. */
+export function resetLayoutPrefs() {
+  try {
+    localStorage.removeItem(TAB_ORDER_KEY);
+    localStorage.removeItem(TILE_ORDER_KEY);
+    localStorage.setItem(EXPIRY_LIST_HEIGHT_KEY, String(EXPIRY_LIST_DEFAULT_PX));
+  } catch {
+    /* noop */
+  }
+  return {
+    tabOrder: [],
+    tileOrder: [],
+    expiryListHeight: EXPIRY_LIST_DEFAULT_PX,
+  };
+}

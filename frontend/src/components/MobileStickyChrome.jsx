@@ -32,6 +32,9 @@ export default function MobileStickyChrome({
   activeTab,
   onChangeTab,
   onReorder,
+  onFavorite,
+  onMove,
+  onResetLayout,
   marketOpen = false,
 }) {
   const [open, setOpen] = useState(false);
@@ -43,6 +46,8 @@ export default function MobileStickyChrome({
   useClickOutside(wrapRef, close, open);
 
   const canReorder = typeof onReorder === "function";
+  const canFavorite = typeof onFavorite === "function";
+  const canMove = typeof onMove === "function";
   const label = INDEX_LABEL[activeIndex] || activeIndex;
   const spot =
     spotPrice != null && Number.isFinite(Number(spotPrice))
@@ -115,6 +120,30 @@ export default function MobileStickyChrome({
     }
     onChangeTab?.(id);
   };
+
+  const onTabDoubleClick = (e, id) => {
+    if (!canFavorite) return;
+    e.preventDefault();
+    e.stopPropagation();
+    skipClickRef.current = true;
+    onFavorite(id);
+    onChangeTab?.(id);
+  };
+
+  const onTabKeyDown = (e, id) => {
+    if (!canMove || !e.altKey) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    e.stopPropagation();
+    onMove(id, e.key === "ArrowLeft" ? -1 : 1);
+  };
+
+  const tipParts = [];
+  if (canReorder) tipParts.push("Drag to reorder");
+  if (canFavorite) tipParts.push("double-click to pin first");
+  if (canMove) tipParts.push("Alt+←/→ to nudge");
+  tipParts.push("click to open");
+  const tabTitle = tipParts.join(" · ");
 
   return (
     <div
@@ -203,7 +232,7 @@ export default function MobileStickyChrome({
           data-testid="mobile-sticky-tabs"
           className="tabs-scroll flex items-stretch gap-0.5 overflow-x-auto border-t border-slate-100 px-1 dark:border-slate-800"
           role="tablist"
-          aria-label="Dashboard views — drag tabs to reorder"
+          aria-label="Dashboard views — drag, double-click, or Alt+arrows to reorder"
         >
           {tabs.map((t) => {
             const active = t.v === activeTab;
@@ -224,7 +253,9 @@ export default function MobileStickyChrome({
                 }}
                 onDrop={(e) => onDropTab(e, t.v)}
                 onClick={() => onTabClick(t.v)}
-                title={canReorder ? "Drag to reorder · click to open" : undefined}
+                onDoubleClick={(e) => onTabDoubleClick(e, t.v)}
+                onKeyDown={(e) => onTabKeyDown(e, t.v)}
+                title={tabTitle}
                 className={`shrink-0 whitespace-nowrap border-b-2 px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
                   canReorder ? "cursor-grab active:cursor-grabbing" : ""
                 } ${draggingId === t.v ? "opacity-40" : ""} ${
@@ -239,6 +270,17 @@ export default function MobileStickyChrome({
               </button>
             );
           })}
+          {typeof onResetLayout === "function" && (
+            <button
+              type="button"
+              data-testid="btn-reset-layout-mobile"
+              onClick={onResetLayout}
+              className="ml-auto shrink-0 self-center rounded-md border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              title="Reset tab order, tile order, and expiry list height"
+            >
+              Reset
+            </button>
+          )}
         </div>
       )}
     </div>

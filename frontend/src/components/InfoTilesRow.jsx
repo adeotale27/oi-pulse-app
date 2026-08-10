@@ -9,10 +9,13 @@ const DEFAULT_TILE_IDS = ["holiday", "fii-dii", "events", "impact"];
 
 /**
  * Holiday / FII-DII / Events / Impact tiles with drag-and-drop reorder among themselves.
+ * Alt+← / Alt+→ nudges the focused tile; double-click pins it first.
  */
 export default function InfoTilesRow({
   order = [],
   onReorder,
+  onFavorite,
+  onMove,
   isAdmin = false,
   showImpact = true,
   activeIndex,
@@ -25,6 +28,8 @@ export default function InfoTilesRow({
   const [overId, setOverId] = useState(null);
   const skipClickRef = useRef(false);
   const canReorder = typeof onReorder === "function";
+  const canFavorite = typeof onFavorite === "function";
+  const canMove = typeof onMove === "function";
 
   const catalog = useMemo(() => {
     const all = [
@@ -115,6 +120,28 @@ export default function InfoTilesRow({
     e.stopPropagation();
   };
 
+  const onTileKeyDown = (e, id) => {
+    if (!canMove || !e.altKey) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    e.stopPropagation();
+    onMove(id, e.key === "ArrowLeft" ? -1 : 1);
+  };
+
+  const onTileDoubleClick = (e, id) => {
+    if (!canFavorite) return;
+    e.preventDefault();
+    e.stopPropagation();
+    skipClickRef.current = true;
+    onFavorite(id);
+  };
+
+  const tipParts = [];
+  if (canReorder) tipParts.push("Drag to reorder");
+  if (canFavorite) tipParts.push("double-click to pin first");
+  if (canMove) tipParts.push("Alt+←/→ to nudge");
+  const tileTitle = tipParts.length ? tipParts.join(" · ") : undefined;
+
   const widthCls = wide ? "w-44 2xl:w-48 shrink-0" : "w-44 shrink-0";
 
   return (
@@ -130,6 +157,7 @@ export default function InfoTilesRow({
           <div
             key={t.id}
             data-testid={`info-tile-${t.id}`}
+            tabIndex={canMove ? 0 : undefined}
             draggable={canReorder}
             onDragStart={(e) => onDragStart(e, t.id)}
             onDragEnd={onDragEnd}
@@ -138,10 +166,12 @@ export default function InfoTilesRow({
               if (overId === t.id) setOverId(null);
             }}
             onDrop={(e) => onDrop(e, t.id)}
-            title={canReorder ? "Drag to reorder tiles" : undefined}
-            className={`${widthCls} ${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${
-              isDrag ? "opacity-40" : ""
-            } ${isOver ? "ring-2 ring-emerald-400 rounded-sm" : ""}`}
+            onKeyDown={(e) => onTileKeyDown(e, t.id)}
+            onDoubleClick={(e) => onTileDoubleClick(e, t.id)}
+            title={tileTitle}
+            className={`${widthCls} outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-sm ${
+              canReorder ? "cursor-grab active:cursor-grabbing" : ""
+            } ${isDrag ? "opacity-40" : ""} ${isOver ? "ring-2 ring-emerald-400" : ""}`}
           >
             {t.node}
           </div>

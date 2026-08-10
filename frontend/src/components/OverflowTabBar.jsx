@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, RotateCcw } from "lucide-react";
 import useClickOutside from "@/hooks/useClickOutside";
 
 /**
@@ -7,12 +7,17 @@ import useClickOutside from "@/hooks/useClickOutside";
  * trailing "More" dropdown one-by-one (never dump all tabs at once).
  *
  * Tabs are drag-and-drop reorderable when `onReorder` is provided.
+ * Double-click favorites a tab to the first slot (`onFavorite`).
+ * Alt+← / Alt+→ nudges the focused tab (`onMove`).
  */
 export default function OverflowTabBar({
   tabs = [],
   value,
   onChange,
   onReorder,
+  onFavorite,
+  onMove,
+  onResetLayout,
   className = "",
   testId = "dashboard-tab-bar",
 }) {
@@ -29,6 +34,8 @@ export default function OverflowTabBar({
   useClickOutside(menuRef, () => setMenuOpen(false), menuOpen);
 
   const canReorder = typeof onReorder === "function";
+  const canFavorite = typeof onFavorite === "function";
+  const canMove = typeof onMove === "function";
 
   const recalculate = useCallback(() => {
     const wrap = wrapRef.current;
@@ -160,6 +167,30 @@ export default function OverflowTabBar({
     onChange?.(id);
   };
 
+  const onTabDoubleClick = (e, id) => {
+    if (!canFavorite) return;
+    e.preventDefault();
+    e.stopPropagation();
+    skipClickRef.current = true;
+    onFavorite(id);
+    onChange?.(id);
+  };
+
+  const onTabKeyDown = (e, id) => {
+    if (!canMove || !e.altKey) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    e.stopPropagation();
+    onMove(id, e.key === "ArrowLeft" ? -1 : 1);
+  };
+
+  const tipParts = [];
+  if (canReorder) tipParts.push("Drag to reorder");
+  if (canFavorite) tipParts.push("double-click to pin first");
+  if (canMove) tipParts.push("Alt+←/→ to nudge");
+  tipParts.push("click to open");
+  const tabTitle = tipParts.join(" · ");
+
   return (
     <div ref={wrapRef} className={`relative min-w-0 flex-1 overflow-visible ${className}`} data-testid={testId}>
       {/* Off-flow measure row — must not overlay sibling tiles (absolute overlays broke clicks) */}
@@ -186,7 +217,7 @@ export default function OverflowTabBar({
       <div
         className="flex items-end gap-1 border-b border-slate-200/80 dark:border-slate-700/80 min-w-0 overflow-visible"
         role="tablist"
-        aria-label="Dashboard views — drag tabs to reorder"
+        aria-label="Dashboard views — drag, double-click, or Alt+arrows to reorder"
       >
         {visible.map((t) => (
           <button
@@ -204,7 +235,9 @@ export default function OverflowTabBar({
             }}
             onDrop={(e) => onDropTab(e, t.v)}
             onClick={() => onTabClick(t.v)}
-            title={canReorder ? "Drag to reorder · click to open" : undefined}
+            onDoubleClick={(e) => onTabDoubleClick(e, t.v)}
+            onKeyDown={(e) => onTabKeyDown(e, t.v)}
+            title={tabTitle}
             className={triggerCls(t.v === value, t.v)}
           >
             {t.l}
@@ -217,9 +250,7 @@ export default function OverflowTabBar({
               type="button"
               data-testid="tab-more"
               onClick={() => setMenuOpen((v) => !v)}
-              className={`${triggerCls(activeInOverflow, "__more__")} inline-flex items-center gap-1 ${
-                canReorder ? "cursor-pointer" : ""
-              }`}
+              className={`${triggerCls(activeInOverflow, "__more__")} inline-flex items-center gap-1 cursor-pointer`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               title={`${overflow.length} more page${overflow.length === 1 ? "" : "s"}`}
@@ -250,7 +281,12 @@ export default function OverflowTabBar({
                       onTabClick(t.v);
                       setMenuOpen(false);
                     }}
-                    title={canReorder ? "Drag to reorder · click to open" : undefined}
+                    onDoubleClick={(e) => {
+                      onTabDoubleClick(e, t.v);
+                      setMenuOpen(false);
+                    }}
+                    onKeyDown={(e) => onTabKeyDown(e, t.v)}
+                    title={tabTitle}
                     className={`flex w-full items-center px-3 py-2 text-left text-sm ${
                       canReorder ? "cursor-grab active:cursor-grabbing" : ""
                     } ${draggingId === t.v ? "opacity-40" : ""} ${
@@ -269,6 +305,19 @@ export default function OverflowTabBar({
               </div>
             )}
           </div>
+        )}
+
+        {typeof onResetLayout === "function" && (
+          <button
+            type="button"
+            data-testid="btn-reset-layout"
+            onClick={onResetLayout}
+            className="mb-0.5 ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            title="Reset tab order, tile order, and expiry list height"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span className="hidden lg:inline">Reset</span>
+          </button>
         )}
       </div>
     </div>

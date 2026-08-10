@@ -40,8 +40,11 @@ import {
   saveTabOrder,
   orderPages,
   moveIdBefore,
+  moveIdByOffset,
+  pinIdFirst,
   loadTileOrder,
   saveTileOrder,
+  resetLayoutPrefs,
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -192,6 +195,7 @@ export default function Dashboard() {
   const [visiblePages, setVisiblePages] = useState(PUBLIC_DEFAULT_PAGES);
   const [tabOrder, setTabOrder] = useState(() => loadTabOrder());
   const [tileOrder, setTileOrder] = useState(() => loadTileOrder());
+  const [layoutNonce, setLayoutNonce] = useState(0);
   const [hugeShift, setHugeShift] = useState(null);   // currently shown modal
   const hugeShiftQueueRef = useRef([]);                // queued shifts if multiple fire back-to-back
   const [activity, setActivity] = useState([]);       // unusual activity feed events
@@ -353,17 +357,72 @@ export default function Dashboard() {
     [],
   );
 
+  const handleFavoriteTab = useCallback((id) => {
+    setTabOrder((prev) => {
+      const base = orderPages(DASHBOARD_PAGES, prev).map((p) => p.v);
+      const next = pinIdFirst(base, id);
+      saveTabOrder(next);
+      return next;
+    });
+  }, []);
+
+  const handleMoveTab = useCallback((id, delta) => {
+    setTabOrder((prev) => {
+      const base = orderPages(DASHBOARD_PAGES, prev).map((p) => p.v);
+      const next = moveIdByOffset(base, id, delta);
+      saveTabOrder(next);
+      return next;
+    });
+  }, []);
+
   const handleReorderTiles = useCallback((dragId, dropId) => {
     setTileOrder((prev) => {
       const base = (prev && prev.length ? prev : DEFAULT_TILE_IDS).slice();
-      // Keep any unknown/extra ids, ensure defaults present.
-      for (const id of DEFAULT_TILE_IDS) {
-        if (!base.includes(id)) base.push(id);
+      for (const tid of DEFAULT_TILE_IDS) {
+        if (!base.includes(tid)) base.push(tid);
       }
       const next = moveIdBefore(base, dragId, dropId);
       saveTileOrder(next);
       return next;
     });
+  }, []);
+
+  const handleFavoriteTile = useCallback((id) => {
+    setTileOrder((prev) => {
+      const base = (prev && prev.length ? prev : DEFAULT_TILE_IDS).slice();
+      for (const tid of DEFAULT_TILE_IDS) {
+        if (!base.includes(tid)) base.push(tid);
+      }
+      const next = pinIdFirst(base, id);
+      saveTileOrder(next);
+      return next;
+    });
+  }, []);
+
+  const handleMoveTile = useCallback((id, delta) => {
+    setTileOrder((prev) => {
+      const base = (prev && prev.length ? prev : DEFAULT_TILE_IDS).slice();
+      for (const tid of DEFAULT_TILE_IDS) {
+        if (!base.includes(tid)) base.push(tid);
+      }
+      const next = moveIdByOffset(base, id, delta);
+      saveTileOrder(next);
+      return next;
+    });
+  }, []);
+
+  const handleResetLayout = useCallback(() => {
+    resetLayoutPrefs();
+    setTabOrder([]);
+    setTileOrder([]);
+    setLayoutNonce((n) => n + 1);
+    try {
+      toast.success("Layout reset", {
+        description: "Tab order, tile order, and expiry list height restored.",
+      });
+    } catch {
+      /* noop */
+    }
   }, []);
 
   const openHolidaysTab = useCallback(() => setActiveTab("holidays"), []);
@@ -1397,6 +1456,7 @@ export default function Dashboard() {
             lastUpdatedByIndex={lastUpdatedByIndex}
             marketOpen={!(status?.market && status.market.is_market_open === false)}
             onCollapse={() => setCompact(true)}
+            layoutNonce={layoutNonce}
           />
         )}
         {compact && (
