@@ -140,6 +140,7 @@ export default function Sidebar({
   lastUpdatedByIndex = {},
   marketOpen = true,
   onCollapse,
+  layoutNonce = 0,
 }) {
   const price = current?.price ?? 0;
   // Admin note section state (below the big clock). Publicly visible; editable by admin.
@@ -152,11 +153,16 @@ export default function Sidebar({
   // Re-render every 15s so inactive-index stale flash (>2 min) stays accurate.
   const [, setAgeTick] = useState(0);
   const [expiryListHeight, setExpiryListHeight] = useState(() => loadExpiryListHeight());
-  const expiryResizeRef = useRef(null);
+  const expiryListRef = useRef(null);
   useEffect(() => {
     const id = setInterval(() => setAgeTick((n) => n + 1), 15_000);
     return () => clearInterval(id);
   }, []);
+
+  // Reset layout control reloads stored height (defaults after resetLayoutPrefs).
+  useEffect(() => {
+    setExpiryListHeight(loadExpiryListHeight());
+  }, [layoutNonce]);
 
   const onExpiryResizePointerDown = useCallback((e) => {
     e.preventDefault();
@@ -258,6 +264,28 @@ export default function Sidebar({
     expiriesMeta && expiriesMeta.length
       ? expiriesMeta
       : (expiries || []).map((d) => ({ date: d, tag: "W", type: "weekly", days_to_expiry: null, label: d }));
+
+  // Keep selected (or nearest weekly) visible when the list is short / scrolled.
+  const expiryDatesKey = orderedExpiries.map((e) => `${e.date}:${e.tag || ""}`).join("|");
+  useEffect(() => {
+    const list = expiryListRef.current;
+    if (!list || !orderedExpiries.length) return;
+    const targetDate =
+      selectedExpiry ||
+      orderedExpiries.find((e) => (e.tag || "").toUpperCase() === "W")?.date ||
+      orderedExpiries[0]?.date;
+    if (!targetDate) return;
+    const el =
+      list.querySelector(`[data-expiry-date="${targetDate}"]`) ||
+      list.querySelector(`[data-testid="expiry-${targetDate}"]`);
+    if (!el) return;
+    try {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch {
+      /* noop */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- orderedExpiries identity changes each render
+  }, [selectedExpiry, expiryDatesKey, expiryListHeight, activeIndex, layoutNonce]);
 
   const step = STRIKE_STEP[activeIndex] || 50;
 
@@ -386,7 +414,7 @@ export default function Sidebar({
           className="mt-2 space-y-1 pr-1 overflow-y-auto sidebar-expiries"
           style={{ height: `${expiryListHeight}px`, maxHeight: `${EXPIRY_LIST_MAX_PX}px`, minHeight: `${EXPIRY_LIST_MIN_PX}px` }}
           data-testid="expiries-list"
-          ref={expiryResizeRef}
+          ref={expiryListRef}
         >
           {orderedExpiries.map((exp, i) => {
             const active = selectedExpiry ? selectedExpiry === exp.date : i === 0;
@@ -416,6 +444,8 @@ export default function Sidebar({
               <button
                 key={exp.date + i}
                 data-testid={`expiry-${exp.date}`}
+                data-expiry-date={exp.date}
+                data-expiry-active={active ? "1" : "0"}
                 onClick={() => onChangeExpiry?.(exp.date)}
                 className={`w-full expiry-row flex items-center gap-2 py-1.5 px-2 rounded-md text-left transition-colors ${
                   active
