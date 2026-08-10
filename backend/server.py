@@ -3045,7 +3045,7 @@ async def admin_refresh_day(
 
 # ------------------- Zerodha positions -------------------
 @api_router.get("/positions")
-async def get_positions(_admin: bool = Depends(require_admin)):
+async def get_positions(_who: str = Depends(require_desk_user)):
     """Fetch F&O positions from the user's Kite account (net + day).
 
     Includes:
@@ -3332,12 +3332,19 @@ def _ist_today_ymd() -> str:
 
 
 @api_router.get("/positions/brokerage-day")
-async def get_brokerage_day(_admin: bool = Depends(require_admin)):
+async def get_brokerage_day(_who: str = Depends(require_desk_user)):
     """Day's brokerage via Kite virtual contract note (read-only).
 
-    Uses kite.orders() + get_virtual_contract_note — never returns API keys,
-    secrets, or access tokens. Admin-only.
+    Uses kite.orders() (+ trades() fill prices) + get_virtual_contract_note.
+    Never returns API keys, secrets, or access tokens. Desk users (admin/guest).
     """
+    from kite_charges import (
+        aggregate_contract_notes,
+        build_charge_params,
+        empty_charges_payload,
+        trade_avg_by_order,
+    )
+
     if tracker.mode != "kite" or not tracker.kite_service:
         # Same stickiness as /positions: credentials beat a stale mode flag.
         if not tracker.kite_service:
@@ -3357,163 +3364,81 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
         kite = tracker.kite_service.kite
         orders = await asyncio.to_thread(kite.orders)
     except Exception as e:
+        err = f"Kite orders: {type(e).__name__}: {e}"
+        if _who == "guest":
+            err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
         return {
             "ok": False,
             "brokerage": None,
             "charges_total": None,
             "order_count": 0,
-            "error": f"Kite orders: {type(e).__name__}: {e}",
+            "error": err,
         }
 
     today = _ist_today_ymd()
-    params = []
-    for o in orders or []:
-        if (o.get("status") or "").upper() != "COMPLETE":
-            continue
-        # order_timestamp like '2026-08-10 10:15:00'
-        ts = str(o.get("order_timestamp") or o.get("exchange_timestamp") or "")
-        if ts and not ts.startswith(today):
-            continue
-        avg = float(o.get("average_price") or 0)
-        qty = int(o.get("filled_quantity") or o.get("quantity") or 0)
-        if qty <= 0 or avg < 0:
-            continue
-        params.append({
-            "order_id": str(o.get("order_id") or len(params) + 1),
-            "exchange": o.get("exchange") or "NFO",
-            "tradingsymbol": o.get("tradingsymbol"),
-            "transaction_type": o.get("transaction_type") or "BUY",
-            "variety": o.get("variety") or "regular",
-            "product": o.get("product") or "NRML",
-            "order_type": o.get("order_type") or "MARKET",
-            "quantity": qty,
-            "average_price": avg,
-        })
+    trade_avgs: dict = {}
+    try:
+        trades = await asyncio.to_thread(kite.trades)
+        trade_avgs = trade_avg_by_order(trades)
+    except Exception as e:
+        logger.warning("kite.trades for charges fallback failed: %s", e)
+
+    params, book_stats = build_charge_params(orders, today_ymd=today, trade_avgs=trade_avgs)
 
     if not params:
-        return {
-            "ok": True,
-            "brokerage": 0.0,
-            "charges_total": 0.0,
-            "order_count": 0,
-            "source": "kite_virtual_contract",
-            "note": "No completed orders today.",
-            "breakdown": [
-                {"key": "brokerage", "label": "Brokerage", "amount": 0.0},
-                {"key": "transaction_tax", "label": "STT", "amount": 0.0},
-                {"key": "exchange_turnover_charge", "label": "Exchange txn charge", "amount": 0.0},
-                {"key": "sebi_turnover_charge", "label": "SEBI charges", "amount": 0.0},
-                {"key": "stamp_duty", "label": "Stamp duty", "amount": 0.0},
-                {"key": "gst", "label": "GST", "amount": 0.0},
-            ],
-            "gst": {"igst": 0.0, "cgst": 0.0, "sgst": 0.0, "total": 0.0},
-            "transaction_tax": 0.0,
-            "transaction_tax_label": "STT",
-            "exchange_turnover_charge": 0.0,
-            "sebi_turnover_charge": 0.0,
-            "stamp_duty": 0.0,
-        }
+        payload = empty_charges_payload(
+            order_count=0,
+            note=(
+                "No completed priced fills today."
+                if book_stats.get("complete_today")
+                else "No completed orders today."
+            ),
+        )
+        payload["book"] = book_stats
+        payload["skipped_zero_price"] = book_stats.get("skipped_zero_price", 0)
+        return payload
 
-    # Cap to 500 per Zerodha virtual contract note limits
+    # Cap + chunk — one bad row / oversized batch must not blank the chip.
     params = params[:500]
-    try:
-        notes = await asyncio.to_thread(kite.get_virtual_contract_note, params)
-    except Exception as e:
-        logger.warning("get_virtual_contract_note failed: %s", e)
+    notes: list = []
+    chunk_errors: list[str] = []
+    chunk_size = 50
+    for i in range(0, len(params), chunk_size):
+        chunk = params[i : i + chunk_size]
+        try:
+            part = await asyncio.to_thread(kite.get_virtual_contract_note, chunk)
+            if isinstance(part, list):
+                notes.extend(part)
+            elif part:
+                notes.append(part)
+        except Exception as e:
+            msg = f"{type(e).__name__}: {e}"
+            logger.warning("get_virtual_contract_note chunk %s failed: %s", i // chunk_size, msg)
+            chunk_errors.append(msg)
+
+    if not notes and chunk_errors:
+        err = f"Charges API: {chunk_errors[0]}"
+        if _who == "guest":
+            err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
         return {
             "ok": False,
             "brokerage": None,
             "charges_total": None,
             "order_count": len(params),
-            "error": f"Charges API: {type(e).__name__}: {e}",
+            "book": book_stats,
+            "error": err,
         }
 
-    def _f(v) -> float:
-        try:
-            return float(v or 0)
-        except (TypeError, ValueError):
-            return 0.0
-
-    brokerage = 0.0
-    charges_total = 0.0
-    transaction_tax = 0.0  # STT / CTT
-    exchange_turnover_charge = 0.0
-    sebi_turnover_charge = 0.0
-    stamp_duty = 0.0
-    gst_total = 0.0
-    gst_igst = 0.0
-    gst_cgst = 0.0
-    gst_sgst = 0.0
-    tax_types = set()
-
-    for row in notes or []:
-        ch = (row or {}).get("charges") or {}
-        brokerage += _f(ch.get("brokerage"))
-        charges_total += _f(ch.get("total"))
-        transaction_tax += _f(ch.get("transaction_tax"))
-        exchange_turnover_charge += _f(ch.get("exchange_turnover_charge"))
-        sebi_turnover_charge += _f(ch.get("sebi_turnover_charge"))
-        stamp_duty += _f(ch.get("stamp_duty"))
-        tt = ch.get("transaction_tax_type")
-        if tt:
-            tax_types.add(str(tt).upper())
-        gst = ch.get("gst") or {}
-        if isinstance(gst, dict):
-            gst_igst += _f(gst.get("igst"))
-            gst_cgst += _f(gst.get("cgst"))
-            gst_sgst += _f(gst.get("sgst"))
-            if gst.get("total") is not None:
-                gst_total += _f(gst.get("total"))
-            else:
-                gst_total += _f(gst.get("igst")) + _f(gst.get("cgst")) + _f(gst.get("sgst"))
-
-    # Prefer explicit STT label when Kite marks transaction tax as STT.
-    tax_label = "STT"
-    if tax_types:
-        if "STT" in tax_types:
-            tax_label = "STT"
-        elif len(tax_types) == 1:
-            tax_label = next(iter(tax_types))
-        else:
-            tax_label = "Transaction tax"
-
-    breakdown = [
-        {"key": "brokerage", "label": "Brokerage", "amount": round(brokerage, 2)},
-        {"key": "transaction_tax", "label": tax_label, "amount": round(transaction_tax, 2)},
-        {
-            "key": "exchange_turnover_charge",
-            "label": "Exchange txn charge",
-            "amount": round(exchange_turnover_charge, 2),
-        },
-        {
-            "key": "sebi_turnover_charge",
-            "label": "SEBI charges",
-            "amount": round(sebi_turnover_charge, 2),
-        },
-        {"key": "stamp_duty", "label": "Stamp duty", "amount": round(stamp_duty, 2)},
-        {"key": "gst", "label": "GST", "amount": round(gst_total, 2)},
-    ]
-
-    return {
-        "ok": True,
-        "brokerage": round(brokerage, 2),
-        "charges_total": round(charges_total, 2),
+    payload = aggregate_contract_notes(notes)
+    payload.update({
         "order_count": len(params),
         "source": "kite_virtual_contract",
-        "breakdown": breakdown,
-        "gst": {
-            "igst": round(gst_igst, 2),
-            "cgst": round(gst_cgst, 2),
-            "sgst": round(gst_sgst, 2),
-            "total": round(gst_total, 2),
-        },
-        "transaction_tax": round(transaction_tax, 2),
-        "transaction_tax_label": tax_label,
-        "exchange_turnover_charge": round(exchange_turnover_charge, 2),
-        "sebi_turnover_charge": round(sebi_turnover_charge, 2),
-        "stamp_duty": round(stamp_duty, 2),
-        # Never include order payload / credentials in response
-    }
+        "book": book_stats,
+        "skipped_zero_price": book_stats.get("skipped_zero_price", 0),
+    })
+    if chunk_errors:
+        payload["warning"] = f"{len(chunk_errors)} charge chunk(s) failed; totals may be partial."
+    return payload
 
 
 # ------------------- CAS Rule Expiry (paper / live) -------------------

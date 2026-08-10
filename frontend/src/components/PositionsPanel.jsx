@@ -74,6 +74,7 @@ const POSITIONS_GUIDE = (
     </p>
     <p>
       <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
+      <b> Profit booked today</b> — realised P&amp;L from same-day exits (and partial closes).
       <b> Day charges</b> — brokerage + STT + GST + exchange fees (Zerodha contract note, read-only).
     </p>
   </div>
@@ -276,9 +277,23 @@ export default function PositionsPanel({
   const loadBrokerage = useCallback(async () => {
     try {
       const { data } = await api.get("/positions/brokerage-day");
-      setBrokerage(data || null);
+      if (!data) return;
+      // Keep last good totals on soft failures (Charges API blip).
+      if (data.ok === false && data.charges_total == null) {
+        setBrokerage((prev) => {
+          if (!prev || prev.charges_total == null) return data;
+          return {
+            ...prev,
+            error: data.error || prev.error,
+            warning: data.warning || prev.warning,
+            book: data.book || prev.book,
+          };
+        });
+        return;
+      }
+      setBrokerage(data);
     } catch {
-      setBrokerage(null);
+      /* keep last good charges — do not wipe the chip to "—" */
     }
   }, []);
 
@@ -514,6 +529,7 @@ export default function PositionsPanel({
     let shortCount = 0, adjustCount = 0;
     let openCount = 0, exitedCount = 0;
     let openPnl = 0, exitedPnl = 0;
+    let bookedToday = 0;
     for (const r of rows) {
       const rowPnl = (() => {
         const raw = r.exited && r.booked_pnl != null ? r.booked_pnl : r.pnl;
@@ -523,9 +539,14 @@ export default function PositionsPanel({
       if (r.exited) {
         exitedCount += 1;
         exitedPnl += rowPnl;
+        bookedToday += rowPnl;
       } else {
         openCount += 1;
         openPnl += rowPnl;
+        const realised = Number(r.realised);
+        if (Number.isFinite(realised) && Math.abs(realised) > 1e-9) {
+          bookedToday += realised;
+        }
       }
       // Live book greeks only from open legs; Today P&L includes exits.
       if (!r.exited) {
@@ -555,7 +576,18 @@ export default function PositionsPanel({
       const totalN = Number(pnlToday.total);
       // Prefer server totals; never use `x || fallback` (0 is a valid P&L).
       if (Number.isFinite(openN)) openPnl = openN;
-      if (Number.isFinite(exitedN)) exitedPnl = exitedN;
+      if (Number.isFinite(exitedN)) {
+        exitedPnl = exitedN;
+        // Server exited total is the clean booked figure when present.
+        bookedToday = exitedN;
+        for (const r of rows) {
+          if (r.exited) continue;
+          const realised = Number(r.realised);
+          if (Number.isFinite(realised) && Math.abs(realised) > 1e-9) {
+            bookedToday += realised;
+          }
+        }
+      }
       netPnl = Number.isFinite(totalN) ? totalN : openPnl + exitedPnl;
     } else {
       netPnl = openPnl + exitedPnl;
@@ -566,6 +598,7 @@ export default function PositionsPanel({
       netPnl,
       openPnl,
       exitedPnl,
+      bookedToday,
       minMinutes,
       premiumLeft: premiumLeftN ? premiumLeft : null,
       thetaToClose: thetaToCloseN ? thetaToClose : null,
@@ -739,6 +772,11 @@ export default function PositionsPanel({
                       ? `₹${fmt(brokerage.brokerage, 0)}`
                       : "—"}
                 </span>
+                {brokerage?.book?.open_today > 0 ? (
+                  <span className="text-[9px] text-amber-700 font-semibold" title="Open / pending orders today">
+                    · {brokerage.book.open_today} open
+                  </span>
+                ) : null}
                 <ChevronDown className="w-3 h-3 text-slate-400" />
               </button>
             </PopoverTrigger>
@@ -760,6 +798,11 @@ export default function PositionsPanel({
                 <div className="px-3 py-3 text-[11px] text-rose-700">{brokerage.error}</div>
               ) : (
                 <div className="px-3 py-2 space-y-1.5">
+                  {brokerage?.warning ? (
+                    <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-sm px-2 py-1">
+                      {brokerage.warning}
+                    </div>
+                  ) : null}
                   {(brokerage?.breakdown || []).map((row) => (
                     <div
                       key={row.key}
@@ -913,7 +956,7 @@ export default function PositionsPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-2">
         <StatBox
           label="Today P&L"
           value={"₹ " + fmt(stats.netPnl)}
@@ -988,6 +1031,23 @@ export default function PositionsPanel({
             <p>
               Premium still sitting in your sold options. If the market stays away until expiry /
               close, much of this can decay into your pocket. Estimate only — not guaranteed.
+            </p>
+          )}
+        />
+        <StatBox
+          label="Profit booked today"
+          value={"₹ " + fmt(stats.bookedToday)}
+          tone={stats.bookedToday >= 0 ? "emerald" : "rose"}
+          hint={
+            stats.exitedCount > 0
+              ? `${stats.exitedCount} exited · realised`
+              : "No exits booked yet"
+          }
+          tip={(
+            <p>
+              Realised money locked in today from <b>squared-off</b> legs (plus any partial
+              closes still showing as open). Separate from Still to earn, which is premium not
+              yet decayed.
             </p>
           )}
         />
