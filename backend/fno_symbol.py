@@ -5,6 +5,8 @@ import calendar
 import re
 from typing import Any, Optional
 
+from kite_positions import booked_pnl_from_kite_row  # noqa: F401 — canonical impl
+
 INDEXES = "NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX|BANKEX"
 MON = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -87,63 +89,6 @@ def format_fno_option_label(
     if side:
         parts.append(side)
     return " ".join(parts) if len(parts) > 1 else (ts or "—")
-
-
-def booked_pnl_from_kite_row(
-    *,
-    qty: int,
-    buy_qty: int,
-    sell_qty: int,
-    buy_price: float,
-    sell_price: float,
-    pnl: float,
-    realised: float,
-    unrealised: float,
-    exited: bool,
-) -> dict:
-    """Normalise today's P&L so exited legs use booked (realised) money.
-
-    Kite often zeroes ``average_price`` on flat rows; ``realised`` / buy-sell
-    prices are the reliable source for same-day exits.
-    """
-    kite_pnl = float(pnl or 0)
-    kite_realised = float(realised or 0)
-    kite_unrealised = float(unrealised or 0)
-
-    computed = 0.0
-    matched = min(max(int(buy_qty), 0), max(int(sell_qty), 0))
-    if matched > 0 and (buy_price or sell_price):
-        # Same formula for long-then-flat and short-then-flat:
-        # profit when sell_price > buy_price.
-        computed = (float(sell_price) - float(buy_price)) * matched
-
-    if exited:
-        # Prefer explicit realised; else Kite net pnl; else buy/sell reconstruct.
-        if abs(kite_realised) > 1e-9:
-            booked = kite_realised
-            source = "realised"
-        elif abs(kite_pnl) > 1e-9:
-            booked = kite_pnl
-            source = "pnl"
-        else:
-            booked = computed
-            source = "buy_sell"
-        return {
-            "pnl": round(booked, 2),
-            "realised": round(booked, 2),
-            "unrealised": 0.0,
-            "booked_pnl": round(booked, 2),
-            "pnl_source": source,
-        }
-
-    # Open: keep Kite total; expose day realised separately when present.
-    return {
-        "pnl": round(kite_pnl, 2),
-        "realised": round(kite_realised, 2),
-        "unrealised": round(kite_unrealised if abs(kite_unrealised) > 1e-9 else (kite_pnl - kite_realised), 2),
-        "booked_pnl": round(kite_realised, 2),
-        "pnl_source": "kite",
-    }
 
 
 def parse_fno_option_symbol(ts: str) -> Optional[dict[str, Any]]:

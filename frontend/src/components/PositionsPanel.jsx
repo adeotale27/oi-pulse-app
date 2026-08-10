@@ -1222,7 +1222,7 @@ export default function PositionsPanel({
                     </div>
                     <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
                       {r.exchange}
-                      {r.exited ? " · squared off" : ""}
+                      {r.exited ? " · exited" : ""}
                     </div>
                   </td>
                 )}

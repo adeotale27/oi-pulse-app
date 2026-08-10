@@ -3133,38 +3133,14 @@ async def get_positions(_admin: bool = Depends(require_admin)):
         format_fno_option_label,
         parse_fno_option_symbol,
     )
+    from kite_positions import merge_kite_net_day
 
-    def _pos_key(p: dict) -> tuple:
-        return (
-            str(p.get("exchange") or ""),
-            str(p.get("tradingsymbol") or ""),
-            str(p.get("product") or ""),
-        )
-
-    # Prefer net rows; merge any day-only rows Zerodha surfaces separately.
-    by_key = {}
-    for p in list(net or []) + list(day or []):
-        key = _pos_key(p)
-        if not key[1]:
-            continue
-        prev = by_key.get(key)
-        if prev is None:
-            by_key[key] = p
-            continue
-        # Keep the row with non-zero net qty; else keep the one with more traded volume.
-        prev_qty = abs(int(prev.get("quantity", 0) or 0))
-        cur_qty = abs(int(p.get("quantity", 0) or 0))
-        if cur_qty > prev_qty:
-            by_key[key] = p
-            continue
-        if cur_qty == prev_qty:
-            prev_vol = int(prev.get("buy_quantity", 0) or 0) + int(prev.get("sell_quantity", 0) or 0)
-            cur_vol = int(p.get("buy_quantity", 0) or 0) + int(p.get("sell_quantity", 0) or 0)
-            if cur_vol > prev_vol:
-                by_key[key] = p
+    # Net quantity is authoritative for open vs exited. Day rows only enrich
+    # buy/sell stats — never resurrect a flat net as an open leg.
+    merged = merge_kite_net_day(net, day)
 
     out = []
-    for p in by_key.values():
+    for p in merged:
         qty = int(p.get("quantity", 0) or 0)
         buy_qty = int(p.get("buy_quantity", 0) or 0)
         sell_qty = int(p.get("sell_quantity", 0) or 0)
@@ -3177,6 +3153,10 @@ async def get_positions(_admin: bool = Depends(require_admin)):
         buy_price = float(p.get("buy_price", 0) or 0)
         sell_price = float(p.get("sell_price", 0) or 0)
         avg = float(p.get("average_price", 0) or 0)
+        buy_value = float(p.get("buy_value", 0) or 0)
+        sell_value = float(p.get("sell_value", 0) or 0)
+        last_price = float(p.get("last_price", 0) or 0)
+        multiplier = float(p.get("multiplier", 1) or 1) or 1.0
         pnl_bits = booked_pnl_from_kite_row(
             qty=qty,
             buy_qty=buy_qty,
@@ -3187,6 +3167,10 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             realised=float(p.get("realised", 0) or 0),
             unrealised=float(p.get("unrealised", 0) or 0),
             exited=exited,
+            buy_value=buy_value,
+            sell_value=sell_value,
+            last_price=last_price,
+            multiplier=multiplier,
         )
         # Direction hint for exited shorts/longs (qty is 0): compare buy vs sell volume.
         side_bias = None
@@ -3198,15 +3182,18 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             else:
                 side_bias = "squared"
         display_name = format_fno_option_label(ts, parsed=parsed or None)
+        # Mirror Kite Positions: flat legs show Qty 0 / Avg 0.00 with Closed tag.
         out.append({
             "tradingsymbol": ts,
             "display_name": display_name,
             "exchange": p.get("exchange"),
             "product": p.get("product"),
-            "quantity": qty,
+            "quantity": 0 if exited else qty,
             "overnight_quantity": int(p.get("overnight_quantity", 0) or 0),
-            "average_price": avg,
-            "last_price": float(p.get("last_price", 0) or 0),
+            "day_quantity": int(p.get("day_quantity", 0) or 0) if p.get("day_quantity") is not None else None,
+            "average_price": 0.0 if exited else avg,
+            "average_price_raw": avg,
+            "last_price": last_price,
             "pnl": pnl_bits["pnl"],
             "unrealised": pnl_bits["unrealised"],
             "realised": pnl_bits["realised"],
@@ -3216,7 +3203,13 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             "sell_quantity": sell_qty,
             "buy_price": buy_price,
             "sell_price": sell_price,
+            "buy_value": buy_value or None,
+            "sell_value": sell_value or None,
+            "multiplier": multiplier,
             "exited": exited,
+            "is_exited": exited,
+            "position_state": "closed" if exited else "open",
+            "status": "Closed" if exited else None,
             "side_bias": side_bias,
             **parsed,
         })
