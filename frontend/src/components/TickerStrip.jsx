@@ -96,7 +96,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               onClick={() => onSelectIndex?.(t.index)}
               data-testid={`ticker-${t.index}`}
               title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
-              className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border text-[11px] font-mono-data tabular-nums shrink-0 transition-colors ${
+              className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${
                 isActive
                   ? `${s.borderActive} bg-white shadow-sm`
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"

@@ -53,15 +53,13 @@ export default function Header({
   /** Parent (Dashboard) already resolved admin — don't wait on a second /auth/state. */
   assumedAdmin = false,
   publicAccessOpen = null,
-  /** Slim one-line index + ATM/VIX/GIFT rail instead of tall ticker tiles. */
+  /** Slim one-line index + VIX/GIFT rail instead of tall ticker tiles. */
   headerRail = false,
-  onToggleHeaderRail,
   /** Merge DataTruth / market / Kite banners into one slim bar. */
   slimStatusRail = false,
   onToggleSlimStatusRail,
 }) {
   const price = current?.price ?? 0;
-  const atm = current?.atm ?? 0;
   const pcr = current?.pcr ?? 0;
   const vix = current?.vix ?? 0;
   const mode = status?.mode ?? "offline";
@@ -343,20 +341,19 @@ export default function Header({
       {/* Desktop header — compact single row for laptop/zoom; tools in a dropdown */}
       <div className="hidden md:block">
       {/* Row 1: brand + status + essential actions */}
-      <div className="px-3 sm:px-4 py-2 flex items-center gap-2 lg:gap-3 flex-nowrap min-w-0 overflow-hidden">
-        <div className="flex items-center gap-2 shrink-0">
-          <OiPulseLogo className="w-8 h-8" />
+      <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 overflow-hidden ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <OiPulseLogo className={headerRail ? "w-6 h-6" : "w-8 h-8"} />
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent">
+            <div className={`${headerRail ? "text-xs" : "text-sm"} font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent`}>
               OI Pulse
             </div>
           </div>
         </div>
 
-        {/* ATM / VIX / GIFT — always on in rail mode; otherwise only on wide screens */}
-        <div className={`${headerRail ? "flex" : "hidden 2xl:flex"} items-center gap-3 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
-          <Metric label="ATM" value={atm.toLocaleString()} />
-          <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
+        {/* VIX / GIFT — no ATM (already in sidebar). Slim = inline chips; normal = stacked metrics on wide screens */}
+        <div className={`${headerRail ? "flex" : "hidden 2xl:flex"} items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
+          <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} inline={headerRail} />
           <ExtraTickerCell
             label="GIFT NIFTY"
             data={extras.gift_nifty}
@@ -365,11 +362,12 @@ export default function Header({
             kiteSymbol={extras?.windows?.gift?.kite_symbol || "NSEIX:GIFT NIFTY"}
             serverIst={extras?.server_time_ist}
             onOpenSessions={() => setGiftModalOpen(true)}
+            inline={headerRail}
           />
         </div>
 
         {/* Index tiles or slim rail chips */}
-        <div className={`flex items-center gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden justify-start ${headerRail ? "" : "items-stretch"}`}>
+        <div className={`flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 overflow-hidden justify-start ${headerRail ? "" : "items-stretch"}`}>
           <TickerStrip
             layout={headerRail ? "rail" : "header"}
             activeIndex={activeIndex}
@@ -378,29 +376,49 @@ export default function Header({
           />
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-          <div className="hidden xl:block">
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
+          <div className={`hidden xl:block ${headerRail ? "scale-90 origin-right" : ""}`}>
             <BigClock compact />
           </div>
-          {(lastPulledAt || nowLabel) && (
-            <div className="hidden 2xl:flex flex-col items-start gap-0 bg-transparent text-slate-700 px-2 py-1 rounded-sm leading-tight min-w-[100px]" data-testid="oi-and-time">
-              {lastPulledAt && <div className="text-[10px] font-mono-data uppercase tracking-widest text-slate-500 dark:text-slate-400">OI pulled</div>}
-              {lastPulledAt && <div className="text-sm font-semibold font-mono-data text-slate-900 dark:text-slate-100">{new Date(lastPulledAt).toLocaleTimeString()}</div>}
-              <div className="text-[10px] font-mono-data text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${status?.market && status.market.is_market_open ? "bg-emerald-500" : "bg-slate-300"}`} />
-                <span className={`font-semibold ${status?.market && status.market.is_market_open ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}>{nowLabel}</span>
-              </div>
+          {lastPulledAt && (
+            <div
+              className={`hidden 2xl:flex items-center gap-1.5 px-1.5 font-mono-data text-slate-600 dark:text-slate-300 ${headerRail ? "text-[10px]" : "flex-col items-start gap-0 px-2 py-1 min-w-[100px]"}`}
+              data-testid="oi-and-time"
+              title={nowLabel ? `Now ${nowLabel}` : undefined}
+            >
+              {headerRail ? (
+                <>
+                  <span className="uppercase tracking-wider text-slate-400">OI</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {new Date(lastPulledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">OI pulled</div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{new Date(lastPulledAt).toLocaleTimeString()}</div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${status?.market && status.market.is_market_open ? "bg-emerald-500" : "bg-slate-300"}`} />
+                    <span className={`font-semibold ${status?.market && status.market.is_market_open ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}>{nowLabel}</span>
+                  </div>
+                </>
+              )}
             </div>
           )}
-          <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack">
+          <div className={`flex items-stretch gap-0.5 shrink-0 ${headerRail ? "flex-row items-center" : "flex-col"}`} data-testid="kite-status-stack">
             <Badge
               data-testid="mode-badge"
-              className={`rounded-sm ${modeBadgeCls}`}
-              title={modeBadge.title}
+              className={`rounded-sm ${modeBadgeCls} ${headerRail ? "text-[10px] px-1.5 py-0 h-6" : ""}`}
+              title={[
+                modeBadge.title,
+                mode === "kite" && dataStatus?.data_date && status?.market?.is_market_open === false
+                  ? `Session ${dataStatus.data_date}`
+                  : null,
+              ].filter(Boolean).join(" · ")}
             >
               {modeBadge.label}
             </Badge>
-            {mode === "kite" && dataStatus?.data_date && status?.market && status.market.is_market_open === false && (
+            {!headerRail && mode === "kite" && dataStatus?.data_date && status?.market && status.market.is_market_open === false && (
               <span
                 data-testid="session-date-chip"
                 className="text-[10px] font-mono-data text-center text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5"
@@ -409,7 +427,7 @@ export default function Header({
                 {dataStatus.data_date}
               </span>
             )}
-            {mode !== "kite" && (
+            {!headerRail && mode !== "kite" && (
               <span
                 data-testid="offline-hint-chip"
                 className="hidden sm:inline-flex text-[10px] font-mono-data text-center text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
@@ -491,15 +509,6 @@ export default function Header({
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 {darkMode ? "Light mode" : "Dark mode"}
               </DropdownMenuItem>
-              {typeof onToggleHeaderRail === "function" && (
-                <DropdownMenuItem
-                  data-testid="menu-toggle-header-rail"
-                  onSelect={(e) => { e.preventDefault(); onToggleHeaderRail(); }}
-                >
-                  <SlidersHorizontal className="w-4 h-4" />
-                  {headerRail ? "Index tiles (tall)" : "Index status rail (slim)"}
-                </DropdownMenuItem>
-              )}
               {typeof onToggleSlimStatusRail === "function" && (
                 <DropdownMenuItem
                   data-testid="menu-toggle-slim-status"
@@ -645,7 +654,6 @@ export default function Header({
           <BigClock compact />
         </div>
         <div className="flex items-center gap-4 min-w-0 overflow-hidden flex-wrap">
-          <Metric label="ATM" value={atm.toLocaleString()} />
           <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
           <ExtraTickerCell
             label="GIFT NIFTY"
@@ -744,13 +752,28 @@ export default function Header({
   );
 }
 
-function VixMetric({ value, sessionOpen, liveVix }) {
+function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   // Compact tile: top-right % change, big price below — like the ticker tiles.
   const v = liveVix?.last != null && liveVix.last > 0 ? liveVix.last : (value ?? 0);
   const pct = liveVix && liveVix.change_pct != null ? Number(liveVix.change_pct) : (sessionOpen && v ? ((v - sessionOpen) / sessionOpen) * 100 : 0);
   const tone = pct > 0.05 ? "rose" : pct < -0.05 ? "emerald" : "slate";
   const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-slate-500 dark:text-slate-400";
   const hasData = v != null && v > 0;
+  if (inline) {
+    return (
+      <div
+        className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm font-mono-data text-[10px] tabular-nums"
+        data-testid="vix-metric"
+        title="India VIX"
+      >
+        <span className="uppercase tracking-wider text-slate-400 font-semibold">VIX</span>
+        <span className={`font-semibold ${hasData ? "text-slate-900 dark:text-slate-100" : "text-slate-400"}`} data-testid="vix-value">
+          {hasData ? Number(v).toFixed(2) : "—"}
+        </span>
+        <span className={toneCls}>{hasData ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : ""}</span>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col" data-testid="vix-metric">
       <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
@@ -768,7 +791,7 @@ function VixMetric({ value, sessionOpen, liveVix }) {
   );
 }
 
-function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, openNow, kiteSymbol }) {
+function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, openNow, kiteSymbol, inline = false }) {
   const [hover, setHover] = useState(false);
   const [tipPos, setTipPos] = useState({ top: 0, left: 0 });
   const hasData = data && data.last != null && data.last > 0;
@@ -943,11 +966,31 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
 
   return (
     <div
-      className="flex flex-col relative"
+      className={inline ? "inline-flex items-center relative" : "flex flex-col relative"}
       data-testid={`ticker-${label.toLowerCase().replace(/\s+/g, "-")}`}
       onMouseEnter={(e) => { if (isGift) showTip(e.currentTarget); }}
       onMouseLeave={() => setHover(false)}
     >
+      {inline ? (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm font-mono-data text-[10px] tabular-nums hover:bg-slate-50 dark:hover:bg-slate-800"
+          onClick={() => isGift && onOpenSessions?.()}
+          title={giftTooltip || label}
+        >
+          {isGift && (
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-300"}`} />
+          )}
+          <span className="uppercase tracking-wider text-slate-400 font-semibold">
+            {isGift ? "GIFT" : label}
+          </span>
+          <span className="font-semibold text-slate-900 dark:text-slate-100">
+            {hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}
+          </span>
+          <span className={toneCls}>{hasData ? `${chgPct >= 0 ? "+" : ""}${chgPct.toFixed(2)}%` : ""}</span>
+        </button>
+      ) : (
+        <>
       <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
         <div className="flex items-center gap-1.5">
           {/* persistent status dot — click opens full sessions modal */}
@@ -977,6 +1020,8 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
           <span>{chg > 0 ? "+" : ""}{chg.toFixed(2)}</span>
         </div>
       </div>
+        </>
+      )}
 
       {/* Fixed portal tooltip — header overflow:hidden was clipping the old absolute popover */}
       {isGift && hover && typeof document !== "undefined" && createPortal(

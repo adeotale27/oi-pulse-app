@@ -49,7 +49,7 @@ import {
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen, PanelLeftOpen, ChevronLeft, X } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -1511,7 +1511,6 @@ export default function Dashboard() {
         compact={compact}
         onToggleCompact={() => setCompact((v) => !v)}
         headerRail={headerRail}
-        onToggleHeaderRail={() => setHeaderRail((v) => !v)}
         slimStatusRail={slimStatusRail}
         onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
         spotPrices={liveSpotPrices}
@@ -1646,9 +1645,9 @@ export default function Dashboard() {
                       aria-label="Hide info tiles"
                       aria-expanded="true"
                       data-testid="btn-toggle-info-tiles"
-                      className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                      className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ) : (
@@ -1690,9 +1689,9 @@ export default function Dashboard() {
                     aria-label="Hide info tiles"
                     aria-expanded="true"
                     data-testid="btn-toggle-info-tiles-sm"
-                    className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                    className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )}
@@ -2403,6 +2402,8 @@ export default function Dashboard() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         isAdmin={authState.is_admin}
+        headerRail={headerRail}
+        onHeaderRailChange={setHeaderRail}
         onSaved={(settings) => {
           loadStatus();
           if (Array.isArray(settings.visible_pages)) {
