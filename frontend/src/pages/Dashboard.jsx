@@ -49,7 +49,7 @@ import {
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen, PanelLeftOpen, ChevronDown, ChevronUp, LayoutGrid } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -1530,32 +1530,89 @@ export default function Dashboard() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col px-2 pt-0 md:pt-0 sm:px-0">
-            {/* Tabs + info tiles. Tile wrappers must NOT use overflow-x-auto — that clips
-                FII/Events/Impact dropdowns and makes clicks look broken. */}
-            <div className="hidden md:flex flex-col gap-2 mb-2 sm:mb-3 shrink-0 min-w-0">
-              <div className="flex items-end gap-3 flex-nowrap min-w-0">
-                <OverflowTabBar
-                  tabs={dashboardTabs}
-                  value={activeTab}
-                  onChange={setActiveTab}
-                  onReorder={handleReorderTabs}
-                  onFavorite={handleFavoriteTab}
-                  onMove={handleMoveTab}
-                  onResetLayout={handleResetLayout}
-                />
-                <button
-                  type="button"
-                  onClick={() => setInfoTilesOpen((v) => !v)}
-                  className="shrink-0 mb-0.5 inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[10px] font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
-                  title={infoTilesOpen ? "Hide holiday / FII / event tiles" : "Show holiday / FII / event tiles"}
-                  data-testid="btn-toggle-info-tiles"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  Tiles
-                  {infoTilesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                </button>
-                {infoTilesOpen && (
-                  <div className="hidden xl:block shrink-0 relative z-30 overflow-visible">
+            {/* Desk chrome: tabs stay; info tiles collapse via a thin edge rail (same language as sidebar / right panel).
+                Closing tiles drops their row height so Positions / OI / CAS etc. rise into the freed space. */}
+            <div
+              className={`hidden md:flex flex-col shrink-0 min-w-0 ${
+                infoTilesOpen ? "mb-2 sm:mb-3" : "mb-0.5"
+              }`}
+              data-testid="dashboard-chrome-row"
+            >
+              <div className="flex items-stretch gap-0 flex-nowrap min-w-0 w-full">
+                <div className="min-w-0 flex-1 flex items-end">
+                  <OverflowTabBar
+                    tabs={dashboardTabs}
+                    value={activeTab}
+                    onChange={setActiveTab}
+                    onReorder={handleReorderTabs}
+                    onFavorite={handleFavoriteTab}
+                    onMove={handleMoveTab}
+                    onResetLayout={handleResetLayout}
+                  />
+                </div>
+
+                {/* xl+: tiles share the tabs row — vertical rule + chevron flush left of Holiday */}
+                {infoTilesOpen ? (
+                  <div className="hidden xl:flex items-stretch shrink-0 relative z-30 overflow-visible">
+                    <button
+                      type="button"
+                      onClick={() => setInfoTilesOpen(false)}
+                      title="Hide info tiles — more room for charts & tables"
+                      aria-label="Hide info tiles"
+                      aria-expanded="true"
+                      data-testid="btn-toggle-info-tiles"
+                      className="group flex items-center justify-center w-4 shrink-0 self-stretch border-l border-slate-300 text-slate-400 hover:border-emerald-500 hover:bg-emerald-50/80 hover:text-emerald-700 transition-colors"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5 opacity-80 group-hover:opacity-100" />
+                    </button>
+                    <div className="pl-1.5 overflow-visible">
+                      <InfoTilesRow
+                        order={tileOrder}
+                        onReorder={handleReorderTiles}
+                        onFavorite={handleFavoriteTile}
+                        onMove={handleMoveTile}
+                        isAdmin={!!authState.is_admin}
+                        showImpact={showImpactTile}
+                        activeIndex={activeIndex}
+                        onOpenHolidays={openHolidaysTab}
+                        onOpenIndexEvents={openIndexEventsTab}
+                        wide
+                        testId="dashboard-info-tiles"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Collapsed: one slim rail on the tabs row (no second row) so the desk jumps up */
+                  <button
+                    type="button"
+                    onClick={() => setInfoTilesOpen(true)}
+                    title="Show holiday / FII / event tiles"
+                    aria-label="Show info tiles"
+                    aria-expanded="false"
+                    data-testid="btn-toggle-info-tiles"
+                    className="shrink-0 flex flex-col items-center justify-center gap-1 self-stretch ml-1 w-6 min-h-[36px] border-l border-slate-200 bg-transparent px-0 py-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400 hover:bg-emerald-50/80 hover:text-emerald-700 hover:border-emerald-400 transition-colors"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span className="[writing-mode:vertical-rl] rotate-180 leading-none">Info</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Below xl: tiles on their own row so dropdowns aren’t clipped by tabs */}
+              {infoTilesOpen && (
+                <div className="xl:hidden relative z-30 overflow-visible flex items-stretch gap-0 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setInfoTilesOpen(false)}
+                    title="Hide info tiles — more room for charts & tables"
+                    aria-label="Hide info tiles"
+                    aria-expanded="true"
+                    data-testid="btn-toggle-info-tiles-sm"
+                    className="group flex items-center justify-center w-4 shrink-0 self-stretch border-l border-slate-300 text-slate-400 hover:border-emerald-500 hover:bg-emerald-50/80 hover:text-emerald-700 transition-colors"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5 opacity-80 group-hover:opacity-100" />
+                  </button>
+                  <div className="pl-1.5 min-w-0 flex-1 overflow-visible">
                     <InfoTilesRow
                       order={tileOrder}
                       onReorder={handleReorderTiles}
@@ -1566,27 +1623,9 @@ export default function Dashboard() {
                       activeIndex={activeIndex}
                       onOpenHolidays={openHolidaysTab}
                       onOpenIndexEvents={openIndexEventsTab}
-                      wide
-                      testId="dashboard-info-tiles"
+                      testId="dashboard-info-tiles-wrap"
                     />
                   </div>
-                )}
-              </div>
-              {/* Below xl: tiles on their own row so dropdowns are never clipped by the tab bar */}
-              {infoTilesOpen && (
-                <div className="xl:hidden relative z-30 overflow-visible">
-                  <InfoTilesRow
-                    order={tileOrder}
-                    onReorder={handleReorderTiles}
-                    onFavorite={handleFavoriteTile}
-                    onMove={handleMoveTile}
-                    isAdmin={!!authState.is_admin}
-                    showImpact={showImpactTile}
-                    activeIndex={activeIndex}
-                    onOpenHolidays={openHolidaysTab}
-                    onOpenIndexEvents={openIndexEventsTab}
-                    testId="dashboard-info-tiles-wrap"
-                  />
                 </div>
               )}
             </div>
