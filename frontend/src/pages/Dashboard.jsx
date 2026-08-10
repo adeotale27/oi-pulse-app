@@ -1603,59 +1603,30 @@ export default function Dashboard() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col px-2 pt-0 md:pt-0 sm:px-0">
-            {/* Desk chrome: stable tabs row first; info tiles always on a second row
-                (avoids 1–2s stretch/reflow when tile APIs resolve). */}
+            {/* Same-row chrome: tabs collapse into More as tiles take space (desk density). */}
             <div
-              className={`hidden md:flex flex-col shrink-0 min-w-0 ${
-                infoTilesOpen ? "mb-2 sm:mb-3 gap-1.5" : "mb-0 gap-0"
+              className={`hidden md:flex items-center gap-2 flex-nowrap shrink-0 min-w-0 w-full ${
+                infoTilesOpen ? "mb-2 sm:mb-3" : "mb-0"
               }`}
               data-testid="dashboard-chrome-row"
             >
-              <div className="flex items-center gap-2 flex-nowrap min-w-0 w-full">
-                <div className="min-w-0 flex-1 flex items-center">
-                  <OverflowTabBar
-                    tabs={dashboardTabs}
-                    value={activeTab}
-                    onChange={setActiveTab}
-                    onReorder={handleReorderTabs}
-                    onFavorite={handleFavoriteTab}
-                    onMove={handleMoveTab}
-                  />
-                </div>
-                {infoTilesOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => setInfoTilesOpen(false)}
-                    title="Hide info tiles — more room for charts & tables"
-                    aria-label="Hide info tiles"
-                    aria-expanded="true"
-                    data-testid="btn-toggle-info-tiles"
-                    className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setInfoTilesOpen(true)}
-                    title="Show holiday / FII / event tiles"
-                    aria-label="Show info tiles"
-                    aria-expanded="false"
-                    data-testid="btn-toggle-info-tiles"
-                    className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-sm text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                    Events
-                  </button>
-                )}
+              <div className="min-w-0 flex-1 flex items-center overflow-hidden">
+                <OverflowTabBar
+                  tabs={dashboardTabs}
+                  value={activeTab}
+                  onChange={setActiveTab}
+                  onReorder={handleReorderTabs}
+                  onFavorite={handleFavoriteTab}
+                  onMove={handleMoveTab}
+                />
               </div>
 
-              {infoTilesOpen && (
-                <div
-                  className="relative z-30 overflow-x-auto overflow-y-visible flex items-start gap-1 min-h-[58px]"
-                  data-testid="dashboard-info-tiles-wrap"
-                >
-                  <div className="min-w-0 flex-1 overflow-x-auto overflow-y-visible">
+              {infoTilesOpen ? (
+                <>
+                  <div
+                    className="shrink-0 relative z-30 overflow-x-auto overflow-y-visible max-w-[58%] lg:max-w-[62%] xl:max-w-none"
+                    data-testid="dashboard-info-tiles-wrap"
+                  >
                     <InfoTilesRow
                       order={tileOrder}
                       onReorder={handleReorderTiles}
@@ -1670,7 +1641,31 @@ export default function Dashboard() {
                       testId="dashboard-info-tiles"
                     />
                   </div>
-                </div>
+                  <button
+                    type="button"
+                    onClick={() => setInfoTilesOpen(false)}
+                    title="Hide info tiles — more room for charts & tables"
+                    aria-label="Hide info tiles"
+                    aria-expanded="true"
+                    data-testid="btn-toggle-info-tiles"
+                    className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setInfoTilesOpen(true)}
+                  title="Show holiday / FII / event tiles"
+                  aria-label="Show info tiles"
+                  aria-expanded="false"
+                  data-testid="btn-toggle-info-tiles"
+                  className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-sm text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Events
+                </button>
               )}
             </div>
 
