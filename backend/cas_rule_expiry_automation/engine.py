@@ -124,6 +124,10 @@ class AutomationEngine:
                 "product": self.config.product,
                 "live_trading": self.config.live_trading,
                 "paper_any_day": self.config.paper_any_day,
+                "debug_mode": bool(getattr(self.config, "debug_mode", False)),
+                "watch_indexes": list(
+                    getattr(self.config, "watch_indexes", None) or ["NIFTY", "SENSEX"]
+                ),
                 "paper_latency_probe": getattr(
                     self.config, "paper_latency_probe", True
                 ),
@@ -280,10 +284,12 @@ class AutomationEngine:
                     continue
 
                 # After market close (15:41 IST): stop WS + auto-deactivate.
-                # UI also stops /api/status polling after this time.
+                # Debug keeps the session armed so we can rehearse / inspect anytime.
+                # (Paper+debug also widens windows in cas_bridge; Live keeps normal windows.)
                 now = get_ist_now()
                 tnow = time_only(now)
-                if tnow >= self.config.market_close:
+                debug_keep = bool(getattr(self.config, "debug_mode", False))
+                if tnow >= self.config.market_close and not debug_keep:
                     if self._ws_started:
                         self._stop_ws()
                         self.store.clear_ltp()
