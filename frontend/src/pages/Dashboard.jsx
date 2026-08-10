@@ -1632,7 +1632,6 @@ export default function Dashboard() {
                   <div
                     className="shrink-0 relative z-30 overflow-x-auto max-w-[58%] lg:max-w-[62%] xl:max-w-none"
                     data-testid="dashboard-info-tiles-wrap"
-                    title="Tile menus open above the desk (not clipped by this row)"
                   >
                     <InfoTilesRow
                       order={tileOrder}
