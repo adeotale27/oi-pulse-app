@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { RefreshCw, PlugZap, AlertTriangle, Building2, Zap } from "lucide-react";
+import { RefreshCw, PlugZap, AlertTriangle, Building2, Zap, ShieldAlert, Crosshair, Pin } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   yearsToExpiry,
   greeks,
@@ -11,6 +12,16 @@ import {
   extrinsicPremium,
 } from "@/lib/blackScholes";
 import { computeSellCandidates } from "@/lib/sellCandidates";
+import {
+  loadPositionsToggles,
+  savePositionsToggles,
+  computeBookVerdict,
+  computeAssignmentWatch,
+  computeDeltaHedgeSuggestions,
+  computeExpiryDayClock,
+  effectiveAdjustThreshold,
+  nearestWeeklyExpiry,
+} from "@/lib/positionsSellerInsights";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
 import InfoTip from "@/components/InfoTip";
 
@@ -64,8 +75,13 @@ const POSITIONS_GUIDE = (
       intrinsic. Not a promise — IV crush / spot moves change it.
     </p>
     <p>
-      <b>Sell / decay ideas</b> (bottom) — same OI + IV + gamma scoring as Sell Candidates for the
-      selected index expiry. Prefer high-Θ, high-score CE/PE when the day is tradeable.
+      <b>Sell / decay ideas</b> — OI + IV + gamma scoring for the selected expiry. Toggle blocks
+      on/off in the Positions suggestion controls.
+    </p>
+    <p>
+      <b>Expiry-day mode</b> — after 13:00 IST on expiry, Adjust band tightens and prem-left is
+      shown vs minutes to 15:30. <b>Δ hedge</b> suggests futures / far-OTM buys when |Net Δ| drifts.
+      <b> Assignment watch</b> flags ITM / low-extrinsic shorts late in the day.
     </p>
   </div>
 );
@@ -81,6 +97,8 @@ export default function PositionsPanel({
   expiry,
   step = 50,
   vrp = null,
+  expiriesMeta = [],
+  onPinNearestWeekly,
   onAdjustmentAlert,
 }) {
   const [positions, setPositions] = useState([]);
@@ -90,6 +108,21 @@ export default function PositionsPanel({
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [adjustThreshPct, setAdjustThreshPct] = useState(60);
+  const [toggles, setToggles] = useState(() => loadPositionsToggles());
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  const setToggle = useCallback((key, on) => {
+    setToggles((prev) => {
+      const next = { ...prev, [key]: !!on };
+      savePositionsToggles(next);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,9 +155,9 @@ export default function PositionsPanel({
   const rows = useMemo(() => {
     if (!positions.length) return [];
     const activeExp = expiry || current?.expiry;
-    const nowMs = Date.now();
+    const nowMs = nowTick;
     const fallbackS = current?.price;
-    return positions.map((p) => {
+    const mapped = positions.map((p) => {
       const isOpt = !!p.strike && !!p.side;
       let dte = null, T = 0, delta = null, theta = null, gamma = null, iv = null;
       let distancePct = null;
@@ -168,20 +201,6 @@ export default function PositionsPanel({
         distancePct = ((p.strike - S) / S) * 100;
       }
       const isShort = p.quantity < 0;
-      let breachedAdjust = false;
-      let breachInfo = null;
-      if (isOpt && isShort && S) {
-        const bandPct = 3;
-        const distPct = Math.abs((p.strike - S) / S) * 100;
-        const covered = 1 - (distPct / bandPct);
-        if (covered >= adjustThreshPct / 100) {
-          breachedAdjust = true;
-          breachInfo = {
-            distancePct: distPct.toFixed(2),
-            coveredPct: (covered * 100).toFixed(0),
-          };
-        }
-      }
       return {
         ...p,
         isOpt,
@@ -192,15 +211,40 @@ export default function PositionsPanel({
         iv,
         distancePct,
         isShort,
-        breachedAdjust,
-        breachInfo,
+        breachedAdjust: false,
+        breachInfo: null,
         extrinsicLeft,
         thetaToClose,
         onExpiryDay,
         spotUsed: S,
       };
     });
-  }, [positions, current, expiry, adjustThreshPct, spotByIndex]);
+
+    const anyExpiryDay = mapped.some((r) => r.isOpt && r.isShort && r.onExpiryDay);
+    const thresh = effectiveAdjustThreshold(adjustThreshPct, {
+      expiryDayMode: toggles.expiryDayMode,
+      anyExpiryDay,
+      nowMs,
+    });
+
+    return mapped.map((r) => {
+      if (!(r.isOpt && r.isShort && r.spotUsed)) return r;
+      const bandPct = 3;
+      const distPct = Math.abs((r.strike - r.spotUsed) / r.spotUsed) * 100;
+      const covered = 1 - (distPct / bandPct);
+      if (covered >= thresh / 100) {
+        return {
+          ...r,
+          breachedAdjust: true,
+          breachInfo: {
+            distancePct: distPct.toFixed(2),
+            coveredPct: (covered * 100).toFixed(0),
+          },
+        };
+      }
+      return r;
+    });
+  }, [positions, current, expiry, adjustThreshPct, spotByIndex, toggles.expiryDayMode, nowTick]);
 
   useEffect(() => {
     if (!onAdjustmentAlert) return;
@@ -291,6 +335,53 @@ export default function PositionsPanel({
       .sort((a, b) => (b.extrinsicLeft || 0) - (a.extrinsicLeft || 0))
       .slice(0, 4);
   }, [rows]);
+
+  const assignmentWatch = useMemo(() => {
+    return computeAssignmentWatch(rows, {
+      nowMs: nowTick,
+      expiryDayMode: toggles.expiryDayMode,
+    });
+  }, [rows, toggles.expiryDayMode, nowTick]);
+
+  const deltaHedge = useMemo(() => {
+    if (!toggles.deltaHedge) return { needed: false };
+    return computeDeltaHedgeSuggestions({
+      netDelta: stats.netDelta,
+      threshold: 10,
+      strikes: current?.strikes || [],
+      spot: spot ?? current?.price,
+      step,
+    });
+  }, [toggles.deltaHedge, stats.netDelta, current, spot, step]);
+
+  const expiryClock = useMemo(() => {
+    if (!toggles.expiryDayMode) return { active: false, items: [] };
+    return computeExpiryDayClock(rows, nowTick);
+  }, [toggles.expiryDayMode, rows, nowTick]);
+
+  const bookVerdict = useMemo(() => {
+    if (!toggles.bookVerdict) return null;
+    return computeBookVerdict({
+      netDelta: stats.netDelta,
+      netTheta: stats.netTheta,
+      shortCount: stats.shortCount,
+      adjustCount: stats.adjustCount,
+      premiumLeft: stats.premiumLeft,
+      itmShortCount: assignmentWatch.filter((w) => w.itm).length,
+      pnl: stats.netPnl,
+    });
+  }, [toggles.bookVerdict, stats, assignmentWatch]);
+
+  const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
+
+  const TOGGLE_DEFS = [
+    { key: "bookVerdict", label: "Book verdict" },
+    { key: "sellIdeas", label: "Sell ideas" },
+    { key: "decayBook", label: "Decay book" },
+    { key: "expiryDayMode", label: "Expiry-day" },
+    { key: "deltaHedge", label: "Δ hedge" },
+    { key: "assignmentWatch", label: "Assignment" },
+  ];
 
   if (!isKiteMode) {
     return (
@@ -449,6 +540,183 @@ export default function PositionsPanel({
         </div>
       )}
 
+      {/* Suggestion toggles — Positions page only */}
+      <div
+        className="rounded-md border border-slate-200 bg-white px-3 py-2 space-y-1.5"
+        data-testid="positions-suggestion-toggles"
+      >
+        <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+          Suggestion blocks
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {TOGGLE_DEFS.map(({ key, label }) => (
+            <label
+              key={key}
+              className="inline-flex items-center gap-1.5 text-[11px] text-slate-700 cursor-pointer select-none"
+              data-testid={`toggle-${key}`}
+            >
+              <Switch
+                checked={!!toggles[key]}
+                onCheckedChange={(on) => setToggle(key, on)}
+                className="scale-90"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {bookVerdict && (
+        <div
+          className={`rounded-md border px-3 py-2.5 space-y-1.5 ${
+            bookVerdict.band === "GOOD"
+              ? "border-emerald-300 bg-emerald-50/70"
+              : bookVerdict.band === "WEAK"
+                ? "border-rose-300 bg-rose-50/70"
+                : "border-amber-300 bg-amber-50/70"
+          }`}
+          data-testid="positions-book-verdict"
+        >
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-xs font-semibold text-slate-900">
+              Your book · {bookVerdict.headline}
+            </div>
+            <span
+              className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-sm border ${
+                bookVerdict.band === "GOOD"
+                  ? "border-emerald-400 bg-emerald-100 text-emerald-900"
+                  : bookVerdict.band === "WEAK"
+                    ? "border-rose-400 bg-rose-100 text-rose-900"
+                    : "border-amber-400 bg-amber-100 text-amber-950"
+              }`}
+              data-testid="book-verdict-band"
+            >
+              {bookVerdict.band} · {bookVerdict.score}
+            </span>
+          </div>
+          <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc pl-4">
+            {bookVerdict.bullets.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {toggles.expiryDayMode && (expiryClock.active || pinWeeklyDate) && (
+        <div
+          className="rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2.5 space-y-2"
+          data-testid="positions-expiry-day"
+        >
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
+              <Pin className="w-3.5 h-3.5 text-sky-700" />
+              Expiry-day mode
+              {expiryClock.after13 && expiryClock.active && (
+                <span className="text-[10px] font-semibold text-rose-700 bg-rose-100 border border-rose-200 px-1 rounded-sm">
+                  Adjust tightened ≤40%
+                </span>
+              )}
+            </div>
+            {pinWeeklyDate && typeof onPinNearestWeekly === "function" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 rounded-sm text-[11px] bg-white"
+                data-testid="btn-pin-nearest-weekly"
+                onClick={() => onPinNearestWeekly(pinWeeklyDate)}
+              >
+                Pin nearest weekly · {pinWeeklyDate}
+              </Button>
+            )}
+          </div>
+          {expiryClock.active ? (
+            <div className="text-[11px] text-slate-700 space-y-1">
+              <div>
+                Prem left vs time to 15:30 ·{" "}
+                <b className="font-mono-data">{expiryClock.minutesToClose ?? "—"} min</b>
+                {" · total extrinsic "}
+                <b className="font-mono-data">₹{fmt(expiryClock.totalExtrinsic, 0)}</b>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {expiryClock.items.slice(0, 4).map((it) => (
+                  <span key={it.tradingsymbol} className="font-mono-data text-[10px]">
+                    {it.strike}{it.side} ₹{fmt(it.extrinsicLeft, 0)}
+                    {it.rupeesPerMinute != null && (
+                      <span className="text-slate-500"> · ₹{fmt(it.rupeesPerMinute, 1)}/min</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-500 italic">
+              No shorts marked expiry-day yet — pin weekly when you want the live chain on that expiry.
+            </div>
+          )}
+        </div>
+      )}
+
+      {toggles.assignmentWatch && assignmentWatch.length > 0 && (
+        <div
+          className="rounded-md border border-rose-200 bg-rose-50/50 px-3 py-2.5 space-y-1.5"
+          data-testid="positions-assignment-watch"
+        >
+          <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-700" />
+            Assignment / ITM watch
+          </div>
+          <ul className="space-y-1">
+            {assignmentWatch.slice(0, 5).map((w) => (
+              <li
+                key={`${w.tradingsymbol}-${w.severity}`}
+                className="text-[11px] text-slate-700 flex flex-wrap gap-x-2 gap-y-0.5"
+              >
+                <span
+                  className={`text-[9px] font-bold uppercase px-1 rounded-sm border ${
+                    w.severity === "critical"
+                      ? "border-rose-400 bg-rose-200 text-rose-950"
+                      : w.severity === "high"
+                        ? "border-amber-400 bg-amber-100 text-amber-950"
+                        : "border-slate-300 bg-white text-slate-700"
+                  }`}
+                >
+                  {w.severity}
+                </span>
+                <b className="font-mono-data">{w.tradingsymbol}</b>
+                <span>{w.note}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {toggles.deltaHedge && deltaHedge.needed && (
+        <div
+          className="rounded-md border border-violet-200 bg-violet-50/50 px-3 py-2.5 space-y-1.5"
+          data-testid="positions-delta-hedge"
+        >
+          <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
+            <Crosshair className="w-3.5 h-3.5 text-violet-700" />
+            Portfolio hedge
+          </div>
+          <p className="text-[11px] text-slate-700">{deltaHedge.message}</p>
+          <div className="text-[11px] font-mono-data text-slate-600">
+            Futures qty ≈ <b>{fmt(deltaHedge.futuresQty, 1)}</b>
+            {deltaHedge.otmBuys?.length > 0 && (
+              <span>
+                {" · far OTM "}
+                {deltaHedge.otmBuys.map((o, i) => (
+                  <span key={`${o.side}-${o.strike}`}>
+                    {i > 0 ? ", " : ""}
+                    {o.strike}{o.side} ₹{fmt(o.ltp, 1)}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Mobile cards */}
       <div className="md:hidden space-y-2" data-testid="positions-mobile-cards">
         {rows.length === 0 ? (
@@ -594,10 +862,12 @@ export default function PositionsPanel({
       </div>
 
       {/* Sell / decay ideas for selected index expiry */}
+      {(toggles.sellIdeas || toggles.decayBook) && (
       <div
         className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-2"
         data-testid="positions-sell-suggestions"
       >
+        {toggles.sellIdeas && (
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="text-xs font-semibold uppercase tracking-widest text-slate-600">
             Sell / decay ideas · {activeIndex}
@@ -615,8 +885,9 @@ export default function PositionsPanel({
             </span>
           )}
         </div>
+        )}
 
-        {decayBook.length > 0 && (
+        {toggles.decayBook && decayBook.length > 0 && (
           <div className="text-[11px] text-slate-600" data-testid="positions-decay-book">
             <span className="font-semibold text-slate-700">Open shorts with extrinsic left: </span>
             {decayBook.map((r, i) => (
@@ -632,6 +903,8 @@ export default function PositionsPanel({
           </div>
         )}
 
+        {toggles.sellIdeas && (
+          <>
         {!sellIdeas?.verdict?.tradeable && sellIdeas?.verdict?.reasons?.length > 0 && (
           <ul className="text-[11px] text-amber-900 space-y-0.5 list-disc pl-4">
             {sellIdeas.verdict.reasons.slice(0, 3).map((msg) => (
@@ -692,7 +965,10 @@ export default function PositionsPanel({
               : "Waiting for chain data / no high-score CE·PE to suggest right now."}
           </div>
         )}
+          </>
+        )}
       </div>
+      )}
 
       {lastRefresh && (
         <div className="text-[10px] text-slate-400 text-right">Last refresh {new Date(lastRefresh).toLocaleTimeString()}</div>

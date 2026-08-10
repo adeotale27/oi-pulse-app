@@ -1970,6 +1970,8 @@ export default function Dashboard() {
                       expiry={selectedExpiry}
                       step={INDEX_STEP[activeIndex] || 50}
                       vrp={vrp}
+                      expiriesMeta={expiriesMeta}
+                      onPinNearestWeekly={handleChangeExpiry}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "huge-shift",
@@ -2091,6 +2093,8 @@ export default function Dashboard() {
                       vixOpen={vixSessionOpen}
                       vrp={vrp}
                       indexStep={INDEX_STEP[activeIndex] || 50}
+                      expiriesMeta={expiriesMeta}
+                      onPinNearestWeekly={handleChangeExpiry}
                       activity={activity}
                       activityFilter={activityFilter}
                       setActivityFilter={setActivityFilter}
@@ -2180,6 +2184,8 @@ export default function Dashboard() {
                     vixOpen={vixSessionOpen}
                     vrp={vrp}
                     indexStep={INDEX_STEP[activeIndex] || 50}
+                    expiriesMeta={expiriesMeta}
+                    onPinNearestWeekly={handleChangeExpiry}
                     activity={activity}
                     activityFilter={activityFilter}
                     setActivityFilter={setActivityFilter}

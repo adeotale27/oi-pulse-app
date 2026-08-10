@@ -58,6 +58,8 @@ export default function RightPanel({
   vixOpen = null,
   vrp = null,
   indexStep = 50,
+  expiriesMeta = [],
+  onPinNearestWeekly,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -163,6 +165,8 @@ export default function RightPanel({
               expiry={selectedExpiry}
               step={indexStep}
               vrp={vrp}
+              expiriesMeta={expiriesMeta}
+              onPinNearestWeekly={onPinNearestWeekly}
             />
           )}
           {selectedView === "oichart" && (
