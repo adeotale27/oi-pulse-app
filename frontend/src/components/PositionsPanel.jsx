@@ -83,6 +83,39 @@ function StatusChip({ breached, isShortOpt }) {
   return null;
 }
 
+/** How far ATM/spot is from this strike (points + %). */
+function AtmDistanceCell({ row }) {
+  if (!row?.isOpt || !Number.isFinite(row.atmDistance) || !Number.isFinite(row.atmRef)) {
+    return <span className="text-slate-400">—</span>;
+  }
+  const pts = row.atmDistance; // strike − ATM
+  const pct = row.distancePct;
+  const absPts = Math.abs(pts);
+  const sign = pts > 0 ? "+" : pts < 0 ? "−" : "";
+  // For a sold option: CE is safer when strike > ATM (pts > 0); PE when strike < ATM (pts < 0).
+  let tone = "text-slate-700";
+  if (row.isShort && row.side === "CE") tone = pts > 0 ? "text-emerald-700" : "text-rose-700";
+  if (row.isShort && row.side === "PE") tone = pts < 0 ? "text-emerald-700" : "text-rose-700";
+  const sideHint =
+    pts === 0
+      ? "Strike is at ATM"
+      : pts > 0
+        ? `Strike is ${Math.round(absPts)} pts above ATM`
+        : `Strike is ${Math.round(absPts)} pts below ATM`;
+  return (
+    <span
+      className={`font-mono-data ${tone}`}
+      title={`${sideHint} (ATM ≈ ${Math.round(row.atmRef)})`}
+      data-testid="atm-distance"
+    >
+      {sign}{Math.round(absPts)}
+      <span className="text-[10px] text-slate-400 ml-0.5">
+        ({sign}{Math.abs(pct).toFixed(1)}%)
+      </span>
+    </span>
+  );
+}
+
 export default function PositionsPanel({
   isKiteMode,
   current,
@@ -192,6 +225,8 @@ export default function PositionsPanel({
       const isOpt = !!p.strike && !!p.side;
       let dte = null, T = 0, delta = null, theta = null, gamma = null, iv = null;
       let distancePct = null;
+      let atmDistance = null; // strike − ATM/spot (points)
+      let atmRef = null;
       let extrinsicLeft = null;
       let thetaToClose = null;
       let onExpiryDay = false;
@@ -200,10 +235,16 @@ export default function PositionsPanel({
       const dashboardSpot =
         p.index && activeIndex && p.index !== activeIndex ? null : fallbackS;
       const S = resolvePositionSpot(p, spotByIndex, dashboardSpot);
+      // Prefer rounded ATM from snapshot when present; else live spot.
+      const spotEntry = p.index ? spotByIndex[p.index] : null;
+      const atmFromMap = spotEntry && typeof spotEntry === "object" ? Number(spotEntry.atm) : null;
       if (isOpt) {
         if (!(S != null && Number.isFinite(S) && S > 0)) {
           greeksHealth = "no_spot";
         } else {
+          atmRef = Number.isFinite(atmFromMap) && atmFromMap > 0 ? atmFromMap : S;
+          atmDistance = p.strike - atmRef;
+          distancePct = (atmDistance / atmRef) * 100;
           const expIso = positionExpiryISO(p, activeExp);
           if (expIso) {
             T = yearsToExpiry(expIso, nowMs);
@@ -243,7 +284,6 @@ export default function PositionsPanel({
           } else {
             greeksHealth = "iv_na";
           }
-          distancePct = ((p.strike - S) / S) * 100;
         }
       }
       const isShort = p.quantity < 0;
@@ -256,6 +296,8 @@ export default function PositionsPanel({
         gamma,
         iv,
         distancePct,
+        atmDistance,
+        atmRef,
         isShort,
         breachedAdjust: false,
         breachInfo: null,
