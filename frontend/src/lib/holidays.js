@@ -88,6 +88,46 @@ export function todayIST() {
   return toIST(new Date());
 }
 
+/**
+ * Most recent NSE trading day strictly before `iso` (YYYY-MM-DD, IST).
+ * Walks back up to 15 calendar days past weekends/holidays.
+ */
+export function previousTradingDayIST(iso = todayIST()) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  let probe = new Date(Date.UTC(y, m - 1, d));
+  for (let i = 0; i < 15; i++) {
+    probe = new Date(probe.getTime() - 24 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    const candidate = `${probe.getUTCFullYear()}-${pad(probe.getUTCMonth() + 1)}-${pad(probe.getUTCDate())}`;
+    if (isTradingDayIST(candidate)) return candidate;
+  }
+  return iso;
+}
+
+/**
+ * Trading date whose straddle/OI session should be shown right now (IST).
+ * • Open / post-close on a trading day → that day
+ * • Pre-open / weekend / holiday → previous trading day
+ *
+ * @param {Date} [now]
+ * @param {number} [openMinute=9*60+15] minutes since midnight IST
+ */
+export function sessionAnchorDateIST(now = new Date(), openMinute = 9 * 60 + 15) {
+  const today = toIST(now);
+  if (!isTradingDayIST(today)) return previousTradingDayIST(today);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(now);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  if (hour * 60 + minute < openMinute) return previousTradingDayIST(today);
+  return today;
+}
+
 export function tomorrowIST() {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + 1);
