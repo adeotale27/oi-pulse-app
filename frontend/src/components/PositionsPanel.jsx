@@ -202,6 +202,7 @@ export default function PositionsPanel({
   onPinNearestWeekly,
   onAdjustmentAlert,
   positionsPollMs = 30000,
+  onOpenKite,
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
@@ -219,9 +220,25 @@ export default function PositionsPanel({
   const [secsLeft, setSecsLeft] = useState(() => Math.max(1, Math.round(positionsPollMs / 1000)));
   const [colVis, setColVis] = useState(() => loadColumnVisibility());
   const [colsOpen, setColsOpen] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(() => {
+    try {
+      return localStorage.getItem("oiPositionsInsightsOpen") === "1";
+    } catch {
+      return false;
+    }
+  });
   const colsMenuRef = useRef(null);
   const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
   const loadGen = useRef(0);
+
+  const setInsights = useCallback((open) => {
+    setInsightsOpen(open);
+    try {
+      localStorage.setItem("oiPositionsInsightsOpen", open ? "1" : "0");
+    } catch {
+      /* noop */
+    }
+  }, []);
 
   const setToggle = useCallback((key, on) => {
     setToggles((prev) => {
@@ -611,12 +628,23 @@ export default function PositionsPanel({
 
   if (!isKiteMode) {
     return (
-      <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center">
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center" data-testid="positions-kite-required">
         <PlugZap className="w-8 h-8 mx-auto text-slate-400 mb-2" />
         <div className="text-sm font-semibold text-slate-700">Kite Live mode required</div>
-        <div className="text-xs text-slate-500 mt-1">
-          Connect your Zerodha Kite API from the top-right “Kite API” button to pull your open F&amp;O positions here.
+        <div className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+          Connect Zerodha Kite to pull your open F&amp;O positions here.
         </div>
+        {typeof onOpenKite === "function" && (
+          <Button
+            size="sm"
+            className="mt-3 h-8 rounded-sm bg-emerald-600 hover:bg-emerald-700"
+            onClick={onOpenKite}
+            data-testid="btn-positions-reconnect-kite"
+          >
+            <PlugZap className="w-3.5 h-3.5 mr-1.5" />
+            Reconnect Kite
+          </Button>
+        )}
       </div>
     );
   }
@@ -745,8 +773,24 @@ export default function PositionsPanel({
       </div>
 
       {error && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 text-rose-800 px-3 py-2 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4" /> {error}
+        <div
+          className="rounded-md border border-rose-200 bg-rose-50 text-rose-800 px-3 py-2 text-xs flex flex-wrap items-center gap-2"
+          data-testid="positions-error"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span className="flex-1 min-w-0">{error}</span>
+          {typeof onOpenKite === "function" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-sm border-rose-300 bg-white text-rose-800 hover:bg-rose-100"
+              onClick={onOpenKite}
+              data-testid="btn-positions-error-reconnect"
+            >
+              <PlugZap className="w-3.5 h-3.5 mr-1" />
+              Reconnect
+            </Button>
+          )}
         </div>
       )}
 
@@ -856,183 +900,6 @@ export default function PositionsPanel({
               Cash left <b className="font-mono-data">₹ {fmt(funds.net, 0)}</b>
             </span>
           )}
-        </div>
-      )}
-
-      {/* Suggestion toggles — Positions page only */}
-      <div
-        className="rounded-md border border-slate-200 bg-white px-3 py-2 space-y-1.5"
-        data-testid="positions-suggestion-toggles"
-      >
-        <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-          Helpful tips (on / off)
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-2">
-          {TOGGLE_DEFS.map(({ key, label }) => (
-            <label
-              key={key}
-              className="inline-flex items-center gap-1.5 text-[11px] text-slate-700 cursor-pointer select-none"
-              data-testid={`toggle-${key}`}
-            >
-              <Switch
-                checked={!!toggles[key]}
-                onCheckedChange={(on) => setToggle(key, on)}
-                className="scale-90"
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {bookVerdict && (
-        <div
-          className={`rounded-md border px-3 py-2.5 space-y-1.5 ${
-            bookVerdict.band === "GOOD"
-              ? "border-emerald-300 bg-emerald-50/70"
-              : bookVerdict.band === "WEAK"
-                ? "border-rose-300 bg-rose-50/70"
-                : "border-amber-300 bg-amber-50/70"
-          }`}
-          data-testid="positions-book-verdict"
-        >
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="text-xs font-semibold text-slate-900">
-              Your book · {bookVerdict.headline}
-            </div>
-            <span
-              className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-sm border ${
-                bookVerdict.band === "GOOD"
-                  ? "border-emerald-400 bg-emerald-100 text-emerald-900"
-                  : bookVerdict.band === "WEAK"
-                    ? "border-rose-400 bg-rose-100 text-rose-900"
-                    : "border-amber-400 bg-amber-100 text-amber-950"
-              }`}
-              data-testid="book-verdict-band"
-            >
-              {bookVerdict.band} · {bookVerdict.score}
-            </span>
-          </div>
-          <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc pl-4">
-            {bookVerdict.bullets.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {toggles.expiryDayMode && (expiryClock.active || pinWeeklyDate) && (
-        <div
-          className="rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2.5 space-y-2"
-          data-testid="positions-expiry-day"
-        >
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
-              <Pin className="w-3.5 h-3.5 text-sky-700" />
-              Expiry-day mode
-              {expiryClock.after13 && expiryClock.active && (
-                <span className="text-[10px] font-semibold text-rose-700 bg-rose-100 border border-rose-200 px-1 rounded-sm">
-                  Warnings tighter after 1pm
-                </span>
-              )}
-            </div>
-            {pinWeeklyDate && typeof onPinNearestWeekly === "function" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 rounded-sm text-[11px] bg-white"
-                data-testid="btn-pin-nearest-weekly"
-                onClick={() => onPinNearestWeekly(pinWeeklyDate)}
-              >
-                Pin nearest weekly · {pinWeeklyDate}
-              </Button>
-            )}
-          </div>
-          {expiryClock.active ? (
-            <div className="text-[11px] text-slate-700 space-y-1">
-              <div>
-                Prem left vs time to 15:30 ·{" "}
-                <b className="font-mono-data">{expiryClock.minutesToClose ?? "—"} min</b>
-                {" · total extrinsic "}
-                <b className="font-mono-data">₹{fmt(expiryClock.totalExtrinsic, 0)}</b>
-              </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {expiryClock.items.slice(0, 4).map((it) => (
-                  <span key={it.tradingsymbol} className="font-mono-data text-[10px]">
-                    {it.strike}{it.side} ₹{fmt(it.extrinsicLeft, 0)}
-                    {it.rupeesPerMinute != null && (
-                      <span className="text-slate-500"> · ₹{fmt(it.rupeesPerMinute, 1)}/min</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-[11px] text-slate-500 italic">
-              No shorts marked expiry-day yet — pin weekly when you want the live chain on that expiry.
-            </div>
-          )}
-        </div>
-      )}
-
-      {toggles.assignmentWatch && assignmentWatch.length > 0 && (
-        <div
-          className="rounded-md border border-rose-200 bg-rose-50/50 px-3 py-2.5 space-y-1.5"
-          data-testid="positions-assignment-watch"
-        >
-          <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
-            <ShieldAlert className="w-3.5 h-3.5 text-rose-700" />
-            Assignment / ITM watch
-          </div>
-          <ul className="space-y-1">
-            {assignmentWatch.slice(0, 5).map((w) => (
-              <li
-                key={`${w.tradingsymbol}-${w.severity}`}
-                className="text-[11px] text-slate-700 flex flex-wrap gap-x-2 gap-y-0.5"
-              >
-                <span
-                  className={`text-[9px] font-bold uppercase px-1 rounded-sm border ${
-                    w.severity === "critical"
-                      ? "border-rose-400 bg-rose-200 text-rose-950"
-                      : w.severity === "high"
-                        ? "border-amber-400 bg-amber-100 text-amber-950"
-                        : "border-slate-300 bg-white text-slate-700"
-                  }`}
-                >
-                  {w.severity}
-                </span>
-                <b className="font-mono-data">{positionLabel(w)}</b>
-                <span>{w.note}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {toggles.deltaHedge && deltaHedge.needed && (
-        <div
-          className="rounded-md border border-violet-200 bg-violet-50/50 px-3 py-2.5 space-y-1.5"
-          data-testid="positions-delta-hedge"
-        >
-          <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
-            <Crosshair className="w-3.5 h-3.5 text-violet-700" />
-            Portfolio hedge
-          </div>
-          <p className="text-[11px] text-slate-700">{deltaHedge.message}</p>
-          <div className="text-[11px] font-mono-data text-slate-600">
-            Futures qty ≈ <b>{fmt(deltaHedge.futuresQty, 1)}</b>
-            {deltaHedge.otmBuys?.length > 0 && (
-              <span>
-                {" · far OTM "}
-                {deltaHedge.otmBuys.map((o, i) => (
-                  <span key={`${o.side}-${o.strike}`}>
-                    {i > 0 ? ", " : ""}
-                    {o.strike}{o.side} ₹{fmt(o.ltp, 1)}
-                  </span>
-                ))}
-              </span>
-            )}
-          </div>
         </div>
       )}
 
@@ -1309,117 +1176,312 @@ export default function PositionsPanel({
         </table>
       </div>
 
-      {/* Sell / decay ideas for selected index expiry */}
-      {(toggles.sellIdeas || toggles.decayBook) && (
-      <div
-        className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-2"
-        data-testid="positions-sell-suggestions"
-      >
-        {toggles.sellIdeas && (
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="text-xs font-semibold uppercase tracking-widest text-slate-600">
-            Sell / decay ideas · {activeIndex}
-            {current?.expiry ? ` · ${current.expiry}` : ""}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setInsights(!insightsOpen)}
+          className="inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+          data-testid="btn-positions-insights"
+          aria-expanded={insightsOpen}
+        >
+          Insights
+          {insightsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          <span className="text-[10px] font-normal text-slate-400">
+            score · decay · hedge
+          </span>
+        </button>
+      </div>
+
+      {insightsOpen && (
+        <div className="space-y-3 border-t border-slate-100 pt-3" data-testid="positions-insights-drawer">
+          <div
+            className="rounded-md border border-slate-200 bg-white px-3 py-2 space-y-1.5"
+            data-testid="positions-suggestion-toggles"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              Helpful tips (on / off)
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {TOGGLE_DEFS.map(({ key, label }) => (
+                <label
+                  key={key}
+                  className="inline-flex items-center gap-1.5 text-[11px] text-slate-700 cursor-pointer select-none"
+                  data-testid={`toggle-${key}`}
+                >
+                  <Switch
+                    checked={!!toggles[key]}
+                    onCheckedChange={(on) => setToggle(key, on)}
+                    className="scale-90"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
           </div>
-          {sellIdeas?.verdict && (
-            <span
-              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${
-                sellIdeas.verdict.tradeable
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border-amber-200 bg-amber-50 text-amber-900"
+
+          {bookVerdict && (
+            <div
+              className={`rounded-md border px-3 py-2.5 space-y-1.5 ${
+                bookVerdict.band === "GOOD"
+                  ? "border-emerald-300 bg-emerald-50/70"
+                  : bookVerdict.band === "WEAK"
+                    ? "border-rose-300 bg-rose-50/70"
+                    : "border-amber-300 bg-amber-50/70"
               }`}
+              data-testid="positions-book-verdict"
             >
-              {sellIdeas.verdict.tradeable ? "OK to sell premium" : "Cautious / skip"}
-            </span>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs font-semibold text-slate-900">
+                  Your book · {bookVerdict.headline}
+                </div>
+                <span
+                  className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-sm border ${
+                    bookVerdict.band === "GOOD"
+                      ? "border-emerald-400 bg-emerald-100 text-emerald-900"
+                      : bookVerdict.band === "WEAK"
+                        ? "border-rose-400 bg-rose-100 text-rose-900"
+                        : "border-amber-400 bg-amber-100 text-amber-950"
+                  }`}
+                  data-testid="book-verdict-band"
+                >
+                  {bookVerdict.band} · {bookVerdict.score}
+                </span>
+              </div>
+              <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc pl-4">
+                {bookVerdict.bullets.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {toggles.expiryDayMode && (expiryClock.active || pinWeeklyDate) && (
+            <div
+              className="rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2.5 space-y-2"
+              data-testid="positions-expiry-day"
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
+                  <Pin className="w-3.5 h-3.5 text-sky-700" />
+                  Expiry-day mode
+                  {expiryClock.after13 && expiryClock.active && (
+                    <span className="text-[10px] font-semibold text-rose-700 bg-rose-100 border border-rose-200 px-1 rounded-sm">
+                      Warnings tighter after 1pm
+                    </span>
+                  )}
+                </div>
+                {pinWeeklyDate && typeof onPinNearestWeekly === "function" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 rounded-sm text-[11px] bg-white"
+                    data-testid="btn-pin-nearest-weekly"
+                    onClick={() => onPinNearestWeekly(pinWeeklyDate)}
+                  >
+                    Pin nearest weekly · {pinWeeklyDate}
+                  </Button>
+                )}
+              </div>
+              {expiryClock.active ? (
+                <div className="text-[11px] text-slate-700 space-y-1">
+                  <div>
+                    Prem left vs time to 15:30 ·{" "}
+                    <b className="font-mono-data">{expiryClock.minutesToClose ?? "—"} min</b>
+                    {" · total extrinsic "}
+                    <b className="font-mono-data">₹{fmt(expiryClock.totalExtrinsic, 0)}</b>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {expiryClock.items.slice(0, 4).map((it) => (
+                      <span key={it.tradingsymbol} className="font-mono-data text-[10px]">
+                        {it.strike}{it.side} ₹{fmt(it.extrinsicLeft, 0)}
+                        {it.rupeesPerMinute != null && (
+                          <span className="text-slate-500"> · ₹{fmt(it.rupeesPerMinute, 1)}/min</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-500 italic">
+                  No shorts marked expiry-day yet — pin weekly when you want the live chain on that expiry.
+                </div>
+              )}
+            </div>
+          )}
+
+          {toggles.assignmentWatch && assignmentWatch.length > 0 && (
+            <div
+              className="rounded-md border border-rose-200 bg-rose-50/50 px-3 py-2.5 space-y-1.5"
+              data-testid="positions-assignment-watch"
+            >
+              <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-700" />
+                Assignment / ITM watch
+              </div>
+              <ul className="space-y-1">
+                {assignmentWatch.slice(0, 5).map((w) => (
+                  <li
+                    key={`${w.tradingsymbol}-${w.severity}`}
+                    className="text-[11px] text-slate-700 flex flex-wrap gap-x-2 gap-y-0.5"
+                  >
+                    <span
+                      className={`text-[9px] font-bold uppercase px-1 rounded-sm border ${
+                        w.severity === "critical"
+                          ? "border-rose-400 bg-rose-200 text-rose-950"
+                          : w.severity === "high"
+                            ? "border-amber-400 bg-amber-100 text-amber-950"
+                            : "border-slate-300 bg-white text-slate-700"
+                      }`}
+                    >
+                      {w.severity}
+                    </span>
+                    <b className="font-mono-data">{positionLabel(w)}</b>
+                    <span>{w.note}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {toggles.deltaHedge && deltaHedge.needed && (
+            <div
+              className="rounded-md border border-violet-200 bg-violet-50/50 px-3 py-2.5 space-y-1.5"
+              data-testid="positions-delta-hedge"
+            >
+              <div className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1.5">
+                <Crosshair className="w-3.5 h-3.5 text-violet-700" />
+                Portfolio hedge
+              </div>
+              <p className="text-[11px] text-slate-700">{deltaHedge.message}</p>
+              <div className="text-[11px] font-mono-data text-slate-600">
+                Futures qty ≈ <b>{fmt(deltaHedge.futuresQty, 1)}</b>
+                {deltaHedge.otmBuys?.length > 0 && (
+                  <span>
+                    {" · far OTM "}
+                    {deltaHedge.otmBuys.map((o, i) => (
+                      <span key={`${o.side}-${o.strike}`}>
+                        {i > 0 ? ", " : ""}
+                        {o.strike}{o.side} ₹{fmt(o.ltp, 1)}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(toggles.sellIdeas || toggles.decayBook) && (
+            <div
+              className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-2"
+              data-testid="positions-sell-suggestions"
+            >
+              {toggles.sellIdeas && (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-slate-600">
+                    Sell / decay ideas · {activeIndex}
+                    {current?.expiry ? ` · ${current.expiry}` : ""}
+                  </div>
+                  {sellIdeas?.verdict && (
+                    <span
+                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${
+                        sellIdeas.verdict.tradeable
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border-amber-200 bg-amber-50 text-amber-900"
+                      }`}
+                    >
+                      {sellIdeas.verdict.tradeable ? "OK to sell premium" : "Cautious / skip"}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {toggles.decayBook && decayBook.length > 0 && (
+                <div className="text-[11px] text-slate-600" data-testid="positions-decay-book">
+                  <span className="font-semibold text-slate-700">Open shorts with extrinsic left: </span>
+                  {decayBook.map((r, i) => (
+                    <span key={r.tradingsymbol}>
+                      {i > 0 ? " · " : ""}
+                      <b className="font-mono-data">{r.strike}{r.side}</b>
+                      {" "}₹{fmt(r.extrinsicLeft, 0)}
+                      {r.theta != null && (
+                        <span className="text-emerald-700"> · Θ ₹{fmt(r.theta * r.quantity, 0)}/d</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {toggles.sellIdeas && (
+                <>
+                  {!sellIdeas?.verdict?.tradeable && sellIdeas?.verdict?.reasons?.length > 0 && (
+                    <ul className="text-[11px] text-amber-900 space-y-0.5 list-disc pl-4">
+                      {sellIdeas.verdict.reasons.slice(0, 3).map((msg) => (
+                        <li key={msg}>{msg}</li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {(topSell.ce.length > 0 || topSell.pe.length > 0) ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {["ce", "pe"].map((sideKey) => {
+                        const list = topSell[sideKey];
+                        if (!list.length) return null;
+                        return (
+                          <div key={sideKey} className="space-y-1.5">
+                            <div className={`text-[10px] font-semibold uppercase tracking-wide ${sideKey === "ce" ? "text-rose-600" : "text-emerald-700"}`}>
+                              {sideKey === "ce" ? "Calls to sell" : "Puts to sell"}
+                            </div>
+                            {list.map((c) => {
+                              const held = heldShortKeys.has(`${c.side}:${c.strike}`);
+                              const thetaDay = c.theta != null ? c.theta : null;
+                              return (
+                                <div
+                                  key={`${c.side}-${c.strike}`}
+                                  data-testid={`pos-sell-${c.side}-${c.strike}`}
+                                  className={`rounded-md border bg-white px-2.5 py-2 ${held ? "border-emerald-300 ring-1 ring-emerald-200" : "border-slate-200"}`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="font-mono-data text-sm font-semibold text-slate-900">
+                                      {c.strike} <span className={c.side === "CE" ? "text-rose-600" : "text-emerald-600"}>{c.side}</span>
+                                      <span className="ml-1.5 text-xs font-normal text-slate-500">₹{(c.ltp || 0).toFixed(2)}</span>
+                                    </div>
+                                    <span className="text-[10px] font-mono-data font-semibold text-slate-600">score {Math.round(c.score)}</span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono-data text-slate-600">
+                                    <span>IV <b>{c.iv?.toFixed?.(1) ?? "—"}%</b></span>
+                                    <span>Δ <b>{(c.delta ?? 0).toFixed(2)}</b></span>
+                                    <span>Γ <b>{((c.gamma ?? 0) * 1e4).toFixed(2)}e-4</b></span>
+                                    {thetaDay != null && <span>Θ <b className="text-emerald-700">{thetaDay.toFixed(2)}</b>/u</span>}
+                                    {c.fresh && (
+                                      <span className="inline-flex items-center gap-0.5 text-emerald-700">
+                                        <Zap className="w-3 h-3" /> fresh
+                                      </span>
+                                    )}
+                                    {held && <span className="text-emerald-800 font-semibold">already short</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-500 italic">
+                      {sellIdeas?.expiryStale
+                        ? "Pick a live weekly expiry in the sidebar for sell ideas."
+                        : !sellIdeas?.verdict?.tradeable
+                          ? "Chain is live — sell scoring paused while the day is Cautious / skip (see reasons above)."
+                          : !current?.strikes?.length
+                            ? "Waiting for option-chain snapshot for this expiry."
+                            : "No CE·PE cleared the sell-score threshold right now."}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           )}
         </div>
-        )}
-
-        {toggles.decayBook && decayBook.length > 0 && (
-          <div className="text-[11px] text-slate-600" data-testid="positions-decay-book">
-            <span className="font-semibold text-slate-700">Open shorts with extrinsic left: </span>
-            {decayBook.map((r, i) => (
-              <span key={r.tradingsymbol}>
-                {i > 0 ? " · " : ""}
-                <b className="font-mono-data">{r.strike}{r.side}</b>
-                {" "}₹{fmt(r.extrinsicLeft, 0)}
-                {r.theta != null && (
-                  <span className="text-emerald-700"> · Θ ₹{fmt(r.theta * r.quantity, 0)}/d</span>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {toggles.sellIdeas && (
-          <>
-        {!sellIdeas?.verdict?.tradeable && sellIdeas?.verdict?.reasons?.length > 0 && (
-          <ul className="text-[11px] text-amber-900 space-y-0.5 list-disc pl-4">
-            {sellIdeas.verdict.reasons.slice(0, 3).map((msg) => (
-              <li key={msg}>{msg}</li>
-            ))}
-          </ul>
-        )}
-
-        {(topSell.ce.length > 0 || topSell.pe.length > 0) ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {["ce", "pe"].map((sideKey) => {
-              const list = topSell[sideKey];
-              if (!list.length) return null;
-              return (
-                <div key={sideKey} className="space-y-1.5">
-                  <div className={`text-[10px] font-semibold uppercase tracking-wide ${sideKey === "ce" ? "text-rose-600" : "text-emerald-700"}`}>
-                    {sideKey === "ce" ? "Calls to sell" : "Puts to sell"}
-                  </div>
-                  {list.map((c) => {
-                    const held = heldShortKeys.has(`${c.side}:${c.strike}`);
-                    const thetaDay = c.theta != null ? c.theta : null;
-                    return (
-                      <div
-                        key={`${c.side}-${c.strike}`}
-                        data-testid={`pos-sell-${c.side}-${c.strike}`}
-                        className={`rounded-md border bg-white px-2.5 py-2 ${held ? "border-emerald-300 ring-1 ring-emerald-200" : "border-slate-200"}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-mono-data text-sm font-semibold text-slate-900">
-                            {c.strike} <span className={c.side === "CE" ? "text-rose-600" : "text-emerald-600"}>{c.side}</span>
-                            <span className="ml-1.5 text-xs font-normal text-slate-500">₹{(c.ltp || 0).toFixed(2)}</span>
-                          </div>
-                          <span className="text-[10px] font-mono-data font-semibold text-slate-600">score {Math.round(c.score)}</span>
-                        </div>
-                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono-data text-slate-600">
-                          <span>IV <b>{c.iv?.toFixed?.(1) ?? "—"}%</b></span>
-                          <span>Δ <b>{(c.delta ?? 0).toFixed(2)}</b></span>
-                          <span>Γ <b>{((c.gamma ?? 0) * 1e4).toFixed(2)}e-4</b></span>
-                          {thetaDay != null && <span>Θ <b className="text-emerald-700">{thetaDay.toFixed(2)}</b>/u</span>}
-                          {c.fresh && (
-                            <span className="inline-flex items-center gap-0.5 text-emerald-700">
-                              <Zap className="w-3 h-3" /> fresh
-                            </span>
-                          )}
-                          {held && <span className="text-emerald-800 font-semibold">already short</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-[11px] text-slate-500 italic">
-            {sellIdeas?.expiryStale
-              ? "Pick a live weekly expiry in the sidebar for sell ideas."
-              : !sellIdeas?.verdict?.tradeable
-                ? "Chain is live — sell scoring paused while the day is Cautious / skip (see reasons above)."
-                : !current?.strikes?.length
-                  ? "Waiting for option-chain snapshot for this expiry."
-                  : "No CE·PE cleared the sell-score threshold right now."}
-          </div>
-        )}
-          </>
-        )}
-      </div>
       )}
 
       {lastRefresh && (
