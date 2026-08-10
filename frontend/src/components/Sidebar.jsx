@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import BigClock from "@/components/BigClock";
 import { RotateCcw, TrendingUp, TrendingDown, Plus, Minus } from "lucide-react";
+import {
+  loadExpiryListHeight,
+  saveExpiryListHeight,
+  clampExpiryListHeight,
+  EXPIRY_LIST_MIN_PX,
+  EXPIRY_LIST_MAX_PX,
+} from "@/lib/tabOrder";
 
 const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
 
@@ -144,10 +151,47 @@ export default function Sidebar({
   const [isEditing, setIsEditing] = useState(false);
   // Re-render every 15s so inactive-index stale flash (>2 min) stays accurate.
   const [, setAgeTick] = useState(0);
+  const [expiryListHeight, setExpiryListHeight] = useState(() => loadExpiryListHeight());
+  const expiryResizeRef = useRef(null);
   useEffect(() => {
     const id = setInterval(() => setAgeTick((n) => n + 1), 15_000);
     return () => clearInterval(id);
   }, []);
+
+  const onExpiryResizePointerDown = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startH = expiryListHeight;
+    const pointerId = e.pointerId;
+    const el = e.currentTarget;
+    try {
+      el.setPointerCapture(pointerId);
+    } catch {
+      /* noop */
+    }
+
+    const onMove = (ev) => {
+      const next = clampExpiryListHeight(startH + (ev.clientY - startY));
+      setExpiryListHeight(next);
+    };
+    const onUp = (ev) => {
+      const next = clampExpiryListHeight(startH + (ev.clientY - startY));
+      setExpiryListHeight(next);
+      saveExpiryListHeight(next);
+      try {
+        el.releasePointerCapture(pointerId);
+      } catch {
+        /* noop */
+      }
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }, [expiryListHeight]);
 
   useEffect(() => {
     let alive = true;
@@ -335,13 +379,14 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Expiry list — with W (Weekly) / M (Monthly) tags */}
+      {/* Expiry list — with W (Weekly) / M (Monthly) tags; height drag-resizable */}
       <div className="p-4 border-b border-slate-200">
         <Label className="text-[10px] uppercase tracking-widest text-slate-500">Expiries Included</Label>
         <div
           className="mt-2 space-y-1 pr-1 overflow-y-auto sidebar-expiries"
-          style={{ maxHeight: "220px" }}
+          style={{ height: `${expiryListHeight}px`, maxHeight: `${EXPIRY_LIST_MAX_PX}px`, minHeight: `${EXPIRY_LIST_MIN_PX}px` }}
           data-testid="expiries-list"
+          ref={expiryResizeRef}
         >
           {orderedExpiries.map((exp, i) => {
             const active = selectedExpiry ? selectedExpiry === exp.date : i === 0;
@@ -400,6 +445,16 @@ export default function Sidebar({
             <p className="text-[11px] text-slate-400 italic pl-1">Loading expiries…</p>
           )}
         </div>
+        <button
+          type="button"
+          data-testid="expiries-resize-handle"
+          aria-label="Resize expiries list"
+          title="Drag to resize · min 1 expiry"
+          onPointerDown={onExpiryResizePointerDown}
+          className="mt-1.5 flex h-3 w-full cursor-row-resize items-center justify-center rounded-sm text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+        >
+          <span className="block h-0.5 w-8 rounded-full bg-current opacity-70" />
+        </button>
         {expiriesNote && (
           <p
             data-testid="expiries-note"
