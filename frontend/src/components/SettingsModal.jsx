@@ -455,6 +455,7 @@ export default function SettingsModal({
                 </div>
               </section>
 
+              {typeof onHeaderRailChange === "function" && (
               <section className="space-y-4 pt-2 border-t border-slate-200">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
                   Header density
@@ -466,7 +467,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     data-testid="header-density-slim"
-                    onClick={() => onHeaderRailChange?.(true)}
+                    onClick={() => onHeaderRailChange(true)}
                     className={`text-left rounded-sm border px-3 py-2.5 transition-colors ${
                       headerRail
                         ? "border-emerald-400 bg-emerald-50/80 ring-1 ring-emerald-200"
@@ -479,7 +480,7 @@ export default function SettingsModal({
                   <button
                     type="button"
                     data-testid="header-density-normal"
-                    onClick={() => onHeaderRailChange?.(false)}
+                    onClick={() => onHeaderRailChange(false)}
                     className={`text-left rounded-sm border px-3 py-2.5 transition-colors ${
                       !headerRail
                         ? "border-emerald-400 bg-emerald-50/80 ring-1 ring-emerald-200"
@@ -491,6 +492,7 @@ export default function SettingsModal({
                   </button>
                 </div>
               </section>
+              )}
 
               <section className="space-y-4 pt-2 border-t border-slate-200">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
