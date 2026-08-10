@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { RefreshCw, PlugZap, AlertTriangle, Building2 } from "lucide-react";
+import { RefreshCw, PlugZap, AlertTriangle, Building2, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   shortPremiumLeft,
   extrinsicPremium,
 } from "@/lib/blackScholes";
+import { computeSellCandidates } from "@/lib/sellCandidates";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
 import InfoTip from "@/components/InfoTip";
 
@@ -62,11 +63,28 @@ const POSITIONS_GUIDE = (
       day this is roughly what can still decay in your favour by 15:30 if the option dies toward
       intrinsic. Not a promise — IV crush / spot moves change it.
     </p>
+    <p>
+      <b>Sell / decay ideas</b> (bottom) — same OI + IV + gamma scoring as Sell Candidates for the
+      selected index expiry. Prefer high-Θ, high-score CE/PE when the day is tradeable.
+    </p>
   </div>
 );
 
-export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, activeIndex, expiry, onAdjustmentAlert }) {
+export default function PositionsPanel({
+  isKiteMode,
+  current,
+  previous = null,
+  vix,
+  vixOpen = null,
+  oiSettings,
+  activeIndex,
+  expiry,
+  step = 50,
+  vrp = null,
+  onAdjustmentAlert,
+}) {
   const [positions, setPositions] = useState([]);
+  const [spotByIndex, setSpotByIndex] = useState({});
   const [funds, setFunds] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -80,6 +98,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
       const { data } = await api.get("/positions");
       setPositions(data.positions || []);
       setFunds(data.funds || null);
+      setSpotByIndex(data.spot && typeof data.spot === "object" ? data.spot : {});
       if (data.error) setError(data.error);
       setLastRefresh(new Date().toISOString());
     } catch (e) {
@@ -101,18 +120,19 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
   const spot = current?.price;
 
   const rows = useMemo(() => {
-    if (!positions.length || !current) return [];
-    const S = current.price;
+    if (!positions.length) return [];
     const activeExp = expiry || current?.expiry;
     const nowMs = Date.now();
+    const fallbackS = current?.price;
     return positions.map((p) => {
       const isOpt = !!p.strike && !!p.side;
-      let dte = null, T = 0, delta = null, theta = null, iv = null;
+      let dte = null, T = 0, delta = null, theta = null, gamma = null, iv = null;
       let distancePct = null;
       let extrinsicLeft = null;
       let thetaToClose = null;
       let onExpiryDay = false;
-      if (isOpt) {
+      const S = (p.index && spotByIndex[p.index]) || fallbackS;
+      if (isOpt && S) {
         const expIso = resolveExpiryFromCode(p.expiry_yy, p.expiry_code, activeExp ? [activeExp] : []);
         if (expIso) {
           T = yearsToExpiry(expIso, nowMs);
@@ -126,6 +146,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
             const g = greeks(S, p.strike, T, 0.065, ivGuess, isCall);
             delta = g.delta;
             theta = g.theta;
+            gamma = g.gamma;
           }
           if (p.quantity < 0) {
             const left = shortPremiumLeft({
@@ -149,7 +170,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
       const isShort = p.quantity < 0;
       let breachedAdjust = false;
       let breachInfo = null;
-      if (isOpt && isShort) {
+      if (isOpt && isShort && S) {
         const bandPct = 3;
         const distPct = Math.abs((p.strike - S) / S) * 100;
         const covered = 1 - (distPct / bandPct);
@@ -167,6 +188,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
         dte,
         delta,
         theta,
+        gamma,
         iv,
         distancePct,
         isShort,
@@ -175,9 +197,10 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
         extrinsicLeft,
         thetaToClose,
         onExpiryDay,
+        spotUsed: S,
       };
     });
-  }, [positions, current, expiry, adjustThreshPct]);
+  }, [positions, current, expiry, adjustThreshPct, spotByIndex]);
 
   useEffect(() => {
     if (!onAdjustmentAlert) return;
@@ -188,7 +211,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
         side: r.side,
         distancePct: r.breachInfo?.distancePct,
         coveredPct: r.breachInfo?.coveredPct,
-        spot,
+        spot: r.spotUsed ?? spot,
       });
     });
   }, [rows, onAdjustmentAlert, spot]);
@@ -231,6 +254,44 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
     };
   }, [rows]);
 
+  const sellIdeas = useMemo(() => {
+    if (!current?.strikes?.length) return null;
+    return computeSellCandidates({
+      current,
+      previous,
+      vixNow: vix,
+      vixOpen,
+      indexName: activeIndex,
+      step,
+      vrp,
+    });
+  }, [current, previous, vix, vixOpen, activeIndex, step, vrp]);
+
+  const heldShortKeys = useMemo(() => {
+    const s = new Set();
+    for (const r of rows) {
+      if (r.isShort && r.isOpt && r.strike != null && r.side) {
+        s.add(`${r.side}:${r.strike}`);
+      }
+    }
+    return s;
+  }, [rows]);
+
+  const topSell = useMemo(() => {
+    if (!sellIdeas) return { ce: [], pe: [] };
+    return {
+      ce: (sellIdeas.candidates?.ce || []).slice(0, 3),
+      pe: (sellIdeas.candidates?.pe || []).slice(0, 3),
+    };
+  }, [sellIdeas]);
+
+  const decayBook = useMemo(() => {
+    return rows
+      .filter((r) => r.isShort && r.isOpt && r.extrinsicLeft != null && r.extrinsicLeft > 0)
+      .sort((a, b) => (b.extrinsicLeft || 0) - (a.extrinsicLeft || 0))
+      .slice(0, 4);
+  }, [rows]);
+
   if (!isKiteMode) {
     return (
       <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center">
@@ -262,7 +323,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
               min={30} max={95} step={5}
               value={adjustThreshPct}
               onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
-              className="w-14 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
+              className="w-14 h-8 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
               data-testid="adjust-threshold"
             />
             <span>% band-covered</span>
@@ -275,7 +336,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
               </p>
             </InfoTip>
           </div>
-          <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white" onClick={load} disabled={loading} data-testid="btn-refresh-positions">
+          <Button size="sm" variant="outline" className="h-8 rounded-sm bg-white min-h-[32px]" onClick={load} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
@@ -388,7 +449,68 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
         </div>
       )}
 
-      <div className="overflow-auto rounded-md border border-slate-100">
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-2" data-testid="positions-mobile-cards">
+        {rows.length === 0 ? (
+          <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No open F&amp;O positions.</div>
+        ) : rows.map((r) => {
+          const thetaInr = r.theta != null ? r.theta * r.quantity : null;
+          return (
+            <div
+              key={r.tradingsymbol}
+              data-testid="position-card"
+              className={`rounded-md border px-3 py-2.5 ${r.breachedAdjust ? "border-rose-300 bg-rose-50/80" : "border-slate-200 bg-white"}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 truncate">{r.tradingsymbol}</div>
+                  <div className="text-[10px] text-slate-500">{r.product} · {r.exchange}</div>
+                </div>
+                <div className="shrink-0">
+                  {r.breachedAdjust ? (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px]">
+                      <AlertTriangle className="w-3 h-3" /> Adjust
+                    </span>
+                  ) : r.isShort && r.isOpt ? (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px]">Safe</span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data">
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">Qty</div>
+                  <div className={r.isShort ? "text-rose-600 font-semibold" : "text-emerald-600 font-semibold"}>{r.quantity}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">LTP</div>
+                  <div>{fmt(r.last_price)}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">P&amp;L</div>
+                  <div className={`font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">Δ</div>
+                  <div>{r.delta != null ? r.delta.toFixed(2) : "—"}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">Θ ₹/d</div>
+                  <div className={thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700 font-semibold" : "text-rose-700 font-semibold"}>
+                    {thetaInr != null ? fmt(thetaInr, 0) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">Prem left</div>
+                  <div>{r.isShort && r.extrinsicLeft != null ? `₹${fmt(r.extrinsicLeft, 0)}` : "—"}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-auto rounded-md border border-slate-100">
         <table className="w-full text-xs font-mono-data bg-white">
           <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
             <tr>
@@ -470,6 +592,108 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
           </tbody>
         </table>
       </div>
+
+      {/* Sell / decay ideas for selected index expiry */}
+      <div
+        className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-2"
+        data-testid="positions-sell-suggestions"
+      >
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs font-semibold uppercase tracking-widest text-slate-600">
+            Sell / decay ideas · {activeIndex}
+            {current?.expiry ? ` · ${current.expiry}` : ""}
+          </div>
+          {sellIdeas?.verdict && (
+            <span
+              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${
+                sellIdeas.verdict.tradeable
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-900"
+              }`}
+            >
+              {sellIdeas.verdict.tradeable ? "OK to sell premium" : "Cautious / skip"}
+            </span>
+          )}
+        </div>
+
+        {decayBook.length > 0 && (
+          <div className="text-[11px] text-slate-600" data-testid="positions-decay-book">
+            <span className="font-semibold text-slate-700">Open shorts with extrinsic left: </span>
+            {decayBook.map((r, i) => (
+              <span key={r.tradingsymbol}>
+                {i > 0 ? " · " : ""}
+                <b className="font-mono-data">{r.strike}{r.side}</b>
+                {" "}₹{fmt(r.extrinsicLeft, 0)}
+                {r.theta != null && (
+                  <span className="text-emerald-700"> · Θ ₹{fmt(r.theta * r.quantity, 0)}/d</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {!sellIdeas?.verdict?.tradeable && sellIdeas?.verdict?.reasons?.length > 0 && (
+          <ul className="text-[11px] text-amber-900 space-y-0.5 list-disc pl-4">
+            {sellIdeas.verdict.reasons.slice(0, 3).map((msg) => (
+              <li key={msg}>{msg}</li>
+            ))}
+          </ul>
+        )}
+
+        {(topSell.ce.length > 0 || topSell.pe.length > 0) ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {["ce", "pe"].map((sideKey) => {
+              const list = topSell[sideKey];
+              if (!list.length) return null;
+              return (
+                <div key={sideKey} className="space-y-1.5">
+                  <div className={`text-[10px] font-semibold uppercase tracking-wide ${sideKey === "ce" ? "text-rose-600" : "text-emerald-700"}`}>
+                    {sideKey === "ce" ? "Calls to sell" : "Puts to sell"}
+                  </div>
+                  {list.map((c) => {
+                    const held = heldShortKeys.has(`${c.side}:${c.strike}`);
+                    const thetaDay = c.theta != null ? c.theta : null;
+                    return (
+                      <div
+                        key={`${c.side}-${c.strike}`}
+                        data-testid={`pos-sell-${c.side}-${c.strike}`}
+                        className={`rounded-md border bg-white px-2.5 py-2 ${held ? "border-emerald-300 ring-1 ring-emerald-200" : "border-slate-200"}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-mono-data text-sm font-semibold text-slate-900">
+                            {c.strike} <span className={c.side === "CE" ? "text-rose-600" : "text-emerald-600"}>{c.side}</span>
+                            <span className="ml-1.5 text-xs font-normal text-slate-500">₹{(c.ltp || 0).toFixed(2)}</span>
+                          </div>
+                          <span className="text-[10px] font-mono-data font-semibold text-slate-600">score {Math.round(c.score)}</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono-data text-slate-600">
+                          <span>IV <b>{c.iv?.toFixed?.(1) ?? "—"}%</b></span>
+                          <span>Δ <b>{(c.delta ?? 0).toFixed(2)}</b></span>
+                          <span>Γ <b>{((c.gamma ?? 0) * 1e4).toFixed(2)}e-4</b></span>
+                          {thetaDay != null && <span>Θ <b className="text-emerald-700">{thetaDay.toFixed(2)}</b>/u</span>}
+                          {c.fresh && (
+                            <span className="inline-flex items-center gap-0.5 text-emerald-700">
+                              <Zap className="w-3 h-3" /> fresh
+                            </span>
+                          )}
+                          {held && <span className="text-emerald-800 font-semibold">already short</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-[11px] text-slate-500 italic">
+            {sellIdeas?.expiryStale
+              ? "Pick a live weekly expiry in the sidebar for sell ideas."
+              : "Waiting for chain data / no high-score CE·PE to suggest right now."}
+          </div>
+        )}
+      </div>
+
       {lastRefresh && (
         <div className="text-[10px] text-slate-400 text-right">Last refresh {new Date(lastRefresh).toLocaleTimeString()}</div>
       )}

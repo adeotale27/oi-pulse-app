@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useCallback } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, RotateCcw } from "lucide-react";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import useClickOutside from "@/hooks/useClickOutside";
 
@@ -235,10 +235,11 @@ export default function MobileStickyChrome({
                 type="button"
                 data-testid="btn-reset-layout-mobile"
                 onClick={onResetLayout}
-                className="shrink-0 rounded-md border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                 title="Reset tab order, tile order, and expiry list height"
+                aria-label="Reset layout"
               >
-                Reset
+                <RotateCcw className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
@@ -270,7 +271,7 @@ export default function MobileStickyChrome({
                   onDoubleClick={(e) => onTabDoubleClick(e, t.v)}
                   onKeyDown={(e) => onTabKeyDown(e, t.v)}
                   title={tabTitle}
-                  className={`shrink-0 whitespace-nowrap border-b-2 px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                  className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors min-h-[44px] ${
                     canReorder ? "cursor-grab active:cursor-grabbing" : ""
                   } ${draggingId === t.v ? "opacity-40" : ""} ${
                     isOver ? "border-emerald-400 bg-emerald-50/80" : ""

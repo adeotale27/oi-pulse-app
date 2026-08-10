@@ -220,11 +220,11 @@ export default function OverflowTabBar({
             type="button"
             data-testid="btn-reset-layout"
             onClick={onResetLayout}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             title="Reset tab order, tile order, and expiry list height"
+            aria-label="Reset layout"
           >
-            <RotateCcw className="h-3 w-3" />
-            <span className="hidden lg:inline">Reset</span>
+            <RotateCcw className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
