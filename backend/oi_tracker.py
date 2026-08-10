@@ -1117,7 +1117,25 @@ class OITracker:
         ms = market_status()
         poll_interval_seconds = self.poll_interval_seconds()
         err = (self.last_error or "").lower()
-        token_bad = any(k in err for k in ("token", "api_key", "signature", "incorrect", "unauthorized", "forbidden"))
+        # Only real auth/token failures — do NOT match generic "incorrect" / bare "token"
+        # (those false-positive on transient snapshot errors and flash Reconnect in the UI).
+        token_bad = bool(
+            self.kite_service is not None
+            and any(
+                k in err
+                for k in (
+                    "tokenexception",
+                    "invalid token",
+                    "access_token",
+                    "api_key",
+                    "incorrect `api_key`",
+                    "incorrect api_key",
+                    "unauthorized",
+                    "forbidden",
+                    "signature mismatch",
+                )
+            )
+        )
         kite_ok = self.mode == "kite" and self.kite_service is not None and not token_bad
         last_ok = self._last_successful_poll_at.isoformat() if self._last_successful_poll_at else None
         return {
@@ -1128,7 +1146,8 @@ class OITracker:
             "last_error": self.last_error,
             "has_kite_credentials": self.kite_service is not None,
             "kite_ok": kite_ok,
-            "kite_token_issue": bool(token_bad) or (self.kite_service is None and self.mode != "kite"),
+            # Missing credentials is a setup issue; live token death is token_bad only.
+            "kite_token_issue": bool(token_bad) or (self.kite_service is None),
             "poll_interval_seconds": poll_interval_seconds,
             "stale_after_seconds": self.stale_after_seconds(),
             "market": ms,

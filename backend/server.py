@@ -3053,27 +3053,58 @@ async def get_positions(_admin: bool = Depends(require_admin)):
       • Same-day exited / squared-off legs (net quantity = 0 but buy/sell qty > 0)
         — Zerodha keeps these in `positions().net` until EOD with realised PnL
 
-    Only available in kite mode. Returns a normalised list with parsed
-    strike / side / expiry for options so the frontend can overlay them.
+    Only available when Kite credentials are loaded. Returns a normalised list with
+    parsed strike / side / expiry for options so the frontend can overlay them.
     Also returns equity funds (read-only margins) for the seller desk tile."""
-    if tracker.mode != "kite" or not tracker.kite_service:
+    # Prefer the live Kite client — do not drop Positions just because the OI
+    # poller mode flag briefly flipped offline.
+    if not tracker.kite_service:
         return {
             "mode": tracker.mode,
             "positions": [],
             "funds": None,
-            "error": "Not in Kite mode. Connect Kite API first.",
+            "error": "Kite not connected. Add API key + access token in Credentials.",
+            "kite_connected": False,
+            "transient": False,
         }
+    if tracker.mode != "kite":
+        # Credentials exist — heal mode so OI + Positions stay on the same live path.
+        try:
+            tracker.mode = "kite"
+            await tracker.start()
+        except Exception as e:
+            logger.warning("positions: heal mode→kite failed: %s", e)
+
     try:
         kite = tracker.kite_service.kite
         raw = await asyncio.to_thread(kite.positions)
         net = raw.get("net", []) if isinstance(raw, dict) else (raw or [])
         day = raw.get("day", []) if isinstance(raw, dict) else []
     except Exception as e:
+        msg = f"{type(e).__name__}: {e}"
+        low = msg.lower()
+        tokenish = any(
+            k in low
+            for k in (
+                "tokenexception",
+                "invalid token",
+                "access_token",
+                "api_key",
+                "incorrect `api_key`",
+                "unauthorized",
+                "forbidden",
+            )
+        )
+        if tokenish:
+            tracker.last_error = msg
         return {
             "mode": tracker.mode,
             "positions": [],
             "funds": None,
-            "error": f"Kite error: {type(e).__name__}: {e}",
+            "error": f"Kite error: {msg}",
+            "kite_connected": True,
+            "transient": not tokenish,
+            "token_issue": tokenish,
         }
 
     # Read-only funds snapshot (never places trades).
@@ -3294,6 +3325,9 @@ async def get_positions(_admin: bool = Depends(require_admin)):
         "spot": idx_spot,
         "oi": oi_by_index,
         "funds": funds,
+        "kite_connected": True,
+        "transient": False,
+        "token_issue": False,
     }
 
 
@@ -3427,8 +3461,9 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
             gst_igst += _f(gst.get("igst"))
             gst_cgst += _f(gst.get("cgst"))
             gst_sgst += _f(gst.get("sgst"))
-            gst_total += _f(gst.get("total"))
-            if not gst.get("total"):
+            if gst.get("total") is not None:
+                gst_total += _f(gst.get("total"))
+            else:
                 gst_total += _f(gst.get("igst")) + _f(gst.get("cgst")) + _f(gst.get("sgst"))
 
     # Prefer explicit STT label when Kite marks transaction tax as STT.

@@ -2077,7 +2077,11 @@ export default function Dashboard() {
                     <TabsContent value="positions" className="mt-0">
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
-                      isKiteMode={status?.mode === "kite" || !!status?.has_kite_credentials}
+                      isKiteMode={
+                        status?.mode === "kite"
+                        || !!status?.has_kite_credentials
+                        || !!status?.kite_ok
+                      }
                       current={filteredCurrent || current}
                       previous={previous}
                       vix={current?.vix || status?.vix}

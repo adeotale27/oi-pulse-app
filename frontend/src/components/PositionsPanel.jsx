@@ -206,7 +206,9 @@ export default function PositionsPanel({
   const [brokerage, setBrokerage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [errorHard, setErrorHard] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const stickyKiteRef = useRef(!!isKiteMode);
   const [adjustThreshPct, setAdjustThreshPct] = useState(60);
   const [toggles, setToggles] = useState(() => loadPositionsToggles());
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -283,47 +285,77 @@ export default function PositionsPanel({
   const load = useCallback(async () => {
     const gen = ++loadGen.current;
     setLoading(true);
-    setError(null);
     try {
       const { data } = await api.get("/positions");
       if (gen !== loadGen.current) return;
-      setPositions(data.positions || []);
-      setFunds(data.funds || null);
-      setPnlToday(data.pnl_today || null);
-      setSpotByIndex(data.spot && typeof data.spot === "object" ? data.spot : {});
-      setOiByIndex(data.oi && typeof data.oi === "object" ? data.oi : {});
-      if (data.error) setError(data.error);
+      const next = data.positions || [];
+      const hard =
+        data.token_issue === true
+        || data.kite_connected === false
+        || /not connected|connect kite|tokenexception|invalid token|api_key|unauthorized|forbidden/i.test(
+          String(data.error || ""),
+        );
+      // Keep last good book on transient Kite blips — do not wipe the table.
+      if (next.length > 0 || !data.error || hard) {
+        setPositions(next);
+        if (data.funds) setFunds(data.funds);
+        if (data.pnl_today) setPnlToday(data.pnl_today);
+        if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
+        if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
+      }
+      if (data.error) {
+        setError(data.error);
+        setErrorHard(hard || data.transient === false);
+      } else {
+        setError(null);
+        setErrorHard(false);
+      }
       setLastRefresh(new Date().toISOString());
       setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     } catch (e) {
       if (gen !== loadGen.current) return;
-      setError(e?.response?.data?.detail || e.message);
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail || e.message;
+      setError(detail);
+      setErrorHard(status === 401 || status === 403);
     } finally {
       if (gen === loadGen.current) setLoading(false);
     }
   }, [pollMs]);
 
   useEffect(() => {
-    if (!isKiteMode) return;
+    if (isKiteMode) stickyKiteRef.current = true;
+  }, [isKiteMode]);
+
+  const kiteReady = isKiteMode || stickyKiteRef.current;
+
+  useEffect(() => {
+    if (!kiteReady) return undefined;
     const closed = isMarketQuiescent();
     load();
     loadBrokerage();
-    if (closed) return;
+    if (closed) return undefined;
     const id = setInterval(() => {
       load();
-      loadBrokerage();
     }, pollMs);
-    return () => clearInterval(id);
-  }, [isKiteMode, load, loadBrokerage, pollMs]);
+    // Charges change with fills — refresh less often than the live book.
+    const chargesId = setInterval(() => {
+      loadBrokerage();
+    }, Math.max(pollMs * 4, 120_000));
+    return () => {
+      clearInterval(id);
+      clearInterval(chargesId);
+    };
+  }, [kiteReady, load, loadBrokerage, pollMs]);
 
   useEffect(() => {
-    if (!isKiteMode || isMarketQuiescent()) return;
+    if (!kiteReady || isMarketQuiescent()) return;
     setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     const id = setInterval(() => {
       setSecsLeft((s) => Math.max(0, s - 1));
     }, 1000);
     return () => clearInterval(id);
-  }, [isKiteMode, pollMs, lastRefresh]);
+  }, [kiteReady, pollMs, lastRefresh]);
 
   const spot = current?.price;
 
@@ -628,7 +660,7 @@ export default function PositionsPanel({
     { key: "assignmentWatch", label: "Exercise risk" },
   ];
 
-  if (!isKiteMode) {
+  if (!kiteReady) {
     return (
       <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center" data-testid="positions-kite-required">
         <PlugZap className="w-8 h-8 mx-auto text-slate-400 mb-2" />
@@ -644,7 +676,7 @@ export default function PositionsPanel({
             data-testid="btn-positions-reconnect-kite"
           >
             <PlugZap className="w-3.5 h-3.5 mr-1.5" />
-            Reconnect Kite
+            Connect Kite
           </Button>
         )}
       </div>
@@ -842,12 +874,18 @@ export default function PositionsPanel({
 
       {error && (
         <div
-          className="rounded-md border border-rose-200 bg-rose-50 text-rose-800 px-3 py-2 text-xs flex flex-wrap items-center gap-2"
+          className={`rounded-md border px-3 py-2 text-xs flex flex-wrap items-center gap-2 ${
+            errorHard
+              ? "border-rose-200 bg-rose-50 text-rose-800"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
           data-testid="positions-error"
         >
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="flex-1 min-w-0">{error}</span>
-          {typeof onOpenKite === "function" && (
+          <span className="flex-1 min-w-0">
+            {errorHard ? error : `Temporary Kite hiccup — keeping last book. ${error}`}
+          </span>
+          {errorHard && typeof onOpenKite === "function" && (
             <Button
               size="sm"
               variant="outline"
@@ -857,6 +895,18 @@ export default function PositionsPanel({
             >
               <PlugZap className="w-3.5 h-3.5 mr-1" />
               Reconnect
+            </Button>
+          )}
+          {!errorHard && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-sm border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+              onClick={() => { load(); loadBrokerage(); }}
+              data-testid="btn-positions-error-retry"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1" />
+              Retry
             </Button>
           )}
         </div>
