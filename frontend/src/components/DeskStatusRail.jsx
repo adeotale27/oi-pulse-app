@@ -1,6 +1,7 @@
 import { KeyRound, AlertTriangle, Clock, CalendarOff, Moon, Sunrise } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildDataTruth, formatIstClock } from "@/lib/dataTruth";
+import { isKiteCredentialProblem, kiteCredentialTitle } from "@/lib/kiteCredentialHealth";
 import { useEffect, useMemo, useState } from "react";
 
 const TRUTH_TONE = {
@@ -64,23 +65,9 @@ export default function DeskStatusRail({
     return { title, short, Icon, sessionDate: dataStatus?.data_date || market.session_anchor_date };
   })();
 
-  const kiteOk = status?.kite_ok === true || (status?.mode === "kite" && !status?.last_error && status?.has_kite_credentials);
-  // Do not treat brief mode="offline" flaps as a dead token when credentials exist.
-  const tokenIssue = status?.kite_token_issue === true
-    || !status?.has_kite_credentials
-    || (typeof status?.last_error === "string" && /token|api_key|unauthorized|forbidden|incorrect/i.test(status.last_error));
-  const showKite = isAdmin && status && !(kiteOk && !tokenIssue)
-    && !(
-      (phase === "weekend" || phase === "holiday" || phase === "post_close")
-      && status.has_kite_credentials
-      && !status.kite_token_issue
-      && !status.last_error
-    );
-  const kiteTitle = !status?.has_kite_credentials
-    ? "Kite not connected"
-    : status?.last_error
-      ? "Kite token dead"
-      : "Kite offline";
+  // Only real missing-credentials / dead-token cases — not brief mode=offline flaps.
+  const showKite = isAdmin && status && isKiteCredentialProblem(status);
+  const kiteTitle = kiteCredentialTitle(status);
 
   return (
     <div

@@ -305,7 +305,8 @@ export default function PositionsPanel({
       }
       if (data.error) {
         setError(data.error);
-        setErrorHard(hard || data.transient === false);
+        // Soft only when API explicitly marks transient; never treat missing flag as hard.
+        setErrorHard(hard);
       } else {
         setError(null);
         setErrorHard(false);
