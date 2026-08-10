@@ -3363,6 +3363,20 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
             "order_count": 0,
             "source": "kite_virtual_contract",
             "note": "No completed orders today.",
+            "breakdown": [
+                {"key": "brokerage", "label": "Brokerage", "amount": 0.0},
+                {"key": "transaction_tax", "label": "STT", "amount": 0.0},
+                {"key": "exchange_turnover_charge", "label": "Exchange txn charge", "amount": 0.0},
+                {"key": "sebi_turnover_charge", "label": "SEBI charges", "amount": 0.0},
+                {"key": "stamp_duty", "label": "Stamp duty", "amount": 0.0},
+                {"key": "gst", "label": "GST", "amount": 0.0},
+            ],
+            "gst": {"igst": 0.0, "cgst": 0.0, "sgst": 0.0, "total": 0.0},
+            "transaction_tax": 0.0,
+            "transaction_tax_label": "STT",
+            "exchange_turnover_charge": 0.0,
+            "sebi_turnover_charge": 0.0,
+            "stamp_duty": 0.0,
         }
 
     # Cap to 500 per Zerodha virtual contract note limits
@@ -3379,12 +3393,70 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
             "error": f"Charges API: {type(e).__name__}: {e}",
         }
 
+    def _f(v) -> float:
+        try:
+            return float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
     brokerage = 0.0
     charges_total = 0.0
+    transaction_tax = 0.0  # STT / CTT
+    exchange_turnover_charge = 0.0
+    sebi_turnover_charge = 0.0
+    stamp_duty = 0.0
+    gst_total = 0.0
+    gst_igst = 0.0
+    gst_cgst = 0.0
+    gst_sgst = 0.0
+    tax_types = set()
+
     for row in notes or []:
         ch = (row or {}).get("charges") or {}
-        brokerage += float(ch.get("brokerage") or 0)
-        charges_total += float(ch.get("total") or 0)
+        brokerage += _f(ch.get("brokerage"))
+        charges_total += _f(ch.get("total"))
+        transaction_tax += _f(ch.get("transaction_tax"))
+        exchange_turnover_charge += _f(ch.get("exchange_turnover_charge"))
+        sebi_turnover_charge += _f(ch.get("sebi_turnover_charge"))
+        stamp_duty += _f(ch.get("stamp_duty"))
+        tt = ch.get("transaction_tax_type")
+        if tt:
+            tax_types.add(str(tt).upper())
+        gst = ch.get("gst") or {}
+        if isinstance(gst, dict):
+            gst_igst += _f(gst.get("igst"))
+            gst_cgst += _f(gst.get("cgst"))
+            gst_sgst += _f(gst.get("sgst"))
+            gst_total += _f(gst.get("total"))
+            if not gst.get("total"):
+                gst_total += _f(gst.get("igst")) + _f(gst.get("cgst")) + _f(gst.get("sgst"))
+
+    # Prefer explicit STT label when Kite marks transaction tax as STT.
+    tax_label = "STT"
+    if tax_types:
+        if "STT" in tax_types:
+            tax_label = "STT"
+        elif len(tax_types) == 1:
+            tax_label = next(iter(tax_types))
+        else:
+            tax_label = "Transaction tax"
+
+    breakdown = [
+        {"key": "brokerage", "label": "Brokerage", "amount": round(brokerage, 2)},
+        {"key": "transaction_tax", "label": tax_label, "amount": round(transaction_tax, 2)},
+        {
+            "key": "exchange_turnover_charge",
+            "label": "Exchange txn charge",
+            "amount": round(exchange_turnover_charge, 2),
+        },
+        {
+            "key": "sebi_turnover_charge",
+            "label": "SEBI charges",
+            "amount": round(sebi_turnover_charge, 2),
+        },
+        {"key": "stamp_duty", "label": "Stamp duty", "amount": round(stamp_duty, 2)},
+        {"key": "gst", "label": "GST", "amount": round(gst_total, 2)},
+    ]
 
     return {
         "ok": True,
@@ -3392,6 +3464,18 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
         "charges_total": round(charges_total, 2),
         "order_count": len(params),
         "source": "kite_virtual_contract",
+        "breakdown": breakdown,
+        "gst": {
+            "igst": round(gst_igst, 2),
+            "cgst": round(gst_cgst, 2),
+            "sgst": round(gst_sgst, 2),
+            "total": round(gst_total, 2),
+        },
+        "transaction_tax": round(transaction_tax, 2),
+        "transaction_tax_label": tax_label,
+        "exchange_turnover_charge": round(exchange_turnover_charge, 2),
+        "sebi_turnover_charge": round(sebi_turnover_charge, 2),
+        "stamp_duty": round(stamp_duty, 2),
         # Never include order payload / credentials in response
     }
 

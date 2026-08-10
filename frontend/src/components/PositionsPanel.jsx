@@ -12,11 +12,13 @@ import {
   Columns3,
   ChevronDown,
   ChevronUp,
+  Receipt,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   yearsToExpiry,
   greeks,
@@ -72,7 +74,7 @@ const POSITIONS_GUIDE = (
     </p>
     <p>
       <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
-      <b> Fees today</b> — what Zerodha charged today (read-only).
+      <b> Day charges</b> — brokerage + STT + GST + exchange fees (Zerodha contract note, read-only).
     </p>
   </div>
 );
@@ -687,21 +689,87 @@ export default function PositionsPanel({
               </p>
             </InfoTip>
           </div>
-          <div
-            className="inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-slate-200 bg-slate-50 text-[11px] text-slate-600"
-            data-testid="positions-brokerage-day"
-            title={
-              brokerage?.error ||
-              (brokerage?.charges_total != null
-                ? `Brokerage ₹ ${fmt(brokerage.brokerage, 0)} · all charges ₹ ${fmt(brokerage.charges_total, 0)}`
-                : "Today’s trading fees from Zerodha (read-only)")
-            }
-          >
-            <span className="text-slate-400">Fees</span>
-            <span className="font-mono-data font-semibold text-slate-800">
-              {brokerage?.brokerage != null ? `₹${fmt(brokerage.brokerage, 0)}` : "—"}
-            </span>
-          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[11px] text-slate-600 hover:border-emerald-300 hover:bg-emerald-50/50 hover:text-emerald-900 transition-colors"
+                data-testid="positions-brokerage-day"
+                title="Today’s trading charges — click for breakdown"
+              >
+                <Receipt className="w-3 h-3 text-slate-400" />
+                <span className="text-slate-400">Charges</span>
+                <span className="font-mono-data font-semibold text-slate-800">
+                  {brokerage?.charges_total != null
+                    ? `₹${fmt(brokerage.charges_total, 0)}`
+                    : brokerage?.brokerage != null
+                      ? `₹${fmt(brokerage.brokerage, 0)}`
+                      : "—"}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-80 p-0"
+              data-testid="positions-charges-breakdown"
+            >
+              <div className="border-b border-slate-100 px-3 py-2.5">
+                <div className="text-xs font-semibold text-slate-900">Day charges</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Zerodha virtual contract note ·{" "}
+                  {brokerage?.order_count != null
+                    ? `${brokerage.order_count} completed order${brokerage.order_count === 1 ? "" : "s"}`
+                    : "today"}
+                </div>
+              </div>
+              {brokerage?.error ? (
+                <div className="px-3 py-3 text-[11px] text-rose-700">{brokerage.error}</div>
+              ) : (
+                <div className="px-3 py-2 space-y-1.5">
+                  {(brokerage?.breakdown || []).map((row) => (
+                    <div
+                      key={row.key}
+                      className="flex items-center justify-between gap-3 text-[12px]"
+                      data-testid={`charge-row-${row.key}`}
+                    >
+                      <span className="text-slate-500">{row.label}</span>
+                      <span className="font-mono-data font-medium text-slate-800">
+                        ₹{fmt(row.amount, 2)}
+                      </span>
+                    </div>
+                  ))}
+                  {(!brokerage?.breakdown || brokerage.breakdown.length === 0) && (
+                    <div className="text-[11px] text-slate-400 py-2">
+                      {brokerage?.charges_total == null
+                        ? "Charges not available yet."
+                        : "No charge lines returned."}
+                    </div>
+                  )}
+                  {brokerage?.gst && (brokerage.gst.igst || brokerage.gst.cgst || brokerage.gst.sgst) ? (
+                    <div className="rounded-sm bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 space-y-0.5">
+                      <div className="font-semibold uppercase tracking-wider text-slate-400">GST detail</div>
+                      {brokerage.gst.igst ? (
+                        <div className="flex justify-between"><span>IGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.igst, 2)}</span></div>
+                      ) : null}
+                      {brokerage.gst.cgst ? (
+                        <div className="flex justify-between"><span>CGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.cgst, 2)}</span></div>
+                      ) : null}
+                      {brokerage.gst.sgst ? (
+                        <div className="flex justify-between"><span>SGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.sgst, 2)}</span></div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              <div className="border-t border-slate-100 px-3 py-2.5 flex items-center justify-between bg-slate-50/80">
+                <span className="text-xs font-semibold text-slate-700">Total today</span>
+                <span className="font-mono-data text-sm font-bold text-slate-900" data-testid="charges-total">
+                  {brokerage?.charges_total != null ? `₹${fmt(brokerage.charges_total, 2)}` : "—"}
+                </span>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button
             size="sm"
             variant="outline"
@@ -803,19 +871,19 @@ export default function PositionsPanel({
             stats.exitedCount > 0
               ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
               : brokerage?.charges_total != null
-                ? `After fees ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
+                ? `After charges ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
                 : "Open + booked exits"
           }
           tip={(
             <div className="space-y-1.5">
               <p>
                 <b>Today P&amp;L</b> = open positions + same-day <b>exited</b> booked P&amp;L
-                (Kite-style — exited legs stay in the list until end of day).
+                (exited legs stay in the list until end of day).
               </p>
               <p>
                 Open: ₹ {fmt(stats.openPnl, 0)} · Exited: ₹ {fmt(stats.exitedPnl, 0)}
                 {brokerage?.charges_total != null
-                  ? ` · Fees today ₹ ${fmt(brokerage.charges_total, 0)}`
+                  ? ` · Day charges ₹ ${fmt(brokerage.charges_total, 0)}`
                   : ""}
               </p>
             </div>
