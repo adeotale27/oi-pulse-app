@@ -57,13 +57,22 @@ export default function AdminControls({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    if (!window.__oi_admin_modal_owner) {
-      window.__oi_admin_modal_owner = instanceId;
-    }
-    setOwnsModals(window.__oi_admin_modal_owner === instanceId);
+    const claim = () => {
+      if (!window.__oi_admin_modal_owner) {
+        window.__oi_admin_modal_owner = instanceId;
+      }
+      setOwnsModals(window.__oi_admin_modal_owner === instanceId);
+    };
+    claim();
+    const onVacate = () => claim();
+    window.addEventListener("oi-admin-modal-vacate", onVacate);
     return () => {
+      window.removeEventListener("oi-admin-modal-vacate", onVacate);
       if (window.__oi_admin_modal_owner === instanceId) {
         delete window.__oi_admin_modal_owner;
+        try {
+          window.dispatchEvent(new CustomEvent("oi-admin-modal-vacate"));
+        } catch (_) { /* noop */ }
       }
     };
   }, [instanceId]);

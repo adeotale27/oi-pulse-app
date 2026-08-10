@@ -1,34 +1,23 @@
 import { KeyRound, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isKiteCredentialProblem } from "@/lib/kiteCredentialHealth";
 
 /**
  * KiteTokenBanner — visible warning when Kite credentials/token are missing or dead.
  * Especially important pre-open (before 09:15 IST) so admin fixes login before the bell.
+ * Does NOT fire on brief tracker mode=offline flaps while credentials remain valid.
  */
 export default function KiteTokenBanner({ status, isAdmin = false, onOpenCreds }) {
   // Guests never see credential / token troubleshooting — admin-only ops surface.
   if (!isAdmin || !status) return null;
+  if (!isKiteCredentialProblem(status)) return null;
 
   const market = status.market || {};
   const phase = market.phase;
-  const kiteOk = status.kite_ok === true || (status.mode === "kite" && !status.last_error && status.has_kite_credentials);
-  // Spurious reconnect: ignore transient mode=offline while credentials are still present.
-  const tokenIssue = status.kite_token_issue === true
-    || !status.has_kite_credentials
-    || (typeof status.last_error === "string" && /token|api_key|unauthorized|forbidden|incorrect/i.test(status.last_error));
-
-  if (kiteOk && !tokenIssue) return null;
-  // Don't nag endlessly after close / weekend unless explicitly a token/credential issue
-  if ((phase === "weekend" || phase === "holiday" || phase === "post_close") && status.has_kite_credentials && !status.kite_token_issue && !status.last_error) {
-    return null;
-  }
-
   const preOpen = phase === "pre_open" || phase === "open";
   const title = !status.has_kite_credentials
     ? "Kite not connected — live OI will not update"
-    : status.last_error
-      ? "Kite token looks dead — reconnect before the session"
-      : "Kite is offline — live OI paused";
+    : "Kite token looks dead — reconnect before the session";
 
   const detail = !status.has_kite_credentials
     ? "Add API key + access token in Credentials. Access tokens usually expire each morning (~6 AM IST)."
