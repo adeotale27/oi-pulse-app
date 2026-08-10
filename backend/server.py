@@ -2995,7 +2995,13 @@ async def admin_refresh_day(
 # ------------------- Zerodha positions -------------------
 @api_router.get("/positions")
 async def get_positions(_admin: bool = Depends(require_admin)):
-    """Fetch open F&O positions from the user's Kite account (net + day).
+    """Fetch F&O positions from the user's Kite account (net + day).
+
+    Includes:
+      • Open legs (net quantity ≠ 0)
+      • Same-day exited / squared-off legs (net quantity = 0 but buy/sell qty > 0)
+        — Zerodha keeps these in `positions().net` until EOD with realised PnL
+
     Only available in kite mode. Returns a normalised list with parsed
     strike / side / expiry for options so the frontend can overlay them.
     Also returns equity funds (read-only margins) for the seller desk tile."""
@@ -3009,7 +3015,8 @@ async def get_positions(_admin: bool = Depends(require_admin)):
     try:
         kite = tracker.kite_service.kite
         raw = await asyncio.to_thread(kite.positions)
-        net = raw.get("net", []) if isinstance(raw, dict) else raw
+        net = raw.get("net", []) if isinstance(raw, dict) else (raw or [])
+        day = raw.get("day", []) if isinstance(raw, dict) else []
     except Exception as e:
         return {
             "mode": tracker.mode,
@@ -3040,27 +3047,78 @@ async def get_positions(_admin: bool = Depends(require_admin)):
 
     from fno_symbol import parse_fno_option_symbol
 
+    def _pos_key(p: dict) -> tuple:
+        return (
+            str(p.get("exchange") or ""),
+            str(p.get("tradingsymbol") or ""),
+            str(p.get("product") or ""),
+        )
+
+    # Prefer net rows; merge any day-only rows Zerodha surfaces separately.
+    by_key = {}
+    for p in list(net or []) + list(day or []):
+        key = _pos_key(p)
+        if not key[1]:
+            continue
+        prev = by_key.get(key)
+        if prev is None:
+            by_key[key] = p
+            continue
+        # Keep the row with non-zero net qty; else keep the one with more traded volume.
+        prev_qty = abs(int(prev.get("quantity", 0) or 0))
+        cur_qty = abs(int(p.get("quantity", 0) or 0))
+        if cur_qty > prev_qty:
+            by_key[key] = p
+            continue
+        if cur_qty == prev_qty:
+            prev_vol = int(prev.get("buy_quantity", 0) or 0) + int(prev.get("sell_quantity", 0) or 0)
+            cur_vol = int(p.get("buy_quantity", 0) or 0) + int(p.get("sell_quantity", 0) or 0)
+            if cur_vol > prev_vol:
+                by_key[key] = p
+
     out = []
-    for p in net:
-        if int(p.get("quantity", 0)) == 0:
-            continue  # skip closed positions with 0 net qty
+    for p in by_key.values():
+        qty = int(p.get("quantity", 0) or 0)
+        buy_qty = int(p.get("buy_quantity", 0) or 0)
+        sell_qty = int(p.get("sell_quantity", 0) or 0)
+        # Skip untouched / empty rows. Keep same-day exits (flat but traded today).
+        if qty == 0 and buy_qty == 0 and sell_qty == 0:
+            continue
+        exited = qty == 0 and (buy_qty > 0 or sell_qty > 0)
         ts = p.get("tradingsymbol", "")
         parsed = parse_fno_option_symbol(ts) or {}
+        # Direction hint for exited shorts/longs (qty is 0): compare buy vs sell volume.
+        side_bias = None
+        if exited:
+            if sell_qty > buy_qty:
+                side_bias = "short"
+            elif buy_qty > sell_qty:
+                side_bias = "long"
+            else:
+                side_bias = "squared"
         out.append({
             "tradingsymbol": ts,
             "exchange": p.get("exchange"),
             "product": p.get("product"),
-            "quantity": int(p.get("quantity", 0)),
+            "quantity": qty,
+            "overnight_quantity": int(p.get("overnight_quantity", 0) or 0),
             "average_price": float(p.get("average_price", 0) or 0),
             "last_price": float(p.get("last_price", 0) or 0),
             "pnl": float(p.get("pnl", 0) or 0),
             "unrealised": float(p.get("unrealised", 0) or 0),
-            "buy_quantity": int(p.get("buy_quantity", 0)),
-            "sell_quantity": int(p.get("sell_quantity", 0)),
+            "realised": float(p.get("realised", 0) or 0),
+            "buy_quantity": buy_qty,
+            "sell_quantity": sell_qty,
             "buy_price": float(p.get("buy_price", 0) or 0),
             "sell_price": float(p.get("sell_price", 0) or 0),
+            "exited": exited,
+            "side_bias": side_bias,
             **parsed,
         })
+
+    # Open legs first, then same-day exits (stable by symbol).
+    out.sort(key=lambda r: (1 if r.get("exited") else 0, str(r.get("tradingsymbol") or "")))
+
     # Per-index spot: ALWAYS refresh from Kite quote for every index in the book
     # so NIFTY/SENSEX legs never inherit whichever dashboard tab is open.
     # Snapshot used only as secondary atm/OI context.
@@ -3129,9 +3187,13 @@ async def get_positions(_admin: bool = Depends(require_admin)):
                 ],
             }
 
+    open_n = sum(1 for r in out if not r.get("exited"))
+    exited_n = sum(1 for r in out if r.get("exited"))
     return {
         "mode": tracker.mode,
         "positions": out,
+        "open_count": open_n,
+        "exited_count": exited_n,
         "spot": idx_spot,
         "oi": oi_by_index,
         "funds": funds,
