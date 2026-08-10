@@ -20,6 +20,17 @@ def order_date_ymd(ts: Any) -> Optional[str]:
     return None
 
 
+def index_orders_by_id(orders: Optional[Iterable[dict]]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for o in orders or []:
+        if not isinstance(o, dict):
+            continue
+        oid = str(o.get("order_id") or "").strip()
+        if oid:
+            out[oid] = o
+    return out
+
+
 def trade_avg_by_order(trades: Optional[Iterable[dict]]) -> dict[str, float]:
     """Weighted average fill price per order_id from kite.trades()."""
     acc: dict[str, list[float]] = {}
@@ -46,6 +57,69 @@ def trade_avg_by_order(trades: Optional[Iterable[dict]]) -> dict[str, float]:
     return out
 
 
+def build_charge_params_from_trades(
+    trades: Optional[Iterable[dict]],
+    *,
+    today_ymd: str,
+    orders_by_id: Optional[dict[str, dict]] = None,
+) -> tuple[list[dict], dict[str, int]]:
+    """Primary path: every day fill from kite.trades() → contract-note row.
+
+    Positions P&L can move without a usable COMPLETE order average_price.
+    Trades always carry a non-zero fill price for executed quantity.
+    """
+    orders_by_id = orders_by_id or {}
+    params: list[dict] = []
+    stats = {
+        "trades_today": 0,
+        "trades_used": 0,
+        "trades_skipped_zero": 0,
+        "trades_skipped_other_day": 0,
+        "source": "trades",
+    }
+
+    for t in trades or []:
+        if not isinstance(t, dict):
+            continue
+        ymd = order_date_ymd(
+            t.get("fill_timestamp") or t.get("order_timestamp") or t.get("exchange_timestamp")
+        )
+        if ymd and ymd != today_ymd:
+            stats["trades_skipped_other_day"] += 1
+            continue
+        stats["trades_today"] += 1
+        try:
+            qty = int(float(t.get("quantity") or 0))
+        except (TypeError, ValueError):
+            qty = 0
+        try:
+            avg = float(t.get("average_price") or t.get("price") or 0)
+        except (TypeError, ValueError):
+            avg = 0.0
+        if qty <= 0 or avg <= 0:
+            stats["trades_skipped_zero"] += 1
+            continue
+
+        oid = str(t.get("order_id") or "").strip()
+        parent = orders_by_id.get(oid) or {}
+        # Unique id per fill — Kite only needs a non-empty string here.
+        row_id = str(t.get("trade_id") or oid or f"t{len(params) + 1}")
+        params.append({
+            "order_id": row_id,
+            "exchange": t.get("exchange") or parent.get("exchange") or "NFO",
+            "tradingsymbol": t.get("tradingsymbol") or parent.get("tradingsymbol"),
+            "transaction_type": t.get("transaction_type") or parent.get("transaction_type") or "BUY",
+            "variety": parent.get("variety") or "regular",
+            "product": t.get("product") or parent.get("product") or "NRML",
+            "order_type": parent.get("order_type") or "MARKET",
+            "quantity": qty,
+            "average_price": avg,
+        })
+        stats["trades_used"] += 1
+
+    return params, stats
+
+
 def build_charge_params(
     orders: Optional[Iterable[dict]],
     *,
@@ -67,6 +141,7 @@ def build_charge_params(
         "open_today": 0,
         "rejected_today": 0,
         "cancelled_today": 0,
+        "source": "orders",
     }
 
     for o in orders or []:
@@ -75,12 +150,12 @@ def build_charge_params(
         ymd = order_date_ymd(o.get("order_timestamp") or o.get("exchange_timestamp"))
         # Missing timestamp: still try (Kite usually always sends one).
         if ymd and ymd != today_ymd:
-            status = str(o.get("status") or "").upper()
+            status = str(o.get("status") or "").upper().strip()
             if status == "COMPLETE":
                 stats["skipped_other_day"] += 1
             continue
 
-        status = str(o.get("status") or "").upper()
+        status = str(o.get("status") or "").upper().strip()
         if status in ("OPEN", "TRIGGER PENDING", "AMO REQ RECEIVED", "PUT ORDER REQ RECEIVED"):
             stats["open_today"] += 1
             continue
@@ -95,7 +170,7 @@ def build_charge_params(
 
         stats["complete_today"] += 1
         try:
-            qty = int(o.get("filled_quantity") or o.get("quantity") or 0)
+            qty = int(float(o.get("filled_quantity") or o.get("quantity") or 0))
         except (TypeError, ValueError):
             qty = 0
         try:
@@ -125,6 +200,32 @@ def build_charge_params(
     return params, stats
 
 
+def resolve_charge_params(
+    orders: Optional[Iterable[dict]],
+    trades: Optional[Iterable[dict]],
+    *,
+    today_ymd: str,
+) -> tuple[list[dict], dict[str, Any]]:
+    """Prefer trades (fill prices) over COMPLETE orders for day charges."""
+    orders_by_id = index_orders_by_id(orders)
+    trade_params, trade_stats = build_charge_params_from_trades(
+        trades, today_ymd=today_ymd, orders_by_id=orders_by_id
+    )
+    if trade_params:
+        # Still count open orders for the chip hint.
+        _, order_stats = build_charge_params(orders, today_ymd=today_ymd)
+        stats = {**order_stats, **trade_stats, "source": "trades"}
+        return trade_params, stats
+
+    order_params, order_stats = build_charge_params(
+        orders,
+        today_ymd=today_ymd,
+        trade_avgs=trade_avg_by_order(trades),
+    )
+    stats = {**trade_stats, **order_stats, "source": "orders"}
+    return order_params, stats
+
+
 def aggregate_contract_notes(notes: Optional[Iterable[dict]]) -> dict:
     """Sum brokerage / tax lines from get_virtual_contract_note rows."""
 
@@ -149,9 +250,16 @@ def aggregate_contract_notes(notes: Optional[Iterable[dict]]) -> dict:
     for row in notes or []:
         if not isinstance(row, dict):
             continue
-        ch = row.get("charges") or {}
+        # Some SDK versions nest under data; tolerate both.
+        ch = row.get("charges")
+        if ch is None and isinstance(row.get("data"), dict):
+            ch = (row.get("data") or {}).get("charges")
         if not isinstance(ch, dict):
-            continue
+            # Flat charge dict?
+            if any(k in row for k in ("brokerage", "total", "transaction_tax")):
+                ch = row
+            else:
+                continue
         brokerage += _f(ch.get("brokerage"))
         charges_total += _f(ch.get("total"))
         transaction_tax += _f(ch.get("transaction_tax"))
@@ -179,6 +287,19 @@ def aggregate_contract_notes(notes: Optional[Iterable[dict]]) -> dict:
             tax_label = next(iter(tax_types))
         else:
             tax_label = "Transaction tax"
+
+    # If Kite left total empty but lines exist, sum the lines.
+    if abs(charges_total) < 1e-9:
+        lined = (
+            brokerage
+            + transaction_tax
+            + exchange_turnover_charge
+            + sebi_turnover_charge
+            + stamp_duty
+            + gst_total
+        )
+        if abs(lined) > 1e-9:
+            charges_total = lined
 
     breakdown = [
         {"key": "brokerage", "label": "Brokerage", "amount": round(brokerage, 2)},

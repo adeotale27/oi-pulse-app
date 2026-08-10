@@ -790,8 +790,9 @@ export default function PositionsPanel({
                 <div className="text-[11px] text-slate-500 mt-0.5">
                   Zerodha virtual contract note ·{" "}
                   {brokerage?.order_count != null
-                    ? `${brokerage.order_count} completed order${brokerage.order_count === 1 ? "" : "s"}`
+                    ? `${brokerage.order_count} fill${brokerage.order_count === 1 ? "" : "s"}`
                     : "today"}
+                  {brokerage?.book?.source ? ` · via ${brokerage.book.source}` : ""}
                 </div>
               </div>
               {brokerage?.error ? (
@@ -801,6 +802,16 @@ export default function PositionsPanel({
                   {brokerage?.warning ? (
                     <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-sm px-2 py-1">
                       {brokerage.warning}
+                    </div>
+                  ) : null}
+                  {brokerage?.note && !(brokerage?.charges_total > 0) ? (
+                    <div className="text-[10px] text-slate-500 bg-slate-50 border border-slate-100 rounded-sm px-2 py-1.5">
+                      {brokerage.note}
+                      {brokerage?.book?.trades_fetched != null ? (
+                        <span className="block mt-0.5 font-mono-data text-slate-400">
+                          trades {brokerage.book.trades_fetched} · orders {brokerage.book.orders_fetched ?? "—"}
+                        </span>
+                      ) : null}
                     </div>
                   ) : null}
                   {(brokerage?.breakdown || []).map((row) => (
@@ -985,7 +996,15 @@ export default function PositionsPanel({
         />
         <StatBox
           label="Cash left"
-          value={funds?.net != null ? "₹ " + fmt(funds.net, 0) : "—"}
+          value={
+            funds?.net != null
+              ? "₹ " + fmt(funds.net, 0)
+              : funds?.live_balance != null
+                ? "₹ " + fmt(funds.live_balance, 0)
+                : funds?.cash != null
+                  ? "₹ " + fmt(funds.cash, 0)
+                  : "—"
+          }
           tone="slate"
           hint={funds?.utilised_debits != null ? `Blocked ₹ ${fmt(funds.utilised_debits, 0)}` : "Free to trade"}
           tip={(
@@ -1109,10 +1128,10 @@ export default function PositionsPanel({
                       <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
                     ) : null}
                   </div>
-                  <div className={`text-sm font-semibold truncate ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
+                  <div className={`text-base font-semibold truncate ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
                     {positionLabel(r)}
                   </div>
-                  <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
+                  <div className={`text-xs ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
                     {r.exchange}
                   </div>
                 </div>
@@ -1121,9 +1140,9 @@ export default function PositionsPanel({
                   <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
                 </div>
               </div>
-              <div className={`mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data ${r.exited ? "text-slate-400" : ""}`}>
+              <div className={`mt-2 grid grid-cols-3 gap-2 text-sm font-mono-data ${r.exited ? "text-slate-400" : ""}`}>
                 <div>
-                  <div className="text-[9px] uppercase text-slate-400">Qty</div>
+                  <div className="text-[10px] uppercase text-slate-400">Qty</div>
                   <div className={r.exited ? "text-slate-400 font-semibold" : r.isShort ? "text-rose-600 font-semibold" : "text-sky-700 font-semibold"}>
                     {r.exited ? 0 : r.quantity}
                   </div>
@@ -1160,17 +1179,17 @@ export default function PositionsPanel({
 
       {/* Desktop table */}
       <div className="hidden md:block overflow-auto rounded-lg border border-slate-200/80 shadow-sm bg-white">
-        <table className="w-full text-xs font-mono-data">
-          <thead className="bg-slate-50/90 text-slate-500 uppercase tracking-wider text-[10px] sticky top-0 z-10">
+        <table className="w-full text-sm font-mono-data">
+          <thead className="bg-slate-50/90 text-slate-500 uppercase tracking-wider text-xs sticky top-0 z-10">
             <tr className="border-b border-slate-200/80">
-              {colOn("product") && <th className="text-left px-2 py-2.5 font-semibold">Product</th>}
-              {colOn("instrument") && <th className="text-left px-2 py-2.5 font-semibold">Instrument</th>}
-              {colOn("qty") && <th className="text-right px-2 py-2.5 font-semibold">Qty</th>}
-              {colOn("avg") && <th className="text-right px-2 py-2.5 font-semibold">Avg</th>}
-              {colOn("ltp") && <th className="text-right px-2 py-2.5 font-semibold">LTP</th>}
-              {colOn("pnl") && <th className="text-right px-2 py-2.5 font-semibold">P&amp;L</th>}
+              {colOn("product") && <th className="text-left px-2.5 py-3 font-semibold">Product</th>}
+              {colOn("instrument") && <th className="text-left px-2.5 py-3 font-semibold">Instrument</th>}
+              {colOn("qty") && <th className="text-right px-2.5 py-3 font-semibold">Qty</th>}
+              {colOn("avg") && <th className="text-right px-2.5 py-3 font-semibold">Avg</th>}
+              {colOn("ltp") && <th className="text-right px-2.5 py-3 font-semibold">LTP</th>}
+              {colOn("pnl") && <th className="text-right px-2.5 py-3 font-semibold">P&amp;L</th>}
               {colOn("tilt") && (
-                <th className="text-right px-2 py-2.5 font-semibold">
+                <th className="text-right px-2.5 py-3 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Tilt
                     <InfoTip title="Direction tilt" size="xs" testId="delta-col-tip">
@@ -1180,7 +1199,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("theta") && (
-                <th className="text-right px-2 py-2.5 font-semibold">
+                <th className="text-right px-2.5 py-3 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     ₹/day
                     <InfoTip title="Daily time money" size="xs" testId="theta-col-tip">
@@ -1190,7 +1209,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("stillEarn") && (
-                <th className="text-right px-2 py-2.5 font-semibold">
+                <th className="text-right px-2.5 py-3 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Still earn
                     <InfoTip title="Still to earn" size="xs" testId="prem-left-col-tip">
@@ -1199,9 +1218,9 @@ export default function PositionsPanel({
                   </span>
                 </th>
               )}
-              {colOn("iv") && <th className="text-right px-2 py-2.5 font-semibold">IV</th>}
+              {colOn("iv") && <th className="text-right px-2.5 py-3 font-semibold">IV</th>}
               {colOn("dte") && (
-                <th className="text-right px-2 py-2.5 font-semibold">
+                <th className="text-right px-2.5 py-3 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Days left
                     <InfoTip title="Days left" size="xs" testId="dte-col-tip">
@@ -1211,7 +1230,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("status") && (
-                <th className="text-left px-2 py-2.5 font-semibold">
+                <th className="text-left px-2.5 py-3 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Status
                     <InfoTip title="OK vs Too close" size="xs" testId="signal-col-tip">
@@ -1222,7 +1241,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("atmDist") && (
-                <th className="text-right px-2 py-2.5 font-semibold">
+                <th className="text-right px-2.5 py-3 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     ATM Dist
                     <InfoTip title="ATM Distance" size="xs" testId="atm-dist-col-tip">

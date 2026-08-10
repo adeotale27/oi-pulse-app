@@ -3111,12 +3111,25 @@ async def get_positions(_who: str = Depends(require_desk_user)):
     # Read-only funds snapshot (never places trades).
     funds = None
     try:
-        margins = await asyncio.to_thread(kite.margins)
-        eq = (margins or {}).get("equity") or {}
+        # Prefer equity segment directly — F&O cash lives here.
+        try:
+            eq = await asyncio.to_thread(kite.margins, "equity")
+        except TypeError:
+            eq = None
+        except Exception:
+            eq = None
+        if not isinstance(eq, dict) or not eq:
+            margins = await asyncio.to_thread(kite.margins)
+            eq = (margins or {}).get("equity") or {}
         avail = eq.get("available") or {}
         util = eq.get("utilised") or {}
+        net = eq.get("net")
+        if net is None:
+            net = avail.get("live_balance")
+        if net is None:
+            net = avail.get("cash")
         funds = {
-            "net": eq.get("net"),
+            "net": net,
             "cash": avail.get("cash"),
             "live_balance": avail.get("live_balance"),
             "opening_balance": avail.get("opening_balance"),
@@ -3335,14 +3348,13 @@ def _ist_today_ymd() -> str:
 async def get_brokerage_day(_who: str = Depends(require_desk_user)):
     """Day's brokerage via Kite virtual contract note (read-only).
 
-    Uses kite.orders() (+ trades() fill prices) + get_virtual_contract_note.
+    Prefers kite.trades() fills (reliable prices) then COMPLETE orders.
     Never returns API keys, secrets, or access tokens. Desk users (admin/guest).
     """
     from kite_charges import (
         aggregate_contract_notes,
-        build_charge_params,
         empty_charges_payload,
-        trade_avg_by_order,
+        resolve_charge_params,
     )
 
     if tracker.mode != "kite" or not tracker.kite_service:
@@ -3362,9 +3374,35 @@ async def get_brokerage_day(_who: str = Depends(require_desk_user)):
             pass
     try:
         kite = tracker.kite_service.kite
-        orders = await asyncio.to_thread(kite.orders)
     except Exception as e:
-        err = f"Kite orders: {type(e).__name__}: {e}"
+        err = f"Kite client: {type(e).__name__}: {e}"
+        if _who == "guest":
+            err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
+        return {
+            "ok": False,
+            "brokerage": None,
+            "charges_total": None,
+            "order_count": 0,
+            "error": err,
+        }
+
+    orders = []
+    trades = []
+    orders_err = None
+    trades_err = None
+    try:
+        orders = await asyncio.to_thread(kite.orders) or []
+    except Exception as e:
+        orders_err = f"{type(e).__name__}: {e}"
+        logger.warning("kite.orders for charges failed: %s", orders_err)
+    try:
+        trades = await asyncio.to_thread(kite.trades) or []
+    except Exception as e:
+        trades_err = f"{type(e).__name__}: {e}"
+        logger.warning("kite.trades for charges failed: %s", trades_err)
+
+    if orders_err and trades_err:
+        err = f"Kite orders/trades: {orders_err}"
         if _who == "guest":
             err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
         return {
@@ -3376,26 +3414,25 @@ async def get_brokerage_day(_who: str = Depends(require_desk_user)):
         }
 
     today = _ist_today_ymd()
-    trade_avgs: dict = {}
-    try:
-        trades = await asyncio.to_thread(kite.trades)
-        trade_avgs = trade_avg_by_order(trades)
-    except Exception as e:
-        logger.warning("kite.trades for charges fallback failed: %s", e)
-
-    params, book_stats = build_charge_params(orders, today_ymd=today, trade_avgs=trade_avgs)
+    params, book_stats = resolve_charge_params(orders, trades, today_ymd=today)
+    book_stats["orders_fetched"] = len(orders) if isinstance(orders, list) else 0
+    book_stats["trades_fetched"] = len(trades) if isinstance(trades, list) else 0
+    book_stats["as_of"] = today
 
     if not params:
         payload = empty_charges_payload(
             order_count=0,
             note=(
-                "No completed priced fills today."
-                if book_stats.get("complete_today")
-                else "No completed orders today."
+                "No priced fills in kite.trades()/orders() for today — "
+                "charges appear after executions clear on the exchange."
             ),
         )
         payload["book"] = book_stats
         payload["skipped_zero_price"] = book_stats.get("skipped_zero_price", 0)
+        if orders_err:
+            payload["orders_warning"] = orders_err
+        if trades_err:
+            payload["trades_warning"] = trades_err
         return payload
 
     # Cap + chunk — one bad row / oversized batch must not blank the chip.
@@ -3409,6 +3446,8 @@ async def get_brokerage_day(_who: str = Depends(require_desk_user)):
             part = await asyncio.to_thread(kite.get_virtual_contract_note, chunk)
             if isinstance(part, list):
                 notes.extend(part)
+            elif isinstance(part, dict) and isinstance(part.get("data"), list):
+                notes.extend(part["data"])
             elif part:
                 notes.append(part)
         except Exception as e:
@@ -3432,7 +3471,7 @@ async def get_brokerage_day(_who: str = Depends(require_desk_user)):
     payload = aggregate_contract_notes(notes)
     payload.update({
         "order_count": len(params),
-        "source": "kite_virtual_contract",
+        "source": f"kite_virtual_contract:{book_stats.get('source') or 'trades'}",
         "book": book_stats,
         "skipped_zero_price": book_stats.get("skipped_zero_price", 0),
     })
