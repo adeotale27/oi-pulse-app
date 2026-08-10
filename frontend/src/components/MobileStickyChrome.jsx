@@ -228,59 +228,63 @@ export default function MobileStickyChrome({
       </div>
 
       {tabs.length > 0 && (
-        <div
-          data-testid="mobile-sticky-tabs"
-          className="tabs-scroll flex items-stretch gap-0.5 overflow-x-auto border-t border-slate-100 px-1 dark:border-slate-800"
-          role="tablist"
-          aria-label="Dashboard views — drag, double-click, or Alt+arrows to reorder"
-        >
-          {tabs.map((t) => {
-            const active = t.v === activeTab;
-            const isOver = canReorder && overId === t.v && draggingId && draggingId !== t.v;
-            return (
-              <button
-                key={t.v}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                data-testid={`tab-${t.v}`}
-                draggable={canReorder}
-                onDragStart={(e) => onDragStart(e, t.v)}
-                onDragEnd={onDragEnd}
-                onDragOver={(e) => onDragOverTab(e, t.v)}
-                onDragLeave={() => {
-                  if (overId === t.v) setOverId(null);
-                }}
-                onDrop={(e) => onDropTab(e, t.v)}
-                onClick={() => onTabClick(t.v)}
-                onDoubleClick={(e) => onTabDoubleClick(e, t.v)}
-                onKeyDown={(e) => onTabKeyDown(e, t.v)}
-                title={tabTitle}
-                className={`shrink-0 whitespace-nowrap border-b-2 px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
-                  canReorder ? "cursor-grab active:cursor-grabbing" : ""
-                } ${draggingId === t.v ? "opacity-40" : ""} ${
-                  isOver ? "border-emerald-400 bg-emerald-50/80" : ""
-                } ${
-                  active
-                    ? "border-emerald-500 text-emerald-800 dark:border-emerald-400 dark:text-emerald-300"
-                    : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                }`}
-              >
-                {t.l}
-              </button>
-            );
-          })}
+        <div className="border-t border-slate-100 dark:border-slate-800">
           {typeof onResetLayout === "function" && (
-            <button
-              type="button"
-              data-testid="btn-reset-layout-mobile"
-              onClick={onResetLayout}
-              className="ml-auto shrink-0 self-center rounded-md border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              title="Reset tab order, tile order, and expiry list height"
-            >
-              Reset
-            </button>
+            <div className="flex justify-end px-1 pt-0.5">
+              <button
+                type="button"
+                data-testid="btn-reset-layout-mobile"
+                onClick={onResetLayout}
+                className="shrink-0 rounded-md border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                title="Reset tab order, tile order, and expiry list height"
+              >
+                Reset
+              </button>
+            </div>
           )}
+          <div
+            data-testid="mobile-sticky-tabs"
+            className="tabs-scroll flex items-stretch gap-0.5 overflow-x-auto px-1"
+            role="tablist"
+            aria-label="Dashboard views — drag, double-click, or Alt+arrows to reorder"
+          >
+            {tabs.map((t) => {
+              const active = t.v === activeTab;
+              const isOver = canReorder && overId === t.v && draggingId && draggingId !== t.v;
+              return (
+                <button
+                  key={t.v}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  data-testid={`tab-${t.v}`}
+                  draggable={canReorder}
+                  onDragStart={(e) => onDragStart(e, t.v)}
+                  onDragEnd={onDragEnd}
+                  onDragOver={(e) => onDragOverTab(e, t.v)}
+                  onDragLeave={() => {
+                    if (overId === t.v) setOverId(null);
+                  }}
+                  onDrop={(e) => onDropTab(e, t.v)}
+                  onClick={() => onTabClick(t.v)}
+                  onDoubleClick={(e) => onTabDoubleClick(e, t.v)}
+                  onKeyDown={(e) => onTabKeyDown(e, t.v)}
+                  title={tabTitle}
+                  className={`shrink-0 whitespace-nowrap border-b-2 px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                    canReorder ? "cursor-grab active:cursor-grabbing" : ""
+                  } ${draggingId === t.v ? "opacity-40" : ""} ${
+                    isOver ? "border-emerald-400 bg-emerald-50/80" : ""
+                  } ${
+                    active
+                      ? "border-emerald-500 text-emerald-800 dark:border-emerald-400 dark:text-emerald-300"
+                      : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                  }`}
+                >
+                  {t.l}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
