@@ -24,21 +24,25 @@ import HolidaysTab from "@/components/HolidaysTab";
 import BuildupTable from "@/components/BuildupTable";
 import PositionsPanel from "@/components/PositionsPanel";
 import RightPanel from "@/components/RightPanel";
-import HolidayBadge from "@/components/HolidayBadge";
-import MarketEventsBadge from "@/components/MarketEventsBadge";
 import OverflowTabBar from "@/components/OverflowTabBar";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
 import UploadModal from "@/components/UploadModal";
 import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
-import MarketImpactBadge from "@/components/MarketImpactBadge";
-import FiiDiiBadge from "@/components/FiiDiiBadge";
 import MobileStickyChrome from "@/components/MobileStickyChrome";
 import MobileMarketStrip from "@/components/MobileMarketStrip";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
-import { loadTabOrder, saveTabOrder, orderPages, moveIdBefore } from "@/lib/tabOrder";
+import InfoTilesRow, { DEFAULT_TILE_IDS } from "@/components/InfoTilesRow";
+import {
+  loadTabOrder,
+  saveTabOrder,
+  orderPages,
+  moveIdBefore,
+  loadTileOrder,
+  saveTileOrder,
+} from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen, PanelLeftOpen } from "lucide-react";
@@ -187,6 +191,7 @@ export default function Dashboard() {
   const [oiSettings, setOiSettings] = useState(loadOISettings());
   const [visiblePages, setVisiblePages] = useState(PUBLIC_DEFAULT_PAGES);
   const [tabOrder, setTabOrder] = useState(() => loadTabOrder());
+  const [tileOrder, setTileOrder] = useState(() => loadTileOrder());
   const [hugeShift, setHugeShift] = useState(null);   // currently shown modal
   const hugeShiftQueueRef = useRef([]);                // queued shifts if multiple fire back-to-back
   const [activity, setActivity] = useState([]);       // unusual activity feed events
@@ -347,6 +352,23 @@ export default function Dashboard() {
     },
     [],
   );
+
+  const handleReorderTiles = useCallback((dragId, dropId) => {
+    setTileOrder((prev) => {
+      const base = (prev && prev.length ? prev : DEFAULT_TILE_IDS).slice();
+      // Keep any unknown/extra ids, ensure defaults present.
+      for (const id of DEFAULT_TILE_IDS) {
+        if (!base.includes(id)) base.push(id);
+      }
+      const next = moveIdBefore(base, dragId, dropId);
+      saveTileOrder(next);
+      return next;
+    });
+  }, []);
+
+  const openHolidaysTab = useCallback(() => setActiveTab("holidays"), []);
+  const openIndexEventsTab = useCallback(() => setActiveTab("index-events"), []);
+  const showImpactTile = authState.is_admin || visiblePages.includes("index-events");
 
   // Dark mode -> toggle html.dark class + persist
   useEffect(() => {
@@ -1422,51 +1444,32 @@ export default function Dashboard() {
                   onChange={setActiveTab}
                   onReorder={handleReorderTabs}
                 />
-                <div
-                  className="hidden xl:flex items-stretch gap-2 shrink-0 relative z-30 overflow-visible"
-                  data-testid="dashboard-info-tiles"
-                >
-                  <div className="w-44 2xl:w-48 shrink-0">
-                    <HolidayBadge onClick={() => setActiveTab("holidays")} />
-                  </div>
-                  <div className="w-44 2xl:w-48 shrink-0">
-                    <FiiDiiBadge isAdmin={!!authState.is_admin} />
-                  </div>
-                  <div className="w-44 2xl:w-48 shrink-0">
-                    <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
-                  </div>
-                  {(authState.is_admin || visiblePages.includes("index-events")) && (
-                    <div className="w-44 2xl:w-48 shrink-0">
-                      <MarketImpactBadge
-                        activeIndex={activeIndex}
-                        onOpenIndexEvents={() => setActiveTab("index-events")}
-                      />
-                    </div>
-                  )}
+                <div className="hidden xl:block shrink-0 relative z-30 overflow-visible">
+                  <InfoTilesRow
+                    order={tileOrder}
+                    onReorder={handleReorderTiles}
+                    isAdmin={!!authState.is_admin}
+                    showImpact={showImpactTile}
+                    activeIndex={activeIndex}
+                    onOpenHolidays={openHolidaysTab}
+                    onOpenIndexEvents={openIndexEventsTab}
+                    wide
+                    testId="dashboard-info-tiles"
+                  />
                 </div>
               </div>
               {/* Below xl: tiles on their own row so dropdowns are never clipped by the tab bar */}
-              <div
-                className="xl:hidden flex items-stretch gap-2 relative z-30 overflow-visible"
-                data-testid="dashboard-info-tiles-wrap"
-              >
-                <div className="w-44 shrink-0">
-                  <HolidayBadge onClick={() => setActiveTab("holidays")} />
-                </div>
-                <div className="w-44 shrink-0">
-                  <FiiDiiBadge isAdmin={!!authState.is_admin} />
-                </div>
-                <div className="w-44 shrink-0">
-                  <MarketEventsBadge onClick={() => setActiveTab("holidays")} />
-                </div>
-                {(authState.is_admin || visiblePages.includes("index-events")) && (
-                  <div className="w-44 shrink-0">
-                    <MarketImpactBadge
-                      activeIndex={activeIndex}
-                      onOpenIndexEvents={() => setActiveTab("index-events")}
-                    />
-                  </div>
-                )}
+              <div className="xl:hidden relative z-30 overflow-visible">
+                <InfoTilesRow
+                  order={tileOrder}
+                  onReorder={handleReorderTiles}
+                  isAdmin={!!authState.is_admin}
+                  showImpact={showImpactTile}
+                  activeIndex={activeIndex}
+                  onOpenHolidays={openHolidaysTab}
+                  onOpenIndexEvents={openIndexEventsTab}
+                  testId="dashboard-info-tiles-wrap"
+                />
               </div>
             </div>
 
