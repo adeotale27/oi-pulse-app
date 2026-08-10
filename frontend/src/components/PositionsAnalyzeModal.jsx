@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, LineChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { computeIndexPayoff, groupPositionsByIndex } from "@/lib/positionPayoff";
+import {
+  computeIndexPayoff,
+  groupPositionsByIndex,
+  buildOiBars,
+  sigmaBands,
+  resolvePositionSpot,
+} from "@/lib/positionPayoff";
 
 function fmt(v, dp = 0) {
   if (v == null || Number.isNaN(v)) return "—";
@@ -10,7 +16,16 @@ function fmt(v, dp = 0) {
   return sign + n.toLocaleString(undefined, { maximumFractionDigits: dp, minimumFractionDigits: dp });
 }
 
-function PayoffSvg({ spots, expiryPnl, targetPnl, spot, width = 640, height = 280 }) {
+function PayoffSvg({
+  spots,
+  expiryPnl,
+  targetPnl,
+  spot,
+  oiBars = [],
+  sd = null,
+  width = 640,
+  height = 280,
+}) {
   if (!spots?.length) {
     return <div className="h-[280px] flex items-center justify-center text-xs text-slate-400">No payoff data</div>;
   }
@@ -29,10 +44,67 @@ function PayoffSvg({ spots, expiryPnl, targetPnl, spot, width = 640, height = 28
     ys.map((y, i) => `${i === 0 ? "M" : "L"}${xScale(spots[i]).toFixed(1)},${yScale(y).toFixed(1)}`).join(" ");
   const zeroY = yScale(0);
   const spotX = xScale(spot);
+  const barMaxH = h * 0.35;
+  const barW = Math.max(2, Math.min(10, w / Math.max(oiBars.length * 2.2, 1)));
+
+  const sdLines = sd
+    ? [
+        { x: sd.m2, label: "-2σ", color: "#94a3b8" },
+        { x: sd.m1, label: "-1σ", color: "#64748b" },
+        { x: sd.p1, label: "+1σ", color: "#64748b" },
+        { x: sd.p2, label: "+2σ", color: "#94a3b8" },
+      ].filter((d) => d.x >= xMin && d.x <= xMax)
+    : [];
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" data-testid="payoff-svg">
+      {/* OI bars behind curves */}
+      {oiBars.map((b) => {
+        const cx = xScale(b.strike);
+        if (cx < pad.l || cx > width - pad.r) return null;
+        const ceH = b.ce * barMaxH;
+        const peH = b.pe * barMaxH;
+        return (
+          <g key={`oi-${b.strike}`}>
+            <rect
+              x={cx - barW - 0.5}
+              y={height - pad.b - ceH}
+              width={barW}
+              height={ceH}
+              fill="#fda4af"
+              opacity="0.45"
+            />
+            <rect
+              x={cx + 0.5}
+              y={height - pad.b - peH}
+              width={barW}
+              height={peH}
+              fill="#6ee7b7"
+              opacity="0.45"
+            />
+          </g>
+        );
+      })}
+
       <line x1={pad.l} x2={width - pad.r} y1={zeroY} y2={zeroY} stroke="#cbd5e1" strokeWidth="1" />
+
+      {sdLines.map((d) => (
+        <g key={d.label}>
+          <line
+            x1={xScale(d.x)}
+            x2={xScale(d.x)}
+            y1={pad.t}
+            y2={height - pad.b}
+            stroke={d.color}
+            strokeWidth="1"
+            strokeDasharray="2 3"
+          />
+          <text x={xScale(d.x) + 2} y={height - pad.b - 4} fill={d.color} style={{ fontSize: 9 }}>
+            {d.label}
+          </text>
+        </g>
+      ))}
+
       <line x1={spotX} x2={spotX} y1={pad.t} y2={height - pad.b} stroke="#10b981" strokeWidth="1.5" strokeDasharray="4 3" />
       <path d={pathOf(expiryPnl)} fill="none" stroke="#e11d48" strokeWidth="2" />
       <path d={pathOf(targetPnl)} fill="none" stroke="#2563eb" strokeWidth="2" />
@@ -53,7 +125,8 @@ export default function PositionsAnalyzeModal({
   rows = [],
   spotByIndex = {},
   fallbackSpot = null,
-  oiByIndex = null, // optional { NIFTY: { strikes, price } }
+  oiByIndex = null, // { NIFTY: { strikes, price, vix } }
+  vix = null,
 }) {
   const byIndex = useMemo(() => groupPositionsByIndex(rows), [rows]);
   const indices = useMemo(() => Array.from(byIndex.keys()), [byIndex]);
@@ -76,11 +149,38 @@ export default function PositionsAnalyzeModal({
   const legs = byIndex.get(activeIndex) || [];
   const activeLegs = legs.filter((l) => selected.has(l.tradingsymbol));
 
-  const spotEntry = spotByIndex[activeIndex];
-  const spot =
-    (spotEntry && typeof spotEntry === "object" ? spotEntry.price : spotEntry) ||
-    oiByIndex?.[activeIndex]?.price ||
-    fallbackSpot;
+  const spot = resolvePositionSpot(
+    { index: activeIndex },
+    spotByIndex,
+    oiByIndex?.[activeIndex]?.price ?? fallbackSpot,
+  );
+
+  const oiPack = oiByIndex?.[activeIndex] || null;
+  const oiBars = useMemo(
+    () => buildOiBars(oiPack?.strikes || []),
+    [oiPack],
+  );
+
+  // IV for σ bands: median of selected legs with IV, else India VIX
+  const bandIv = useMemo(() => {
+    const ivs = activeLegs.map((l) => l.iv).filter((x) => Number.isFinite(x) && x > 0);
+    if (ivs.length) {
+      const sorted = [...ivs].sort((a, b) => a - b);
+      return sorted[Math.floor(sorted.length / 2)] / 100;
+    }
+    const v = Number(oiPack?.vix ?? vix);
+    return Number.isFinite(v) && v > 0 ? v / 100 : 0.15;
+  }, [activeLegs, oiPack, vix]);
+
+  const dteDays = useMemo(() => {
+    const ds = activeLegs.map((l) => l.dte).filter((x) => Number.isFinite(x));
+    return ds.length ? Math.max(...ds) : 1;
+  }, [activeLegs]);
+
+  const sd = useMemo(
+    () => (spot != null ? sigmaBands(spot, bandIv, dteDays) : null),
+    [spot, bandIv, dteDays],
+  );
 
   const payoff = useMemo(
     () =>
@@ -219,17 +319,27 @@ export default function PositionsAnalyzeModal({
                   )
                 </span>
               )}
+              {sd && (
+                <span className="text-slate-400 ml-2">
+                  · 1σ ≈ ₹{Math.round(sd.oneSigma)} ({(bandIv * 100).toFixed(0)}% IV · {dteDays.toFixed?.(1) ?? dteDays}d)
+                </span>
+              )}
             </div>
             <div className="rounded-md border border-slate-200 p-2">
-              <div className="flex items-center gap-3 text-[10px] mb-1">
+              <div className="flex flex-wrap items-center gap-3 text-[10px] mb-1">
                 <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-rose-500 inline-block" /> On expiry</span>
                 <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-600 inline-block" /> Target date</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 bg-rose-300/80 inline-block" /> Call OI</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 bg-emerald-300/80 inline-block" /> Put OI</span>
+                <span className="inline-flex items-center gap-1 text-slate-500">σ bands</span>
               </div>
               <PayoffSvg
                 spots={payoff.spots}
                 expiryPnl={payoff.expiryPnl}
                 targetPnl={payoff.targetPnl}
                 spot={payoff.spot || spot || 0}
+                oiBars={oiBars}
+                sd={sd}
               />
               <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-600">
                 <label className="shrink-0">Time → expiry</label>
@@ -244,6 +354,11 @@ export default function PositionsAnalyzeModal({
                 />
                 <span className="font-mono-data w-10 text-right">{Math.round(targetFrac * 100)}%</span>
               </div>
+              {!oiBars.length && (
+                <div className="text-[10px] text-slate-400 mt-1 italic">
+                  OI overlay needs a live snapshot for {activeIndex} (open that index tab once to warm cache).
+                </div>
+              )}
             </div>
           </div>
 

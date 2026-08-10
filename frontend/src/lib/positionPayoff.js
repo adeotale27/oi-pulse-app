@@ -187,3 +187,49 @@ export function computeIndexPayoff({
     },
   };
 }
+
+/**
+ * Expected move bands from spot + IV (decimal) and days to expiry.
+ * σ ≈ S × IV × √(T_years) ; 1 day ≈ √(1/365).
+ */
+export function sigmaBands(spot, ivDecimal, dteDays = 1) {
+  const S = Number(spot);
+  const iv = Number(ivDecimal);
+  const dte = Math.max(0, Number(dteDays) || 0);
+  if (!(S > 0) || !(iv > 0)) return null;
+  const oneSigma = S * iv * Math.sqrt(Math.max(dte, 1 / 365) / 365);
+  if (!Number.isFinite(oneSigma) || oneSigma <= 0) return null;
+  return {
+    oneSigma,
+    m2: S - 2 * oneSigma,
+    m1: S - oneSigma,
+    p1: S + oneSigma,
+    p2: S + 2 * oneSigma,
+  };
+}
+
+/**
+ * Normalize CE/PE OI bars for payoff chart overlay (0..1 height).
+ */
+export function buildOiBars(strikes = [], { maxBars = 40 } = {}) {
+  if (!Array.isArray(strikes) || !strikes.length) return [];
+  let list = strikes
+    .map((s) => ({
+      strike: Number(s.strike),
+      ceOi: Number(s.ce_oi) || 0,
+      peOi: Number(s.pe_oi) || 0,
+    }))
+    .filter((s) => Number.isFinite(s.strike));
+  if (list.length > maxBars) {
+    const step = Math.ceil(list.length / maxBars);
+    list = list.filter((_, i) => i % step === 0);
+  }
+  const maxOi = Math.max(1, ...list.map((s) => Math.max(s.ceOi, s.peOi)));
+  return list.map((s) => ({
+    strike: s.strike,
+    ce: s.ceOi / maxOi,
+    pe: s.peOi / maxOi,
+    ceOi: s.ceOi,
+    peOi: s.peOi,
+  }));
+}

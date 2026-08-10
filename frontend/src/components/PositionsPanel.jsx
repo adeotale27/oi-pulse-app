@@ -91,6 +91,7 @@ export default function PositionsPanel({
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
+  const [oiByIndex, setOiByIndex] = useState({});
   const [funds, setFunds] = useState(null);
   const [brokerage, setBrokerage] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -136,6 +137,7 @@ export default function PositionsPanel({
       setPositions(data.positions || []);
       setFunds(data.funds || null);
       setSpotByIndex(data.spot && typeof data.spot === "object" ? data.spot : {});
+      setOiByIndex(data.oi && typeof data.oi === "object" ? data.oi : {});
       if (data.error) setError(data.error);
       setLastRefresh(new Date().toISOString());
       setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
@@ -183,46 +185,56 @@ export default function PositionsPanel({
       let extrinsicLeft = null;
       let thetaToClose = null;
       let onExpiryDay = false;
-      // Never reuse another index's dashboard spot (e.g. SENSEX price on NIFTY legs).
+      let greeksHealth = null; // null | 'no_spot' | 'iv_na' | 'ok'
+      // Prefer per-index Kite spot from /positions; only reuse dashboard spot when same index.
       const dashboardSpot =
         p.index && activeIndex && p.index !== activeIndex ? null : fallbackS;
       const S = resolvePositionSpot(p, spotByIndex, dashboardSpot);
-      if (isOpt && S != null && Number.isFinite(S) && S > 0) {
-        const expIso = positionExpiryISO(p, activeExp);
-        if (expIso) {
-          T = yearsToExpiry(expIso, nowMs);
-          dte = T * 365;
-          onExpiryDay = dte < 1.05;
-          const isCall = p.side === "CE";
-          const px = Number(p.last_price || p.average_price);
-          const ivGuess = Number.isFinite(px) && px > 0
-            ? impliedVol(px, S, p.strike, T, 0.065, isCall)
-            : null;
-          if (ivGuess != null && Number.isFinite(ivGuess) && ivGuess > 0) {
-            iv = ivGuess * 100;
-            const g = greeks(S, p.strike, T, 0.065, ivGuess, isCall);
-            delta = Number.isFinite(g.delta) ? g.delta : null;
-            theta = Number.isFinite(g.theta) ? g.theta : null;
-            gamma = Number.isFinite(g.gamma) ? g.gamma : null;
+      if (isOpt) {
+        if (!(S != null && Number.isFinite(S) && S > 0)) {
+          greeksHealth = "no_spot";
+        } else {
+          const expIso = positionExpiryISO(p, activeExp);
+          if (expIso) {
+            T = yearsToExpiry(expIso, nowMs);
+            dte = T * 365;
+            onExpiryDay = dte < 1.05;
+            const isCall = p.side === "CE";
+            const px = Number(p.last_price || p.average_price);
+            const ivGuess = Number.isFinite(px) && px > 0
+              ? impliedVol(px, S, p.strike, T, 0.065, isCall)
+              : null;
+            if (ivGuess != null && Number.isFinite(ivGuess) && ivGuess > 0) {
+              iv = ivGuess * 100;
+              const g = greeks(S, p.strike, T, 0.065, ivGuess, isCall);
+              delta = Number.isFinite(g.delta) ? g.delta : null;
+              theta = Number.isFinite(g.theta) ? g.theta : null;
+              gamma = Number.isFinite(g.gamma) ? g.gamma : null;
+              greeksHealth = "ok";
+            } else {
+              greeksHealth = "iv_na";
+            }
+            if (p.quantity < 0) {
+              const left = shortPremiumLeft({
+                marketPrice: px,
+                S,
+                K: p.strike,
+                isCall,
+                quantity: p.quantity,
+                thetaPerUnit: theta,
+                nowMs,
+              });
+              extrinsicLeft = Number.isFinite(left.extrinsicLeft) ? left.extrinsicLeft : null;
+              thetaToClose = Number.isFinite(left.thetaToClose) ? left.thetaToClose : null;
+            } else if (Number.isFinite(px)) {
+              const ext = extrinsicPremium(px, S, p.strike, p.side === "CE");
+              extrinsicLeft = ext != null && Number.isFinite(ext) ? ext * Math.abs(p.quantity) : null;
+            }
+          } else {
+            greeksHealth = "iv_na";
           }
-          if (p.quantity < 0) {
-            const left = shortPremiumLeft({
-              marketPrice: px,
-              S,
-              K: p.strike,
-              isCall,
-              quantity: p.quantity,
-              thetaPerUnit: theta,
-              nowMs,
-            });
-            extrinsicLeft = Number.isFinite(left.extrinsicLeft) ? left.extrinsicLeft : null;
-            thetaToClose = Number.isFinite(left.thetaToClose) ? left.thetaToClose : null;
-          } else if (Number.isFinite(px)) {
-            const ext = extrinsicPremium(px, S, p.strike, p.side === "CE");
-            extrinsicLeft = ext != null && Number.isFinite(ext) ? ext * Math.abs(p.quantity) : null;
-          }
+          distancePct = ((p.strike - S) / S) * 100;
         }
-        distancePct = ((p.strike - S) / S) * 100;
       }
       const isShort = p.quantity < 0;
       return {
@@ -241,6 +253,7 @@ export default function PositionsPanel({
         thetaToClose,
         onExpiryDay,
         spotUsed: S,
+        greeksHealth,
       };
     });
 
@@ -494,7 +507,27 @@ export default function PositionsPanel({
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-        <StatBox label="Net P&L" value={"₹ " + fmt(stats.netPnl)} tone={stats.netPnl >= 0 ? "emerald" : "rose"} />
+        <StatBox
+          label="Net P&L"
+          value={"₹ " + fmt(stats.netPnl)}
+          tone={stats.netPnl >= 0 ? "emerald" : "rose"}
+          hint={
+            brokerage?.charges_total != null
+              ? `After charges ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
+              : undefined
+          }
+          tip={(
+            <div className="space-y-1.5">
+              <p>Open F&amp;O mark-to-market P&amp;L from Kite (read-only).</p>
+              {brokerage?.charges_total != null && (
+                <p>
+                  <b>Net of costs today</b> = Net P&amp;L − all charges (₹ {fmt(brokerage.charges_total, 0)}),
+                  including brokerage ₹ {fmt(brokerage.brokerage, 0)}.
+                </p>
+              )}
+            </div>
+          )}
+        />
         <StatBox
           label="Funds available"
           value={funds?.net != null ? "₹ " + fmt(funds.net, 0) : "—"}
@@ -787,7 +820,8 @@ export default function PositionsPanel({
                   <div className="text-sm font-semibold text-slate-900 truncate">{r.tradingsymbol}</div>
                   <div className="text-[10px] text-slate-500">{r.product} · {r.exchange}</div>
                 </div>
-                <div className="shrink-0">
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  <GreeksHealthChip health={r.greeksHealth} />
                   {r.breachedAdjust ? (
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px]">
                       <AlertTriangle className="w-3 h-3" /> Adjust
@@ -900,13 +934,18 @@ export default function PositionsPanel({
                 <td className="text-right px-2 py-1.5">{Number.isFinite(r.iv) ? r.iv.toFixed(1) + "%" : "—"}</td>
                 <td className="text-right px-2 py-1.5">{r.dte != null ? r.dte.toFixed(1) + "d" : "—"}</td>
                 <td className="px-2 py-1.5">
-                  {r.breachedAdjust ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px]">
-                      <AlertTriangle className="w-3 h-3" /> Adjust
-                    </span>
-                  ) : r.isShort && r.isOpt ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px]">Safe</span>
-                  ) : "—"}
+                  <div className="flex flex-wrap items-center gap-1">
+                    <GreeksHealthChip health={r.greeksHealth} />
+                    {r.breachedAdjust ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px]">
+                        <AlertTriangle className="w-3 h-3" /> Adjust
+                      </span>
+                    ) : r.isShort && r.isOpt ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px]">Safe</span>
+                    ) : !r.greeksHealth || r.greeksHealth === "ok" ? (
+                      "—"
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             );})}
@@ -1037,9 +1076,31 @@ export default function PositionsPanel({
         rows={rows}
         spotByIndex={spotByIndex}
         fallbackSpot={spot}
-        oiByIndex={{ [activeIndex]: current }}
+        oiByIndex={{
+          ...oiByIndex,
+          ...(current ? { [activeIndex]: { ...(oiByIndex[activeIndex] || {}), ...current, strikes: current.strikes || oiByIndex[activeIndex]?.strikes } } : {}),
+        }}
+        vix={vix}
       />
     </div>
+  );
+}
+
+function GreeksHealthChip({ health }) {
+  if (!health || health === "ok") return null;
+  const label = health === "no_spot" ? "no spot" : "IV n/a";
+  return (
+    <span
+      data-testid={`greeks-health-${health}`}
+      title={
+        health === "no_spot"
+          ? "No per-index spot — greeks skipped"
+          : "Could not solve IV for this leg (price/expiry)"
+      }
+      className="inline-flex items-center px-1.5 py-0.5 rounded-sm border border-amber-300 bg-amber-50 text-amber-900 text-[10px] font-semibold"
+    >
+      {label}
+    </span>
   );
 }
 
