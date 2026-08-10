@@ -76,19 +76,20 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     );
   }
 
-  // Slim status-rail: one line of index chips (no stacked tile cards).
+  // Slim status-rail: Sensibull-style quote — NAME arrow PRICE chg (pct%)
   if (isRail) {
     return (
-      <div className="flex flex-nowrap items-center gap-1 min-w-0 overflow-x-auto" data-testid="ticker-strip">
+      <div className="flex flex-nowrap items-center gap-0.5 min-w-0 overflow-x-auto" data-testid="ticker-strip">
         {displayTickers.map((t) => {
           const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
           const up = t.change > 0;
           const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
-          const toneCls = flat ? "text-slate-500" : up ? "text-emerald-600" : "text-rose-600";
+          const toneCls = flat ? "text-slate-600 dark:text-slate-300" : up ? "text-emerald-600" : "text-rose-600";
           const isActive = t.index === activeIndex;
           const shortLabel =
             t.index === "BANKNIFTY" ? "BANK" : t.index === "NIFTY" ? "NIFTY" : "SENSEX";
           const ltpLabel = fmtLtp(t.ltp, 2);
+          const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
           return (
             <button
               key={t.index}
@@ -102,16 +103,25 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-              <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-500">{shortLabel}</span>
+              <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">
+                {shortLabel}
+              </span>
+              <Arrow className={`w-3 h-3 shrink-0 ${toneCls}`} strokeWidth={2.5} aria-hidden />
               <span
-                className="font-semibold text-slate-900 dark:text-slate-100"
+                className={`font-semibold ${toneCls}`}
                 data-testid={`ticker-${t.index}-ltp`}
               >
                 {ltpLabel}
               </span>
-              <span className={`${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
-                {flat ? "0.00%" : `${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%`}
+              <span className="text-slate-500 dark:text-slate-400" data-testid={`ticker-${t.index}-chg`}>
+                {flat || ltpLabel === "—"
+                  ? ""
+                  : `${t.change > 0 ? "+" : ""}${fmtNum(t.change, 2)}`}
+              </span>
+              <span className="text-slate-500 dark:text-slate-400" data-testid={`ticker-${t.index}-pct`}>
+                {flat || ltpLabel === "—"
+                  ? "(0.00%)"
+                  : `(${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%)`}
               </span>
             </button>
           );

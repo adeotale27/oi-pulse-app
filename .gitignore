@@ -89,3 +89,6 @@ credentials.json
 frontend/node_modules/.cache/default-development/0.pack
 backend/data/*.json
 backend/cas_rule_expiry_automation/config.ini
+*.db
+backend/instruments.db
+**/instruments.db
