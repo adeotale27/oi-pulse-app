@@ -29,6 +29,7 @@ import SoundSettingsModal from "@/components/SoundSettingsModal";
 import UploadModal from "@/components/UploadModal";
 import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
+import CasPanel from "@/components/CasPanel";
 import MobileStickyChrome from "@/components/MobileStickyChrome";
 import MobileMarketStrip from "@/components/MobileMarketStrip";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
@@ -81,8 +82,11 @@ const DASHBOARD_PAGES = [
   { v: "holidays", l: "Events" },
   { v: "straddle", l: "Straddle" },
   { v: "index-events", l: "Index Risk" },
+  { v: "cas", l: "CAS" },
 ];
-const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES.filter((page) => !page.adminOnly).map((page) => page.v);
+const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
+  .filter((page) => !page.adminOnly && page.v !== "cas")
+  .map((page) => page.v);
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
@@ -2042,6 +2046,15 @@ export default function Dashboard() {
                         activeIndex={activeIndex}
                         refreshKey={uploadRefreshKey}
                         isAdmin={!!authState.is_admin}
+                      />
+                    </TabsContent>
+                  )}
+
+                  {(authState.is_admin || visiblePages.includes("cas")) && (
+                    <TabsContent value="cas" className="mt-0">
+                      <CasPanel
+                        isAdmin={!!authState.is_admin}
+                        isKiteMode={status?.mode === "kite"}
                       />
                     </TabsContent>
                   )}

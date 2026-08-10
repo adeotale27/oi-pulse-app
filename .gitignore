@@ -87,3 +87,5 @@ credentials.json
 *.key
 .credentials
 frontend/node_modules/.cache/default-development/0.pack
+backend/data/*.json
+backend/cas_rule_expiry_automation/config.ini

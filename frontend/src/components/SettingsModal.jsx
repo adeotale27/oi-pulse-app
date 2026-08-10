@@ -24,6 +24,7 @@ const DASHBOARD_PAGES = [
   { id: "holidays", label: "Events" },
   { id: "straddle", label: "Straddle" },
   { id: "index-events", label: "Index Risk" },
+  { id: "cas", label: "CAS Expiry" },
 ];
 
 export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSaved, isAdmin = false }) {
@@ -56,7 +57,7 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
           admin_session_ttl_minutes: 480,
           alert_enabled_indices: ["NIFTY"],
           show_strike_range: false,
-          visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions").map((p) => p.id),
+          visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions" && p.id !== "cas").map((p) => p.id),
           show_writer_defense: true,
           show_suggestion: true,
           show_chart_signals: false,
@@ -468,6 +469,8 @@ export default function SettingsModal({ open, onOpenChange, onSaved, onLocalSave
                         <div className="text-sm font-medium">{page.label}</div>
                         {page.id === "sell-candidates" || page.id === "positions" ? (
                           <div className="text-[10px] text-slate-500">Admin-only page</div>
+                        ) : page.id === "cas" ? (
+                          <div className="text-[10px] text-slate-500">Guests can view; only admin can Activate / Live</div>
                         ) : null}
                       </div>
                     </label>
