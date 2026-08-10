@@ -61,13 +61,34 @@ const POSITIONS_GUIDE = (
 function ExitedChip() {
   return (
     <span
-      title="Squared off today — Zerodha still lists it until end of day with realised P&L"
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-300 bg-slate-100 text-slate-700 text-[10px] font-semibold"
+      title="Squared off today — booked P&L stays in Today’s total until end of day"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-300/80 bg-white/60 text-slate-500 text-[10px] font-semibold tracking-wide"
       data-testid="status-exited"
     >
       Exited
     </span>
   );
+}
+
+/** Professional symbol: NIFTY 11TH AUG 24800 CE */
+function positionLabel(r) {
+  return r?.display_name || r?.tradingsymbol || "—";
+}
+
+function AvgCell({ row }) {
+  if (row?.exited) {
+    const b = Number(row.buy_price);
+    const s = Number(row.sell_price);
+    if (Number.isFinite(b) && Number.isFinite(s) && (b > 0 || s > 0)) {
+      return (
+        <span className="text-slate-500" title="Buy avg → Sell avg (booked)">
+          {fmt(b)}→{fmt(s)}
+        </span>
+      );
+    }
+    return <span className="text-slate-400">—</span>;
+  }
+  return <span>{fmt(row?.average_price)}</span>;
 }
 
 function StatusChip({ breached, isShortOpt, exited }) {
@@ -150,6 +171,7 @@ export default function PositionsPanel({
   const [spotByIndex, setSpotByIndex] = useState({});
   const [oiByIndex, setOiByIndex] = useState({});
   const [funds, setFunds] = useState(null);
+  const [pnlToday, setPnlToday] = useState(null);
   const [brokerage, setBrokerage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -193,6 +215,7 @@ export default function PositionsPanel({
       if (gen !== loadGen.current) return;
       setPositions(data.positions || []);
       setFunds(data.funds || null);
+      setPnlToday(data.pnl_today || null);
       setSpotByIndex(data.spot && typeof data.spot === "object" ? data.spot : {});
       setOiByIndex(data.oi && typeof data.oi === "object" ? data.oi : {});
       if (data.error) setError(data.error);
@@ -305,9 +328,15 @@ export default function PositionsPanel({
       const isShort = exited
         ? (p.side_bias === "short" || (Number(p.sell_quantity || 0) > Number(p.buy_quantity || 0)))
         : p.quantity < 0;
+      const displayPnl = exited
+        ? (p.booked_pnl != null ? Number(p.booked_pnl) : Number(p.pnl) || 0)
+        : Number(p.pnl) || 0;
       return {
         ...p,
         exited,
+        display_name: p.display_name || p.tradingsymbol,
+        pnl: displayPnl,
+        booked_pnl: p.booked_pnl != null ? Number(p.booked_pnl) : displayPnl,
         isOpt,
         dte: exited ? null : dte,
         delta: exited ? null : delta,
@@ -377,15 +406,21 @@ export default function PositionsPanel({
     let thetaToClose = 0, thetaToCloseN = 0;
     let shortCount = 0, adjustCount = 0;
     let openCount = 0, exitedCount = 0;
+    let openPnl = 0, exitedPnl = 0;
     for (const r of rows) {
-      if (r.exited) exitedCount += 1;
-      else openCount += 1;
-      // Live book greeks only from open legs; PnL includes same-day exits.
+      const rowPnl = Number(r.exited && r.booked_pnl != null ? r.booked_pnl : r.pnl) || 0;
+      if (r.exited) {
+        exitedCount += 1;
+        exitedPnl += rowPnl;
+      } else {
+        openCount += 1;
+        openPnl += rowPnl;
+      }
+      // Live book greeks only from open legs; Today P&L includes exits.
       if (!r.exited) {
         if (r.delta != null && Number.isFinite(r.delta)) netDelta += r.delta * r.quantity;
         if (r.theta != null && Number.isFinite(r.theta)) netTheta += r.theta * r.quantity;
       }
-      netPnl += r.pnl || 0;
       if (!r.exited && r.isShort && r.isOpt) {
         shortCount += 1;
         if (r.breachedAdjust) adjustCount += 1;
@@ -403,10 +438,19 @@ export default function PositionsPanel({
         if (minMinutes == null || mins < minMinutes) minMinutes = mins;
       }
     }
+    if (pnlToday && typeof pnlToday === "object") {
+      if (pnlToday.open != null) openPnl = Number(pnlToday.open) || openPnl;
+      if (pnlToday.exited != null) exitedPnl = Number(pnlToday.exited) || exitedPnl;
+      netPnl = pnlToday.total != null ? (Number(pnlToday.total) || openPnl + exitedPnl) : openPnl + exitedPnl;
+    } else {
+      netPnl = openPnl + exitedPnl;
+    }
     return {
       netDelta,
       netTheta,
       netPnl,
+      openPnl,
+      exitedPnl,
       minMinutes,
       premiumLeft: premiumLeftN ? premiumLeft : null,
       thetaToClose: thetaToCloseN ? thetaToClose : null,
@@ -415,7 +459,7 @@ export default function PositionsPanel({
       openCount,
       exitedCount,
     };
-  }, [rows]);
+  }, [rows, pnlToday]);
 
   const sellIdeas = useMemo(() => {
     if (!current?.strikes?.length) return null;
@@ -598,22 +642,28 @@ export default function PositionsPanel({
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         <StatBox
-          label="Net P&L"
+          label="Today P&L"
           value={"₹ " + fmt(stats.netPnl)}
           tone={stats.netPnl >= 0 ? "emerald" : "rose"}
           hint={
-            brokerage?.charges_total != null
-              ? `After fees ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
-              : "Open profit / loss"
+            stats.exitedCount > 0
+              ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
+              : brokerage?.charges_total != null
+                ? `After fees ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
+                : "Open + booked exits"
           }
           tip={(
             <div className="space-y-1.5">
-              <p>Your open F&amp;O profit or loss right now (from Kite).</p>
-              {brokerage?.charges_total != null && (
-                <p>
-                  <b>After fees</b> = that P&amp;L minus today&apos;s charges (₹ {fmt(brokerage.charges_total, 0)}).
-                </p>
-              )}
+              <p>
+                <b>Today P&amp;L</b> = open positions + same-day <b>exited</b> booked P&amp;L
+                (Kite-style — exited legs stay in the list until end of day).
+              </p>
+              <p>
+                Open: ₹ {fmt(stats.openPnl, 0)} · Exited: ₹ {fmt(stats.exitedPnl, 0)}
+                {brokerage?.charges_total != null
+                  ? ` · Fees today ₹ ${fmt(brokerage.charges_total, 0)}`
+                  : ""}
+              </p>
             </div>
           )}
         />
@@ -886,20 +936,23 @@ export default function PositionsPanel({
             <div
               key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}
               data-testid="position-card"
+              data-exited={r.exited ? "1" : "0"}
               className={`rounded-md border px-3 py-2.5 ${
                 r.exited
-                  ? "border-slate-200 bg-slate-50/80 opacity-90"
+                  ? "border-slate-200/80 bg-slate-100/70 text-slate-500 shadow-none"
                   : r.breachedAdjust
                     ? "border-rose-300 bg-rose-50/80"
                     : "border-slate-200 bg-white"
               }`}
             >
-              <div className="flex items-start justify-between gap-2">
+              <div className={`flex items-start justify-between gap-2 ${r.exited ? "opacity-70" : ""}`}>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900 truncate">{r.tradingsymbol}</div>
-                  <div className="text-[10px] text-slate-500">
+                  <div className={`text-sm font-semibold truncate ${r.exited ? "text-slate-500" : "text-slate-900"}`}>
+                    {positionLabel(r)}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
                     {r.product} · {r.exchange}
-                    {r.exited ? ` · B${r.buy_quantity || 0}/S${r.sell_quantity || 0}` : ""}
+                    {r.exited ? " · booked today" : ""}
                   </div>
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1">
@@ -907,11 +960,21 @@ export default function PositionsPanel({
                   <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
                 </div>
               </div>
-              <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data">
+              <div className={`mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data ${r.exited ? "opacity-75" : ""}`}>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Qty</div>
-                  <div className={r.exited ? "text-slate-500 font-semibold" : r.isShort ? "text-rose-600 font-semibold" : "text-emerald-600 font-semibold"}>
+                  <div className={r.exited ? "text-slate-400 font-semibold" : r.isShort ? "text-rose-600 font-semibold" : "text-sky-700 font-semibold"}>
                     {r.exited ? 0 : r.quantity}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">Avg</div>
+                  <div><AvgCell row={r} /></div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">P&amp;L</div>
+                  <div className={`font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-90" : ""}`}>
+                    {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
                   </div>
                 </div>
                 <div>
@@ -919,22 +982,10 @@ export default function PositionsPanel({
                   <div>{fmt(r.last_price)}</div>
                 </div>
                 <div>
-                  <div className="text-[9px] uppercase text-slate-400">P&amp;L</div>
-                  <div className={`font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] uppercase text-slate-400">Tilt</div>
-                  <div>{Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}</div>
-                </div>
-                <div>
                   <div className="text-[9px] uppercase text-slate-400">₹/day</div>
                   <div className={thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700 font-semibold" : "text-rose-700 font-semibold"}>
                     {thetaInr != null ? fmt(thetaInr, 0) : "—"}
                   </div>
-                </div>
-                <div>
-                  <div className="text-[9px] uppercase text-slate-400">Still earn</div>
-                  <div>{!r.exited && r.isShort && r.extrinsicLeft != null ? `₹${fmt(r.extrinsicLeft, 0)}` : "—"}</div>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">ATM dist</div>
@@ -951,7 +1002,7 @@ export default function PositionsPanel({
         <table className="w-full text-xs font-mono-data bg-white">
           <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
             <tr>
-              <th className="text-left px-2 py-2">Symbol</th>
+              <th className="text-left px-2 py-2">Instrument</th>
               <th className="text-right px-2 py-2">Qty</th>
               <th className="text-right px-2 py-2">Avg</th>
               <th className="text-right px-2 py-2">LTP</th>
@@ -1025,35 +1076,45 @@ export default function PositionsPanel({
                 data-testid="position-row"
                 data-exited={r.exited ? "1" : "0"}
                 className={`border-b border-slate-100 ${
-                  r.exited ? "bg-slate-50/80 text-slate-600" : r.breachedAdjust ? "bg-rose-50/80" : "bg-white"
+                  r.exited
+                    ? "bg-slate-100/80 text-slate-500"
+                    : r.breachedAdjust
+                      ? "bg-rose-50/80"
+                      : "bg-white"
                 }`}
               >
-                <td className="px-2 py-1.5">
-                  <div className="text-slate-900 font-semibold">{r.tradingsymbol}</div>
-                  <div className="text-[10px] text-slate-500">
+                <td className={`px-2 py-1.5 ${r.exited ? "opacity-75" : ""}`}>
+                  <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-500" : "text-slate-900"}`}>
+                    {positionLabel(r)}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
                     {r.product} · {r.exchange}
-                    {r.exited ? ` · B${r.buy_quantity || 0}/S${r.sell_quantity || 0}` : ""}
+                    {r.exited ? " · booked today" : ""}
                   </div>
                 </td>
-                <td className={`text-right px-2 py-1.5 ${r.exited ? "text-slate-500" : r.isShort ? "text-rose-600" : "text-emerald-600"}`}>
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "text-slate-400 opacity-75" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
                   {r.exited ? 0 : r.quantity}
                 </td>
-                <td className="text-right px-2 py-1.5">{fmt(r.average_price)}</td>
-                <td className="text-right px-2 py-1.5">{fmt(r.last_price)}</td>
-                <td className={`text-right px-2 py-1.5 font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</td>
-                <td className="text-right px-2 py-1.5">{Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}</td>
-                <td className={`text-right px-2 py-1.5 font-semibold ${thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-75" : ""}`}>
+                  <AvgCell row={r} />
+                </td>
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-75" : ""}`}>{fmt(r.last_price)}</td>
+                <td className={`text-right px-2 py-1.5 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-90" : ""}`}>
+                  {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
+                </td>
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>{Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}</td>
+                <td className={`text-right px-2 py-1.5 font-semibold ${thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-60" : ""}`}>
                   {thetaInr != null ? fmt(thetaInr, 0) : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5 text-slate-700">
+                <td className={`text-right px-2 py-1.5 text-slate-700 ${r.exited ? "opacity-60" : ""}`}>
                   {!r.exited && r.isShort && r.extrinsicLeft != null ? (
                     <span title={r.onExpiryDay ? "Expiry day — extrinsic left to 15:30" : "Extrinsic left"}>
                       ₹{fmt(r.extrinsicLeft, 0)}
                     </span>
                   ) : "—"}
                 </td>
-                <td className="text-right px-2 py-1.5">{Number.isFinite(r.iv) ? r.iv.toFixed(1) + "%" : "—"}</td>
-                <td className="text-right px-2 py-1.5">{r.dte != null ? r.dte.toFixed(1) + "d" : "—"}</td>
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>{Number.isFinite(r.iv) ? r.iv.toFixed(1) + "%" : "—"}</td>
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>{r.dte != null ? r.dte.toFixed(1) + "d" : "—"}</td>
                 <td className="px-2 py-1.5">
                   <div className="flex flex-wrap items-center gap-1">
                     <GreeksHealthChip health={r.greeksHealth} />
@@ -1061,7 +1122,7 @@ export default function PositionsPanel({
                     {!r.exited && !r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
                   </div>
                 </td>
-                <td className="text-right px-2 py-1.5">
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "opacity-60" : ""}`}>
                   <AtmDistanceCell row={r} />
                 </td>
               </tr>

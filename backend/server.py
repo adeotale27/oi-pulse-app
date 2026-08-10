@@ -3096,7 +3096,11 @@ async def get_positions(_admin: bool = Depends(require_admin)):
     except Exception as e:
         logger.warning("kite.margins failed: %s", e)
 
-    from fno_symbol import parse_fno_option_symbol
+    from fno_symbol import (
+        booked_pnl_from_kite_row,
+        format_fno_option_label,
+        parse_fno_option_symbol,
+    )
 
     def _pos_key(p: dict) -> tuple:
         return (
@@ -3138,6 +3142,20 @@ async def get_positions(_admin: bool = Depends(require_admin)):
         exited = qty == 0 and (buy_qty > 0 or sell_qty > 0)
         ts = p.get("tradingsymbol", "")
         parsed = parse_fno_option_symbol(ts) or {}
+        buy_price = float(p.get("buy_price", 0) or 0)
+        sell_price = float(p.get("sell_price", 0) or 0)
+        avg = float(p.get("average_price", 0) or 0)
+        pnl_bits = booked_pnl_from_kite_row(
+            qty=qty,
+            buy_qty=buy_qty,
+            sell_qty=sell_qty,
+            buy_price=buy_price,
+            sell_price=sell_price,
+            pnl=float(p.get("pnl", 0) or 0),
+            realised=float(p.get("realised", 0) or 0),
+            unrealised=float(p.get("unrealised", 0) or 0),
+            exited=exited,
+        )
         # Direction hint for exited shorts/longs (qty is 0): compare buy vs sell volume.
         side_bias = None
         if exited:
@@ -3147,21 +3165,25 @@ async def get_positions(_admin: bool = Depends(require_admin)):
                 side_bias = "long"
             else:
                 side_bias = "squared"
+        display_name = format_fno_option_label(ts, parsed=parsed or None)
         out.append({
             "tradingsymbol": ts,
+            "display_name": display_name,
             "exchange": p.get("exchange"),
             "product": p.get("product"),
             "quantity": qty,
             "overnight_quantity": int(p.get("overnight_quantity", 0) or 0),
-            "average_price": float(p.get("average_price", 0) or 0),
+            "average_price": avg,
             "last_price": float(p.get("last_price", 0) or 0),
-            "pnl": float(p.get("pnl", 0) or 0),
-            "unrealised": float(p.get("unrealised", 0) or 0),
-            "realised": float(p.get("realised", 0) or 0),
+            "pnl": pnl_bits["pnl"],
+            "unrealised": pnl_bits["unrealised"],
+            "realised": pnl_bits["realised"],
+            "booked_pnl": pnl_bits["booked_pnl"],
+            "pnl_source": pnl_bits["pnl_source"],
             "buy_quantity": buy_qty,
             "sell_quantity": sell_qty,
-            "buy_price": float(p.get("buy_price", 0) or 0),
-            "sell_price": float(p.get("sell_price", 0) or 0),
+            "buy_price": buy_price,
+            "sell_price": sell_price,
             "exited": exited,
             "side_bias": side_bias,
             **parsed,
@@ -3240,11 +3262,18 @@ async def get_positions(_admin: bool = Depends(require_admin)):
 
     open_n = sum(1 for r in out if not r.get("exited"))
     exited_n = sum(1 for r in out if r.get("exited"))
+    open_pnl = round(sum(float(r.get("pnl") or 0) for r in out if not r.get("exited")), 2)
+    exited_pnl = round(sum(float(r.get("booked_pnl") or r.get("pnl") or 0) for r in out if r.get("exited")), 2)
     return {
         "mode": tracker.mode,
         "positions": out,
         "open_count": open_n,
         "exited_count": exited_n,
+        "pnl_today": {
+            "open": open_pnl,
+            "exited": exited_pnl,
+            "total": round(open_pnl + exited_pnl, 2),
+        },
         "spot": idx_spot,
         "oi": oi_by_index,
         "funds": funds,
