@@ -36,7 +36,8 @@ const POSITIONS_GUIDE = (
   <div className="space-y-2 text-[12px] leading-relaxed">
     <p>
       This page watches options you <b>sold</b> (qty in red / negative). You earn when the market
-      stays away from those strikes.
+      stays away from those strikes. Same-day <b>Exited</b> legs stay listed with realised P&amp;L
+      until Zerodha clears them at end of day.
     </p>
     <p>
       <b>OK</b> — market is still far enough from that sold strike. Fine to leave alone for now.
@@ -57,7 +58,20 @@ const POSITIONS_GUIDE = (
   </div>
 );
 
-function StatusChip({ breached, isShortOpt }) {
+function ExitedChip() {
+  return (
+    <span
+      title="Squared off today — Zerodha still lists it until end of day with realised P&L"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-300 bg-slate-100 text-slate-700 text-[10px] font-semibold"
+      data-testid="status-exited"
+    >
+      Exited
+    </span>
+  );
+}
+
+function StatusChip({ breached, isShortOpt, exited }) {
+  if (exited) return <ExitedChip />;
   if (breached) {
     return (
       <span
@@ -286,30 +300,38 @@ export default function PositionsPanel({
           }
         }
       }
-      const isShort = p.quantity < 0;
+      const exited = !!p.exited || Number(p.quantity) === 0;
+      // Exited legs: qty is 0 — infer short/long from day's buy vs sell volume.
+      const isShort = exited
+        ? (p.side_bias === "short" || (Number(p.sell_quantity || 0) > Number(p.buy_quantity || 0)))
+        : p.quantity < 0;
       return {
         ...p,
+        exited,
         isOpt,
-        dte,
-        delta,
-        theta,
-        gamma,
-        iv,
-        distancePct,
-        atmDistance,
-        atmRef,
+        dte: exited ? null : dte,
+        delta: exited ? null : delta,
+        theta: exited ? null : theta,
+        gamma: exited ? null : gamma,
+        iv: exited ? null : iv,
+        distancePct: exited ? null : distancePct,
+        atmDistance: exited ? null : atmDistance,
+        atmRef: exited ? null : atmRef,
         isShort,
         breachedAdjust: false,
         breachInfo: null,
-        extrinsicLeft,
-        thetaToClose,
-        onExpiryDay,
+        extrinsicLeft: exited ? null : extrinsicLeft,
+        thetaToClose: exited ? null : thetaToClose,
+        onExpiryDay: exited ? false : onExpiryDay,
         spotUsed: S,
-        greeksHealth,
+        greeksHealth: exited ? null : greeksHealth,
       };
     });
 
-    const anyExpiryDay = mapped.some((r) => r.isOpt && r.isShort && r.onExpiryDay);
+    // Open legs first, then same-day exits.
+    mapped.sort((a, b) => Number(!!a.exited) - Number(!!b.exited));
+
+    const anyExpiryDay = mapped.some((r) => !r.exited && r.isOpt && r.isShort && r.onExpiryDay);
     const thresh = effectiveAdjustThreshold(adjustThreshPct, {
       expiryDayMode: toggles.expiryDayMode,
       anyExpiryDay,
@@ -317,7 +339,7 @@ export default function PositionsPanel({
     });
 
     return mapped.map((r) => {
-      if (!(r.isOpt && r.isShort && r.spotUsed)) return r;
+      if (r.exited || !(r.isOpt && r.isShort && r.spotUsed)) return r;
       const bandPct = 3;
       const distPct = Math.abs((r.strike - r.spotUsed) / r.spotUsed) * 100;
       const covered = 1 - (distPct / bandPct);
@@ -337,7 +359,7 @@ export default function PositionsPanel({
 
   useEffect(() => {
     if (!onAdjustmentAlert) return;
-    rows.filter((r) => r.breachedAdjust).forEach((r) => {
+    rows.filter((r) => !r.exited && r.breachedAdjust).forEach((r) => {
       onAdjustmentAlert({
         tradingsymbol: r.tradingsymbol,
         strike: r.strike,
@@ -354,23 +376,29 @@ export default function PositionsPanel({
     let premiumLeft = 0, premiumLeftN = 0;
     let thetaToClose = 0, thetaToCloseN = 0;
     let shortCount = 0, adjustCount = 0;
+    let openCount = 0, exitedCount = 0;
     for (const r of rows) {
-      if (r.delta != null && Number.isFinite(r.delta)) netDelta += r.delta * r.quantity;
-      if (r.theta != null && Number.isFinite(r.theta)) netTheta += r.theta * r.quantity;
+      if (r.exited) exitedCount += 1;
+      else openCount += 1;
+      // Live book greeks only from open legs; PnL includes same-day exits.
+      if (!r.exited) {
+        if (r.delta != null && Number.isFinite(r.delta)) netDelta += r.delta * r.quantity;
+        if (r.theta != null && Number.isFinite(r.theta)) netTheta += r.theta * r.quantity;
+      }
       netPnl += r.pnl || 0;
-      if (r.isShort && r.isOpt) {
+      if (!r.exited && r.isShort && r.isOpt) {
         shortCount += 1;
         if (r.breachedAdjust) adjustCount += 1;
       }
-      if (r.extrinsicLeft != null && r.isShort) {
+      if (!r.exited && r.extrinsicLeft != null && r.isShort) {
         premiumLeft += r.extrinsicLeft;
         premiumLeftN += 1;
       }
-      if (r.thetaToClose != null && r.isShort) {
+      if (!r.exited && r.thetaToClose != null && r.isShort) {
         thetaToClose += r.thetaToClose;
         thetaToCloseN += 1;
       }
-      if (r.dte != null) {
+      if (!r.exited && r.dte != null) {
         const mins = r.dte * 24 * 60;
         if (minMinutes == null || mins < minMinutes) minMinutes = mins;
       }
@@ -384,6 +412,8 @@ export default function PositionsPanel({
       thetaToClose: thetaToCloseN ? thetaToClose : null,
       shortCount,
       adjustCount,
+      openCount,
+      exitedCount,
     };
   }, [rows]);
 
@@ -403,7 +433,7 @@ export default function PositionsPanel({
   const heldShortKeys = useMemo(() => {
     const s = new Set();
     for (const r of rows) {
-      if (r.isShort && r.isOpt && r.strike != null && r.side) {
+      if (!r.exited && r.isShort && r.isOpt && r.strike != null && r.side) {
         s.add(`${r.side}:${r.strike}`);
       }
     }
@@ -420,13 +450,13 @@ export default function PositionsPanel({
 
   const decayBook = useMemo(() => {
     return rows
-      .filter((r) => r.isShort && r.isOpt && r.extrinsicLeft != null && r.extrinsicLeft > 0)
+      .filter((r) => !r.exited && r.isShort && r.isOpt && r.extrinsicLeft != null && r.extrinsicLeft > 0)
       .sort((a, b) => (b.extrinsicLeft || 0) - (a.extrinsicLeft || 0))
       .slice(0, 4);
   }, [rows]);
 
   const assignmentWatch = useMemo(() => {
-    return computeAssignmentWatch(rows, {
+    return computeAssignmentWatch(rows.filter((r) => !r.exited), {
       nowMs: nowTick,
       expiryDayMode: toggles.expiryDayMode,
     });
@@ -445,7 +475,7 @@ export default function PositionsPanel({
 
   const expiryClock = useMemo(() => {
     if (!toggles.expiryDayMode) return { active: false, items: [] };
-    return computeExpiryDayClock(rows, nowTick);
+    return computeExpiryDayClock(rows.filter((r) => !r.exited), nowTick);
   }, [toggles.expiryDayMode, rows, nowTick]);
 
   const bookVerdict = useMemo(() => {
@@ -489,8 +519,15 @@ export default function PositionsPanel({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-slate-700" />
-          <div className="text-sm font-semibold text-slate-900">Kite Open Positions</div>
-          <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm">{positions.length}</span>
+          <div className="text-sm font-semibold text-slate-900">Kite Positions</div>
+          <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
+            {stats.openCount} open
+          </span>
+          {stats.exitedCount > 0 && (
+            <span className="text-[10px] font-mono-data bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded-sm border border-slate-200" title="Squared off today">
+              {stats.exitedCount} exited
+            </span>
+          )}
           <InfoTip title="Positions · seller guide" testId="positions-guide-tip">
             {POSITIONS_GUIDE}
           </InfoTip>
@@ -842,29 +879,40 @@ export default function PositionsPanel({
       {/* Mobile cards */}
       <div className="md:hidden space-y-2" data-testid="positions-mobile-cards">
         {rows.length === 0 ? (
-          <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No open F&amp;O positions.</div>
+          <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No F&amp;O positions today.</div>
         ) : rows.map((r) => {
-          const thetaInr = Number.isFinite(r.theta) ? r.theta * r.quantity : null;
+          const thetaInr = !r.exited && Number.isFinite(r.theta) ? r.theta * r.quantity : null;
           return (
             <div
-              key={r.tradingsymbol}
+              key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}
               data-testid="position-card"
-              className={`rounded-md border px-3 py-2.5 ${r.breachedAdjust ? "border-rose-300 bg-rose-50/80" : "border-slate-200 bg-white"}`}
+              className={`rounded-md border px-3 py-2.5 ${
+                r.exited
+                  ? "border-slate-200 bg-slate-50/80 opacity-90"
+                  : r.breachedAdjust
+                    ? "border-rose-300 bg-rose-50/80"
+                    : "border-slate-200 bg-white"
+              }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-slate-900 truncate">{r.tradingsymbol}</div>
-                  <div className="text-[10px] text-slate-500">{r.product} · {r.exchange}</div>
+                  <div className="text-[10px] text-slate-500">
+                    {r.product} · {r.exchange}
+                    {r.exited ? ` · B${r.buy_quantity || 0}/S${r.sell_quantity || 0}` : ""}
+                  </div>
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1">
                   <GreeksHealthChip health={r.greeksHealth} />
-                  <StatusChip breached={r.breachedAdjust} isShortOpt={r.isShort && r.isOpt} />
+                  <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data">
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Qty</div>
-                  <div className={r.isShort ? "text-rose-600 font-semibold" : "text-emerald-600 font-semibold"}>{r.quantity}</div>
+                  <div className={r.exited ? "text-slate-500 font-semibold" : r.isShort ? "text-rose-600 font-semibold" : "text-emerald-600 font-semibold"}>
+                    {r.exited ? 0 : r.quantity}
+                  </div>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">LTP</div>
@@ -886,7 +934,7 @@ export default function PositionsPanel({
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Still earn</div>
-                  <div>{r.isShort && r.extrinsicLeft != null ? `₹${fmt(r.extrinsicLeft, 0)}` : "—"}</div>
+                  <div>{!r.exited && r.isShort && r.extrinsicLeft != null ? `₹${fmt(r.extrinsicLeft, 0)}` : "—"}</div>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">ATM dist</div>
@@ -968,16 +1016,28 @@ export default function PositionsPanel({
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={12} className="text-center py-6 text-slate-400 text-xs bg-white">No open F&amp;O positions.</td></tr>
+              <tr><td colSpan={12} className="text-center py-6 text-slate-400 text-xs bg-white">No F&amp;O positions today.</td></tr>
             ) : rows.map((r) => {
-              const thetaInr = Number.isFinite(r.theta) ? r.theta * r.quantity : null;
+              const thetaInr = !r.exited && Number.isFinite(r.theta) ? r.theta * r.quantity : null;
               return (
-              <tr key={r.tradingsymbol} data-testid="position-row" className={`border-b border-slate-100 bg-white ${r.breachedAdjust ? "bg-rose-50/80" : ""}`}>
+              <tr
+                key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}
+                data-testid="position-row"
+                data-exited={r.exited ? "1" : "0"}
+                className={`border-b border-slate-100 ${
+                  r.exited ? "bg-slate-50/80 text-slate-600" : r.breachedAdjust ? "bg-rose-50/80" : "bg-white"
+                }`}
+              >
                 <td className="px-2 py-1.5">
                   <div className="text-slate-900 font-semibold">{r.tradingsymbol}</div>
-                  <div className="text-[10px] text-slate-500">{r.product} · {r.exchange}</div>
+                  <div className="text-[10px] text-slate-500">
+                    {r.product} · {r.exchange}
+                    {r.exited ? ` · B${r.buy_quantity || 0}/S${r.sell_quantity || 0}` : ""}
+                  </div>
                 </td>
-                <td className={`text-right px-2 py-1.5 ${r.isShort ? "text-rose-600" : "text-emerald-600"}`}>{r.quantity}</td>
+                <td className={`text-right px-2 py-1.5 ${r.exited ? "text-slate-500" : r.isShort ? "text-rose-600" : "text-emerald-600"}`}>
+                  {r.exited ? 0 : r.quantity}
+                </td>
                 <td className="text-right px-2 py-1.5">{fmt(r.average_price)}</td>
                 <td className="text-right px-2 py-1.5">{fmt(r.last_price)}</td>
                 <td className={`text-right px-2 py-1.5 font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</td>
@@ -986,7 +1046,7 @@ export default function PositionsPanel({
                   {thetaInr != null ? fmt(thetaInr, 0) : "—"}
                 </td>
                 <td className="text-right px-2 py-1.5 text-slate-700">
-                  {r.isShort && r.extrinsicLeft != null ? (
+                  {!r.exited && r.isShort && r.extrinsicLeft != null ? (
                     <span title={r.onExpiryDay ? "Expiry day — extrinsic left to 15:30" : "Extrinsic left"}>
                       ₹{fmt(r.extrinsicLeft, 0)}
                     </span>
@@ -997,8 +1057,8 @@ export default function PositionsPanel({
                 <td className="px-2 py-1.5">
                   <div className="flex flex-wrap items-center gap-1">
                     <GreeksHealthChip health={r.greeksHealth} />
-                    <StatusChip breached={r.breachedAdjust} isShortOpt={r.isShort && r.isOpt} />
-                    {!r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
+                    <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
+                    {!r.exited && !r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
                   </div>
                 </td>
                 <td className="text-right px-2 py-1.5">
