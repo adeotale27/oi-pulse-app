@@ -267,11 +267,12 @@ export default function Sidebar({
             const theme = INDEX_THEME[idx] || INDEX_THEME.NIFTY;
             const pulled = lastUpdatedByIndex?.[idx];
             const age = ageSec(pulled);
-            const fresh = age != null && age <= 45;
+            // Align with server stale_after (max(90, poll_interval*3)); 180 covers 60s cadence.
+            const fresh = age != null && age <= 90;
             // Only flash "stale" while the market is open — after configured
             // close / weekend / holiday the last tick is expected to age.
-            const veryStale = marketOpen && !active && age != null && age > 120;
-            const stale = marketOpen && age != null && age > 90;
+            const veryStale = marketOpen && !active && age != null && age > 180;
+            const stale = marketOpen && age != null && age > 120;
             return (
               <button
                 key={idx}

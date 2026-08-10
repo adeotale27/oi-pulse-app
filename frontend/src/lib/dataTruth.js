@@ -43,9 +43,11 @@ export function buildDataTruth({
   const age = ds.cache_age_seconds;
 
   // Prefer server is_live when present; otherwise derive.
+  const staleAfter =
+    Number(ds.stale_after_seconds) > 0 ? Number(ds.stale_after_seconds) : 90;
   let isLive = ds.is_live === true;
   if (ds.is_live == null) {
-    isLive = kite && open && (age == null || age <= 45);
+    isLive = kite && open && (age == null || age <= staleAfter);
   }
 
   if (!asOfIso && !dataDate) {
