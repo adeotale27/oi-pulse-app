@@ -213,8 +213,8 @@ export default function Dashboard() {
       const stored = localStorage.getItem("compact");
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
-    // Default compact on laptop / tablet so the chart gets more space.
-    try { return window.matchMedia("(max-width: 1280px)").matches; } catch { return false; }
+    // Phone only — laptops keep sidebar open so ATM / expiry / strikes stay one click away.
+    try { return window.matchMedia("(max-width: 767px)").matches; } catch { return false; }
   });
   const [soundsOpen, setSoundsOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -225,7 +225,8 @@ export default function Dashboard() {
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
     // Phones: keep chart full-width — side panel was crushing the layout.
-    try { return !window.matchMedia("(max-width: 768px)").matches; } catch { return true; }
+    // Align with Tailwind md (min-width: 768px) → phone is max-width: 767px.
+    try { return !window.matchMedia("(max-width: 767px)").matches; } catch { return true; }
   });
   const [infoTilesOpen, setInfoTilesOpen] = useState(() => {
     try {
@@ -254,7 +255,7 @@ export default function Dashboard() {
     try { return localStorage.getItem("rightPanelView") || "alerts"; } catch { return "alerts"; }
   });
   const [isMobile, setIsMobile] = useState(() => {
-    try { return window.matchMedia("(max-width: 768px)").matches; } catch { return false; }
+    try { return window.matchMedia("(max-width: 767px)").matches; } catch { return false; }
   });
   const [replayJumpTs, setReplayJumpTs] = useState(null);
   const [vixSessionOpen, setVixSessionOpen] = useState(() => {
@@ -363,7 +364,7 @@ export default function Dashboard() {
     try { localStorage.setItem("rightPanelView", rightPanelView); } catch (_) { /* noop */ }
   }, [rightPanelView]);
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
+    const mq = window.matchMedia("(max-width: 767px)");
     const onChange = () => setIsMobile(mq.matches);
     onChange();
     mq.addEventListener?.("change", onChange);
@@ -1651,10 +1652,10 @@ export default function Dashboard() {
 
               {infoTilesOpen && (
                 <div
-                  className="relative z-30 overflow-visible flex items-start gap-1 min-h-[58px]"
+                  className="relative z-30 overflow-x-auto overflow-y-visible flex items-start gap-1 min-h-[58px]"
                   data-testid="dashboard-info-tiles-wrap"
                 >
-                  <div className="min-w-0 flex-1 overflow-visible">
+                  <div className="min-w-0 flex-1 overflow-x-auto overflow-y-visible">
                     <InfoTilesRow
                       order={tileOrder}
                       onReorder={handleReorderTiles}
