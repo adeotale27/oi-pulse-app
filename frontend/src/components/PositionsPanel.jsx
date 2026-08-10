@@ -33,45 +33,55 @@ function fmt(v, dp = 2) {
 }
 
 const POSITIONS_GUIDE = (
-  <div className="space-y-2">
+  <div className="space-y-2 text-[12px] leading-relaxed">
     <p>
-      Built for <b>non-directional option sellers</b>. Shorts (qty &lt; 0) earn premium; the desk
-      flags when spot walks too close to a short strike.
+      This page watches options you <b>sold</b> (qty in red / negative). You earn when the market
+      stays away from those strikes.
     </p>
     <p>
-      <b>Adjust @ X% band-covered</b> — we treat a typical defence band as <b>3%</b> of spot from
-      your short strike. As spot moves toward the strike, “band-covered” rises from 0% → 100%.
-      When covered ≥ your Adjust % (default 60%), the row flips to <b>Adjust</b>.
+      <b>OK</b> — market is still far enough from that sold strike. Fine to leave alone for now.
+      Not a profit guarantee — only a distance check.
     </p>
     <p>
-      <b>Safe</b> — short option that is still outside the Adjust threshold (spot has not eaten
-      enough of the 3% band). Not a guarantee of profit — only a proximity check.
+      <b>Too close</b> — market has walked near that sold strike. Think hedge, roll, or exit.
+      The “Warn @” % controls how early this warning fires (default 60% of a 3% band).
     </p>
     <p>
-      <b>Net Δ</b> — portfolio delta (signed qty). Non-directional sellers usually keep this near 0
-      (hedged). <b>Net Θ / day</b> — estimated ₹ theta you earn/pay per calendar day — a seller&apos;s
-      best friend when the book is flat.
+      <b>Direction tilt (Δ)</b> — are you accidentally betting up or down? Near 0 is best for sellers.
+      <b> Daily time money (Θ)</b> — rough ₹ you earn/pay each day from time passing.
     </p>
     <p>
-      <b>Funds available</b> — Kite equity <i>net</i> margin left for trading (read-only). Cash is
-      account value; utilised is margin already blocked by open positions.
-    </p>
-    <p>
-      <b>Premium left (EOD)</b> — for shorts, remaining <i>extrinsic</i> premium × |qty|. On expiry
-      day this is roughly what can still decay in your favour by 15:30 if the option dies toward
-      intrinsic. Not a promise — IV crush / spot moves change it.
-    </p>
-    <p>
-      <b>Sell / decay ideas</b> — OI + IV + gamma scoring for the selected expiry. Toggle blocks
-      on/off in the Positions suggestion controls.
-    </p>
-    <p>
-      <b>Expiry-day mode</b> — after 13:00 IST on expiry, Adjust band tightens and prem-left is
-      shown vs minutes to 15:30. <b>Δ hedge</b> suggests futures / far-OTM buys when |Net Δ| drifts.
-      <b> Assignment watch</b> flags ITM / low-extrinsic shorts late in the day.
+      <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
+      <b> Fees today</b> — what Zerodha charged today (read-only).
     </p>
   </div>
 );
+
+function StatusChip({ breached, isShortOpt }) {
+  if (breached) {
+    return (
+      <span
+        title="Market walked near this sold strike — hedge, roll, or exit"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px] font-semibold"
+        data-testid="status-too-close"
+      >
+        <AlertTriangle className="w-3 h-3" /> Too close
+      </span>
+    );
+  }
+  if (isShortOpt) {
+    return (
+      <span
+        title="Market still away from this sold strike — OK to hold for now"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-semibold"
+        data-testid="status-ok"
+      >
+        OK
+      </span>
+    );
+  }
+  return null;
+}
 
 export default function PositionsPanel({
   isKiteMode,
@@ -412,12 +422,12 @@ export default function PositionsPanel({
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 
   const TOGGLE_DEFS = [
-    { key: "bookVerdict", label: "Book verdict" },
-    { key: "sellIdeas", label: "Sell ideas" },
-    { key: "decayBook", label: "Decay book" },
-    { key: "expiryDayMode", label: "Expiry-day" },
-    { key: "deltaHedge", label: "Δ hedge" },
-    { key: "assignmentWatch", label: "Assignment" },
+    { key: "bookVerdict", label: "Book score" },
+    { key: "sellIdeas", label: "What to sell" },
+    { key: "decayBook", label: "Still decaying" },
+    { key: "expiryDayMode", label: "Expiry day" },
+    { key: "deltaHedge", label: "Flatten tilt" },
+    { key: "assignmentWatch", label: "Exercise risk" },
   ];
 
   if (!isKiteMode) {
@@ -445,42 +455,43 @@ export default function PositionsPanel({
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 text-[10px] text-slate-500">
-            <label>Adjust @</label>
+            <label title="How early to warn when market nears a sold strike">Warn @</label>
             <input
               type="number"
               min={30} max={95} step={5}
               value={adjustThreshPct}
               onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
-              className="w-14 h-8 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
+              className="w-12 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
               data-testid="adjust-threshold"
             />
-            <span>% band-covered</span>
-            <InfoTip title="Adjust threshold" testId="adjust-threshold-tip">
+            <span>% close</span>
+            <InfoTip title="When do we say “Too close”?" testId="adjust-threshold-tip">
               <p>
-                Spot vs short strike is measured inside a fixed <b>3% of spot</b> defence band.
-                When that band is ≥ this % covered (default 60%), Signal becomes <b>Adjust</b>
-                and the row highlights rose. Raise the % to stay “Safe” longer; lower it to get
-                earlier warnings.
+                Imagine a buffer of about <b>3%</b> from your sold strike toward the market.
+                When the market has eaten this much of that buffer (default <b>60%</b>), the row
+                flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
               </p>
             </InfoTip>
           </div>
           <div
-            className="flex flex-col items-end leading-tight px-2 py-1 rounded-sm border border-slate-200 bg-slate-50"
+            className="inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-slate-200 bg-slate-50 text-[11px] text-slate-600"
             data-testid="positions-brokerage-day"
-            title={brokerage?.error || "Today’s brokerage from Kite virtual contract note (read-only)"}
+            title={
+              brokerage?.error ||
+              (brokerage?.charges_total != null
+                ? `Brokerage ₹ ${fmt(brokerage.brokerage, 0)} · all charges ₹ ${fmt(brokerage.charges_total, 0)}`
+                : "Today’s trading fees from Zerodha (read-only)")
+            }
           >
-            <span className="text-[9px] uppercase tracking-wider text-slate-500">Brokerage today</span>
-            <span className="text-xs font-mono-data font-semibold text-slate-800">
-              {brokerage?.brokerage != null ? `₹ ${fmt(brokerage.brokerage, 0)}` : "—"}
+            <span className="text-slate-400">Fees</span>
+            <span className="font-mono-data font-semibold text-slate-800">
+              {brokerage?.brokerage != null ? `₹${fmt(brokerage.brokerage, 0)}` : "—"}
             </span>
-            {brokerage?.charges_total != null && (
-              <span className="text-[9px] text-slate-400">all charges ₹ {fmt(brokerage.charges_total, 0)}</span>
-            )}
           </div>
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-sm bg-white min-h-[32px] text-orange-700 border-orange-200 hover:bg-orange-50"
+            className="h-7 rounded-sm bg-white min-h-[28px] text-orange-700 border-orange-200 hover:bg-orange-50 px-2"
             onClick={() => setAnalyzeOpen(true)}
             disabled={!rows.length}
             data-testid="btn-analyze-positions"
@@ -488,11 +499,11 @@ export default function PositionsPanel({
             <LineChart className="w-3.5 h-3.5 mr-1" />
             Analyze
           </Button>
-          <Button size="sm" variant="outline" className="h-8 rounded-sm bg-white min-h-[32px]" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
+          <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
             {!isMarketQuiescent() && (
-              <span className="ml-1.5 font-mono-data text-[10px] text-slate-500" data-testid="positions-refresh-countdown">
+              <span className="ml-1 font-mono-data text-[10px] text-slate-500" data-testid="positions-refresh-countdown">
                 {secsLeft}s
               </span>
             )}
@@ -513,85 +524,68 @@ export default function PositionsPanel({
           tone={stats.netPnl >= 0 ? "emerald" : "rose"}
           hint={
             brokerage?.charges_total != null
-              ? `After charges ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
-              : undefined
+              ? `After fees ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
+              : "Open profit / loss"
           }
           tip={(
             <div className="space-y-1.5">
-              <p>Open F&amp;O mark-to-market P&amp;L from Kite (read-only).</p>
+              <p>Your open F&amp;O profit or loss right now (from Kite).</p>
               {brokerage?.charges_total != null && (
                 <p>
-                  <b>Net of costs today</b> = Net P&amp;L − all charges (₹ {fmt(brokerage.charges_total, 0)}),
-                  including brokerage ₹ {fmt(brokerage.brokerage, 0)}.
+                  <b>After fees</b> = that P&amp;L minus today&apos;s charges (₹ {fmt(brokerage.charges_total, 0)}).
                 </p>
               )}
             </div>
           )}
         />
         <StatBox
-          label="Funds available"
+          label="Cash left"
           value={funds?.net != null ? "₹ " + fmt(funds.net, 0) : "—"}
           tone="slate"
-          hint={funds?.utilised_debits != null ? `Margin used ₹ ${fmt(funds.utilised_debits, 0)}` : "Kite equity net"}
+          hint={funds?.utilised_debits != null ? `Blocked ₹ ${fmt(funds.utilised_debits, 0)}` : "Free to trade"}
           tip={(
             <div className="space-y-1.5">
+              <p>Money still free in Kite for new trades (read-only).</p>
               <p>
-                <b>Funds available</b> = Kite equity <b>net</b> margin left for trading (read-only).
-              </p>
-              <p>
-                Cash / account value: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
+                Cash: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
                 Collateral: {funds?.collateral != null ? `₹ ${fmt(funds.collateral, 0)}` : "—"}.
               </p>
-              <p className="text-slate-500">Never places orders — margins snapshot only.</p>
             </div>
           )}
         />
         <StatBox
-          label="Net Θ / day"
+          label="Daily time money"
           value={"₹ " + fmt(stats.netTheta, 0)}
           tone={stats.netTheta >= 0 ? "emerald" : "rose"}
-          hint={stats.netTheta >= 0 ? "Seller’s friend · earning" : "Paying premium"}
-          tip={(
-            <div className="space-y-1.5">
-              <p>
-                <b>Theta is a non-directional seller’s best friend</b> when the book is delta-neutral:
-                time decay works for you every day the spot stays away from your shorts.
-              </p>
-              <p>
-                Shown as portfolio ₹/day (Θ × qty). Short options with positive net Θ are collecting
-                premium; negative means the book is paying (longs dominate).
-              </p>
-            </div>
-          )}
-        />
-        <StatBox
-          label="Net Δ"
-          value={fmt(stats.netDelta, 1)}
-          tone={Math.abs(stats.netDelta) < 10 ? "emerald" : Math.abs(stats.netDelta) < 30 ? "amber" : "rose"}
-          hint={Math.abs(stats.netDelta) < 10 ? "Neutral · good for sellers" : "Directional · hedge?"}
-          tip={(
-            <div className="space-y-1.5">
-              <p>
-                <b>Net delta</b> is the signed sum of (Δ × qty) across open options. It answers:
-                “If the index moves ₹1, how much does my book mark roughly?”
-              </p>
-              <p>
-                Non-directional sellers aim for <b>|Δ| near 0</b> (≈ under 10 here). Large positive Δ
-                behaves long the index; large negative Δ behaves short. Hedge / roll when it drifts.
-              </p>
-            </div>
-          )}
-        />
-        <StatBox
-          label="Premium left"
-          value={stats.premiumLeft != null ? "₹ " + fmt(stats.premiumLeft, 0) : "—"}
-          tone="slate"
-          hint="Short extrinsic → EOD / expiry"
+          hint={stats.netTheta >= 0 ? "Time is paying you" : "Time is costing you"}
           tip={(
             <p>
-              Sum of remaining <b>extrinsic</b> premium on short options × |qty|. On expiry day,
-              this is the bulk of what can still decay into your pocket by 15:30 if spots stay away
-              and IV does not spike. Live estimate — not a fill guarantee.
+              Rough ₹ you earn (or pay) each day just because time passes — if the market stays away
+              from your sold strikes. Sellers usually want this green / positive.
+            </p>
+          )}
+        />
+        <StatBox
+          label="Direction tilt"
+          value={fmt(stats.netDelta, 1)}
+          tone={Math.abs(stats.netDelta) < 10 ? "emerald" : Math.abs(stats.netDelta) < 30 ? "amber" : "rose"}
+          hint={Math.abs(stats.netDelta) < 10 ? "Balanced · good" : "Leaning one way · flatten?"}
+          tip={(
+            <p>
+              Are you accidentally betting the market goes up (positive) or down (negative)?
+              Sellers usually want this near <b>0</b> (balanced). Far from 0 → hedge before selling more.
+            </p>
+          )}
+        />
+        <StatBox
+          label="Still to earn"
+          value={stats.premiumLeft != null ? "₹ " + fmt(stats.premiumLeft, 0) : "—"}
+          tone="slate"
+          hint="Left on sold options"
+          tip={(
+            <p>
+              Premium still sitting in your sold options. If the market stays away until expiry /
+              close, much of this can decay into your pocket. Estimate only — not guaranteed.
             </p>
           )}
         />
@@ -606,21 +600,21 @@ export default function PositionsPanel({
       {stats.shortCount > 0 && (
         <div className="text-[11px] text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 flex flex-wrap gap-x-4 gap-y-1" data-testid="positions-seller-strip">
           <span>
-            Shorts <b>{stats.shortCount}</b>
+            Sold options <b>{stats.shortCount}</b>
             {stats.adjustCount > 0 ? (
-              <span className="text-rose-700"> · {stats.adjustCount} need Adjust</span>
+              <span className="text-rose-700"> · {stats.adjustCount} too close — check them</span>
             ) : (
-              <span className="text-emerald-700"> · all Safe vs band</span>
+              <span className="text-emerald-700"> · all OK (market still away)</span>
             )}
           </span>
           {stats.thetaToClose != null && (
-            <span title="Theta × minutes left to 15:30 IST">
-              Θ to close today ≈ <b className="font-mono-data text-emerald-800">₹ {fmt(stats.thetaToClose, 0)}</b>
+            <span title="Rough money time can still give you by today’s close">
+              By close today ≈ <b className="font-mono-data text-emerald-800">₹ {fmt(stats.thetaToClose, 0)}</b>
             </span>
           )}
           {funds?.net != null && (
-            <span title="Kite equity net margin">
-              Funds <b className="font-mono-data">₹ {fmt(funds.net, 0)}</b>
+            <span title="Free cash in Kite">
+              Cash left <b className="font-mono-data">₹ {fmt(funds.net, 0)}</b>
             </span>
           )}
         </div>
@@ -632,7 +626,7 @@ export default function PositionsPanel({
         data-testid="positions-suggestion-toggles"
       >
         <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-          Suggestion blocks
+          Helpful tips (on / off)
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {TOGGLE_DEFS.map(({ key, label }) => (
@@ -699,7 +693,7 @@ export default function PositionsPanel({
               Expiry-day mode
               {expiryClock.after13 && expiryClock.active && (
                 <span className="text-[10px] font-semibold text-rose-700 bg-rose-100 border border-rose-200 px-1 rounded-sm">
-                  Adjust tightened ≤40%
+                  Warnings tighter after 1pm
                 </span>
               )}
             </div>
@@ -822,13 +816,7 @@ export default function PositionsPanel({
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1">
                   <GreeksHealthChip health={r.greeksHealth} />
-                  {r.breachedAdjust ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px]">
-                      <AlertTriangle className="w-3 h-3" /> Adjust
-                    </span>
-                  ) : r.isShort && r.isOpt ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px]">Safe</span>
-                  ) : null}
+                  <StatusChip breached={r.breachedAdjust} isShortOpt={r.isShort && r.isOpt} />
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono-data">
@@ -845,17 +833,17 @@ export default function PositionsPanel({
                   <div className={`font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</div>
                 </div>
                 <div>
-                  <div className="text-[9px] uppercase text-slate-400">Δ</div>
+                  <div className="text-[9px] uppercase text-slate-400">Tilt</div>
                   <div>{Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}</div>
                 </div>
                 <div>
-                  <div className="text-[9px] uppercase text-slate-400">Θ ₹/d</div>
+                  <div className="text-[9px] uppercase text-slate-400">₹/day</div>
                   <div className={thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700 font-semibold" : "text-rose-700 font-semibold"}>
                     {thetaInr != null ? fmt(thetaInr, 0) : "—"}
                   </div>
                 </div>
                 <div>
-                  <div className="text-[9px] uppercase text-slate-400">Prem left</div>
+                  <div className="text-[9px] uppercase text-slate-400">Still earn</div>
                   <div>{r.isShort && r.extrinsicLeft != null ? `₹${fmt(r.extrinsicLeft, 0)}` : "—"}</div>
                 </div>
               </div>
@@ -874,32 +862,45 @@ export default function PositionsPanel({
               <th className="text-right px-2 py-2">Avg</th>
               <th className="text-right px-2 py-2">LTP</th>
               <th className="text-right px-2 py-2">P&amp;L</th>
-              <th className="text-right px-2 py-2">Δ</th>
               <th className="text-right px-2 py-2">
                 <span className="inline-flex items-center gap-1">
-                  Θ ₹/d
-                  <InfoTip title="Theta ₹ / day" size="xs" testId="theta-col-tip">
-                    Per-leg theta in rupees per day (Θ × qty). For shorts this is usually positive —
-                    premium you collect from time decay.
+                  Tilt
+                  <InfoTip title="Direction tilt" size="xs" testId="delta-col-tip">
+                    Does this leg push you to bet up or down? Near 0 is calmer for sellers.
                   </InfoTip>
                 </span>
               </th>
               <th className="text-right px-2 py-2">
                 <span className="inline-flex items-center gap-1">
-                  Prem left
-                  <InfoTip title="Premium left" size="xs" testId="prem-left-col-tip">
-                    Extrinsic × |qty| for shorts — what can still decay by expiry / EOD.
+                  ₹/day
+                  <InfoTip title="Daily time money" size="xs" testId="theta-col-tip">
+                    Rough ₹ this leg earns or costs each day as time passes. Sold options usually earn.
+                  </InfoTip>
+                </span>
+              </th>
+              <th className="text-right px-2 py-2">
+                <span className="inline-flex items-center gap-1">
+                  Still earn
+                  <InfoTip title="Still to earn" size="xs" testId="prem-left-col-tip">
+                    Premium left on a sold option that can still decay into your pocket if the market stays away.
                   </InfoTip>
                 </span>
               </th>
               <th className="text-right px-2 py-2">IV</th>
-              <th className="text-right px-2 py-2">DTE</th>
+              <th className="text-right px-2 py-2">
+                <span className="inline-flex items-center gap-1">
+                  Days left
+                  <InfoTip title="Days left" size="xs" testId="dte-col-tip">
+                    How many days until this option expires (rough).
+                  </InfoTip>
+                </span>
+              </th>
               <th className="text-left px-2 py-2">
                 <span className="inline-flex items-center gap-1">
-                  Signal
-                  <InfoTip title="Safe vs Adjust" size="xs" testId="signal-col-tip">
-                    <b>Safe</b> = short option still outside your Adjust % of the 3% spot band.
-                    <b> Adjust</b> = spot has walked close enough that you should hedge / roll / cut.
+                  Status
+                  <InfoTip title="OK vs Too close" size="xs" testId="signal-col-tip">
+                    <p><b>OK</b> — market still away from your sold strike. Hold for now.</p>
+                    <p className="mt-1"><b>Too close</b> — market walked near that strike. Hedge, roll, or exit.</p>
                   </InfoTip>
                 </span>
               </th>
@@ -936,15 +937,8 @@ export default function PositionsPanel({
                 <td className="px-2 py-1.5">
                   <div className="flex flex-wrap items-center gap-1">
                     <GreeksHealthChip health={r.greeksHealth} />
-                    {r.breachedAdjust ? (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px]">
-                        <AlertTriangle className="w-3 h-3" /> Adjust
-                      </span>
-                    ) : r.isShort && r.isOpt ? (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px]">Safe</span>
-                    ) : !r.greeksHealth || r.greeksHealth === "ok" ? (
-                      "—"
-                    ) : null}
+                    <StatusChip breached={r.breachedAdjust} isShortOpt={r.isShort && r.isOpt} />
+                    {!r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
                   </div>
                 </td>
               </tr>
@@ -1088,14 +1082,14 @@ export default function PositionsPanel({
 
 function GreeksHealthChip({ health }) {
   if (!health || health === "ok") return null;
-  const label = health === "no_spot" ? "no spot" : "IV n/a";
+  const label = health === "no_spot" ? "no price" : "can't price";
   return (
     <span
       data-testid={`greeks-health-${health}`}
       title={
         health === "no_spot"
-          ? "No per-index spot — greeks skipped"
-          : "Could not solve IV for this leg (price/expiry)"
+          ? "We don't have this index's live price yet — numbers skipped"
+          : "Couldn't calculate option numbers for this row (price / expiry)"
       }
       className="inline-flex items-center px-1.5 py-0.5 rounded-sm border border-amber-300 bg-amber-50 text-amber-900 text-[10px] font-semibold"
     >

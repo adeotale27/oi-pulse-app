@@ -104,13 +104,13 @@ export function computeBookVerdict({
     const adjRatio = adjustCount / shortCount;
     if (adjRatio === 0) {
       score += 10;
-      bullets.push(`All ${shortCount} short(s) still Safe vs the Adjust band.`);
+      bullets.push(`All ${shortCount} sold option(s) still OK — market is away.`);
     } else if (adjRatio <= 0.35) {
       score -= 5;
-      bullets.push(`${adjustCount}/${shortCount} short(s) need Adjust — manage those first.`);
+      bullets.push(`${adjustCount}/${shortCount} sold option(s) too close — check those first.`);
     } else {
       score -= 20;
-      bullets.push(`${adjustCount}/${shortCount} short(s) in Adjust — book is under pressure.`);
+      bullets.push(`${adjustCount}/${shortCount} sold option(s) too close — book is under pressure.`);
     }
   } else {
     bullets.push("No open short options — nothing collecting premium yet.");
