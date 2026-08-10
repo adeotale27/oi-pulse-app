@@ -280,6 +280,46 @@ export default function Header({
           >
             {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                data-testid="btn-mobile-view"
+                variant="outline"
+                size="sm"
+                className={toolBtn}
+                title="View & tools"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48" data-testid="mobile-view-menu">
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
+                View
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                data-testid="mobile-menu-notifications"
+                onSelect={(e) => { e.preventDefault(); onToggleNotif?.(); }}
+              >
+                {notifEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                {notifEnabled ? "Notifications on" : "Enable notifications"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="mobile-menu-sounds"
+                onSelect={(e) => { e.preventDefault(); onOpenSounds?.(); }}
+              >
+                <Volume2 className="w-4 h-4" />
+                Alert sounds
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="mobile-menu-csv"
+                onSelect={(e) => { e.preventDefault(); onDownloadCsv?.(); }}
+              >
+                <Download className="w-4 h-4" />
+                Download CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -342,7 +382,7 @@ export default function Header({
       {/* Desktop header — compact single row for laptop/zoom; tools in a dropdown */}
       <div className="hidden md:block">
       {/* Row 1: brand + status + essential actions */}
-      <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 overflow-hidden ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
+      <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1 overflow-x-auto" : "py-2 gap-2 lg:gap-3 overflow-hidden"}`}>
         <div className="flex items-center gap-1.5 shrink-0">
           <OiPulseLogo className={headerRail ? "w-6 h-6" : "w-8 h-8"} />
           <div className="leading-tight">
@@ -367,8 +407,8 @@ export default function Header({
           />
         </div>
 
-        {/* Index tiles or slim rail chips */}
-        <div className={`flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 overflow-hidden justify-start ${headerRail ? "" : "items-stretch"}`}>
+        {/* Index tiles or slim rail chips — scroll on narrow laptops instead of clipping */}
+        <div className={`flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 justify-start ${headerRail ? "overflow-x-auto" : "overflow-hidden items-stretch"}`}>
           <TickerStrip
             layout={headerRail ? "rail" : "header"}
             activeIndex={activeIndex}
@@ -378,12 +418,16 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-auto">
-          <div className={`hidden xl:block ${headerRail ? "scale-90 origin-right" : ""}`}>
+          <div className={headerRail ? "hidden md:block scale-90 origin-right" : "hidden xl:block"}>
             <BigClock compact />
           </div>
           {lastPulledAt && (
             <div
-              className={`hidden 2xl:flex items-center gap-1.5 px-1.5 font-mono-data text-slate-600 dark:text-slate-300 ${headerRail ? "text-[10px]" : "flex-col items-start gap-0 px-2 py-1 min-w-[100px]"}`}
+              className={
+                headerRail
+                  ? "hidden md:flex items-center gap-1.5 px-1.5 font-mono-data text-[10px] text-slate-600 dark:text-slate-300"
+                  : "hidden 2xl:flex flex-col items-start gap-0 px-2 py-1 min-w-[100px] font-mono-data text-slate-600 dark:text-slate-300"
+              }
               data-testid="oi-and-time"
               title={nowLabel ? `Now ${nowLabel}` : undefined}
             >
