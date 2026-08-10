@@ -1489,6 +1489,9 @@ export default function Dashboard() {
               activeTab={activeTab}
               onChangeTab={setActiveTab}
               onReorder={handleReorderTabs}
+              onFavorite={handleFavoriteTab}
+              onMove={handleMoveTab}
+              onResetLayout={handleResetLayout}
               marketOpen={status?.market?.is_market_open === true}
             />
           </div>
@@ -1503,11 +1506,16 @@ export default function Dashboard() {
                   value={activeTab}
                   onChange={setActiveTab}
                   onReorder={handleReorderTabs}
+                  onFavorite={handleFavoriteTab}
+                  onMove={handleMoveTab}
+                  onResetLayout={handleResetLayout}
                 />
                 <div className="hidden xl:block shrink-0 relative z-30 overflow-visible">
                   <InfoTilesRow
                     order={tileOrder}
                     onReorder={handleReorderTiles}
+                    onFavorite={handleFavoriteTile}
+                    onMove={handleMoveTile}
                     isAdmin={!!authState.is_admin}
                     showImpact={showImpactTile}
                     activeIndex={activeIndex}
@@ -1523,6 +1531,8 @@ export default function Dashboard() {
                 <InfoTilesRow
                   order={tileOrder}
                   onReorder={handleReorderTiles}
+                  onFavorite={handleFavoriteTile}
+                  onMove={handleMoveTile}
                   isAdmin={!!authState.is_admin}
                   showImpact={showImpactTile}
                   activeIndex={activeIndex}
