@@ -38,6 +38,7 @@ import MobileMarketStrip from "@/components/MobileMarketStrip";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
+import { loadTabOrder, saveTabOrder, orderPages, moveIdBefore } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen, PanelLeftOpen } from "lucide-react";
@@ -185,6 +186,7 @@ export default function Dashboard() {
   const [pulsePull, setPulsePull] = useState(false); // green flash on each fresh pull
   const [oiSettings, setOiSettings] = useState(loadOISettings());
   const [visiblePages, setVisiblePages] = useState(PUBLIC_DEFAULT_PAGES);
+  const [tabOrder, setTabOrder] = useState(() => loadTabOrder());
   const [hugeShift, setHugeShift] = useState(null);   // currently shown modal
   const hugeShiftQueueRef = useRef([]);                // queued shifts if multiple fire back-to-back
   const [activity, setActivity] = useState([]);       // unusual activity feed events
@@ -317,12 +319,34 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (authState.is_admin) return;
-    const allowedTabs = DASHBOARD_PAGES.filter((page) => !page.adminOnly && visiblePages.includes(page.v)).map((page) => page.v);
+    const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
+      .filter((page) => !page.adminOnly && visiblePages.includes(page.v))
+      .map((page) => page.v);
     if (allowedTabs.length === 0) return;
     if (!allowedTabs.includes(activeTab)) {
       setActiveTab(allowedTabs[0]);
     }
-  }, [authState.is_admin, activeTab, visiblePages]);
+  }, [authState.is_admin, activeTab, visiblePages, tabOrder]);
+
+  const dashboardTabs = useMemo(
+    () =>
+      orderPages(DASHBOARD_PAGES, tabOrder).filter(
+        (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
+      ),
+    [tabOrder, authState.is_admin, visiblePages],
+  );
+
+  const handleReorderTabs = useCallback(
+    (dragId, dropId) => {
+      setTabOrder((prev) => {
+        const base = orderPages(DASHBOARD_PAGES, prev).map((p) => p.v);
+        const next = moveIdBefore(base, dragId, dropId);
+        saveTabOrder(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   // Dark mode -> toggle html.dark class + persist
   useEffect(() => {
@@ -1379,11 +1403,10 @@ export default function Dashboard() {
                 if (spot == null || !prev) return null;
                 return ((Number(spot) - Number(prev)) / Number(prev)) * 100;
               })()}
-              tabs={DASHBOARD_PAGES.filter(
-                (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
-              )}
+              tabs={dashboardTabs}
               activeTab={activeTab}
               onChangeTab={setActiveTab}
+              onReorder={handleReorderTabs}
               marketOpen={status?.market?.is_market_open === true}
             />
           </div>
@@ -1394,11 +1417,10 @@ export default function Dashboard() {
             <div className="hidden md:flex flex-col gap-2 mb-2 sm:mb-3 shrink-0 min-w-0">
               <div className="flex items-end gap-3 flex-nowrap min-w-0">
                 <OverflowTabBar
-                  tabs={DASHBOARD_PAGES.filter(
-                    (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
-                  )}
+                  tabs={dashboardTabs}
                   value={activeTab}
                   onChange={setActiveTab}
+                  onReorder={handleReorderTabs}
                 />
                 <div
                   className="hidden xl:flex items-stretch gap-2 shrink-0 relative z-30 overflow-visible"

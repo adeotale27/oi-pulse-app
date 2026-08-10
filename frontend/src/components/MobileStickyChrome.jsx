@@ -19,6 +19,8 @@ const INDEX_DOT = {
  * Mobile-only sticky context bar.
  * Keeps brand + selected index + dashboard tabs visible while VIX/GIFT
  * tiles and charts scroll underneath. Desktop is unaffected (md:hidden).
+ *
+ * Tabs support drag-and-drop reorder when `onReorder` is provided.
  */
 export default function MobileStickyChrome({
   activeIndex,
@@ -29,13 +31,18 @@ export default function MobileStickyChrome({
   tabs = [],
   activeTab,
   onChangeTab,
+  onReorder,
   marketOpen = false,
 }) {
   const [open, setOpen] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const skipClickRef = useRef(false);
   const wrapRef = useRef(null);
   const close = useCallback(() => setOpen(false), []);
   useClickOutside(wrapRef, close, open);
 
+  const canReorder = typeof onReorder === "function";
   const label = INDEX_LABEL[activeIndex] || activeIndex;
   const spot =
     spotPrice != null && Number.isFinite(Number(spotPrice))
@@ -55,6 +62,59 @@ export default function MobileStickyChrome({
           : "text-slate-500";
 
   const list = useMemo(() => indices.filter(Boolean), [indices]);
+
+  const onDragStart = (e, id) => {
+    if (!canReorder) return;
+    skipClickRef.current = false;
+    setDraggingId(id);
+    try {
+      e.dataTransfer.setData("text/plain", id);
+      e.dataTransfer.effectAllowed = "move";
+    } catch {
+      /* noop */
+    }
+  };
+
+  const onDragEnd = () => {
+    setDraggingId(null);
+    setOverId(null);
+  };
+
+  const onDragOverTab = (e, id) => {
+    if (!canReorder || !draggingId) return;
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "move";
+    } catch {
+      /* noop */
+    }
+    if (overId !== id) setOverId(id);
+  };
+
+  const onDropTab = (e, dropId) => {
+    if (!canReorder) return;
+    e.preventDefault();
+    let from = draggingId;
+    try {
+      from = e.dataTransfer.getData("text/plain") || from;
+    } catch {
+      /* noop */
+    }
+    setDraggingId(null);
+    setOverId(null);
+    if (from && dropId && from !== dropId) {
+      skipClickRef.current = true;
+      onReorder(from, dropId);
+    }
+  };
+
+  const onTabClick = (id) => {
+    if (skipClickRef.current) {
+      skipClickRef.current = false;
+      return;
+    }
+    onChangeTab?.(id);
+  };
 
   return (
     <div
@@ -143,10 +203,11 @@ export default function MobileStickyChrome({
           data-testid="mobile-sticky-tabs"
           className="tabs-scroll flex items-stretch gap-0.5 overflow-x-auto border-t border-slate-100 px-1 dark:border-slate-800"
           role="tablist"
-          aria-label="Dashboard views"
+          aria-label="Dashboard views — drag tabs to reorder"
         >
           {tabs.map((t) => {
             const active = t.v === activeTab;
+            const isOver = canReorder && overId === t.v && draggingId && draggingId !== t.v;
             return (
               <button
                 key={t.v}
@@ -154,8 +215,21 @@ export default function MobileStickyChrome({
                 role="tab"
                 aria-selected={active}
                 data-testid={`tab-${t.v}`}
-                onClick={() => onChangeTab?.(t.v)}
+                draggable={canReorder}
+                onDragStart={(e) => onDragStart(e, t.v)}
+                onDragEnd={onDragEnd}
+                onDragOver={(e) => onDragOverTab(e, t.v)}
+                onDragLeave={() => {
+                  if (overId === t.v) setOverId(null);
+                }}
+                onDrop={(e) => onDropTab(e, t.v)}
+                onClick={() => onTabClick(t.v)}
+                title={canReorder ? "Drag to reorder · click to open" : undefined}
                 className={`shrink-0 whitespace-nowrap border-b-2 px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                  canReorder ? "cursor-grab active:cursor-grabbing" : ""
+                } ${draggingId === t.v ? "opacity-40" : ""} ${
+                  isOver ? "border-emerald-400 bg-emerald-50/80" : ""
+                } ${
                   active
                     ? "border-emerald-500 text-emerald-800 dark:border-emerald-400 dark:text-emerald-300"
                     : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
