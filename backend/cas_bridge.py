@@ -167,8 +167,89 @@ def get_status(tracker=None) -> Dict[str, Any]:
     engine = get_engine()
     status = engine.status()
     status["settings"] = dict(_SETTINGS)
+    status["live_readiness"] = _live_readiness(status)
     status["plain"] = _plain_status(status)
     return status
+
+
+def _live_readiness(status: Dict[str, Any]) -> Dict[str, Any]:
+    """Checklist vs Zerodha live MARKET-order requirements (ops + code)."""
+    from cas_rule_expiry_automation.kite_client import (
+        kiteconnect_supports_market_protection,
+    )
+
+    cfg = status.get("config") or {}
+    has_token = bool(cfg.get("has_token"))
+    has_key = bool(cfg.get("has_key"))
+    mp_ok = kiteconnect_supports_market_protection()
+    checks = [
+        {
+            "id": "api_key",
+            "ok": has_key,
+            "label": "Kite api_key present",
+            "fix": "Connect via Kite API in the header" if not has_key else "OK",
+        },
+        {
+            "id": "access_token",
+            "ok": has_token,
+            "label": "Valid access_token session",
+            "fix": (
+                "Re-login if token expired or you logged in elsewhere"
+                if not has_token
+                else "OK — re-login daily / if session drops"
+            ),
+        },
+        {
+            "id": "market_protection",
+            "ok": mp_ok,
+            "label": "SDK supports market_protection (−1 auto)",
+            "fix": (
+                "Upgrade kiteconnect to ≥5.2.0"
+                if not mp_ok
+                else "CAS sends MARKET + market_protection=-1 + validity=DAY"
+            ),
+        },
+        {
+            "id": "static_ip",
+            "ok": None,  # cannot verify from app alone
+            "label": "Static IP whitelisted in Kite developer profile",
+            "fix": (
+                "Mandatory for Live place_order. Whitelist this machine’s public "
+                "egress IP at developers.kite.trade → Profile → IP Whitelist. "
+                "Paper/WS still work without it; Live orders are rejected."
+            ),
+        },
+        {
+            "id": "order_shape",
+            "ok": True,
+            "label": "CAS order shape (MARKET SELL CE+PE)",
+            "fix": (
+                "variety=regular · order_type=MARKET · no price/trigger · "
+                f"product={cfg.get('product') or 'NRML'} · tag=CASRULE · parallel legs"
+            ),
+        },
+        {
+            "id": "rate_limits",
+            "ok": True,
+            "label": "Order rate limits",
+            "fix": (
+                "CAS fires ~2 MARKET sells per index per day — well under "
+                "400/min and 5000/day. Avoid spam Activate/Debug probes on Live."
+            ),
+        },
+    ]
+    blockers = [c for c in checks if c.get("ok") is False]
+    return {
+        "ready_for_code": has_key and has_token and mp_ok,
+        "needs_ops_ip_whitelist": True,
+        "checks": checks,
+        "blockers": [c["id"] for c in blockers],
+        "summary": (
+            "Code path is Live-capable. Confirm static IP whitelist before Activate Live."
+            if has_key and has_token and mp_ok
+            else "Fix blockers below before Live Activate."
+        ),
+    }
 
 
 def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
@@ -193,6 +274,7 @@ def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
     else:
         mode_label = "Off — pick Paper or Live, then Activate"
 
+    readiness = status.get("live_readiness") or {}
     return {
         "mode_label": mode_label,
         "activated": activated,
@@ -208,6 +290,8 @@ def _plain_status(status: Dict[str, Any]) -> Dict[str, Any]:
         "fills_today": len(state.get("fills") or []),
         "last_error": state.get("last_error"),
         "ticks": (status.get("ws") or {}).get("ticks_received") or state.get("ticks_seen") or 0,
+        "live_ready_code": bool(readiness.get("ready_for_code")),
+        "live_ready_summary": readiness.get("summary"),
     }
 
 
@@ -269,6 +353,20 @@ def activate(tracker, *, by: str = "admin", require_live_confirm: bool = False) 
     if (not debug) and get_ist_now().time() >= engine.config.market_close:
         raise RuntimeError(
             "Market is closed for CAS (after 15:41 IST). Turn on Debug to rehearse, or try tomorrow."
+        )
+    if engine.config.live_trading:
+        from cas_rule_expiry_automation.kite_client import (
+            kiteconnect_supports_market_protection,
+        )
+
+        if not kiteconnect_supports_market_protection():
+            raise RuntimeError(
+                "kiteconnect is too old for Live MARKET sells (needs market_protection). "
+                "Upgrade to kiteconnect>=5.2.0."
+            )
+        logger.warning(
+            "LIVE CAS activate — ensure Kite developer static IP is whitelisted for this host’s "
+            "public egress IP or place_order will be rejected"
         )
     get_store().activate(by=by + ("+debug" if debug else ""))
     return get_status(tracker)

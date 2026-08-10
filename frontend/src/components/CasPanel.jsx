@@ -131,6 +131,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
     status?.ws?.ticks_received ??
     0;
   const marketClosed = !!status?.market_closed && !debug;
+  const readiness = status?.live_readiness || {};
 
   const modeTone = useMemo(() => {
     if (activated && live) return "rose";
@@ -493,7 +494,54 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
                 Market closed for CAS (after 15:41 IST). Turn on Debug to rehearse, or try tomorrow.
               </div>
             )}
+            {plain.last_error && (
+              <div
+                className="text-[11px] text-rose-800 bg-rose-50 border border-rose-200 rounded-sm px-2 py-1.5"
+                data-testid="cas-last-error"
+              >
+                Last order/engine error: {plain.last_error}
+              </div>
+            )}
           </div>
+
+          {/* Live readiness vs Zerodha MARKET rules */}
+          <section
+            className="rounded-md border border-slate-200 bg-white p-3 space-y-2"
+            data-testid="cas-live-readiness"
+          >
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                Live order readiness
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {readiness.summary ||
+                  "CAS places regular MARKET SELLs (CE+PE) with market_protection=-1."}
+              </p>
+            </div>
+            <ul className="space-y-1.5">
+              {(readiness.checks || []).map((c) => (
+                <li
+                  key={c.id}
+                  className="flex items-start gap-2 text-[11px] text-slate-700"
+                  data-testid={`cas-ready-${c.id}`}
+                >
+                  <span className="mt-0.5 shrink-0">
+                    {c.ok === true ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : c.ok === false ? (
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                    )}
+                  </span>
+                  <span>
+                    <b>{c.label}</b>
+                    <span className="text-slate-500"> — {c.fix}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
           {/* TODAY's RUN */}
           <section className="rounded-md border border-slate-200 bg-white p-3 space-y-2" data-testid="cas-today-run">

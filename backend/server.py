@@ -3454,6 +3454,7 @@ async def cas_status(role: str = Depends(require_desk_user)):
             },
             "ws": status.get("ws") or {},
             "market_closed": status.get("market_closed"),
+            "live_readiness": status.get("live_readiness"),
             "role": "guest",
         }
     else:
