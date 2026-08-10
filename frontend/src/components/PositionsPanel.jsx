@@ -81,10 +81,10 @@ function ExitedChip() {
   return (
     <span
       title="Squared off today — booked P&L stays in Today’s total until end of day"
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-200 bg-slate-100 text-slate-400 text-[10px] font-semibold tracking-wide"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-slate-200/80 bg-slate-100/80 text-slate-400 text-[10px] font-semibold tracking-wide"
       data-testid="status-exited"
     >
-      Exited
+      Closed
     </span>
   );
 }
@@ -96,7 +96,7 @@ function ProductBadge({ product, exited }) {
     <span
       className={`inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${
         exited
-          ? "bg-slate-100 text-slate-400 border border-slate-200/80"
+          ? "bg-slate-100 text-slate-400 border border-slate-200/60"
           : "bg-violet-100 text-violet-700 border border-violet-200/70"
       }`}
       data-testid="product-badge"
@@ -113,16 +113,8 @@ function positionLabel(r) {
 
 function AvgCell({ row }) {
   if (row?.exited) {
-    const b = Number(row.buy_price);
-    const s = Number(row.sell_price);
-    if (Number.isFinite(b) && Number.isFinite(s) && (b > 0 || s > 0)) {
-      return (
-        <span className="text-slate-500" title="Buy avg → Sell avg (booked)">
-          {fmt(b)}→{fmt(s)}
-        </span>
-      );
-    }
-    return <span className="text-slate-400">—</span>;
+    // Kite shows 0.00 average on flat / squared-off rows.
+    return <span className="text-slate-400">0.00</span>;
   }
   return <span>{fmt(row?.average_price)}</span>;
 }
@@ -488,7 +480,11 @@ export default function PositionsPanel({
     let openCount = 0, exitedCount = 0;
     let openPnl = 0, exitedPnl = 0;
     for (const r of rows) {
-      const rowPnl = Number(r.exited && r.booked_pnl != null ? r.booked_pnl : r.pnl) || 0;
+      const rowPnl = (() => {
+        const raw = r.exited && r.booked_pnl != null ? r.booked_pnl : r.pnl;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : 0;
+      })();
       if (r.exited) {
         exitedCount += 1;
         exitedPnl += rowPnl;
@@ -519,9 +515,13 @@ export default function PositionsPanel({
       }
     }
     if (pnlToday && typeof pnlToday === "object") {
-      if (pnlToday.open != null) openPnl = Number(pnlToday.open) || openPnl;
-      if (pnlToday.exited != null) exitedPnl = Number(pnlToday.exited) || exitedPnl;
-      netPnl = pnlToday.total != null ? (Number(pnlToday.total) || openPnl + exitedPnl) : openPnl + exitedPnl;
+      const openN = Number(pnlToday.open);
+      const exitedN = Number(pnlToday.exited);
+      const totalN = Number(pnlToday.total);
+      // Prefer server totals; never use `x || fallback` (0 is a valid P&L).
+      if (Number.isFinite(openN)) openPnl = openN;
+      if (Number.isFinite(exitedN)) exitedPnl = exitedN;
+      netPnl = Number.isFinite(totalN) ? totalN : openPnl + exitedPnl;
     } else {
       netPnl = openPnl + exitedPnl;
     }
@@ -916,7 +916,7 @@ export default function PositionsPanel({
               data-exited={r.exited ? "1" : "0"}
               className={`rounded-lg border px-3 py-2.5 transition-colors ${
                 r.exited
-                  ? "border-slate-100 bg-slate-50/90 text-slate-400 shadow-none opacity-80"
+                  ? "border-slate-200/70 bg-slate-100/80 text-slate-400 shadow-none opacity-[0.58]"
                   : r.breachedAdjust
                     ? "border-rose-300 bg-rose-50/80 shadow-sm"
                     : "border-slate-200/80 bg-white shadow-sm"
@@ -927,7 +927,7 @@ export default function PositionsPanel({
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <ProductBadge product={r.product} exited={r.exited} />
                     {r.exited ? (
-                      <span className="text-[9px] uppercase tracking-wide text-slate-400">Booked today</span>
+                      <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
                     ) : null}
                   </div>
                   <div className={`text-sm font-semibold truncate ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
@@ -1074,7 +1074,7 @@ export default function PositionsPanel({
                     colSpan={Math.max(shownCols.length, 1)}
                     className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-y border-slate-100"
                   >
-                    Exited today · shadowed like Zerodha (qty 0)
+                    Exited today · Kite-style shadowed (qty 0)
                   </td>
                 </tr>
               )}
@@ -1083,7 +1083,7 @@ export default function PositionsPanel({
                 data-exited={r.exited ? "1" : "0"}
                 className={`border-b border-slate-100/80 ${
                   r.exited
-                    ? "bg-slate-50 text-slate-400"
+                    ? "bg-slate-100/70 text-slate-400 opacity-[0.58]"
                     : r.breachedAdjust
                       ? "bg-rose-50/70"
                       : idx % 2 === 0
@@ -1103,7 +1103,7 @@ export default function PositionsPanel({
                     </div>
                     <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
                       {r.exchange}
-                      {r.exited ? " · booked today" : ""}
+                      {r.exited ? " · squared off" : ""}
                     </div>
                   </td>
                 )}
@@ -1121,7 +1121,7 @@ export default function PositionsPanel({
                   <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
                 )}
                 {colOn("pnl") && (
-                  <td className={`text-right px-2 py-2 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
+                  <td className={`text-right px-2 py-2 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
                     {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
                   </td>
                 )}

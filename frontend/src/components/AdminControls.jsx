@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useId } from "react";
 import { api, clearAdminAuth } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Switch } from "@/components/ui/switch";
@@ -13,17 +13,34 @@ let sharedPrevPending = null;
 let lastPendingAlertKey = null;
 let lastPendingAlertAt = 0;
 
+function openAccessControlEverywhere() {
+  try {
+    if (typeof window !== "undefined") window.__oi_access_open_pending = true;
+    window.dispatchEvent(new CustomEvent("oi-admin-open-access"));
+  } catch (_) { /* noop */ }
+}
+
+function broadcastAdminState(data) {
+  try {
+    window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: data }));
+  } catch (_) { /* noop */ }
+}
+
 /**
  * AdminControls — Public Access toggle (+ account actions in panel variant).
  *
  * Inline header: compact one-line Public toggle only (no second "Admin" button —
  * Fresh Pull / Access Control / etc. live under Header's single Admin menu).
+ *
+ * Multiple instances share one /auth/state poller and one Access Control dialog.
  */
 export default function AdminControls({
   variant = "inline",
   assumedAdmin = false,
   publicAccessOpen = null,
 }) {
+  const instanceId = useId();
+  const [ownsModals, setOwnsModals] = useState(false);
   const [state, setState] = useState(() => (
     assumedAdmin
       ? {
@@ -38,26 +55,50 @@ export default function AdminControls({
   const [pwOpen, setPwOpen] = useState(false);
   const prevPendingRef = useRef(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (!window.__oi_admin_modal_owner) {
+      window.__oi_admin_modal_owner = instanceId;
+    }
+    setOwnsModals(window.__oi_admin_modal_owner === instanceId);
+    return () => {
+      if (window.__oi_admin_modal_owner === instanceId) {
+        delete window.__oi_admin_modal_owner;
+      }
+    };
+  }, [instanceId]);
+
   const refresh = useCallback(async () => {
     try {
       const { data } = await api.get("/auth/state");
       setState(data);
+      broadcastAdminState(data);
     } catch (_) {
       if (assumedAdmin) {
-        setState((prev) => prev || {
+        const fallback = {
           is_admin: true,
           public_access_open: !!publicAccessOpen,
           pending_access_count: 0,
-        });
+        };
+        setState((prev) => prev || fallback);
       }
     }
   }, [assumedAdmin, publicAccessOpen]);
 
-  useQuiescentAwarePolling(refresh, 10_000, [refresh], {
+  // One shared poller; every instance also listens for broadcasts.
+  useQuiescentAwarePolling(refresh, 3_000, [refresh], {
     immediate: true,
     allowDuringQuiescent: true,
-    dedupeKey: variant === "panel" ? "admin-controls-panel" : "admin-controls-inline",
+    dedupeKey: "admin-controls-auth-state",
   });
+
+  useEffect(() => {
+    const onState = (e) => {
+      if (e?.detail && typeof e.detail === "object") setState(e.detail);
+    };
+    window.addEventListener("oi-admin-auth-state", onState);
+    return () => window.removeEventListener("oi-admin-auth-state", onState);
+  }, []);
 
   useEffect(() => {
     if (!state?.is_admin && !assumedAdmin) return;
@@ -73,19 +114,35 @@ export default function AdminControls({
         lastPendingAlertAt = now;
         const delta = pending - prev;
         toast.message(delta === 1 ? "New guest access request" : `${delta} new guest access requests`, {
-          description: "Open Access Control to approve or reject.",
-          duration: 12_000,
+          description: "Approve or reject in Access Control — guest enters automatically when approved.",
+          duration: 14_000,
           action: {
             label: "Review",
-            onClick: () => setAccessOpen(true),
+            onClick: () => openAccessControlEverywhere(),
           },
         });
-        setAccessOpen(true);
+        openAccessControlEverywhere();
       }
     }
     sharedPrevPending = pending;
     prevPendingRef.current = pending;
   }, [state?.is_admin, state?.pending_access_count, assumedAdmin]);
+
+  useEffect(() => {
+    const onQueue = (e) => {
+      const n = Number(e?.detail?.pending_count);
+      if (!Number.isFinite(n)) return;
+      setState((prev) => {
+        if (!prev) return prev;
+        if (Number(prev.pending_access_count || 0) === n) return prev;
+        return { ...prev, pending_access_count: n };
+      });
+      sharedPrevPending = n;
+      prevPendingRef.current = n;
+    };
+    window.addEventListener("oi-access-queue-updated", onQueue);
+    return () => window.removeEventListener("oi-access-queue-updated", onQueue);
+  }, []);
 
   useEffect(() => {
     if (publicAccessOpen == null) return;
@@ -107,8 +164,17 @@ export default function AdminControls({
     return () => clearTimeout(logoutTimer);
   }, [state?.is_admin, state?.session_ttl_seconds]);
 
-  // Header Admin menu can open these modals without a second "Admin" button.
+  // Header Admin menu / toast "Review" open the single owned modal.
   useEffect(() => {
+    if (!ownsModals) return undefined;
+    if (typeof window !== "undefined" && window.__oi_access_open_pending) {
+      window.__oi_access_open_pending = false;
+      setAccessOpen(true);
+    }
+    if (typeof window !== "undefined" && window.__oi_password_open_pending) {
+      window.__oi_password_open_pending = false;
+      setPwOpen(true);
+    }
     const onAccess = () => setAccessOpen(true);
     const onPassword = () => setPwOpen(true);
     window.addEventListener("oi-admin-open-access", onAccess);
@@ -117,7 +183,7 @@ export default function AdminControls({
       window.removeEventListener("oi-admin-open-access", onAccess);
       window.removeEventListener("oi-admin-open-password", onPassword);
     };
-  }, []);
+  }, [ownsModals]);
 
   const isAdmin = state ? !!state.is_admin : !!assumedAdmin;
   if (!isAdmin) {
@@ -165,6 +231,7 @@ export default function AdminControls({
   };
 
   const isPanel = variant === "panel";
+  const openAccess = () => openAccessControlEverywhere();
 
   const publicToggle = (
     <div
@@ -192,8 +259,8 @@ export default function AdminControls({
         <button
           type="button"
           data-testid="admin-pending-badge"
-          onClick={() => setAccessOpen(true)}
-          className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] font-semibold hover:bg-amber-200"
+          onClick={openAccess}
+          className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] font-semibold hover:bg-amber-200 animate-pulse"
           title="Pending access requests"
         >
           {pending}
@@ -221,7 +288,7 @@ export default function AdminControls({
             variant="outline"
             size="sm"
             className="w-full justify-start h-9"
-            onClick={() => setAccessOpen(true)}
+            onClick={openAccess}
           >
             <UserCheck className="w-3.5 h-3.5 mr-2" />
             Access Control
@@ -234,7 +301,14 @@ export default function AdminControls({
             variant="outline"
             size="sm"
             className="w-full justify-start h-9"
-            onClick={() => setPwOpen(true)}
+            onClick={() => {
+              try {
+                if (typeof window !== "undefined") window.__oi_password_open_pending = true;
+                window.dispatchEvent(new CustomEvent("oi-admin-open-password"));
+              } catch (_) {
+                setPwOpen(true);
+              }
+            }}
           >
             <KeyRound className="w-3.5 h-3.5 mr-2" />
             Change Password
@@ -252,8 +326,12 @@ export default function AdminControls({
         </div>
       )}
 
-      <AccessControlModal open={accessOpen} onOpenChange={setAccessOpen} />
-      <ChangePasswordModal open={pwOpen} onOpenChange={setPwOpen} />
+      {ownsModals && (
+        <>
+          <AccessControlModal open={accessOpen} onOpenChange={setAccessOpen} />
+          <ChangePasswordModal open={pwOpen} onOpenChange={setPwOpen} />
+        </>
+      )}
     </div>
   );
 }

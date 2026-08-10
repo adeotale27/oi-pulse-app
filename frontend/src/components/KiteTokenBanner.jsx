@@ -12,14 +12,14 @@ export default function KiteTokenBanner({ status, isAdmin = false, onOpenCreds }
   const market = status.market || {};
   const phase = market.phase;
   const kiteOk = status.kite_ok === true || (status.mode === "kite" && !status.last_error && status.has_kite_credentials);
+  // Spurious reconnect: ignore transient mode=offline while credentials are still present.
   const tokenIssue = status.kite_token_issue === true
-    || status.mode === "offline"
     || !status.has_kite_credentials
     || (typeof status.last_error === "string" && /token|api_key|unauthorized|forbidden|incorrect/i.test(status.last_error));
 
   if (kiteOk && !tokenIssue) return null;
-  // Don't nag endlessly after close / weekend unless explicitly offline with credentials issue
-  if ((phase === "weekend" || phase === "holiday" || phase === "post_close") && status.has_kite_credentials && !status.last_error) {
+  // Don't nag endlessly after close / weekend unless explicitly a token/credential issue
+  if ((phase === "weekend" || phase === "holiday" || phase === "post_close") && status.has_kite_credentials && !status.kite_token_issue && !status.last_error) {
     return null;
   }
 

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { api } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Users, ShieldBan, UserCheck, LogOut } from "lucide-react";
+import { RefreshCw, ShieldBan, UserCheck, LogOut } from "lucide-react";
 import { toast } from "sonner";
 
 const IST = "Asia/Kolkata";
@@ -31,6 +31,7 @@ const fmtIdle = (s) => {
  *   Blocked IPs (unblock)
  */
 export default function AccessControlModal({ open, onOpenChange }) {
+  const instanceId = useId();
   const [tab, setTab] = useState("pending"); // pending | guests | blocked
   const [requests, setRequests] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -40,7 +41,7 @@ export default function AccessControlModal({ open, onOpenChange }) {
   const [sinceHours, setSinceHours] = useState(24);
   const [busyId, setBusyId] = useState(null);
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     try {
       const [reqRes, guestRes, blockRes] = await Promise.all([
@@ -48,29 +49,48 @@ export default function AccessControlModal({ open, onOpenChange }) {
         api.get(`/auth/guests?since_hours=${sinceHours}`),
         api.get("/auth/blocked-ips"),
       ]);
+      const pending = reqRes.data.pending_count || 0;
       setRequests(reqRes.data.requests || []);
-      setPendingCount(reqRes.data.pending_count || 0);
+      setPendingCount(pending);
       setGuests(guestRes.data.guests || []);
       setBlocked(blockRes.data.blocked || []);
+      if (pending > 0) setTab("pending");
+      try {
+        window.dispatchEvent(new CustomEvent("oi-access-queue-updated", {
+          detail: { pending_count: pending },
+        }));
+      } catch (_) { /* noop */ }
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not load access control");
     } finally {
       setLoading(false);
     }
-  };
+  }, [sinceHours]);
+
+  // Always fetch when this dialog opens — do not rely on a shared poller
+  // (multiple AdminControls instances used to share one dedupe key and skip load).
+  useEffect(() => {
+    if (!open) return undefined;
+    loadAll();
+    return undefined;
+  }, [open, loadAll]);
 
   useQuiescentAwarePolling(
     () => { if (open) return loadAll(); },
-    8_000,
-    [open, sinceHours],
-    { immediate: true, dedupeKey: "access-control" },
+    3_000,
+    [open, loadAll],
+    {
+      immediate: false,
+      allowDuringQuiescent: true,
+      dedupeKey: `access-control:${instanceId}`,
+    },
   );
 
   const approve = async (id) => {
     setBusyId(id);
     try {
       await api.post(`/auth/access-requests/${id}/approve`);
-      toast.success("Access approved — guest can enter now");
+      toast.success("Approved — guest enters automatically on their screen");
       await loadAll();
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Approve failed");
@@ -83,7 +103,7 @@ export default function AccessControlModal({ open, onOpenChange }) {
     setBusyId(id);
     try {
       await api.post(`/auth/access-requests/${id}/reject`);
-      toast.info("Request rejected");
+      toast.message("Request rejected — guest was notified");
       await loadAll();
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Reject failed");

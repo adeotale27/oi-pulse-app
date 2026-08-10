@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, RotateCcw } from "lucide-react";
-import useClickOutside from "@/hooks/useClickOutside";
 
 /**
  * Progressive tab overflow: as width shrinks, trailing tabs move into a
@@ -9,6 +9,9 @@ import useClickOutside from "@/hooks/useClickOutside";
  * Tabs are drag-and-drop reorderable when `onReorder` is provided.
  * Double-click favorites a tab to the first slot (`onFavorite`).
  * Alt+← / Alt+→ nudges the focused tab (`onMove`).
+ *
+ * More menu is portaled to document.body so parent overflow-hidden chrome
+ * (tiles + tabs row) cannot clip it.
  */
 export default function OverflowTabBar({
   tabs = [],
@@ -24,18 +27,49 @@ export default function OverflowTabBar({
   const wrapRef = useRef(null);
   const measureRef = useRef(null);
   const moreMeasureRef = useRef(null);
+  const moreBtnRef = useRef(null);
+  const menuPanelRef = useRef(null);
   const [visibleCount, setVisibleCount] = useState(tabs.length);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const [draggingId, setDraggingId] = useState(null);
   const [overId, setOverId] = useState(null);
   const skipClickRef = useRef(false);
-  const menuRef = useRef(null);
-
-  useClickOutside(menuRef, () => setMenuOpen(false), menuOpen);
 
   const canReorder = typeof onReorder === "function";
   const canFavorite = typeof onFavorite === "function";
   const canMove = typeof onMove === "function";
+
+  const placeMenu = useCallback(() => {
+    const btn = moreBtnRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const width = 176;
+    const left = Math.min(
+      Math.max(8, r.left),
+      Math.max(8, window.innerWidth - width - 8),
+    );
+    setMenuPos({ top: Math.round(r.bottom + 4), left: Math.round(left) });
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDoc = (e) => {
+      const t = e.target;
+      if (moreBtnRef.current?.contains(t)) return;
+      if (menuPanelRef.current?.contains(t)) return;
+      setMenuOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   const recalculate = useCallback(() => {
     const wrap = wrapRef.current;
@@ -54,14 +88,12 @@ export default function OverflowTabBar({
     const widths = buttons.map((el) => el.offsetWidth);
     const gap = 4; // gap-1
 
-    // Try to fit all without More button.
     let total = widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, widths.length - 1);
     if (total <= avail) {
       setVisibleCount(tabs.length);
       return;
     }
 
-    // Collapse from the right until remaining + More fit.
     let count = tabs.length;
     while (count > 1) {
       count -= 1;
@@ -72,7 +104,6 @@ export default function OverflowTabBar({
         gap;
       if (sum <= avail) break;
     }
-    // Ensure active tab stays reachable: if it's in overflow, still ok via More.
     setVisibleCount(Math.max(1, count));
   }, [tabs]);
 
@@ -94,6 +125,18 @@ export default function OverflowTabBar({
   useEffect(() => {
     setMenuOpen(false);
   }, [value]);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return undefined;
+    placeMenu();
+    const onReposition = () => placeMenu();
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [menuOpen, placeMenu, visibleCount, tabs.length]);
 
   const visible = useMemo(() => tabs.slice(0, visibleCount), [tabs, visibleCount]);
   const overflow = useMemo(() => tabs.slice(visibleCount), [tabs, visibleCount]);
@@ -193,7 +236,6 @@ export default function OverflowTabBar({
 
   return (
     <div ref={wrapRef} className={`relative min-w-0 flex-1 overflow-visible ${className}`} data-testid={testId}>
-      {/* Off-flow measure row — must not overlay sibling tiles (absolute overlays broke clicks) */}
       <div className="h-0 overflow-hidden opacity-0 pointer-events-none" aria-hidden>
         <div ref={measureRef} className="inline-flex gap-1 whitespace-nowrap">
           {tabs.map((t) => (
@@ -245,11 +287,17 @@ export default function OverflowTabBar({
         ))}
 
         {overflow.length > 0 && (
-          <div className="relative shrink-0 z-20" ref={menuRef}>
+          <div className="relative shrink-0 z-20">
             <button
+              ref={moreBtnRef}
               type="button"
               data-testid="tab-more"
-              onClick={() => setMenuOpen((v) => !v)}
+              onClick={() => {
+                setMenuOpen((v) => {
+                  if (!v) placeMenu();
+                  return !v;
+                });
+              }}
               className={`${triggerCls(activeInOverflow, "__more__")} inline-flex items-center gap-1 cursor-pointer`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
@@ -260,11 +308,13 @@ export default function OverflowTabBar({
                 : "More"}
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
             </button>
-            {menuOpen && (
+            {menuOpen && typeof document !== "undefined" && createPortal(
               <div
+                ref={menuPanelRef}
                 role="menu"
                 data-testid="tab-more-menu"
-                className="absolute left-0 top-full z-50 mt-1 min-w-[11rem] overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                className="fixed z-[240] min-w-[11rem] overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                style={{ top: menuPos.top, left: menuPos.left }}
               >
                 {overflow.map((t) => (
                   <button
@@ -302,7 +352,8 @@ export default function OverflowTabBar({
                     {t.l}
                   </button>
                 ))}
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
         )}

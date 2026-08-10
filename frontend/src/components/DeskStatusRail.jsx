@@ -65,14 +65,15 @@ export default function DeskStatusRail({
   })();
 
   const kiteOk = status?.kite_ok === true || (status?.mode === "kite" && !status?.last_error && status?.has_kite_credentials);
+  // Do not treat brief mode="offline" flaps as a dead token when credentials exist.
   const tokenIssue = status?.kite_token_issue === true
-    || status?.mode === "offline"
     || !status?.has_kite_credentials
     || (typeof status?.last_error === "string" && /token|api_key|unauthorized|forbidden|incorrect/i.test(status.last_error));
   const showKite = isAdmin && status && !(kiteOk && !tokenIssue)
     && !(
       (phase === "weekend" || phase === "holiday" || phase === "post_close")
       && status.has_kite_credentials
+      && !status.kite_token_issue
       && !status.last_error
     );
   const kiteTitle = !status?.has_kite_credentials

@@ -3262,8 +3262,25 @@ async def get_positions(_admin: bool = Depends(require_admin)):
 
     open_n = sum(1 for r in out if not r.get("exited"))
     exited_n = sum(1 for r in out if r.get("exited"))
-    open_pnl = round(sum(float(r.get("pnl") or 0) for r in out if not r.get("exited")), 2)
-    exited_pnl = round(sum(float(r.get("booked_pnl") or r.get("pnl") or 0) for r in out if r.get("exited")), 2)
+    # Today P&L: open legs use Kite net pnl (includes day realised on partials);
+    # same-day exits use booked/realised. Sum must match Kite "Total P&L".
+    def _row_day_pnl(r: dict) -> float:
+        if r.get("exited"):
+            for key in ("booked_pnl", "realised", "pnl"):
+                try:
+                    v = float(r.get(key))
+                except (TypeError, ValueError):
+                    continue
+                if v == v:  # not NaN
+                    return v
+            return 0.0
+        try:
+            return float(r.get("pnl") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    open_pnl = round(sum(_row_day_pnl(r) for r in out if not r.get("exited")), 2)
+    exited_pnl = round(sum(_row_day_pnl(r) for r in out if r.get("exited")), 2)
     return {
         "mode": tracker.mode,
         "positions": out,

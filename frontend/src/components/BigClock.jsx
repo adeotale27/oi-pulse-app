@@ -298,26 +298,25 @@ export default function BigClock({ compact = false }) {
           }`}
           data-testid="big-clock"
         >
-          <div className="flex items-baseline gap-2 sm:gap-3">
-            <div className="font-mono-data font-bold tracking-tight tabular-nums text-3xl sm:text-4xl md:text-5xl">
+          <div className="flex items-baseline justify-center gap-1.5 sm:gap-2">
+            <div className="font-mono-data font-bold tracking-tight tabular-nums text-3xl sm:text-4xl md:text-5xl leading-none">
               {hour12}:{pad(m)}
             </div>
             <div
-              className={`font-mono-data font-medium tracking-tight tabular-nums text-lg sm:text-xl hidden sm:inline ${
-                inAlertWindow ? "text-white/70" : "text-slate-500"
+              className={`font-mono-data font-medium tracking-tight tabular-nums text-base sm:text-lg leading-none ${
+                inAlertWindow ? "text-white/65" : "text-slate-400"
               }`}
+              aria-hidden
             >
-              :{pad(s)}
+              {pad(s)}
             </div>
-            <div
-              className={`text-sm sm:text-base font-bold ml-0.5 px-1.5 py-0.5 rounded-sm ${
-                inAlertWindow
-                  ? "bg-white/15"
-                  : "bg-emerald-600/10 text-emerald-900"
+            <span
+              className={`text-[11px] sm:text-xs font-semibold tracking-wide leading-none ${
+                inAlertWindow ? "text-white/90" : "text-emerald-800"
               }`}
             >
               {ampm}
-            </div>
+            </span>
           </div>
 
           {inAlertWindow ? (
