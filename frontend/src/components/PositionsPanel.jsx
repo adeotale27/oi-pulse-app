@@ -183,17 +183,22 @@ export default function PositionsPanel({
       let extrinsicLeft = null;
       let thetaToClose = null;
       let onExpiryDay = false;
-      const S = resolvePositionSpot(p, spotByIndex, fallbackS);
-      if (isOpt && S != null && Number(S) > 0) {
+      // Never reuse another index's dashboard spot (e.g. SENSEX price on NIFTY legs).
+      const dashboardSpot =
+        p.index && activeIndex && p.index !== activeIndex ? null : fallbackS;
+      const S = resolvePositionSpot(p, spotByIndex, dashboardSpot);
+      if (isOpt && S != null && Number.isFinite(S) && S > 0) {
         const expIso = positionExpiryISO(p, activeExp);
         if (expIso) {
           T = yearsToExpiry(expIso, nowMs);
           dte = T * 365;
           onExpiryDay = dte < 1.05;
           const isCall = p.side === "CE";
-          const px = p.last_price || p.average_price;
-          const ivGuess = impliedVol(px, S, p.strike, T, 0.065, isCall);
-          if (ivGuess) {
+          const px = Number(p.last_price || p.average_price);
+          const ivGuess = Number.isFinite(px) && px > 0
+            ? impliedVol(px, S, p.strike, T, 0.065, isCall)
+            : null;
+          if (ivGuess != null && Number.isFinite(ivGuess) && ivGuess > 0) {
             iv = ivGuess * 100;
             const g = greeks(S, p.strike, T, 0.065, ivGuess, isCall);
             delta = Number.isFinite(g.delta) ? g.delta : null;
@@ -210,11 +215,11 @@ export default function PositionsPanel({
               thetaPerUnit: theta,
               nowMs,
             });
-            extrinsicLeft = left.extrinsicLeft;
-            thetaToClose = left.thetaToClose;
-          } else if (px != null) {
+            extrinsicLeft = Number.isFinite(left.extrinsicLeft) ? left.extrinsicLeft : null;
+            thetaToClose = Number.isFinite(left.thetaToClose) ? left.thetaToClose : null;
+          } else if (Number.isFinite(px)) {
             const ext = extrinsicPremium(px, S, p.strike, p.side === "CE");
-            extrinsicLeft = ext != null ? ext * Math.abs(p.quantity) : null;
+            extrinsicLeft = ext != null && Number.isFinite(ext) ? ext * Math.abs(p.quantity) : null;
           }
         }
         distancePct = ((p.strike - S) / S) * 100;
@@ -263,7 +268,7 @@ export default function PositionsPanel({
       }
       return r;
     });
-  }, [positions, current, expiry, adjustThreshPct, spotByIndex, toggles.expiryDayMode, nowTick]);
+  }, [positions, current, expiry, adjustThreshPct, spotByIndex, toggles.expiryDayMode, nowTick, activeIndex]);
 
   useEffect(() => {
     if (!onAdjustmentAlert) return;
@@ -807,7 +812,7 @@ export default function PositionsPanel({
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Δ</div>
-                  <div>{r.delta != null ? r.delta.toFixed(2) : "—"}</div>
+                  <div>{Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}</div>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Θ ₹/d</div>
@@ -881,7 +886,7 @@ export default function PositionsPanel({
                 <td className="text-right px-2 py-1.5">{fmt(r.average_price)}</td>
                 <td className="text-right px-2 py-1.5">{fmt(r.last_price)}</td>
                 <td className={`text-right px-2 py-1.5 font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</td>
-                <td className="text-right px-2 py-1.5">{r.delta != null ? r.delta.toFixed(2) : "—"}</td>
+                <td className="text-right px-2 py-1.5">{Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}</td>
                 <td className={`text-right px-2 py-1.5 font-semibold ${thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                   {thetaInr != null ? fmt(thetaInr, 0) : "—"}
                 </td>

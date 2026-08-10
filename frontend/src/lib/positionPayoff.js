@@ -5,14 +5,25 @@ import { bsPrice, greeks, impliedVol, yearsToExpiry, intrinsicValue } from "./bl
 const R = 0.065;
 
 function spotOf(entry, fallback) {
-  if (entry == null) return fallback ?? null;
-  if (typeof entry === "number") return entry;
-  if (typeof entry === "object" && entry.price != null) return Number(entry.price);
-  return fallback ?? null;
+  if (entry != null) {
+    if (typeof entry === "number" && Number.isFinite(entry) && entry > 0) return entry;
+    if (typeof entry === "string" && entry.trim() !== "") {
+      const n = Number(entry);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    if (typeof entry === "object") {
+      const raw = entry.price ?? entry.atm ?? entry.last_price ?? entry.ltp;
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  const fb = Number(fallback);
+  return Number.isFinite(fb) && fb > 0 ? fb : null;
 }
 
 export function resolvePositionSpot(row, spotByIndex = {}, fallbackSpot = null) {
-  return spotOf(row?.index ? spotByIndex[row.index] : null, row?.spotUsed ?? fallbackSpot);
+  const fromMap = row?.index ? spotByIndex[row.index] : null;
+  return spotOf(fromMap, row?.spotUsed ?? fallbackSpot);
 }
 
 /**
@@ -52,7 +63,7 @@ function legMark(row, S, T, nowMs) {
   if (S > 0 && row.strike && T > 0 && px > 0) {
     iv = impliedVol(px, S, row.strike, T, R, isCall);
   }
-  const theo = iv != null ? bsPrice(S, row.strike, T, R, iv, isCall) : px;
+  const theo = iv != null ? (bsPrice(S, row.strike, T, R, iv, isCall) ?? px) : px;
   const g = iv != null ? greeks(S, row.strike, T, R, iv, isCall) : { delta: null, gamma: null, theta: null, vega: null };
   return { iv, theo, g, px, isCall };
 }
@@ -132,7 +143,7 @@ export function computeIndexPayoff({
       const iv = mark.iv || 0.2;
       const tgtVal = Ttgt <= 1e-8
         ? expiryVal
-        : bsPrice(S, leg.strike, Ttgt, R, iv, isCall);
+        : (bsPrice(S, leg.strike, Ttgt, R, iv, isCall) ?? expiryVal);
       tPnl += (tgtVal - avg) * qty;
     }
     expiryPnl.push(ePnl);

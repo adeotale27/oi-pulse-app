@@ -3061,14 +3061,48 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             "sell_price": float(p.get("sell_price", 0) or 0),
             **parsed,
         })
-    # Fresh spot for each index in the positions (numeric price + atm)
+    # Fresh spot for each index in the positions.
+    # Always emit a finite numeric `price` (and atm). Prefer live OI snapshot;
+    # if missing, fall back to a read-only Kite quote so greeks never see {}.
     idx_spot = {}
+    need_quote = []
     for pos in out:
         idx = pos.get("index")
-        if idx and idx in INDEX_CONFIG and idx not in idx_spot:
-            snap = tracker.last_snapshot.get(idx)
-            if snap:
-                idx_spot[idx] = {"price": snap.get("price"), "atm": snap.get("atm")}
+        if not idx or idx not in INDEX_CONFIG or idx in idx_spot:
+            continue
+        snap = tracker.last_snapshot.get(idx) or {}
+        price = snap.get("price")
+        atm = snap.get("atm")
+        try:
+            price_f = float(price) if price is not None else None
+        except (TypeError, ValueError):
+            price_f = None
+        if price_f and price_f > 0:
+            idx_spot[idx] = {
+                "price": price_f,
+                "atm": float(atm) if atm is not None else price_f,
+                "source": "snapshot",
+            }
+        else:
+            need_quote.append(idx)
+
+    if need_quote and tracker.kite_service:
+        try:
+            keys = [INDEX_CONFIG[i]["quote_symbol"] for i in need_quote]
+            quotes = await asyncio.to_thread(kite.quote, keys)
+            for idx in need_quote:
+                qkey = INDEX_CONFIG[idx]["quote_symbol"]
+                q = (quotes or {}).get(qkey) or {}
+                lp = q.get("last_price") or (q.get("ohlc") or {}).get("close")
+                try:
+                    lp_f = float(lp) if lp is not None else None
+                except (TypeError, ValueError):
+                    lp_f = None
+                if lp_f and lp_f > 0:
+                    idx_spot[idx] = {"price": lp_f, "atm": lp_f, "source": "kite_quote"}
+        except Exception as e:
+            logger.warning("positions kite.quote fallback failed: %s", e)
+
     return {"mode": tracker.mode, "positions": out, "spot": idx_spot, "funds": funds}
 
 

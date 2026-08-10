@@ -18,6 +18,8 @@ function pdf(x) {
 }
 
 export function bsPrice(S, K, T, r, sigma, isCall) {
+  S = Number(S); K = Number(K); T = Number(T); r = Number(r); sigma = Number(sigma);
+  if (![S, K, T, r, sigma].every(Number.isFinite) || S <= 0 || K <= 0) return null;
   if (T <= 0 || sigma <= 0) {
     // Payoff at expiry.
     return isCall ? Math.max(0, S - K) : Math.max(0, K - S);
@@ -25,37 +27,59 @@ export function bsPrice(S, K, T, r, sigma, isCall) {
   const sqrtT = Math.sqrt(T);
   const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
   const d2 = d1 - sigma * sqrtT;
+  if (!Number.isFinite(d1) || !Number.isFinite(d2)) return null;
   if (isCall) return S * cnd(d1) - K * Math.exp(-r * T) * cnd(d2);
   return K * Math.exp(-r * T) * cnd(-d2) - S * cnd(-d1);
 }
 
 // Implied volatility via bisection (robust, no derivative surprises).
+// Returns decimal sigma, or null if inputs are invalid / price can't be matched
+// without hitting an absurd IV ceiling (caller should treat as "no IV").
 export function impliedVol(marketPrice, S, K, T, r, isCall) {
+  S = Number(S); K = Number(K); T = Number(T); r = Number(r);
+  marketPrice = Number(marketPrice);
+  if (![marketPrice, S, K, T, r].every(Number.isFinite)) return null;
   if (marketPrice <= 0 || T <= 0 || S <= 0 || K <= 0) return null;
   const intrinsic = isCall ? Math.max(0, S - K * Math.exp(-r * T)) : Math.max(0, K * Math.exp(-r * T) - S);
   if (marketPrice < intrinsic - 0.01) return null;
-  let lo = 0.0001, hi = 5.0; // 0.01% .. 500%
+  let lo = 0.0001, hi = 3.0; // 0.01% .. 300% — above this is not trustworthy for NSE weeklies
   let loPx = bsPrice(S, K, T, r, lo, isCall);
   let hiPx = bsPrice(S, K, T, r, hi, isCall);
-  // Expand if needed
+  if (loPx == null || hiPx == null) return null;
+  // Expand a little if needed, but never past 5 (500%)
   let it = 0;
-  while (hiPx < marketPrice && hi < 10 && it < 4) { hi *= 2; hiPx = bsPrice(S, K, T, r, hi, isCall); it++; }
-  if (marketPrice < loPx || marketPrice > hiPx) return null;
+  while (hiPx < marketPrice && hi < 5 && it < 4) {
+    hi = Math.min(5, hi * 1.5);
+    hiPx = bsPrice(S, K, T, r, hi, isCall);
+    it++;
+  }
+  if (hiPx == null || marketPrice < loPx || marketPrice > hiPx) return null;
+  let mid = 0.5 * (lo + hi);
   for (let i = 0; i < 60; i++) {
-    const mid = 0.5 * (lo + hi);
+    mid = 0.5 * (lo + hi);
     const midPx = bsPrice(S, K, T, r, mid, isCall);
+    if (midPx == null) return null;
     if (midPx > marketPrice) hi = mid;
     else lo = mid;
-    if (Math.abs(midPx - marketPrice) < 1e-4) return mid;
+    if (Math.abs(midPx - marketPrice) < 1e-4) break;
   }
-  return 0.5 * (lo + hi);
+  const sigma = 0.5 * (lo + hi);
+  // Reject ceiling solutions — usually means bad spot/strike, not real IV.
+  if (!(sigma > 0) || !Number.isFinite(sigma) || sigma >= 4.9) return null;
+  return sigma;
 }
 
 export function greeks(S, K, T, r, sigma, isCall) {
-  if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) return { delta: null, gamma: null, theta: null, vega: null };
+  S = Number(S); K = Number(K); T = Number(T); r = Number(r); sigma = Number(sigma);
+  if (![S, K, T, r, sigma].every(Number.isFinite) || T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+    return { delta: null, gamma: null, theta: null, vega: null };
+  }
   const sqrtT = Math.sqrt(T);
   const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
   const d2 = d1 - sigma * sqrtT;
+  if (!Number.isFinite(d1) || !Number.isFinite(d2)) {
+    return { delta: null, gamma: null, theta: null, vega: null };
+  }
   const nd1 = pdf(d1);
   const delta = isCall ? cnd(d1) : cnd(d1) - 1;
   const gamma = nd1 / (S * sigma * sqrtT);
@@ -66,7 +90,11 @@ export function greeks(S, K, T, r, sigma, isCall) {
   const theta = thetaAnnual / 365;
   // Vega per 1% change in IV
   const vega = S * sqrtT * nd1 / 100;
-  return { delta, gamma, theta, vega };
+  const out = { delta, gamma, theta, vega };
+  for (const k of Object.keys(out)) {
+    if (!Number.isFinite(out[k])) out[k] = null;
+  }
+  return out;
 }
 
 // Time to expiry in YEARS from IST 3:30 PM on expiry date.
