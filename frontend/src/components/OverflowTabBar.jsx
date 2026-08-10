@@ -214,6 +214,21 @@ export default function OverflowTabBar({
         </div>
       </div>
 
+      {typeof onResetLayout === "function" && (
+        <div className="mb-0.5 flex justify-end">
+          <button
+            type="button"
+            data-testid="btn-reset-layout"
+            onClick={onResetLayout}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            title="Reset tab order, tile order, and expiry list height"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span className="hidden lg:inline">Reset</span>
+          </button>
+        </div>
+      )}
+
       <div
         className="flex items-end gap-1 border-b border-slate-200/80 dark:border-slate-700/80 min-w-0 overflow-visible"
         role="tablist"
@@ -305,19 +320,6 @@ export default function OverflowTabBar({
               </div>
             )}
           </div>
-        )}
-
-        {typeof onResetLayout === "function" && (
-          <button
-            type="button"
-            data-testid="btn-reset-layout"
-            onClick={onResetLayout}
-            className="mb-0.5 ml-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-            title="Reset tab order, tile order, and expiry list height"
-          >
-            <RotateCcw className="h-3 w-3" />
-            <span className="hidden lg:inline">Reset</span>
-          </button>
         )}
       </div>
     </div>
