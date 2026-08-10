@@ -34,6 +34,57 @@ _SETTINGS: Dict[str, Any] = {
     "debug_mode": False,
     "watch_indexes": ["NIFTY", "SENSEX"],
 }
+_EGRESS_CACHE: Dict[str, Any] = {"ip": None, "at": 0.0, "error": None}
+
+
+def detect_backend_egress_ip(*, force: bool = False) -> Dict[str, Any]:
+    """Public IP Zerodha sees for Live place_order from THIS backend process.
+
+    Not your laptop IP when the app is hosted on Emergent/cloud — whitelist
+    the server egress IP. Cached ~10 minutes.
+    """
+    import time
+    import urllib.request
+
+    now = time.time()
+    if (
+        not force
+        and _EGRESS_CACHE.get("ip")
+        and now - float(_EGRESS_CACHE.get("at") or 0) < 600
+    ):
+        return {
+            "ip": _EGRESS_CACHE["ip"],
+            "source": "cache",
+            "note": _EGRESS_CACHE.get("note"),
+            "error": None,
+        }
+    ip = None
+    err = None
+    for url in (
+        "https://api.ipify.org",
+        "https://ifconfig.me/ip",
+        "https://icanhazip.com",
+    ):
+        try:
+            with urllib.request.urlopen(url, timeout=3) as resp:
+                cand = (resp.read() or b"").decode("utf-8", errors="ignore").strip()
+            # basic IPv4/IPv6 sanity
+            if cand and " " not in cand and 3 <= len(cand) <= 45:
+                ip = cand
+                break
+        except Exception as exc:
+            err = str(exc)
+            continue
+    note = (
+        "Whitelist this IP in Kite developer Profile → IP Whitelist. "
+        "It is the backend/server egress IP (Emergent host if the API runs there), "
+        "NOT your home/office PC IP unless you run the backend locally."
+    )
+    _EGRESS_CACHE["ip"] = ip
+    _EGRESS_CACHE["at"] = now
+    _EGRESS_CACHE["error"] = None if ip else err
+    _EGRESS_CACHE["note"] = note
+    return {"ip": ip, "source": "live", "note": note, "error": None if ip else err}
 
 
 def _ensure_state_dir() -> None:
@@ -182,6 +233,8 @@ def _live_readiness(status: Dict[str, Any]) -> Dict[str, Any]:
     has_token = bool(cfg.get("has_token"))
     has_key = bool(cfg.get("has_key"))
     mp_ok = kiteconnect_supports_market_protection()
+    egress = detect_backend_egress_ip()
+    egress_ip = egress.get("ip")
     checks = [
         {
             "id": "api_key",
@@ -210,13 +263,28 @@ def _live_readiness(status: Dict[str, Any]) -> Dict[str, Any]:
             ),
         },
         {
-            "id": "static_ip",
-            "ok": None,  # cannot verify from app alone
-            "label": "Static IP whitelisted in Kite developer profile",
+            "id": "fno_symbol",
+            "ok": True,
+            "label": "F&O symbol resolve (CE/PE)",
             "fix": (
-                "Mandatory for Live place_order. Whitelist this machine’s public "
-                "egress IP at developers.kite.trade → Profile → IP Whitelist. "
-                "Paper/WS still work without it; Live orders are rejected."
+                "Uses Kite instruments name=NIFTY|SENSEX + segment + strike + CE/PE "
+                "(same idea as OI desk). Never invents symbols."
+            ),
+        },
+        {
+            "id": "static_ip",
+            "ok": None,  # detected ≠ whitelisted; still an ops step
+            "label": "Static IP to whitelist (backend egress)",
+            "fix": (
+                f"Detected backend egress IP: {egress_ip}. "
+                f"{egress.get('note') or ''}"
+                if egress_ip
+                else (
+                    "Could not detect egress IP automatically. "
+                    "From the machine running the API, open https://api.ipify.org "
+                    "and whitelist that value — Emergent server IP if hosted there, "
+                    "not your laptop (unless backend runs on your laptop)."
+                )
             ),
         },
         {
@@ -242,12 +310,19 @@ def _live_readiness(status: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "ready_for_code": has_key and has_token and mp_ok,
         "needs_ops_ip_whitelist": True,
+        "egress_ip": egress_ip,
+        "egress": egress,
         "checks": checks,
         "blockers": [c["id"] for c in blockers],
         "summary": (
-            "Code path is Live-capable. Confirm static IP whitelist before Activate Live."
-            if has_key and has_token and mp_ok
-            else "Fix blockers below before Live Activate."
+            f"Code path is Live-capable. Whitelist backend IP {egress_ip} in Kite "
+            "developer Profile before Activate Live."
+            if has_key and has_token and mp_ok and egress_ip
+            else (
+                "Code path is Live-capable. Confirm static IP whitelist before Activate Live."
+                if has_key and has_token and mp_ok
+                else "Fix blockers below before Live Activate."
+            )
         ),
     }
 

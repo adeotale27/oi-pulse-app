@@ -517,6 +517,18 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
                 {readiness.summary ||
                   "CAS places regular MARKET SELLs (CE+PE) with market_protection=-1."}
               </p>
+              {readiness.egress_ip && (
+                <p
+                  className="text-[12px] font-mono-data text-slate-800 mt-1.5 bg-slate-50 border border-slate-100 rounded-sm px-2 py-1.5"
+                  data-testid="cas-egress-ip"
+                >
+                  Backend egress IP to whitelist: <b>{readiness.egress_ip}</b>
+                  <span className="block text-[10px] text-slate-500 font-sans mt-0.5">
+                    This is the server that calls Zerodha (Emergent host if API is there) — not your
+                    computer&apos;s IP unless you run the backend locally.
+                  </span>
+                </p>
+              )}
             </div>
             <ul className="space-y-1.5">
               {(readiness.checks || []).map((c) => (

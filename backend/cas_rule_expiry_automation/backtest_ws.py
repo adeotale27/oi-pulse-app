@@ -145,14 +145,18 @@ def _find_option_token(
     except Exception as exc:
         logger.warning("instruments(%s) failed: %s", meta["exchange"], exc)
         return None
+    from cas_rule_expiry_automation.strike_resolver import _as_date, _is_index_option
+
     for inst in instruments:
-        if (
-            str(inst.get("tradingsymbol", "")).startswith(meta["name"])
-            and inst.get("expiry") == expiry
-            and inst.get("instrument_type") == opt_type
-            and abs(float(inst.get("strike") or 0) - float(strike)) < 0.01
-        ):
-            return inst
+        if not _is_index_option(inst, meta):
+            continue
+        if inst.get("instrument_type") != opt_type:
+            continue
+        if _as_date(inst.get("expiry")) != expiry:
+            continue
+        if abs(float(inst.get("strike") or 0) - float(strike)) >= 0.01:
+            continue
+        return inst
     return None
 
 
