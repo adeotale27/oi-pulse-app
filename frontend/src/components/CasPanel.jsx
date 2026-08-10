@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -97,32 +97,46 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
       return false;
     }
   });
+  const statusGen = useRef(0);
+  const busyRef = useRef(false);
+  const lotsDirty = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await api.get("/cas/status");
-      setStatus(data);
+  const applyStatus = useCallback((data, gen) => {
+    if (gen != null && gen !== statusGen.current) return; // stale
+    setStatus(data);
+    if (!lotsDirty.current) {
       const cfgLots = data?.config?.lots ?? data?.settings?.lots;
       if (cfgLots != null) setLots(Number(cfgLots) || 1);
-      const wi =
-        data?.config?.watch_indexes ||
-        data?.settings?.watch_indexes ||
-        null;
-      if (Array.isArray(wi) && wi.length) {
-        setWatchIndexes(wi.map((x) => String(x).toUpperCase()));
-      }
-    } catch (e) {
-      setError(e?.response?.data?.detail || e.message || "Failed to load CAS");
-    } finally {
-      setLoading(false);
+    }
+    const wi =
+      data?.config?.watch_indexes ||
+      data?.settings?.watch_indexes ||
+      null;
+    if (Array.isArray(wi) && wi.length) {
+      setWatchIndexes(wi.map((x) => String(x).toUpperCase()));
     }
   }, []);
 
+  const load = useCallback(async ({ quiet } = {}) => {
+    if (busyRef.current) return; // don't overwrite mid-toggle
+    const gen = ++statusGen.current;
+    if (!quiet) setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get("/cas/status");
+      applyStatus(data, gen);
+    } catch (e) {
+      if (gen === statusGen.current) {
+        setError(e?.response?.data?.detail || e.message || "Failed to load CAS");
+      }
+    } finally {
+      if (!quiet && gen === statusGen.current) setLoading(false);
+    }
+  }, [applyStatus]);
+
   useEffect(() => {
     load();
-    const id = setInterval(load, 3000);
+    const id = setInterval(() => load({ quiet: true }), 3000);
     return () => clearInterval(id);
   }, [load]);
 
@@ -131,8 +145,16 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
   const state = status?.state || {};
   const day = status?.day || {};
   const activated = !!plain.activated || !!state.activated;
-  const live = !!plain.live || !!cfg.live_trading;
-  const debug = !!(plain.debug || cfg.debug_mode || status?.settings?.debug_mode);
+  const live = !!(
+    plain.live ??
+    cfg.live_trading ??
+    status?.settings?.live_trading
+  );
+  const debug = !!(
+    plain.debug ??
+    cfg.debug_mode ??
+    status?.settings?.debug_mode
+  );
   const fills = state.fills || [];
   const timings = state.timings || [];
   const watching = day.indexes || plain.watching || watchIndexes;
@@ -154,19 +176,17 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
 
   const patchSettings = async (patch) => {
     if (!isAdmin) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
+    const gen = ++statusGen.current;
     try {
       const { data } = await api.post("/cas/settings", patch);
-      setStatus(data);
-      if (patch.lots != null) setLots(Number(data?.config?.lots) || patch.lots);
-      if (patch.watch_indexes) {
-        const wi = data?.config?.watch_indexes || patch.watch_indexes;
-        setWatchIndexes((wi || []).map((x) => String(x).toUpperCase()));
-      }
+      applyStatus(data, gen);
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -174,6 +194,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
   const saveLots = async (nextLots) => {
     const n = Math.max(1, Math.min(50, Number(nextLots) || 1));
     setLots(n);
+    lotsDirty.current = false;
     await patchSettings({ lots: n });
   };
 
@@ -215,27 +236,33 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
       );
       if (!ok) return;
     }
+    busyRef.current = true;
     setBusy(true);
     setError(null);
+    const gen = ++statusGen.current;
     try {
       const { data } = await api.post("/cas/activate", { confirm_live: !!live });
-      setStatus(data);
+      applyStatus(data, gen);
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const deactivate = async () => {
     if (!isAdmin) return;
+    busyRef.current = true;
     setBusy(true);
+    const gen = ++statusGen.current;
     try {
       const { data } = await api.post("/cas/deactivate");
-      setStatus(data);
+      applyStatus(data, gen);
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -421,7 +448,10 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false }) {
                   max={50}
                   value={lots}
                   disabled={!isAdmin || busy}
-                  onChange={(e) => setLots(Number(e.target.value) || 1)}
+                  onChange={(e) => {
+                    lotsDirty.current = true;
+                    setLots(Number(e.target.value) || 1);
+                  }}
                   onBlur={() => saveLots(lots)}
                   className="mt-0.5 w-16 h-8 px-2 text-sm border border-slate-200 rounded-sm font-mono-data"
                   data-testid="cas-lots"

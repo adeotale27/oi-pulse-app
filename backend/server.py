@@ -3487,14 +3487,12 @@ async def cas_activate(payload: CasActivateIn = CasActivateIn(), _admin: bool = 
     import cas_bridge
 
     try:
-        # Sync first so we know live flag
-        status = await asyncio.to_thread(cas_bridge.get_status, tracker)
-        live = bool((status.get("config") or {}).get("live_trading"))
         return await asyncio.to_thread(
             cas_bridge.activate,
             tracker,
             by="admin",
-            require_live_confirm=(payload.confirm_live if live else True),
+            # Always pass the client's confirm flag; activate() re-checks live after sync.
+            require_live_confirm=bool(payload.confirm_live),
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e))
