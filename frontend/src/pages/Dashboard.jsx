@@ -1530,11 +1530,12 @@ export default function Dashboard() {
                 })()}
                 <div
                   className={`oi-panel oi-rise p-4 transition-all duration-700 ${
-                    pulsePull ? "ring-2 ring-emerald-300 border-emerald-300" : ""
+                    pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
                   }`}
                   data-testid="oi-change-card"
                   style={
-                    changeSummary
+                    // Bias wash is OI-Change only — Positions / other tabs stay clean & independent.
+                    activeTab === "oi-change" && changeSummary
                       ? {
                           backgroundColor: changeSummary.bullish
                             ? `rgba(22,163,74,${(changeSummary.intensity * 0.35).toFixed(3)})`
