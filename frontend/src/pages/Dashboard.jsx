@@ -374,6 +374,12 @@ export default function Dashboard() {
   // On phones, never keep the side panel open — it was leaving a narrow
   // Alerts/Suggestion strip and a blank chart area.
   const showRightPanel = rightPanelOpen && !isMobile;
+  // Credentials / kite_ok beat brief mode=offline flaps (Positions + CAS + side panel).
+  const kiteLiveConnected =
+    status?.mode === "kite"
+    || !!status?.has_kite_credentials
+    || !!status?.kite_ok;
+  const openKiteCreds = authState.is_admin ? () => setCredsOpen(true) : undefined;
 
   useEffect(() => {
     // Connect WebSocket (spot). The WS wrapper will itself defer connects
@@ -2077,11 +2083,7 @@ export default function Dashboard() {
                     <TabsContent value="positions" className="mt-0">
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
-                      isKiteMode={
-                        status?.mode === "kite"
-                        || !!status?.has_kite_credentials
-                        || !!status?.kite_ok
-                      }
+                      isKiteMode={kiteLiveConnected}
                       current={filteredCurrent || current}
                       previous={previous}
                       vix={current?.vix || status?.vix}
@@ -2094,7 +2096,7 @@ export default function Dashboard() {
                       expiriesMeta={expiriesMeta}
                       onPinNearestWeekly={handleChangeExpiry}
                       positionsPollMs={positionsPollMs}
-                      onOpenKite={authState.is_admin ? () => setCredsOpen(true) : undefined}
+                      onOpenKite={openKiteCreds}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "huge-shift",
@@ -2164,8 +2166,8 @@ export default function Dashboard() {
                     <TabsContent value="cas" className="mt-0">
                       <CasPanel
                         isAdmin={!!authState.is_admin}
-                        isKiteMode={status?.mode === "kite"}
-                        onOpenKite={authState.is_admin ? () => setCredsOpen(true) : undefined}
+                        isKiteMode={kiteLiveConnected}
+                        onOpenKite={openKiteCreds}
                       />
                     </TabsContent>
                   )}
@@ -2233,12 +2235,13 @@ export default function Dashboard() {
                       activityFilter={activityFilter}
                       setActivityFilter={setActivityFilter}
                       clearActivity={() => { setActivity([]); seenActivityRef.current.clear(); }}
-                      isKiteMode={status?.mode === "kite"}
+                      isKiteMode={kiteLiveConnected}
                       status={status}
                       showOI={showOI}
                       // pass configured straddle poll interval (ms)
                       straddlePollMs={straddlePollMs}
                       uploadRefreshKey={uploadRefreshKey}
+                      onOpenKite={openKiteCreds}
                       suggestion={
                         showSuggestion ? (
                           <SuggestionBox
@@ -2325,11 +2328,12 @@ export default function Dashboard() {
                     activityFilter={activityFilter}
                     setActivityFilter={setActivityFilter}
                     clearActivity={() => { setActivity([]); seenActivityRef.current.clear(); }}
-                    isKiteMode={status?.mode === "kite"}
+                    isKiteMode={kiteLiveConnected}
                     status={status}
                     showOI={showOI}
                     straddlePollMs={straddlePollMs}
                     uploadRefreshKey={uploadRefreshKey}
+                    onOpenKite={openKiteCreds}
                     suggestion={
                       showSuggestion ? (
                         <SuggestionBox

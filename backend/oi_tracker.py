@@ -1127,7 +1127,6 @@ class OITracker:
                     "tokenexception",
                     "invalid token",
                     "access_token",
-                    "api_key",
                     "incorrect `api_key`",
                     "incorrect api_key",
                     "unauthorized",

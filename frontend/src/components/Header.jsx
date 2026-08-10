@@ -644,7 +644,12 @@ export default function Header({
                   data-testid="menu-open-access-control"
                   onSelect={(e) => {
                     e.preventDefault();
-                    window.dispatchEvent(new Event("oi-admin-open-access"));
+                    try {
+                      window.__oi_access_open_pending = true;
+                      window.dispatchEvent(new CustomEvent("oi-admin-open-access"));
+                    } catch (_) {
+                      window.dispatchEvent(new Event("oi-admin-open-access"));
+                    }
                   }}
                 >
                   <UserCheck className="w-4 h-4" />
@@ -654,7 +659,12 @@ export default function Header({
                   data-testid="menu-change-password"
                   onSelect={(e) => {
                     e.preventDefault();
-                    window.dispatchEvent(new Event("oi-admin-open-password"));
+                    try {
+                      window.__oi_password_open_pending = true;
+                      window.dispatchEvent(new CustomEvent("oi-admin-open-password"));
+                    } catch (_) {
+                      window.dispatchEvent(new Event("oi-admin-open-password"));
+                    }
                   }}
                 >
                   <KeyRound className="w-4 h-4" />

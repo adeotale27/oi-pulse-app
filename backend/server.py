@@ -3066,6 +3066,7 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             "error": "Kite not connected. Add API key + access token in Credentials.",
             "kite_connected": False,
             "transient": False,
+            "token_issue": True,
         }
     if tracker.mode != "kite":
         # Credentials exist — heal mode so OI + Positions stay on the same live path.
@@ -3089,8 +3090,8 @@ async def get_positions(_admin: bool = Depends(require_admin)):
                 "tokenexception",
                 "invalid token",
                 "access_token",
-                "api_key",
                 "incorrect `api_key`",
+                "incorrect api_key",
                 "unauthorized",
                 "forbidden",
             )
@@ -3356,6 +3357,7 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
             }
         try:
             tracker.mode = "kite"
+            await tracker.start()
         except Exception:
             pass
     try:

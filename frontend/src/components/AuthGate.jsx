@@ -37,6 +37,8 @@ export default function AuthGate({ children }) {
   const lastActivityRef = useRef(Date.now());
   const pendingPollRef = useRef(null);
   const autoGuestRef = useRef(false);
+  const admittingRef = useRef(false);
+  const ipMismatchToastedRef = useRef(false);
 
   const refresh = async () => {
     try {
@@ -182,16 +184,28 @@ export default function AuthGate({ children }) {
   useEffect(() => {
     if (!pendingRequest?.id || state.is_guest || state.is_admin) return undefined;
     let cancelled = false;
+    ipMismatchToastedRef.current = false;
+    admittingRef.current = false;
+    const stop = () => {
+      if (pendingPollRef.current) {
+        clearInterval(pendingPollRef.current);
+        pendingPollRef.current = null;
+      }
+    };
     const poll = async () => {
+      if (cancelled || admittingRef.current) return;
       try {
         const { data } = await api.get(`/auth/access-request/${pendingRequest.id}`);
-        if (cancelled) return;
+        if (cancelled || admittingRef.current) return;
         if ((data.status === "approved" || data.status === "consumed") && data.token) {
+          admittingRef.current = true;
+          stop();
           await admitGuest(data.token, data.name || pendingRequest.name, data.expires_in_seconds, data.expires_at);
           return;
         }
         if (data.status === "consumed" && !data.token) {
           // Token already handed off (other tab) — try auto-guest revive, else re-prompt.
+          stop();
           try {
             sessionStorage.removeItem("oi_access_request_id");
             sessionStorage.removeItem("oi_access_request_name");
@@ -205,6 +219,7 @@ export default function AuthGate({ children }) {
           return;
         }
         if (data.status === "rejected") {
+          stop();
           setWaitStatus("rejected");
           try {
             sessionStorage.removeItem("oi_access_request_id");
@@ -219,10 +234,14 @@ export default function AuthGate({ children }) {
         const status = err?.response?.status;
         if (status === 403) {
           setWaitStatus("pending");
-          toast.error("This approval link is tied to another network. Stay on the same connection you used to request access.");
+          if (!ipMismatchToastedRef.current) {
+            ipMismatchToastedRef.current = true;
+            toast.error("This approval link is tied to another network. Stay on the same connection you used to request access.");
+          }
           return;
         }
         if (status === 404) {
+          stop();
           try {
             sessionStorage.removeItem("oi_access_request_id");
             sessionStorage.removeItem("oi_access_request_name");
@@ -238,7 +257,7 @@ export default function AuthGate({ children }) {
     pendingPollRef.current = setInterval(poll, 2000);
     return () => {
       cancelled = true;
-      if (pendingPollRef.current) clearInterval(pendingPollRef.current);
+      stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingRequest?.id, state.is_guest, state.is_admin]);
