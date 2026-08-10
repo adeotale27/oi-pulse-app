@@ -2961,16 +2961,47 @@ async def admin_refresh_day(
 async def get_positions(_admin: bool = Depends(require_admin)):
     """Fetch open F&O positions from the user's Kite account (net + day).
     Only available in kite mode. Returns a normalised list with parsed
-    strike / side / expiry for options so the frontend can overlay them."""
+    strike / side / expiry for options so the frontend can overlay them.
+    Also returns equity funds (read-only margins) for the seller desk tile."""
     if tracker.mode != "kite" or not tracker.kite_service:
-        return {"mode": tracker.mode, "positions": [], "error": "Not in Kite mode. Connect Kite API first."}
+        return {
+            "mode": tracker.mode,
+            "positions": [],
+            "funds": None,
+            "error": "Not in Kite mode. Connect Kite API first.",
+        }
     try:
         import re
         kite = tracker.kite_service.kite
         raw = await asyncio.to_thread(kite.positions)
         net = raw.get("net", []) if isinstance(raw, dict) else raw
     except Exception as e:
-        return {"mode": tracker.mode, "positions": [], "error": f"Kite error: {type(e).__name__}: {e}"}
+        return {
+            "mode": tracker.mode,
+            "positions": [],
+            "funds": None,
+            "error": f"Kite error: {type(e).__name__}: {e}",
+        }
+
+    # Read-only funds snapshot (never places trades).
+    funds = None
+    try:
+        margins = await asyncio.to_thread(kite.margins)
+        eq = (margins or {}).get("equity") or {}
+        avail = eq.get("available") or {}
+        util = eq.get("utilised") or {}
+        funds = {
+            "net": eq.get("net"),
+            "cash": avail.get("cash"),
+            "live_balance": avail.get("live_balance"),
+            "opening_balance": avail.get("opening_balance"),
+            "collateral": avail.get("collateral"),
+            "utilised_debits": util.get("debits"),
+            "span": util.get("span"),
+            "exposure": util.get("exposure"),
+        }
+    except Exception as e:
+        logger.warning("kite.margins failed: %s", e)
 
     # Parse tradingsymbol like  NIFTY26JUL2426800CE  -> {index, expiry, strike, side}
     # Supported patterns (NSE/BSE weekly & monthly):
@@ -3022,7 +3053,7 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             snap = tracker.last_snapshot.get(idx)
             if snap:
                 idx_spot[idx] = {"price": snap.get("price"), "atm": snap.get("atm")}
-    return {"mode": tracker.mode, "positions": out, "spot": idx_spot}
+    return {"mode": tracker.mode, "positions": out, "spot": idx_spot, "funds": funds}
 
 
 # ================================================================

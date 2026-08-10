@@ -50,7 +50,12 @@ const POSITIONS_GUIDE = (
     </p>
     <p>
       <b>Net Δ</b> — portfolio delta (signed qty). Non-directional sellers usually keep this near 0
-      (hedged). <b>Net Θ / day</b> — estimated ₹ theta you earn/pay per calendar day.
+      (hedged). <b>Net Θ / day</b> — estimated ₹ theta you earn/pay per calendar day — a seller&apos;s
+      best friend when the book is flat.
+    </p>
+    <p>
+      <b>Funds available</b> — Kite equity <i>net</i> margin left for trading (read-only). Cash is
+      account value; utilised is margin already blocked by open positions.
     </p>
     <p>
       <b>Premium left (EOD)</b> — for shorts, remaining <i>extrinsic</i> premium × |qty|. On expiry
@@ -62,6 +67,7 @@ const POSITIONS_GUIDE = (
 
 export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, activeIndex, expiry, onAdjustmentAlert }) {
   const [positions, setPositions] = useState([]);
+  const [funds, setFunds] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -73,6 +79,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
     try {
       const { data } = await api.get("/positions");
       setPositions(data.positions || []);
+      setFunds(data.funds || null);
       if (data.error) setError(data.error);
       setLastRefresh(new Date().toISOString());
     } catch (e) {
@@ -237,11 +244,11 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
   }
 
   return (
-    <div className="space-y-3" data-testid="positions-panel">
+    <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-slate-700" />
-          <div className="text-sm font-semibold">Kite Open Positions</div>
+          <div className="text-sm font-semibold text-slate-900">Kite Open Positions</div>
           <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm">{positions.length}</span>
           <InfoTip title="Positions · seller guide" testId="positions-guide-tip">
             {POSITIONS_GUIDE}
@@ -255,7 +262,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
               min={30} max={95} step={5}
               value={adjustThreshPct}
               onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
-              className="w-14 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data"
+              className="w-14 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
               data-testid="adjust-threshold"
             />
             <span>% band-covered</span>
@@ -268,7 +275,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
               </p>
             </InfoTip>
           </div>
-          <Button size="sm" variant="outline" className="h-7 rounded-sm" onClick={load} disabled={loading} data-testid="btn-refresh-positions">
+          <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white" onClick={load} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
@@ -281,19 +288,61 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         <StatBox label="Net P&L" value={"₹ " + fmt(stats.netPnl)} tone={stats.netPnl >= 0 ? "emerald" : "rose"} />
         <StatBox
-          label="Net Δ"
-          value={fmt(stats.netDelta, 1)}
-          tone={Math.abs(stats.netDelta) < 10 ? "emerald" : Math.abs(stats.netDelta) < 30 ? "amber" : "rose"}
-          hint={Math.abs(stats.netDelta) < 10 ? "Neutral · good for sellers" : "Directional · hedge?"}
+          label="Funds available"
+          value={funds?.net != null ? "₹ " + fmt(funds.net, 0) : "—"}
+          tone="slate"
+          hint={funds?.utilised_debits != null ? `Margin used ₹ ${fmt(funds.utilised_debits, 0)}` : "Kite equity net"}
+          tip={(
+            <div className="space-y-1.5">
+              <p>
+                <b>Funds available</b> = Kite equity <b>net</b> margin left for trading (read-only).
+              </p>
+              <p>
+                Cash / account value: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
+                Collateral: {funds?.collateral != null ? `₹ ${fmt(funds.collateral, 0)}` : "—"}.
+              </p>
+              <p className="text-slate-500">Never places orders — margins snapshot only.</p>
+            </div>
+          )}
         />
         <StatBox
           label="Net Θ / day"
           value={"₹ " + fmt(stats.netTheta, 0)}
           tone={stats.netTheta >= 0 ? "emerald" : "rose"}
-          hint={stats.netTheta >= 0 ? "Earning premium" : "Paying premium"}
+          hint={stats.netTheta >= 0 ? "Seller’s friend · earning" : "Paying premium"}
+          tip={(
+            <div className="space-y-1.5">
+              <p>
+                <b>Theta is a non-directional seller’s best friend</b> when the book is delta-neutral:
+                time decay works for you every day the spot stays away from your shorts.
+              </p>
+              <p>
+                Shown as portfolio ₹/day (Θ × qty). Short options with positive net Θ are collecting
+                premium; negative means the book is paying (longs dominate).
+              </p>
+            </div>
+          )}
+        />
+        <StatBox
+          label="Net Δ"
+          value={fmt(stats.netDelta, 1)}
+          tone={Math.abs(stats.netDelta) < 10 ? "emerald" : Math.abs(stats.netDelta) < 30 ? "amber" : "rose"}
+          hint={Math.abs(stats.netDelta) < 10 ? "Neutral · good for sellers" : "Directional · hedge?"}
+          tip={(
+            <div className="space-y-1.5">
+              <p>
+                <b>Net delta</b> is the signed sum of (Δ × qty) across open options. It answers:
+                “If the index moves ₹1, how much does my book mark roughly?”
+              </p>
+              <p>
+                Non-directional sellers aim for <b>|Δ| near 0</b> (≈ under 10 here). Large positive Δ
+                behaves long the index; large negative Δ behaves short. Hedge / roll when it drifts.
+              </p>
+            </div>
+          )}
         />
         <StatBox
           label="Premium left"
@@ -328,14 +377,19 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
           </span>
           {stats.thetaToClose != null && (
             <span title="Theta × minutes left to 15:30 IST">
-              Θ to close today ≈ <b className="font-mono-data">₹ {fmt(stats.thetaToClose, 0)}</b>
+              Θ to close today ≈ <b className="font-mono-data text-emerald-800">₹ {fmt(stats.thetaToClose, 0)}</b>
+            </span>
+          )}
+          {funds?.net != null && (
+            <span title="Kite equity net margin">
+              Funds <b className="font-mono-data">₹ {fmt(funds.net, 0)}</b>
             </span>
           )}
         </div>
       )}
 
-      <div className="overflow-auto">
-        <table className="w-full text-xs font-mono-data">
+      <div className="overflow-auto rounded-md border border-slate-100">
+        <table className="w-full text-xs font-mono-data bg-white">
           <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
             <tr>
               <th className="text-left px-2 py-2">Symbol</th>
@@ -344,7 +398,15 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
               <th className="text-right px-2 py-2">LTP</th>
               <th className="text-right px-2 py-2">P&amp;L</th>
               <th className="text-right px-2 py-2">Δ</th>
-              <th className="text-right px-2 py-2">Θ</th>
+              <th className="text-right px-2 py-2">
+                <span className="inline-flex items-center gap-1">
+                  Θ ₹/d
+                  <InfoTip title="Theta ₹ / day" size="xs" testId="theta-col-tip">
+                    Per-leg theta in rupees per day (Θ × qty). For shorts this is usually positive —
+                    premium you collect from time decay.
+                  </InfoTip>
+                </span>
+              </th>
               <th className="text-right px-2 py-2">
                 <span className="inline-flex items-center gap-1">
                   Prem left
@@ -368,9 +430,11 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={11} className="text-center py-6 text-slate-400 text-xs">No open F&amp;O positions.</td></tr>
-            ) : rows.map((r) => (
-              <tr key={r.tradingsymbol} data-testid="position-row" className={`border-b border-slate-100 ${r.breachedAdjust ? "bg-rose-50" : ""}`}>
+              <tr><td colSpan={11} className="text-center py-6 text-slate-400 text-xs bg-white">No open F&amp;O positions.</td></tr>
+            ) : rows.map((r) => {
+              const thetaInr = r.theta != null ? r.theta * r.quantity : null;
+              return (
+              <tr key={r.tradingsymbol} data-testid="position-row" className={`border-b border-slate-100 bg-white ${r.breachedAdjust ? "bg-rose-50/80" : ""}`}>
                 <td className="px-2 py-1.5">
                   <div className="text-slate-900 font-semibold">{r.tradingsymbol}</div>
                   <div className="text-[10px] text-slate-500">{r.product} · {r.exchange}</div>
@@ -380,7 +444,9 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
                 <td className="text-right px-2 py-1.5">{fmt(r.last_price)}</td>
                 <td className={`text-right px-2 py-1.5 font-semibold ${r.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(r.pnl, 0)}</td>
                 <td className="text-right px-2 py-1.5">{r.delta != null ? r.delta.toFixed(2) : "—"}</td>
-                <td className="text-right px-2 py-1.5">{r.theta != null ? r.theta.toFixed(2) : "—"}</td>
+                <td className={`text-right px-2 py-1.5 font-semibold ${thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                  {thetaInr != null ? fmt(thetaInr, 0) : "—"}
+                </td>
                 <td className="text-right px-2 py-1.5 text-slate-700">
                   {r.isShort && r.extrinsicLeft != null ? (
                     <span title={r.onExpiryDay ? "Expiry day — extrinsic left to 15:30" : "Extrinsic left"}>
@@ -400,7 +466,7 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
                   ) : "—"}
                 </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
       </div>
@@ -413,12 +479,12 @@ export default function PositionsPanel({ isKiteMode, current, vix, oiSettings, a
 
 function StatBox({ label, value, tone = "slate", hint, tip }) {
   const cls = tone === "emerald"
-    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    ? "border-emerald-200/80 bg-emerald-50/70 text-emerald-900"
     : tone === "rose"
-      ? "border-rose-200 bg-rose-50 text-rose-800"
+      ? "border-rose-200/80 bg-rose-50/70 text-rose-900"
       : tone === "amber"
-        ? "border-amber-200 bg-amber-50 text-amber-800"
-        : "border-slate-200 bg-white text-slate-700";
+        ? "border-amber-200/80 bg-amber-50/70 text-amber-900"
+        : "border-slate-200 bg-slate-50/80 text-slate-800";
   return (
     <div className={`rounded-md border px-3 py-2 ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
       <div className="text-[10px] uppercase tracking-widest opacity-70 inline-flex items-center gap-1">
