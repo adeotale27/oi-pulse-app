@@ -61,6 +61,7 @@ export default function RightPanel({
   expiriesMeta = [],
   onPinNearestWeekly,
   positionsPollMs = 30000,
+  onOpenKite,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -169,6 +170,7 @@ export default function RightPanel({
               expiriesMeta={expiriesMeta}
               onPinNearestWeekly={onPinNearestWeekly}
               positionsPollMs={positionsPollMs}
+              onOpenKite={onOpenKite}
             />
           )}
           {selectedView === "oichart" && (
