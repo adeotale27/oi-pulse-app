@@ -3345,13 +3345,19 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
     secrets, or access tokens. Admin-only.
     """
     if tracker.mode != "kite" or not tracker.kite_service:
-        return {
-            "ok": False,
-            "brokerage": None,
-            "charges_total": None,
-            "order_count": 0,
-            "error": "Not in Kite mode.",
-        }
+        # Same stickiness as /positions: credentials beat a stale mode flag.
+        if not tracker.kite_service:
+            return {
+                "ok": False,
+                "brokerage": None,
+                "charges_total": None,
+                "order_count": 0,
+                "error": "Kite not connected.",
+            }
+        try:
+            tracker.mode = "kite"
+        except Exception:
+            pass
     try:
         kite = tracker.kite_service.kite
         orders = await asyncio.to_thread(kite.orders)
