@@ -891,7 +891,7 @@ export default function PositionsPanel({
                 >
                   {w.severity}
                 </span>
-                <b className="font-mono-data">{w.tradingsymbol}</b>
+                <b className="font-mono-data">{positionLabel(w)}</b>
                 <span>{w.note}</span>
               </li>
             ))}
