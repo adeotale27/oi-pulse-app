@@ -1,6 +1,10 @@
 """
-Background OI tracker - polls Kite / Mock every N seconds, stores snapshots in Mongo,
+Background OI tracker - polls Kite every N seconds, stores snapshots in Mongo,
 and evaluates alert rules for OI reversal spikes.
+
+Browser-independent: on working market days with live Kite credentials the poller
+keeps writing OI Change / Open Interest / straddle samples to the DB whether or
+not any client has the app open.
 
 Polls ONLY during NSE market hours (default open 09:15 / Index F&O close 15:40 IST,
 Mon–Fri, excl. holidays; configurable in Admin Settings) when FORCE_ALWAYS_POLL=false.
@@ -188,6 +192,7 @@ class OITracker:
         self.selected_expiry: Dict[str, Optional[str]] = {i: None for i in INDICES}
         # Throttle straddle history to ~1 sample per straddle_poll_interval (default 60s).
         self._last_straddle_sample_at: Dict[str, datetime] = {}
+        self._last_successful_poll_at: Optional[datetime] = None
         self.metrics = Counter({
             "poll_cycles": 0,
             "poll_timeouts": 0,
@@ -339,9 +344,22 @@ class OITracker:
             return None
         try:
             ts = datetime.fromisoformat(snap["timestamp"])
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
             return (datetime.now(timezone.utc) - ts).total_seconds()
         except Exception:
             return None
+
+    def poll_interval_seconds(self) -> int:
+        return max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
+
+    def stale_after_seconds(self) -> int:
+        """Age before UI marks STALE while market is open.
+
+        Must exceed one full poll cadence with headroom so a 60s interval does
+        not false-STALE between successful ticks (old hard-coded 45s did).
+        """
+        return max(90, self.poll_interval_seconds() * 3)
 
     def request_background_refresh(self, index_name: str, expiry: Optional[str] = None) -> None:
         """Kick a single-flight background Kite refresh without blocking callers.
@@ -489,6 +507,16 @@ class OITracker:
             await self.seed_default_expiries()
         except Exception as e:
             logger.warning("seed_default_expiries after set_credentials failed: %s", e)
+        # Browser-independent: keep the market-day poller running once creds are live.
+        try:
+            await self.start()
+        except Exception as e:
+            logger.warning("tracker.start after set_credentials failed: %s", e)
+        if FORCE_ALWAYS_POLL or is_market_open():
+            try:
+                asyncio.create_task(self._poll_once())
+            except Exception:
+                pass
 
     async def set_mode(self, mode: str):
         # Supported modes: 'kite' (live) and 'offline' (no live polling).
@@ -497,6 +525,16 @@ class OITracker:
         if mode == "kite" and self.kite_service is None:
             raise RuntimeError("No Kite credentials configured")
         self.mode = mode
+        if mode == "kite":
+            try:
+                await self.start()
+            except Exception as e:
+                logger.warning("tracker.start after set_mode(kite) failed: %s", e)
+            if FORCE_ALWAYS_POLL or is_market_open():
+                try:
+                    asyncio.create_task(self._poll_once())
+                except Exception:
+                    pass
 
     def _get_service(self):
         # Only return Kite service when in LIVE mode. Do not return a mock/demo
@@ -529,7 +567,7 @@ class OITracker:
                 logger.warning("seed_default_expiries(%s) failed: %s", idx, e)
 
     async def start(self):
-        if self.running:
+        if self.running and self._task is not None and not self._task.done():
             return
         try:
             await self.seed_default_expiries()
@@ -537,7 +575,7 @@ class OITracker:
             logger.warning("seed_default_expiries on start failed: %s", e)
         self.running = True
         self._task = asyncio.create_task(self._loop())
-        logger.info("OI tracker started")
+        logger.info("OI tracker started (browser-independent DB writer)")
 
     async def stop(self):
         self.running = False
@@ -547,7 +585,56 @@ class OITracker:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        self._task = None
         logger.info("OI tracker stopped")
+
+    async def ensure_market_day_polling(self) -> None:
+        """Watchdog: keep OI/straddle DB writes alive on trading days with live creds.
+
+        Called periodically from the server lifespan task so a dead loop or a
+        long gap without successful polls is healed even with zero browsers open.
+        """
+        if self.mode != "kite" or not self.kite_service:
+            return
+        if not (FORCE_ALWAYS_POLL or is_market_open()):
+            return
+
+        if not self.running or self._task is None or self._task.done():
+            logger.warning(
+                "OI poller not running on market day — restarting (browser-independent)."
+            )
+            self.running = False
+            self._task = None
+            await self.start()
+            return
+
+        thr = float(self.stale_after_seconds())
+        age: Optional[float] = None
+        if self._last_successful_poll_at is not None:
+            last = self._last_successful_poll_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - last.astimezone(timezone.utc)).total_seconds()
+        else:
+            ages = [
+                a for a in (self.snapshot_age_seconds(s) for s in self.last_snapshot.values())
+                if a is not None
+            ]
+            # No success yet this process — treat seeded/old cache as stalled so we force a warm poll.
+            age = max(ages) if ages else thr + 1.0
+
+        if age is not None and age <= thr:
+            return
+
+        logger.warning(
+            "OI poller stalled (%.0fs since last success, threshold %ss) — forcing poll.",
+            age if age is not None else -1,
+            int(thr),
+        )
+        try:
+            await self._poll_once()
+        except Exception as e:
+            logger.error("watchdog forced poll failed: %s", e)
 
     def _seconds_until_next_poll_boundary(self, interval_seconds: int) -> float:
         """Return the fractional delay to the next aligned poll boundary.
@@ -582,14 +669,17 @@ class OITracker:
             try:
                 poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
                 if FORCE_ALWAYS_POLL or is_market_open():
-                    if (not was_open):
-                        logger.info("Market OPEN — starting polling.")
+                    if not was_open:
+                        logger.info("Market OPEN — starting continuous OI / straddle polling (browser-independent).")
                         await notifier.alert_market_open()
                         try:
                             await self._purge_prior_session_alerts()
                         except Exception as e:
                             logger.warning("purge prior-session alerts failed: %s", e)
                         was_open = True
+                        # Warm immediately — do not wait for the next clock boundary.
+                        await self._poll_once()
+                        continue
                     await asyncio.sleep(self._seconds_until_next_poll_boundary(poll_interval_seconds))
                     if not self.running:
                         break
@@ -712,6 +802,7 @@ class OITracker:
 
         results = await asyncio.gather(*[_fetch_one(idx) for idx in enabled])
 
+        any_ok = False
         for idx, snap, err in results:
             if err == "timeout":
                 self.metrics["poll_timeouts"] += 1
@@ -742,6 +833,7 @@ class OITracker:
                 )
                 continue
 
+            any_ok = True
             snap["mode"] = self.mode
             self.last_snapshot[idx] = snap
             self.metrics["successful_snapshots"] += 1
@@ -779,6 +871,24 @@ class OITracker:
                     exc_info=True,
                     extra={"metrics": dict(self.metrics)},
                 )
+
+        if any_ok:
+            self._last_successful_poll_at = datetime.now(timezone.utc)
+            self.last_error = None
+            try:
+                await self.db.system_meta.update_one(
+                    {"_id": "oi_poll_heartbeat"},
+                    {
+                        "$set": {
+                            "last_successful_poll_at": self._last_successful_poll_at.isoformat(),
+                            "mode": self.mode,
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    },
+                    upsert=True,
+                )
+            except Exception:
+                pass
 
         # Retention prune once per poll cycle (only runs while market is open).
         # Floor: never wipe the previous trading session so weekends/holidays
@@ -1003,19 +1113,22 @@ class OITracker:
 
     async def get_status(self):
         ms = market_status()
-        poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
+        poll_interval_seconds = self.poll_interval_seconds()
         err = (self.last_error or "").lower()
         token_bad = any(k in err for k in ("token", "api_key", "signature", "incorrect", "unauthorized", "forbidden"))
         kite_ok = self.mode == "kite" and self.kite_service is not None and not token_bad
+        last_ok = self._last_successful_poll_at.isoformat() if self._last_successful_poll_at else None
         return {
             "running": self.running,
             "mode": self.mode,
             "last_updated_at": self.last_updated_at,
+            "last_successful_poll_at": last_ok,
             "last_error": self.last_error,
             "has_kite_credentials": self.kite_service is not None,
             "kite_ok": kite_ok,
             "kite_token_issue": bool(token_bad) or (self.kite_service is None and self.mode != "kite"),
             "poll_interval_seconds": poll_interval_seconds,
+            "stale_after_seconds": self.stale_after_seconds(),
             "market": ms,
             "telegram_configured": notifier.is_configured(),
             "retention_hours": SNAPSHOT_RETENTION_HOURS,

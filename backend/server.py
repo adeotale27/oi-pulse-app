@@ -333,6 +333,24 @@ async def _straddle_sampler():
                 await asyncio.sleep(STRADDLE_SAMPLE_INTERVAL_SECONDS)
 
 
+async def _market_day_poll_watchdog():
+    """Keep OI Change / Open Interest / straddle DB writes alive on market days.
+
+    Independent of any browser session — restarts a dead poller and forces a
+    warm poll when the last successful tick exceeds the dynamic STALE window.
+    """
+    while True:
+        try:
+            if tracker:
+                await tracker.ensure_market_day_polling()
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning("market-day poll watchdog error: %s", e)
+            await asyncio.sleep(30)
+
+
 async def _guest_from_request(request: Request):
     tok = _extract_bearer(request, "x-guest-token")
     if not tok:
@@ -1007,9 +1025,20 @@ async def _find_previous_snapshot(
     return prev_doc, history_ready, round(elapsed_min_val, 2) if elapsed_min_val is not None else 0.0
 
 
+def _stale_threshold_seconds() -> int:
+    """Dynamic STALE threshold from poll cadence (avoids false STALE between ticks)."""
+    try:
+        if tracker and hasattr(tracker, "stale_after_seconds"):
+            return int(tracker.stale_after_seconds())
+    except Exception:
+        pass
+    return 90
+
+
 def _build_data_status(current: dict, market_is_open: bool, age_seconds: Optional[float]) -> dict:
     """Truth layer for clients: LIVE vs LAST SESSION vs OFFLINE — never ambiguous."""
     mode = tracker.mode if tracker else "offline"
+    thr = _stale_threshold_seconds()
     stale_reason = None
     is_live = False
     if mode != "kite":
@@ -1018,7 +1047,7 @@ def _build_data_status(current: dict, market_is_open: bool, age_seconds: Optiona
         stale_reason = "market_closed"
     elif age_seconds is None:
         stale_reason = "no_timestamp"
-    elif age_seconds > 45:
+    elif age_seconds > thr:
         stale_reason = "stale_cache"
     else:
         is_live = True
@@ -1053,6 +1082,7 @@ def _build_data_status(current: dict, market_is_open: bool, age_seconds: Optiona
         "stale_reason": stale_reason,
         "data_date": data_date,
         "cache_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
+        "stale_after_seconds": thr,
         "as_of": as_of,
         "as_of_ist": as_of_ist,
         "label": label,
@@ -3290,6 +3320,7 @@ logger.propagate = False
 
 
 straddle_sampler_task = None
+poll_watchdog_task = None
 
 @app.on_event("startup")
 async def _startup():
@@ -3365,8 +3396,12 @@ async def _startup():
     await extra_tickers.start()
     fii_dii.attach_db(db)
     await fii_dii.start()
-    global straddle_sampler_task
+    global straddle_sampler_task, poll_watchdog_task
     straddle_sampler_task = asyncio.create_task(_straddle_sampler())
+    poll_watchdog_task = asyncio.create_task(_market_day_poll_watchdog())
+    logger.info(
+        "Started browser-independent OI/straddle writers + market-day poll watchdog"
+    )
 
     # Report how much of today's session data we already have so operators
     # can immediately see whether continuity was preserved across a restart.
@@ -3391,6 +3426,16 @@ async def _shutdown():
     await tracker.stop()
     await extra_tickers.stop()
     await fii_dii.stop()
+    for task_name in ("straddle_sampler_task", "poll_watchdog_task"):
+        task = globals().get(task_name)
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
     try:
         if client:
             client.close()

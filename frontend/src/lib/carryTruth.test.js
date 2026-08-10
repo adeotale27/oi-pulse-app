@@ -99,8 +99,10 @@ function buildDataTruth({ dataStatus, marketOpen, mode, snapshotTs }) {
   const asOfIso = snapshotTs || null;
   const dataDate = ds.data_date || null;
   const age = ds.cache_age_seconds;
+  const staleAfter =
+    Number(ds.stale_after_seconds) > 0 ? Number(ds.stale_after_seconds) : 90;
   let isLive = ds.is_live === true;
-  if (ds.is_live == null) isLive = kite && open && (age == null || age <= 45);
+  if (ds.is_live == null) isLive = kite && open && (age == null || age <= staleAfter);
   if (!asOfIso && !dataDate) return { mode: "NO_DATA", badge: "NO DATA", asOfLabel: "—" };
   if (!kite) return { mode: "OFFLINE", badge: "OFFLINE", asOfLabel: dataDate || "—" };
   if (isLive && open) return { mode: "LIVE", badge: "LIVE", asOfLabel: "data as of" };
@@ -168,5 +170,13 @@ assert(buildDataTruth({
   dataStatus: { is_live: false, stale_reason: "stale_cache", data_date: "2026-08-07", cache_age_seconds: 120 },
   marketOpen: true, mode: "kite", snapshotTs: "2026-08-07T10:00:00+05:30",
 }).mode === "STALE", "stale while open");
+assert(buildDataTruth({
+  dataStatus: { data_date: "2026-08-07", cache_age_seconds: 50, stale_after_seconds: 180 },
+  marketOpen: true, mode: "kite", snapshotTs: "2026-08-07T10:00:00+05:30",
+}).mode === "LIVE", "50s age live under 180s threshold");
+assert(buildDataTruth({
+  dataStatus: { data_date: "2026-08-07", cache_age_seconds: 200, stale_after_seconds: 180 },
+  marketOpen: true, mode: "kite", snapshotTs: "2026-08-07T10:00:00+05:30",
+}).mode === "STALE", "over threshold still stale");
 
 console.log("carryTruth.test.js: all assertions passed");
