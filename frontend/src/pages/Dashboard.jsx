@@ -7,6 +7,7 @@ import AlertsPanel from "@/components/AlertsPanel";
 import GuestBanner from "@/components/GuestBanner";
 import MarketStatusBanner from "@/components/MarketStatusBanner";
 import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
+import DeskStatusRail from "@/components/DeskStatusRail";
 import DataTruthStrip from "@/components/DataTruthStrip";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
@@ -45,17 +46,16 @@ import {
   pinIdFirst,
   loadTileOrder,
   saveTileOrder,
-  resetLayoutPrefs,
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen, ChevronLeft, X } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api } from "@/lib/api";
-import { isMarketQuiescent } from "@/lib/marketTimes";
+import { isMarketQuiescent, EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
@@ -234,6 +234,21 @@ export default function Dashboard() {
     } catch { /* noop */ }
     return true;
   });
+  const [headerRail, setHeaderRail] = useState(() => {
+    try {
+      const stored = localStorage.getItem("oiHeaderRail");
+      if (stored === "1" || stored === "0") return stored === "1";
+    } catch { /* noop */ }
+    return false;
+  });
+  const [slimStatusRail, setSlimStatusRail] = useState(() => {
+    try {
+      const stored = localStorage.getItem("oiSlimStatusRail");
+      if (stored === "1" || stored === "0") return stored === "1";
+    } catch { /* noop */ }
+    return false;
+  });
+  const infoTilesAutoOpenRef = useRef(null);
   const [rightPanelView, setRightPanelView] = useState(() => {
     try { return localStorage.getItem("rightPanelView") || "alerts"; } catch { return "alerts"; }
   });
@@ -299,6 +314,50 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem("oiInfoTilesOpen", infoTilesOpen ? "1" : "0"); } catch (_) { /* noop */ }
   }, [infoTilesOpen]);
+  useEffect(() => {
+    try { localStorage.setItem("oiHeaderRail", headerRail ? "1" : "0"); } catch (_) { /* noop */ }
+  }, [headerRail]);
+  useEffect(() => {
+    try { localStorage.setItem("oiSlimStatusRail", slimStatusRail ? "1" : "0"); } catch (_) { /* noop */ }
+  }, [slimStatusRail]);
+
+  // Weekday 15:15 IST — force-open holiday/FII/event tiles so next-day risk is visible.
+  useEffect(() => {
+    const check = () => {
+      try {
+        const parts = Object.fromEntries(
+          new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Asia/Kolkata",
+            weekday: "short",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }).formatToParts(new Date()).map((p) => [p.type, p.value]),
+        );
+        const wd = parts.weekday; // Mon..Sun
+        if (wd === "Sat" || wd === "Sun") return;
+        const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+        if (minutes < EVENT_WARNING_MINUTE) return;
+        const dayKey = `${parts.year}-${parts.month}-${parts.day}`;
+        if (infoTilesAutoOpenRef.current === dayKey) return;
+        let already = false;
+        try { already = localStorage.getItem("oiInfoTilesAutoOpenDay") === dayKey; } catch { /* noop */ }
+        if (already) {
+          infoTilesAutoOpenRef.current = dayKey;
+          return;
+        }
+        infoTilesAutoOpenRef.current = dayKey;
+        try { localStorage.setItem("oiInfoTilesAutoOpenDay", dayKey); } catch { /* noop */ }
+        setInfoTilesOpen(true);
+      } catch { /* noop */ }
+    };
+    check();
+    const id = setInterval(check, 30_000);
+    return () => clearInterval(id);
+  }, []);
   useEffect(() => {
     try { localStorage.setItem("rightPanelView", rightPanelView); } catch (_) { /* noop */ }
   }, [rightPanelView]);
@@ -423,20 +482,6 @@ export default function Dashboard() {
       saveTileOrder(next);
       return next;
     });
-  }, []);
-
-  const handleResetLayout = useCallback(() => {
-    resetLayoutPrefs();
-    setTabOrder([]);
-    setTileOrder([]);
-    setLayoutNonce((n) => n + 1);
-    try {
-      toast.success("Layout reset", {
-        description: "Tab order, tile order, and expiry list height restored.",
-      });
-    } catch {
-      /* noop */
-    }
   }, []);
 
   const openHolidaysTab = useCallback(() => setActiveTab("holidays"), []);
@@ -1398,18 +1443,39 @@ export default function Dashboard() {
           adminName={authState.admin_display_name}
         />
       )}
-      <DataTruthStrip
-        dataStatus={dataStatus}
-        marketOpen={status?.market?.is_market_open === true}
-        mode={status?.mode}
-        snapshotTs={current?.timestamp || dataStatus?.as_of}
-        emphasize={!!authState.is_guest}
-      />
-      <MarketStatusBanner
-        market={status?.market}
-        lastPulledAt={lastPulledAt}
-        dataDate={dataStatus?.data_date || status?.market?.session_anchor_date}
-      />
+      {slimStatusRail ? (
+        <DeskStatusRail
+          dataStatus={dataStatus}
+          marketOpen={status?.market?.is_market_open === true}
+          mode={status?.mode}
+          snapshotTs={current?.timestamp || dataStatus?.as_of}
+          market={status?.market}
+          lastPulledAt={lastPulledAt}
+          status={status}
+          isAdmin={!!authState.is_admin}
+          onOpenCreds={() => setCredsOpen(true)}
+        />
+      ) : (
+        <>
+          <DataTruthStrip
+            dataStatus={dataStatus}
+            marketOpen={status?.market?.is_market_open === true}
+            mode={status?.mode}
+            snapshotTs={current?.timestamp || dataStatus?.as_of}
+            emphasize={!!authState.is_guest}
+          />
+          <MarketStatusBanner
+            market={status?.market}
+            lastPulledAt={lastPulledAt}
+            dataDate={dataStatus?.data_date || status?.market?.session_anchor_date}
+          />
+          <KiteTokenBanner
+            status={status}
+            isAdmin={authState.is_admin}
+            onOpenCreds={() => setCredsOpen(true)}
+          />
+        </>
+      )}
       {authState.is_admin && (
         <AdminUploadAdvisor
           isAdmin
@@ -1417,11 +1483,6 @@ export default function Dashboard() {
           onOpenUpload={() => setUploadOpen(true)}
         />
       )}
-      <KiteTokenBanner
-        status={status}
-        isAdmin={authState.is_admin}
-        onOpenCreds={() => setCredsOpen(true)}
-      />
       <OvernightGapBrief indices={enabledIndices.length ? enabledIndices : INDICES} />
       <Header
         status={status}
@@ -1448,6 +1509,10 @@ export default function Dashboard() {
         onToggleDark={() => setDarkMode((v) => !v)}
         compact={compact}
         onToggleCompact={() => setCompact((v) => !v)}
+        headerRail={headerRail}
+        onToggleHeaderRail={() => setHeaderRail((v) => !v)}
+        slimStatusRail={slimStatusRail}
+        onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {
           // Clear warm caches then re-hydrate every enabled index after Fresh Pull.
@@ -1528,14 +1593,12 @@ export default function Dashboard() {
               onReorder={handleReorderTabs}
               onFavorite={handleFavoriteTab}
               onMove={handleMoveTab}
-              onResetLayout={handleResetLayout}
               marketOpen={status?.market?.is_market_open === true}
             />
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col px-2 pt-0 md:pt-0 sm:px-0">
-            {/* Desk chrome: tabs stay; info tiles collapse via a thin edge rail (same language as sidebar / right panel).
-                Closing tiles drops their row height so Positions / OI / CAS etc. rise into the freed space. */}
+            {/* Desk chrome: tabs + info tiles. Hide via subtle × on the tiles (no vertical rail). */}
             <div
               className={`hidden md:flex flex-col shrink-0 min-w-0 ${
                 infoTilesOpen ? "mb-2 sm:mb-3" : "mb-0"
@@ -1543,7 +1606,7 @@ export default function Dashboard() {
               data-testid="dashboard-chrome-row"
             >
               <div
-                className={`flex gap-0 flex-nowrap min-w-0 w-full ${
+                className={`flex gap-2 flex-nowrap min-w-0 w-full ${
                   infoTilesOpen ? "items-stretch" : "items-center"
                 }`}
               >
@@ -1555,25 +1618,12 @@ export default function Dashboard() {
                     onReorder={handleReorderTabs}
                     onFavorite={handleFavoriteTab}
                     onMove={handleMoveTab}
-                    onResetLayout={handleResetLayout}
                   />
                 </div>
 
-                {/* xl+: tiles share the tabs row — vertical rule + chevron flush left of Holiday */}
                 {infoTilesOpen ? (
-                  <div className="hidden xl:flex items-stretch shrink-0 relative z-30 overflow-visible">
-                    <button
-                      type="button"
-                      onClick={() => setInfoTilesOpen(false)}
-                      title="Hide info tiles — more room for charts & tables"
-                      aria-label="Hide info tiles"
-                      aria-expanded="true"
-                      data-testid="btn-toggle-info-tiles"
-                      className="group flex items-center justify-center w-4 shrink-0 self-stretch border-l border-slate-300 text-slate-400 hover:border-emerald-500 hover:bg-emerald-50/80 hover:text-emerald-700 transition-colors"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5 opacity-80 group-hover:opacity-100" />
-                    </button>
-                    <div className="pl-1.5 overflow-visible">
+                  <div className="hidden xl:flex items-start shrink-0 relative z-30 overflow-visible gap-1">
+                    <div className="overflow-visible">
                       <InfoTilesRow
                         order={tileOrder}
                         onReorder={handleReorderTiles}
@@ -1588,9 +1638,19 @@ export default function Dashboard() {
                         testId="dashboard-info-tiles"
                       />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setInfoTilesOpen(false)}
+                      title="Hide info tiles — more room for charts & tables"
+                      aria-label="Hide info tiles"
+                      aria-expanded="true"
+                      data-testid="btn-toggle-info-tiles"
+                      className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 ) : (
-                  /* Collapsed: chevron-only reopen — keep tabs row as short as a single tab line */
                   <button
                     type="button"
                     onClick={() => setInfoTilesOpen(true)}
@@ -1598,28 +1658,17 @@ export default function Dashboard() {
                     aria-label="Show info tiles"
                     aria-expanded="false"
                     data-testid="btn-toggle-info-tiles"
-                    className="shrink-0 inline-flex items-center justify-center h-7 w-7 ml-0.5 rounded-sm border border-transparent text-slate-400 hover:border-slate-200 hover:bg-emerald-50/80 hover:text-emerald-700 transition-colors"
+                    className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-sm text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
+                    Events
                   </button>
                 )}
               </div>
 
-              {/* Below xl: tiles on their own row so dropdowns aren’t clipped by tabs */}
               {infoTilesOpen && (
-                <div className="xl:hidden relative z-30 overflow-visible flex items-stretch gap-0 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setInfoTilesOpen(false)}
-                    title="Hide info tiles — more room for charts & tables"
-                    aria-label="Hide info tiles"
-                    aria-expanded="true"
-                    data-testid="btn-toggle-info-tiles-sm"
-                    className="group flex items-center justify-center w-4 shrink-0 self-stretch border-l border-slate-300 text-slate-400 hover:border-emerald-500 hover:bg-emerald-50/80 hover:text-emerald-700 transition-colors"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5 opacity-80 group-hover:opacity-100" />
-                  </button>
-                  <div className="pl-1.5 min-w-0 flex-1 overflow-visible">
+                <div className="xl:hidden relative z-30 overflow-visible flex items-start gap-1 mt-2">
+                  <div className="min-w-0 flex-1 overflow-visible">
                     <InfoTilesRow
                       order={tileOrder}
                       onReorder={handleReorderTiles}
@@ -1633,6 +1682,17 @@ export default function Dashboard() {
                       testId="dashboard-info-tiles-wrap"
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setInfoTilesOpen(false)}
+                    title="Hide info tiles — more room for charts & tables"
+                    aria-label="Hide info tiles"
+                    aria-expanded="true"
+                    data-testid="btn-toggle-info-tiles-sm"
+                    className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
             </div>

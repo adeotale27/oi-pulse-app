@@ -53,6 +53,12 @@ export default function Header({
   /** Parent (Dashboard) already resolved admin — don't wait on a second /auth/state. */
   assumedAdmin = false,
   publicAccessOpen = null,
+  /** Slim one-line index + ATM/VIX/GIFT rail instead of tall ticker tiles. */
+  headerRail = false,
+  onToggleHeaderRail,
+  /** Merge DataTruth / market / Kite banners into one slim bar. */
+  slimStatusRail = false,
+  onToggleSlimStatusRail,
 }) {
   const price = current?.price ?? 0;
   const atm = current?.atm ?? 0;
@@ -347,8 +353,8 @@ export default function Header({
           </div>
         </div>
 
-        {/* ATM / VIX / GIFT — only on wide screens so laptop/zoom keeps tickers readable */}
-        <div className="hidden 2xl:flex items-center gap-4 pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0">
+        {/* ATM / VIX / GIFT — always on in rail mode; otherwise only on wide screens */}
+        <div className={`${headerRail ? "flex" : "hidden 2xl:flex"} items-center gap-3 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
           <Metric label="ATM" value={atm.toLocaleString()} />
           <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} />
           <ExtraTickerCell
@@ -362,10 +368,10 @@ export default function Header({
           />
         </div>
 
-        {/* Index tiles — content-sized; leftover space stays empty (no stretch on zoom) */}
-        <div className="flex items-stretch gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden justify-start">
+        {/* Index tiles or slim rail chips */}
+        <div className={`flex items-center gap-2 flex-1 min-w-0 pl-2 lg:pl-3 border-l border-slate-200 dark:border-slate-700 overflow-hidden justify-start ${headerRail ? "" : "items-stretch"}`}>
           <TickerStrip
-            layout="header"
+            layout={headerRail ? "rail" : "header"}
             activeIndex={activeIndex}
             onSelectIndex={onSelectIndex}
             spotPrices={spotPrices}
@@ -485,6 +491,24 @@ export default function Header({
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 {darkMode ? "Light mode" : "Dark mode"}
               </DropdownMenuItem>
+              {typeof onToggleHeaderRail === "function" && (
+                <DropdownMenuItem
+                  data-testid="menu-toggle-header-rail"
+                  onSelect={(e) => { e.preventDefault(); onToggleHeaderRail(); }}
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  {headerRail ? "Index tiles (tall)" : "Index status rail (slim)"}
+                </DropdownMenuItem>
+              )}
+              {typeof onToggleSlimStatusRail === "function" && (
+                <DropdownMenuItem
+                  data-testid="menu-toggle-slim-status"
+                  onSelect={(e) => { e.preventDefault(); onToggleSlimStatusRail(); }}
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                  {slimStatusRail ? "Stacked status banners" : "One slim status bar"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 data-testid="menu-toggle-notifications"
                 onSelect={(e) => { e.preventDefault(); onToggleNotif?.(); }}
@@ -611,7 +635,8 @@ export default function Header({
         </div>
       </div>
 
-      {/* Laptop extras row: clock + ATM/VIX/GIFT when they do not fit the top row */}
+      {/* Laptop extras row: clock + ATM/VIX/GIFT when they do not fit the top row (skip in rail mode — already inline) */}
+      {!headerRail && (
       <div
         className="2xl:hidden px-3 sm:px-4 pb-2 flex items-center gap-3 flex-wrap border-t border-slate-100/80 dark:border-slate-800/80 pt-1.5"
         data-testid="header-secondary-row"
@@ -638,6 +663,7 @@ export default function Header({
           </div>
         )}
       </div>
+      )}
 
       {/* Tablet (md–lg): admin Tools row — phone uses the slim mobile header above */}
       {isAdmin && (

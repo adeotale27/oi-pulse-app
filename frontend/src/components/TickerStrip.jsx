@@ -4,8 +4,21 @@ import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 
 function fmtNum(v, dp = 2) {
-  if (v == null) return "—";
-  return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  if (v == null || Number.isNaN(Number(v))) return "—";
+  return Number(v).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+
+function pickLtp(live, rest) {
+  const liveN = live == null ? null : Number(live);
+  if (liveN != null && Number.isFinite(liveN) && liveN !== 0) return liveN;
+  const restN = rest == null ? null : Number(rest);
+  if (restN != null && Number.isFinite(restN) && restN !== 0) return restN;
+  return null;
+}
+
+function fmtLtp(v, dp = 2) {
+  if (v == null || Number.isNaN(Number(v)) || Number(v) === 0) return "—";
+  return fmtNum(v, dp);
 }
 
 // Per-index visual identity — matches the new Sidebar selector styling for
@@ -20,6 +33,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
   const [tickers, setTickers] = useState([]);
   const [loading, setLoading] = useState(true);
   const isHeader = layout === "header";
+  const isRail = layout === "rail";
 
   useEffect(() => {
     let cancelled = false;
@@ -48,9 +62,9 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
 
   const displayTickers = useMemo(() => {
     return tickers.map((t) => {
-      const ltp = spotPrices[t.index] ?? t.ltp;
-      const prevClose = t.prev_close || t.ltp || 0;
-      const change = ltp != null && prevClose != null ? ltp - prevClose : 0;
+      const ltp = pickLtp(spotPrices[t.index], t.ltp);
+      const prevClose = t.prev_close || (t.ltp && Number(t.ltp) !== 0 ? t.ltp : 0) || 0;
+      const change = ltp != null && prevClose ? ltp - prevClose : 0;
       const change_pct = prevClose ? (change / prevClose) * 100 : 0;
       return { ...t, ltp, change, change_pct };
     });
@@ -59,6 +73,50 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
   if (loading && !tickers.length) {
     return (
       <div className="flex items-center gap-2 text-[10px] text-slate-400 py-1">Loading tickers…</div>
+    );
+  }
+
+  // Slim status-rail: one line of index chips (no stacked tile cards).
+  if (isRail) {
+    return (
+      <div className="flex flex-nowrap items-center gap-1 min-w-0 overflow-x-auto" data-testid="ticker-strip">
+        {displayTickers.map((t) => {
+          const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
+          const up = t.change > 0;
+          const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
+          const toneCls = flat ? "text-slate-500" : up ? "text-emerald-600" : "text-rose-600";
+          const isActive = t.index === activeIndex;
+          const shortLabel =
+            t.index === "BANKNIFTY" ? "BANK" : t.index === "NIFTY" ? "NIFTY" : "SENSEX";
+          const ltpLabel = fmtLtp(t.ltp, 2);
+          return (
+            <button
+              key={t.index}
+              type="button"
+              onClick={() => onSelectIndex?.(t.index)}
+              data-testid={`ticker-${t.index}`}
+              title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
+              className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border text-[11px] font-mono-data tabular-nums shrink-0 transition-colors ${
+                isActive
+                  ? `${s.borderActive} bg-white shadow-sm`
+                  : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+              <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-500">{shortLabel}</span>
+              <span
+                className="font-semibold text-slate-900 dark:text-slate-100"
+                data-testid={`ticker-${t.index}-ltp`}
+              >
+                {ltpLabel}
+              </span>
+              <span className={`${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
+                {flat ? "0.00%" : `${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     );
   }
 
@@ -74,7 +132,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
       {displayTickers.map((t) => {
         const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
         const up = t.change > 0;
-        const flat = Math.abs(t.change) < 0.01;
+        const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
         const toneCls =
           flat ? "text-slate-500"
             : up ? "text-emerald-600"
@@ -87,6 +145,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const shortLabel =
           t.index === "BANKNIFTY" ? "BANK" : t.index === "NIFTY" ? "NIFTY" : "SENSEX";
         const useCompact = dense || isHeader;
+        const ltpLabel = fmtLtp(t.ltp, 2);
         return (
           <button
             key={t.index}
@@ -112,7 +171,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 <span className="truncate">{useCompact ? shortLabel : s.label}</span>
               </div>
               <div className={`text-[10px] font-mono-data tabular-nums shrink-0 ${toneCls}`} data-testid={`ticker-${t.index}-pct`}>
-                {t.change_pct > 0 ? "+" : ""}{fmtNum(t.change_pct, 2)}%
+                {flat ? "0.00%" : `${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%`}
               </div>
             </div>
             <div className={`mt-1 ${useCompact ? "space-y-0.5" : "flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3 sm:mt-1.5"}`}>
@@ -120,7 +179,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 className={`${useCompact ? "text-[11px]" : "text-base sm:text-sm"} font-mono-data font-semibold text-slate-900 dark:text-slate-100 tabular-nums leading-none`}
                 data-testid={`ticker-${t.index}-ltp`}
               >
-                {fmtNum(t.ltp, 2)}
+                {ltpLabel}
               </div>
               <div
                 className={`inline-flex items-center gap-1 font-mono-data tabular-nums leading-none ${toneCls} ${
@@ -130,7 +189,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               >
                 {!useCompact && <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />}
                 <span>
-                  {t.change > 0 ? "+" : ""}{fmtNum(t.change, 2)}
+                  {flat ? "—" : `${t.change > 0 ? "+" : ""}${fmtNum(t.change, 2)}`}
                 </span>
               </div>
             </div>
