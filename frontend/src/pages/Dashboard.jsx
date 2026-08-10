@@ -239,7 +239,8 @@ export default function Dashboard() {
       const stored = localStorage.getItem("oiHeaderRail");
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
-    return false;
+    // Default on: one slim index+ATM/VIX/GIFT rail (toggle off in View).
+    return true;
   });
   const [slimStatusRail, setSlimStatusRail] = useState(() => {
     try {
