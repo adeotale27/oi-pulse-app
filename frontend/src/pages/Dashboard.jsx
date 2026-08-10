@@ -865,13 +865,17 @@ export default function Dashboard() {
   }, [timeframe, activeIndex, selectedExpiry, expiryReady, loadOI]);
   useQuiescentAwarePolling(
     async () => {
-      // Only poll alerts when the alerts tab (or right-panel alerts) is relevant.
-      if (authState.is_admin || activeTab === "alerts" || rightPanelView === "alerts") {
+      // Avoid 5s spam when right panel merely defaults to "alerts" off-hours / guests.
+      const viewingAlerts =
+        activeTab === "alerts" || (showRightPanel && rightPanelView === "alerts");
+      const liveAdminWatch =
+        authState.is_admin && status?.market?.is_market_open === true;
+      if (viewingAlerts || liveAdminWatch) {
         await loadAlerts();
       }
     },
     5000,
-    [loadAlerts, authState.is_admin, activeTab, rightPanelView, status?.market?.is_market_open],
+    [loadAlerts, authState.is_admin, activeTab, rightPanelView, showRightPanel, status?.market?.is_market_open],
     { status, dedupeKey: "dash-alerts" },
   );
 
@@ -1598,18 +1602,15 @@ export default function Dashboard() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 min-h-0 flex flex-col px-2 pt-0 md:pt-0 sm:px-0">
-            {/* Desk chrome: tabs + info tiles. Hide via subtle × on the tiles (no vertical rail). */}
+            {/* Desk chrome: stable tabs row first; info tiles always on a second row
+                (avoids 1–2s stretch/reflow when tile APIs resolve). */}
             <div
               className={`hidden md:flex flex-col shrink-0 min-w-0 ${
-                infoTilesOpen ? "mb-2 sm:mb-3" : "mb-0"
+                infoTilesOpen ? "mb-2 sm:mb-3 gap-1.5" : "mb-0 gap-0"
               }`}
               data-testid="dashboard-chrome-row"
             >
-              <div
-                className={`flex gap-2 flex-nowrap min-w-0 w-full ${
-                  infoTilesOpen ? "items-stretch" : "items-center"
-                }`}
-              >
+              <div className="flex items-center gap-2 flex-nowrap min-w-0 w-full">
                 <div className="min-w-0 flex-1 flex items-center">
                   <OverflowTabBar
                     tabs={dashboardTabs}
@@ -1620,36 +1621,18 @@ export default function Dashboard() {
                     onMove={handleMoveTab}
                   />
                 </div>
-
                 {infoTilesOpen ? (
-                  <div className="hidden xl:flex items-start shrink-0 relative z-30 overflow-visible gap-1">
-                    <div className="overflow-visible">
-                      <InfoTilesRow
-                        order={tileOrder}
-                        onReorder={handleReorderTiles}
-                        onFavorite={handleFavoriteTile}
-                        onMove={handleMoveTile}
-                        isAdmin={!!authState.is_admin}
-                        showImpact={showImpactTile}
-                        activeIndex={activeIndex}
-                        onOpenHolidays={openHolidaysTab}
-                        onOpenIndexEvents={openIndexEventsTab}
-                        wide
-                        testId="dashboard-info-tiles"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setInfoTilesOpen(false)}
-                      title="Hide info tiles — more room for charts & tables"
-                      aria-label="Hide info tiles"
-                      aria-expanded="true"
-                      data-testid="btn-toggle-info-tiles"
-                      className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInfoTilesOpen(false)}
+                    title="Hide info tiles — more room for charts & tables"
+                    aria-label="Hide info tiles"
+                    aria-expanded="true"
+                    data-testid="btn-toggle-info-tiles"
+                    className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -1667,7 +1650,10 @@ export default function Dashboard() {
               </div>
 
               {infoTilesOpen && (
-                <div className="xl:hidden relative z-30 overflow-visible flex items-start gap-1 mt-2">
+                <div
+                  className="relative z-30 overflow-visible flex items-start gap-1 min-h-[58px]"
+                  data-testid="dashboard-info-tiles-wrap"
+                >
                   <div className="min-w-0 flex-1 overflow-visible">
                     <InfoTilesRow
                       order={tileOrder}
@@ -1679,20 +1665,10 @@ export default function Dashboard() {
                       activeIndex={activeIndex}
                       onOpenHolidays={openHolidaysTab}
                       onOpenIndexEvents={openIndexEventsTab}
-                      testId="dashboard-info-tiles-wrap"
+                      wide
+                      testId="dashboard-info-tiles"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setInfoTilesOpen(false)}
-                    title="Hide info tiles — more room for charts & tables"
-                    aria-label="Hide info tiles"
-                    aria-expanded="true"
-                    data-testid="btn-toggle-info-tiles-sm"
-                    className="mt-0.5 inline-flex items-center justify-center h-6 w-6 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               )}
             </div>
@@ -1701,11 +1677,13 @@ export default function Dashboard() {
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2">
+                {isMobile && (
                 <MobileMarketStrip
                   activeIndex={activeIndex}
                   onSelectIndex={setActiveIndex}
                   spotPrices={liveSpotPrices}
                 />
+                )}
                 {(dayBiasSummary || changeSummary) && (
                   <SentimentBar
                     ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}

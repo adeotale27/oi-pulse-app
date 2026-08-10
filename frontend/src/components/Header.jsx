@@ -89,7 +89,8 @@ export default function Header({
       }
     };
     useQuiescentAwarePolling(load, 60_000, [], {
-      immediate: true,
+      // Dashboard already owns /auth/state — skip duplicate mount hit when admin is known.
+      immediate: !assumedAdmin,
       allowDuringQuiescent: true,
       dedupeKey: "header-auth",
     });
