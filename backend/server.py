@@ -1130,6 +1130,8 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown index: {i}")
     if "alert_enabled_indices" in patch:
+        if not patch["alert_enabled_indices"]:
+            raise HTTPException(400, "At least one alert index is required")
         for i in patch["alert_enabled_indices"]:
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown alert index: {i}")
@@ -2063,12 +2065,22 @@ async def get_alerts(limit: int = 50):
 
     Uses session_anchor_date so weekend/holiday views stay on the last session,
     and a new trading day no longer surfaces prior-day alerts.
+    Filtered to the current admin alert-focus indices when set.
     """
     try:
         anchor = session_anchor_date()
         start_utc, _ = session_window_utc(anchor)
+        query = {"created_at": {"$gte": start_utc.isoformat()}}
+        try:
+            if tracker:
+                tracker._refresh_alert_indices_for_today()
+                focus = tracker.settings.get("alert_enabled_indices") or []
+                if focus:
+                    query["index"] = {"$in": list(focus)}
+        except Exception:
+            pass
         docs = await db.alerts.find(
-            {"created_at": {"$gte": start_utc.isoformat()}},
+            query,
             {"_id": 0},
         ).sort("created_at", -1).to_list(length=limit)
     except Exception:
@@ -3039,6 +3051,15 @@ async def telegram_huge_shift(
     (blocks fully anonymous spam). Rate-limited by middleware."""
     if not _notifier.is_configured():
         return {"ok": False, "reason": "telegram_not_configured"}
+    # Respect admin Alert Settings index focus (same gate as OI reversal alerts).
+    try:
+        if tracker:
+            tracker._refresh_alert_indices_for_today()
+            focus = tracker.settings.get("alert_enabled_indices") or []
+            if payload.index not in focus:
+                return {"ok": False, "reason": "index_not_in_alert_focus"}
+    except Exception:
+        pass
     try:
         await _notifier.alert_huge_shift(payload.model_dump())
     except Exception as e:

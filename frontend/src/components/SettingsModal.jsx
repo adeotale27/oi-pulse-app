@@ -282,6 +282,7 @@ export default function SettingsModal({
                 <InfoTip title="Weekday alert defaults">
                   Defaults: Mon/Tue/Fri → NIFTY · Wed/Thu → SENSEX (weekly expiry focus).
                   Changing this saves an override for today only — resets to weekday default on the next day.
+                  Tracked indices may still load OI for other indices; toast / sound / Telegram alerts fire only for the checked focus list.
                 </InfoTip>
               </Label>
               <div className="text-[10px] text-slate-500 mb-2">

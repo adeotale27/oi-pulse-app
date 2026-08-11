@@ -544,6 +544,17 @@ export default function Dashboard() {
   const [expiryReady, setExpiryReady] = useState(false);
   const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
   const [enabledIndices, setEnabledIndices] = useState(INDICES);
+  // Admin Alert Settings focus — OI toasts/sounds only for these indices.
+  // OI data may still poll for other enabled_indices; alerts must not.
+  const [alertEnabledIndices, setAlertEnabledIndices] = useState(["NIFTY"]);
+  const alertEnabledRef = useRef(alertEnabledIndices);
+  useEffect(() => {
+    alertEnabledRef.current = alertEnabledIndices;
+  }, [alertEnabledIndices]);
+  const indexInAlertFocus = useCallback((idx) => {
+    const list = alertEnabledRef.current;
+    return Array.isArray(list) && list.length > 0 && list.includes(idx);
+  }, []);
   const [oiLoading, setOiLoading] = useState(false);
   const [showStrikeRange, setShowStrikeRange] = useState(false);
   const [showWriterDefense, setShowWriterDefense] = useState(true);
@@ -747,8 +758,8 @@ export default function Dashboard() {
     }
   };
 
-  // Poll alerts — toast/sound for every new backend alert, regardless of which
-  // index tile or dashboard tab is open (Positions, Straddle, etc.).
+  // Poll alerts — toast/sound for new backend alerts on admin alert-focus indices
+  // only, regardless of which dashboard tab is open (Positions, Straddle, etc.).
   const loadAlerts = useCallback(async () => {
     try {
       const data = await fetchAlerts();
@@ -767,6 +778,9 @@ export default function Dashboard() {
             if (fresh.length >= 5) break;
           }
           for (const a of fresh.reverse()) {
+            // Defense in depth: never toast an index outside admin alert focus
+            // (e.g. SENSEX still polling while only NIFTY is selected for alerts).
+            if (!indexInAlertFocus(a.index)) continue;
             const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
             const toastFn = isBullish ? toast.success : toast.error;
             toastFn(a.message || `OI alert · ${a.index}`, {
@@ -781,7 +795,7 @@ export default function Dashboard() {
             playForAlert("reversal");
             push(`OI Reversal · ${a.index}`, a.direction || a.message || "OI alert");
           }
-          if (fresh.length) {
+          if (fresh.some((a) => indexInAlertFocus(a.index))) {
             setFlash(true);
             setTimeout(() => setFlash(false), 1800);
           }
@@ -790,7 +804,7 @@ export default function Dashboard() {
     } catch (e) {
       console.error("loadAlerts failed", e);
     }
-  }, [push]);
+  }, [push, indexInAlertFocus]);
 
   // Keep Alerts UI visibility in a ref so the poller does not remount on tab switches.
   const alertViewRef = useRef({ activeTab, rightPanelView, showRightPanel });
@@ -838,6 +852,9 @@ export default function Dashboard() {
         if (Array.isArray(res.data.enabled_indices) && res.data.enabled_indices.length) {
           setEnabledIndices(res.data.enabled_indices);
         }
+        if (Array.isArray(res.data.alert_enabled_indices) && res.data.alert_enabled_indices.length) {
+          setAlertEnabledIndices(res.data.alert_enabled_indices);
+        }
         if (typeof res.data.show_strike_range === "boolean") {
           setShowStrikeRange(res.data.show_strike_range);
         }
@@ -873,6 +890,9 @@ export default function Dashboard() {
       }
       if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
         setEnabledIndices(d.enabled_indices);
+      }
+      if (Array.isArray(d.alert_enabled_indices) && d.alert_enabled_indices.length) {
+        setAlertEnabledIndices(d.alert_enabled_indices);
       }
       if (Array.isArray(d.visible_pages)) {
         setVisiblePages(d.visible_pages);
@@ -1223,6 +1243,8 @@ export default function Dashboard() {
     // Fire local alert ONLY when the market is currently open — no more stale
     // bullish / bearish toasts after 3:30 PM IST.
     if (status?.market && status.market.is_market_open === false) return;
+    // Admin Alert Settings: only alert for selected indices (OI may still load others).
+    if (!indexInAlertFocus(activeIndex)) return;
     // Fire local alert if intensity crosses threshold and cooldown has elapsed.
     const now = Date.now();
     if (
@@ -1289,10 +1311,12 @@ export default function Dashboard() {
         });
       } catch (_) { /* noop */ }
     }
-  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push, changeAlertPct, previous, status?.market, pushActivity]);
+  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push, changeAlertPct, previous, status?.market, pushActivity, indexInAlertFocus]);
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
   const handleHugeShift = useCallback((shift) => {
+    // Admin alert focus first — viewing SENSEX must not alert if only NIFTY is selected.
+    if (!indexInAlertFocus(shift.index)) return;
     // Silence shifts for indices other than the currently viewed one.
     if (shift.index !== activeIndex) return;
     // Bookmark the live snapshot time so Replay can jump here.
@@ -1348,7 +1372,7 @@ export default function Dashboard() {
         contributing: shift.contributing || [],
       }).catch(() => { /* silent — user already sees the modal */ });
     } catch (_) { /* noop */ }
-  }, [activeIndex, hugeShift, siren, push, pushActivity, changeBundle, current?.timestamp]);
+  }, [activeIndex, hugeShift, siren, push, pushActivity, changeBundle, current?.timestamp, indexInAlertFocus]);
 
   const dismissHugeShift = useCallback(() => {
     setHugeShift(null);
@@ -1522,18 +1546,23 @@ export default function Dashboard() {
     }
   }, [filteredCurrent, previous, timeframe, activeIndex, oiSettings, pushActivity]);
 
-  // Also log backend reversal alerts for the active index into the activity feed.
+  // Also log backend reversal alerts for alert-focus indices into the activity feed.
   useEffect(() => {
     if (!alerts.length) return;
     const a = alerts[0];
-    if (a.index !== activeIndex) return;
+    if (!indexInAlertFocus(a.index)) return;
     const bullish = a.direction?.toLowerCase().includes("bullish");
     pushActivity({
       type: bullish ? "reversal-bullish" : "reversal-bearish",
       index: a.index, at: a.created_at,
       message: a.direction || a.message || "OI reversal",
     });
-  }, [alerts, activeIndex, pushActivity]);
+  }, [alerts, pushActivity, indexInAlertFocus]);
+
+  const focusedAlerts = useMemo(
+    () => (alerts || []).filter((a) => indexInAlertFocus(a.index)),
+    [alerts, alertEnabledIndices, indexInAlertFocus],
+  );
 
   return (
     <div className="oi-shell relative h-screen flex flex-col overflow-hidden">
@@ -2207,7 +2236,7 @@ export default function Dashboard() {
                   {(authState.is_admin || visiblePages.includes("alerts")) && (
                     <TabsContent value="alerts" className="mt-0">
                     <div className="text-sm font-semibold mb-2">All Alerts</div>
-                    <AlertsPanel alerts={alerts} onClear={handleClearAlerts} activeIndex={activeIndex} canClear={authState.is_admin} />
+                    <AlertsPanel alerts={focusedAlerts} onClear={handleClearAlerts} activeIndex={activeIndex} canClear={authState.is_admin} />
                   </TabsContent>
                   )}
 
@@ -2304,7 +2333,7 @@ export default function Dashboard() {
                       onClose={() => setRightPanelOpen(false)}
                       visiblePages={visiblePages}
                       isAdmin={authState.is_admin}
-                      alerts={alerts}
+                      alerts={focusedAlerts}
                       onClearAlerts={handleClearAlerts}
                       canClearAlerts={authState.is_admin}
                       activeIndex={activeIndex}
@@ -2397,7 +2426,7 @@ export default function Dashboard() {
                     onClose={() => setMobilePanelOpen(false)}
                     visiblePages={visiblePages}
                     isAdmin={authState.is_admin}
-                    alerts={alerts}
+                    alerts={focusedAlerts}
                     onClearAlerts={handleClearAlerts}
                     canClearAlerts={authState.is_admin}
                     activeIndex={activeIndex}
@@ -2494,6 +2523,9 @@ export default function Dashboard() {
           }
           if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
             setEnabledIndices(settings.enabled_indices);
+          }
+          if (Array.isArray(settings.alert_enabled_indices) && settings.alert_enabled_indices.length) {
+            setAlertEnabledIndices(settings.alert_enabled_indices);
           }
           if (typeof settings.show_strike_range === "boolean") {
             setShowStrikeRange(settings.show_strike_range);
