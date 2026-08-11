@@ -187,6 +187,8 @@ class OITracker:
         self.running = False
         self._task: Optional[asyncio.Task] = None
         self.last_error: Optional[str] = None
+        self.kite_user_id: Optional[str] = None
+        self.kite_maintenance: Optional[Dict[str, Any]] = None
         self.last_snapshot: Dict[str, Dict[str, Any]] = {}
         self.last_updated_at: Optional[str] = None
         self.settings: Dict[str, Any] = dict(DEFAULT_SETTINGS)
@@ -459,12 +461,28 @@ class OITracker:
                 logger.warning("Migrated legacy plaintext Kite credentials to encrypted storage.")
             except Exception as e:
                 logger.warning(f"Failed to migrate plaintext Kite credentials: {e}")
+        if doc and doc.get("kite_user_id"):
+            self.kite_user_id = str(doc.get("kite_user_id"))
         if api_key and access_token:
             try:
                 self.kite_service = KiteService(api_key, access_token)
                 self.mode = "kite"
                 self.last_error = None
                 logger.info("KiteService initialized from stored credentials.")
+                # Refresh profile identity when missing (admin UI shows user id).
+                if not self.kite_user_id:
+                    try:
+                        profile = self.kite_service.kite.profile()
+                        uid = profile.get("user_id") if isinstance(profile, dict) else None
+                        if uid:
+                            self.kite_user_id = str(uid)
+                            await self.db.credentials.update_one(
+                                {"_id": "kite"},
+                                {"$set": {"kite_user_id": self.kite_user_id}},
+                                upsert=True,
+                            )
+                    except Exception as e:
+                        logger.warning("kite profile bootstrap failed: %s", e)
                 return True
             except Exception as e:
                 self.last_error = f"Kite init failed: {e}"
@@ -493,18 +511,24 @@ class OITracker:
             if "token" in msg or "api_key" in msg or "signature" in msg:
                 hint = " (Tip: access_token expires every trading day around 6 AM IST — regenerate via the Kite login flow.)"
             raise RuntimeError(f"{type(e).__name__}: {e}{hint}")
+        uid = None
+        if isinstance(profile, dict) and profile.get("user_id"):
+            uid = str(profile.get("user_id"))
         await self.db.credentials.update_one(
             {"_id": "kite"},
             {"$set": {
                 "api_key_enc": _encrypt_secret(api_key),
                 "access_token_enc": _encrypt_secret(access_token),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
+                **({"kite_user_id": uid} if uid else {}),
             }, "$unset": {"api_key": "", "access_token": ""}},
             upsert=True,
         )
         self.kite_service = svc
         self.mode = "kite"
         self.last_error = None
+        self.kite_user_id = uid or self.kite_user_id
+        self.kite_maintenance = None
         try:
             await self.seed_default_expiries()
         except Exception as e:
@@ -1137,6 +1161,7 @@ class OITracker:
         )
         kite_ok = self.mode == "kite" and self.kite_service is not None and not token_bad
         last_ok = self._last_successful_poll_at.isoformat() if self._last_successful_poll_at else None
+        maint = self.kite_maintenance if isinstance(self.kite_maintenance, dict) else None
         return {
             "running": self.running,
             "mode": self.mode,
@@ -1147,6 +1172,8 @@ class OITracker:
             "kite_ok": kite_ok,
             # Missing credentials → has_kite_credentials=false. Token death only.
             "kite_token_issue": bool(token_bad),
+            "kite_user_id": self.kite_user_id,
+            "kite_maintenance": maint,
             "poll_interval_seconds": poll_interval_seconds,
             "stale_after_seconds": self.stale_after_seconds(),
             "market": ms,

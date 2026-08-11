@@ -116,6 +116,12 @@ export default function Header({
   if (devForce) {
     try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }
+  // Admin-only: when Kite is live, show the connected Zerodha user id on the button.
+  const kiteBtnLabel =
+    isAdmin && status?.kite_user_id ? String(status.kite_user_id) : "Kite API";
+  const kiteBtnTitle = isAdmin && status?.kite_user_id
+    ? `Kite live as ${status.kite_user_id} — open credentials`
+    : "Connect / refresh Kite API credentials";
 
   // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
   // to avoid duplicate network requests across components.
@@ -346,9 +352,9 @@ export default function Header({
             <Settings2 className="w-4 h-4 mr-1.5" />
             Alert settings
           </Button>
-          <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
+          <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className="w-4 h-4 mr-1.5" />
-            Kite API
+            {kiteBtnLabel}
           </Button>
           <Button
             data-testid="btn-mobile-fresh-pull"
@@ -690,9 +696,10 @@ export default function Header({
               variant="outline" size="sm"
               className="rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
               onClick={onOpenCreds}
+              title={kiteBtnTitle}
             >
               <KeyRound className="w-4 h-4 mr-1.5" />
-              Kite API
+              {kiteBtnLabel}
             </Button>
           </div>
           )}
@@ -770,9 +777,9 @@ export default function Header({
             <Settings2 className="w-4 h-4 mr-1.5" />
             Alert settings
           </Button>
-          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds}>
+          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className="w-4 h-4 mr-1.5" />
-            Kite API
+            {kiteBtnLabel}
           </Button>
           <Button
             data-testid="btn-tablet-fresh-pull"

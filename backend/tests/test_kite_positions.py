@@ -74,12 +74,16 @@ def test_open_position_net_qty_preserved():
     assert int(merged[0]["quantity"]) == -325
 
 
-def test_day_only_mis_row_kept():
-    day = [_row(product="MIS", quantity=-75, overnight_quantity=0, buy_quantity=0, sell_quantity=75)]
-    merged = merge_kite_net_day([], day)
+def test_merge_tolerates_shadowed_net_float():
+    """Regression: margins code once overwrote positions net with equity float → 500."""
+    day = [_row(quantity=-50, buy_quantity=0, sell_quantity=50)]
+    # Float net must not TypeError; treated as empty net so day-only rows still merge.
+    merged = merge_kite_net_day(12345.67, day)
     assert len(merged) == 1
-    assert int(merged[0]["quantity"]) == -75
-    assert merged[0]["_source"] == "day"
+    assert int(merged[0]["quantity"]) == -50
+    assert merge_kite_net_day(None, None) == []
+    assert merge_kite_net_day("bad", []) == []
+
 
 
 def test_booked_pnl_exited_uses_buy_sell_value():

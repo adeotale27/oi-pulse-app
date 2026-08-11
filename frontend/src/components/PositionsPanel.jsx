@@ -310,6 +310,9 @@ export default function PositionsPanel({
         || /not connected|connect kite|tokenexception|invalid token|api_key|unauthorized|forbidden/i.test(
           String(data.error || ""),
         );
+      const maintenance =
+        data.maintenance === true
+        || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""));
       // Keep last good book on transient Kite blips — do not wipe the table.
       if (next.length > 0 || !data.error || hard) {
         setPositions(next);
@@ -321,7 +324,7 @@ export default function PositionsPanel({
       if (data.error) {
         setError(data.error);
         // Soft only when API explicitly marks transient; never treat missing flag as hard.
-        setErrorHard(hard);
+        setErrorHard(hard && !maintenance);
       } else {
         setError(null);
         setErrorHard(false);
@@ -938,7 +941,11 @@ export default function PositionsPanel({
         >
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span className="flex-1 min-w-0">
-            {errorHard ? error : `Temporary Kite hiccup — keeping last book. ${error}`}
+            {errorHard
+              ? error
+              : /zerodha maintenance|under maintenance/i.test(String(error || ""))
+                ? error
+                : `Temporary Kite hiccup — keeping last book. ${error}`}
           </span>
           {errorHard && typeof onOpenKite === "function" && (
             <Button
@@ -976,8 +983,10 @@ export default function PositionsPanel({
             stats.exitedCount > 0
               ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
               : brokerage?.charges_total != null
-                ? `After charges ₹ ${fmt(stats.netPnl - brokerage.charges_total, 0)}`
-                : "Open + booked exits"
+                ? `After charges ₹ ${fmt(stats.netPnl - Number(brokerage.charges_total || 0), 0)}`
+                : brokerage?.error
+                  ? "Charges temporarily unavailable"
+                  : "Open + booked exits"
           }
           tip={(
             <div className="space-y-1.5">

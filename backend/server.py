@@ -629,12 +629,31 @@ async def root():
 
 @api_router.get("/status")
 async def get_status(request: Request):
+    # Best-effort bulletin probe (cached, non-blocking) so maintenance surfaces in-app.
+    async def _probe_bulletin():
+        try:
+            from kite_maintenance import fetch_bulletin_notice, merge_maintenance
+
+            bulletin = await asyncio.to_thread(fetch_bulletin_notice)
+            tracker.kite_maintenance = merge_maintenance(
+                tracker.kite_maintenance,
+                bulletin=bulletin,
+            )
+        except Exception:
+            pass
+
+    try:
+        asyncio.create_task(_probe_bulletin())
+    except Exception:
+        pass
     status = await tracker.get_status()
     # Guests / anonymous never receive raw Kite exception text (may contain key fragments).
     if not await _is_admin_request(request):
         status = dict(status)
         status["last_error"] = _sanitize_public_error(status.get("last_error"))
         status.pop("metrics", None)
+        # Kite user id is admin-only (shows on Kite API button).
+        status.pop("kite_user_id", None)
     return status
 
 
@@ -701,6 +720,7 @@ async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(requ
     if payload.remember is not False:
         enc_secret = _fernet().encrypt(payload.api_secret.encode()).decode()
         enc_key = _fernet().encrypt(payload.api_key.encode()).decode()
+        uid = data.get("user_id")
         await db.credentials.update_one(
             {"_id": "kite"},
             {
@@ -708,11 +728,14 @@ async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(requ
                     "api_secret_enc": enc_secret,
                     "api_key_enc": enc_key,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
+                    **({"kite_user_id": str(uid)} if uid else {}),
                 },
                 "$unset": {"api_key": "", "access_token": ""},
             },
             upsert=True,
         )
+    if data.get("user_id"):
+        tracker.kite_user_id = str(data.get("user_id"))
     return {"ok": True, "mode": tracker.mode, "user_id": data.get("user_id"), "remembered": payload.remember is not False}
 
 
@@ -853,6 +876,16 @@ async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_a
         await tracker.set_credentials(api_key, access_token)
     except Exception as e:
         raise HTTPException(400, str(e))
+    if data.get("user_id"):
+        tracker.kite_user_id = str(data.get("user_id"))
+        try:
+            await db.credentials.update_one(
+                {"_id": "kite"},
+                {"$set": {"kite_user_id": tracker.kite_user_id}},
+                upsert=True,
+            )
+        except Exception:
+            pass
     return {"ok": True, "mode": tracker.mode, "user_id": data.get("user_id")}
 
 
@@ -3251,15 +3284,37 @@ async def get_positions(_who: str = Depends(require_desk_user)):
         )
         if tokenish:
             tracker.last_error = msg
+        try:
+            from kite_maintenance import notice_from_error, merge_maintenance
+
+            note = notice_from_error(msg)
+            if note:
+                tracker.kite_maintenance = merge_maintenance(
+                    tracker.kite_maintenance, api_error=msg
+                )
+            elif not tokenish:
+                # Successful non-maintenance path clears sticky API maintenance later.
+                pass
+        except Exception:
+            pass
+        maint = tracker.kite_maintenance if isinstance(tracker.kite_maintenance, dict) else None
+        err_out = f"Kite error: {msg}"
+        if maint and maint.get("active") and maint.get("message"):
+            err_out = f"Zerodha maintenance: {maint.get('message')}"
         return {
             "mode": tracker.mode,
             "positions": [],
             "funds": None,
-            "error": f"Kite error: {msg}",
+            "error": err_out,
             "kite_connected": True,
             "transient": not tokenish,
             "token_issue": tokenish,
+            "maintenance": bool(maint and maint.get("active")),
         }
+
+    # Successful book fetch clears sticky API maintenance flags.
+    if isinstance(tracker.kite_maintenance, dict) and tracker.kite_maintenance.get("source") == "kite_api":
+        tracker.kite_maintenance = None
 
     # Read-only funds snapshot (never places trades).
     funds = None
@@ -3276,13 +3331,14 @@ async def get_positions(_who: str = Depends(require_desk_user)):
             eq = (margins or {}).get("equity") or {}
         avail = eq.get("available") or {}
         util = eq.get("utilised") or {}
-        net = eq.get("net")
-        if net is None:
-            net = avail.get("live_balance")
-        if net is None:
-            net = avail.get("cash")
+        # IMPORTANT: never reuse the name `net` — that holds positions().net above.
+        funds_net = eq.get("net")
+        if funds_net is None:
+            funds_net = avail.get("live_balance")
+        if funds_net is None:
+            funds_net = avail.get("cash")
         funds = {
-            "net": net,
+            "net": funds_net,
             "cash": avail.get("cash"),
             "live_balance": avail.get("live_balance"),
             "opening_balance": avail.get("opening_balance"),
@@ -3303,7 +3359,19 @@ async def get_positions(_who: str = Depends(require_desk_user)):
 
     # Net quantity is authoritative for open vs exited. Day rows only enrich
     # buy/sell stats — never resurrect a flat net as an open leg.
-    merged = merge_kite_net_day(net, day)
+    try:
+        merged = merge_kite_net_day(net, day)
+    except Exception as e:
+        logger.exception("positions merge failed: %s", e)
+        return {
+            "mode": tracker.mode,
+            "positions": [],
+            "funds": funds,
+            "error": f"Positions merge error: {type(e).__name__}: {e}",
+            "kite_connected": True,
+            "transient": True,
+            "token_issue": False,
+        }
 
     out = []
     for p in merged:

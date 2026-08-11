@@ -12,6 +12,7 @@ import DataTruthStrip from "@/components/DataTruthStrip";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
 import KiteTokenBanner from "@/components/KiteTokenBanner";
+import KiteMaintenanceBanner from "@/components/KiteMaintenanceBanner";
 import StrikeTable from "@/components/StrikeTable";
 import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
@@ -1488,6 +1489,7 @@ export default function Dashboard() {
           />
         </>
       )}
+      <KiteMaintenanceBanner status={status} />
       {authState.is_admin && (
         <AdminUploadAdvisor
           isAdmin

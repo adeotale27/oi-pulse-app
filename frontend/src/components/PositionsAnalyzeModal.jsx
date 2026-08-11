@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   X,
   LineChart,
@@ -49,7 +49,12 @@ function PayoffSvg({
   sd = null,
   width = 640,
   height = 300,
+  onPickSpot = null,
 }) {
+  const svgRef = useRef(null);
+  const [hover, setHover] = useState(null); // { spot, expiry, scenario, x, y }
+  const [pinned, setPinned] = useState(null);
+
   if (!spots?.length) {
     return (
       <div className="h-[280px] flex items-center justify-center text-xs text-slate-400">
@@ -88,102 +93,208 @@ function PayoffSvg({
       ].filter((d) => d.x >= xMin && d.x <= xMax)
     : [];
 
+  const readAt = (clientX) => {
+    const el = svgRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const svgX = ((clientX - rect.left) / rect.width) * width;
+    if (svgX < pad.l || svgX > width - pad.r) return null;
+    const t = (svgX - pad.l) / (w || 1);
+    const sx = xMin + t * (xMax - xMin);
+    const exp = interpAt(spots, expiryPnl, sx);
+    const sce = interpAt(spots, targetPnl, sx);
+    return {
+      spot: sx,
+      expiry: exp,
+      scenario: sce,
+      x: xScale(sx),
+      y: yScale(sce ?? exp ?? 0),
+    };
+  };
+
+  const active = hover || pinned;
+
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" data-testid="payoff-svg">
-      <defs>
-        <linearGradient id="oiPut" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#10b981" stopOpacity="0.05" />
-        </linearGradient>
-        <linearGradient id="oiCall" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.05" />
-        </linearGradient>
-      </defs>
+    <div className="relative" data-testid="payoff-chart-wrap">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full h-auto cursor-crosshair select-none"
+        data-testid="payoff-svg"
+        onMouseMove={(e) => {
+          const next = readAt(e.clientX);
+          setHover(next);
+        }}
+        onMouseLeave={() => setHover(null)}
+        onClick={(e) => {
+          const next = readAt(e.clientX);
+          if (!next) return;
+          setPinned(next);
+          if (typeof onPickSpot === "function") onPickSpot(Math.round(next.spot));
+        }}
+      >
+        <defs>
+          <linearGradient id="oiPut" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0.05" />
+          </linearGradient>
+          <linearGradient id="oiCall" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
 
-      {oiBars.map((b) => {
-        const cx = xScale(b.strike);
-        if (cx < pad.l || cx > width - pad.r) return null;
-        const ceH = b.ce * barMaxH;
-        const peH = b.pe * barMaxH;
-        return (
-          <g key={`oi-${b.strike}`}>
-            <rect x={cx - barW - 0.5} y={height - pad.b - ceH} width={barW} height={ceH} fill="url(#oiCall)" />
-            <rect x={cx + 0.5} y={height - pad.b - peH} width={barW} height={peH} fill="url(#oiPut)" />
+        {oiBars.map((b) => {
+          const cx = xScale(b.strike);
+          if (cx < pad.l || cx > width - pad.r) return null;
+          const ceH = b.ce * barMaxH;
+          const peH = b.pe * barMaxH;
+          return (
+            <g key={`oi-${b.strike}`}>
+              <rect x={cx - barW - 0.5} y={height - pad.b - ceH} width={barW} height={ceH} fill="url(#oiCall)" />
+              <rect x={cx + 0.5} y={height - pad.b - peH} width={barW} height={peH} fill="url(#oiPut)" />
+            </g>
+          );
+        })}
+
+        <line x1={pad.l} x2={width - pad.r} y1={zeroY} y2={zeroY} stroke="#e2e8f0" strokeWidth="1.25" />
+
+        {sdLines.map((d) => (
+          <g key={d.label}>
+            <line
+              x1={xScale(d.x)}
+              x2={xScale(d.x)}
+              y1={pad.t}
+              y2={height - pad.b}
+              stroke={d.color}
+              strokeWidth="1"
+              strokeDasharray="2 4"
+            />
+            <text x={xScale(d.x) + 3} y={pad.t + 10} fill={d.color} style={{ fontSize: 9 }}>
+              {d.label}
+            </text>
           </g>
-        );
-      })}
+        ))}
 
-      <line x1={pad.l} x2={width - pad.r} y1={zeroY} y2={zeroY} stroke="#e2e8f0" strokeWidth="1.25" />
+        <line
+          x1={spotX}
+          x2={spotX}
+          y1={pad.t}
+          y2={height - pad.b}
+          stroke="#059669"
+          strokeWidth="1.5"
+          strokeDasharray="5 4"
+        />
+        {tgtX != null && Math.abs((targetSpot || 0) - spot) > 0.5 && (
+          <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#0f766e" strokeWidth="1.75" />
+        )}
+        <path d={pathOf(expiryPnl)} fill="none" stroke="#be123c" strokeWidth="2.25" />
+        <path d={pathOf(targetPnl)} fill="none" stroke="#0f766e" strokeWidth="2.25" />
+        <text x={spotX + 5} y={pad.t + 12} fill="#047857" style={{ fontSize: 10, fontWeight: 600 }}>
+          Spot {Math.round(spot)}
+        </text>
+        {projected != null && tgtX != null && (
+          <g>
+            <rect
+              x={Math.min(tgtX + 6, width - pad.r - 128)}
+              y={yScale(projected) - 20}
+              width={122}
+              height={18}
+              rx="3"
+              fill="#ecfdf5"
+              stroke="#059669"
+            />
+            <text
+              x={Math.min(tgtX + 10, width - pad.r - 124)}
+              y={yScale(projected) - 7}
+              fill="#065f46"
+              style={{ fontSize: 10, fontWeight: 600 }}
+            >
+              At target {fmt(projected, 0)}
+            </text>
+          </g>
+        )}
 
-      {sdLines.map((d) => (
-        <g key={d.label}>
-          <line
-            x1={xScale(d.x)}
-            x2={xScale(d.x)}
-            y1={pad.t}
-            y2={height - pad.b}
-            stroke={d.color}
-            strokeWidth="1"
-            strokeDasharray="2 4"
-          />
-          <text x={xScale(d.x) + 3} y={pad.t + 10} fill={d.color} style={{ fontSize: 9 }}>
-            {d.label}
-          </text>
-        </g>
-      ))}
+        {active && (
+          <g data-testid="payoff-cursor">
+            <line
+              x1={active.x}
+              x2={active.x}
+              y1={pad.t}
+              y2={height - pad.b}
+              stroke="#0f172a"
+              strokeWidth="1.25"
+              strokeDasharray="3 3"
+              opacity="0.55"
+            />
+            <circle
+              cx={active.x}
+              cy={yScale(active.scenario ?? 0)}
+              r="4"
+              fill="#0f766e"
+              stroke="#fff"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx={active.x}
+              cy={yScale(active.expiry ?? 0)}
+              r="3.5"
+              fill="#be123c"
+              stroke="#fff"
+              strokeWidth="1.25"
+            />
+          </g>
+        )}
 
-      <line
-        x1={spotX}
-        x2={spotX}
-        y1={pad.t}
-        y2={height - pad.b}
-        stroke="#059669"
-        strokeWidth="1.5"
-        strokeDasharray="5 4"
-      />
-      {tgtX != null && Math.abs((targetSpot || 0) - spot) > 0.5 && (
-        <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#0f766e" strokeWidth="1.75" />
+        <text x={pad.l} y={height - 8} fill="#94a3b8" style={{ fontSize: 10 }}>
+          {Math.round(xMin)}
+        </text>
+        <text x={width - pad.r - 40} y={height - 8} fill="#94a3b8" style={{ fontSize: 10 }}>
+          {Math.round(xMax)}
+        </text>
+        <text x={8} y={pad.t + 8} fill="#94a3b8" style={{ fontSize: 10 }}>
+          {fmt(yMax, 0)}
+        </text>
+        <text x={8} y={height - pad.b} fill="#94a3b8" style={{ fontSize: 10 }}>
+          {fmt(yMin, 0)}
+        </text>
+      </svg>
+
+      {active ? (
+        <div
+          className="pointer-events-none absolute z-10 min-w-[148px] rounded-md border border-slate-200 bg-white/95 px-2.5 py-2 shadow-md backdrop-blur-sm"
+          style={{
+            left: `min(max(${(active.x / width) * 100}% - 74px, 8px), calc(100% - 156px))`,
+            top: 8,
+          }}
+          data-testid="payoff-tooltip"
+        >
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            Spot {Math.round(active.spot)}
+            {pinned && !hover ? " · pinned" : ""}
+          </div>
+          <div className="mt-1 space-y-0.5 font-mono-data text-[11px]">
+            <div className="flex justify-between gap-3">
+              <span className="text-rose-700">Expiry P&L</span>
+              <span className={`font-semibold ${active.expiry >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                {fmt(active.expiry, 0)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-teal-800">Scenario P&L</span>
+              <span className={`font-semibold ${active.scenario >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                {fmt(active.scenario, 0)}
+              </span>
+            </div>
+          </div>
+          <div className="mt-1 text-[9px] text-slate-400">Click to set target</div>
+        </div>
+      ) : (
+        <div className="px-1 pt-1 text-[10px] text-slate-400" data-testid="payoff-hover-hint">
+          Hover the chart for P&amp;L at any spot · click to pin as target
+        </div>
       )}
-      <path d={pathOf(expiryPnl)} fill="none" stroke="#be123c" strokeWidth="2.25" />
-      <path d={pathOf(targetPnl)} fill="none" stroke="#0f766e" strokeWidth="2.25" />
-      <text x={spotX + 5} y={pad.t + 12} fill="#047857" style={{ fontSize: 10, fontWeight: 600 }}>
-        Spot {Math.round(spot)}
-      </text>
-      {projected != null && tgtX != null && (
-        <g>
-          <rect
-            x={Math.min(tgtX + 6, width - pad.r - 128)}
-            y={yScale(projected) - 20}
-            width={122}
-            height={18}
-            rx="3"
-            fill="#ecfdf5"
-            stroke="#059669"
-          />
-          <text
-            x={Math.min(tgtX + 10, width - pad.r - 124)}
-            y={yScale(projected) - 7}
-            fill="#065f46"
-            style={{ fontSize: 10, fontWeight: 600 }}
-          >
-            At target {fmt(projected, 0)}
-          </text>
-        </g>
-      )}
-      <text x={pad.l} y={height - 8} fill="#94a3b8" style={{ fontSize: 10 }}>
-        {Math.round(xMin)}
-      </text>
-      <text x={width - pad.r - 40} y={height - 8} fill="#94a3b8" style={{ fontSize: 10 }}>
-        {Math.round(xMax)}
-      </text>
-      <text x={8} y={pad.t + 8} fill="#94a3b8" style={{ fontSize: 10 }}>
-        {fmt(yMax, 0)}
-      </text>
-      <text x={8} y={height - pad.b} fill="#94a3b8" style={{ fontSize: 10 }}>
-        {fmt(yMin, 0)}
-      </text>
-    </svg>
+    </div>
   );
 }
 
@@ -673,6 +784,7 @@ export default function PositionsAnalyzeModal({
               </div>
               <div className="p-2 sm:p-3">
                 <PayoffSvg
+                  key={`${activeIndex}-${payoff.spots?.[0] ?? 0}-${payoff.spots?.[(payoff.spots?.length || 1) - 1] ?? 0}`}
                   spots={payoff.spots}
                   expiryPnl={payoff.expiryPnl}
                   targetPnl={payoff.targetPnl}
@@ -681,6 +793,7 @@ export default function PositionsAnalyzeModal({
                   projected={projected}
                   oiBars={oiBars}
                   sd={sd}
+                  onPickSpot={setTargetSpot}
                 />
               </div>
             </div>

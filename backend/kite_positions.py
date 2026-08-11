@@ -23,17 +23,23 @@ def merge_kite_net_day(net: Optional[list], day: Optional[list]) -> list[dict]:
     Never let a day row overwrite a flat net row — that falsely resurrects
     closed legs as open (e.g. day buy-to-close qty +325 on a net-0 short).
     """
+    # Defensive: callers sometimes shadow `net` with equity margin floats.
+    if not isinstance(net, list):
+        net = []
+    if not isinstance(day, list):
+        day = []
+
     by_key: dict[tuple, dict] = {}
     source: dict[tuple, str] = {}
 
-    for p in net or []:
+    for p in net:
         key = position_key(p)
         if not key[1]:
             continue
         by_key[key] = dict(p)
         source[key] = "net"
 
-    for p in day or []:
+    for p in day:
         key = position_key(p)
         if not key[1]:
             continue
