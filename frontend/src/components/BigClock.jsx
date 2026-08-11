@@ -13,6 +13,16 @@ import { isHoliday, todayIST } from "@/lib/holidays";
 
 const CARRY_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 
+function parseHmToMinutes(hm, fallbackMin) {
+  try {
+    const [hh, mm] = String(hm || "").split(":").map((x) => parseInt(x, 10));
+    if (Number.isFinite(hh) && Number.isFinite(mm) && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+      return hh * 60 + mm;
+    }
+  } catch (_) { /* fall through */ }
+  return fallbackMin;
+}
+
 async function fetchIndexImpactPacks() {
   const packs = await Promise.all(
     CARRY_INDICES.map(async (idx) => {
@@ -61,10 +71,27 @@ function getISTParts(dt = new Date()) {
   };
 }
 
-export default function BigClock({ compact = false }) {
+export default function BigClock({ compact = false, secondSessionIst = null }) {
   const [now, setNow] = useState(new Date());
   const { push, alarm, requestPermission } = useNotify();
   const notifiedRef = useRef(new Set()); // keys like YYYY-MM-DD|HH:MM
+  const [sessionHm, setSessionHm] = useState(secondSessionIst || "12:00");
+
+  useEffect(() => {
+    if (secondSessionIst) {
+      setSessionHm(secondSessionIst);
+      return undefined;
+    }
+    let cancelled = false;
+    api.get("/config")
+      .then((r) => {
+        if (cancelled) return;
+        const v = r?.data?.second_session_ist;
+        if (v) setSessionHm(v);
+      })
+      .catch(() => { /* keep default */ });
+    return () => { cancelled = true; };
+  }, [secondSessionIst]);
 
   useEffect(() => {
     if (!compact) requestPermission();
@@ -107,6 +134,9 @@ export default function BigClock({ compact = false }) {
     const preOpenHm = hmFromMinutes(Math.max(0, openMin - 16));
     const auctionHm = hmFromMinutes(Math.max(0, openMin - 15));
 
+    const secondSessionMin = parseHmToMinutes(sessionHm, SECOND_SESSION_MINUTE);
+    const secondSessionHm = hmFromMinutes(secondSessionMin);
+
     const scheduledAlerts = [
       {
         time: preOpenHm,
@@ -130,11 +160,11 @@ export default function BigClock({ compact = false }) {
         toast: "Trading has begun.",
       },
       {
-        time: hmFromMinutes(SECOND_SESSION_MINUTE),
+        time: secondSessionHm,
         days: [1, 2, 3, 4, 5],
         title: "2nd session started",
-        description: "It is 12:00 IST — start of the 2nd session. Review open risk and afternoon bias.",
-        toast: "2nd session started · 12:00 IST",
+        description: `It is ${secondSessionHm} IST — start of the 2nd session. Review open risk and afternoon bias.`,
+        toast: `2nd session started · ${secondSessionHm} IST`,
       },
       {
         time: hmFromMinutes(WEEKEND_START_MINUTE),
@@ -265,7 +295,7 @@ export default function BigClock({ compact = false }) {
       try { alarm(); } catch (_) { /* ignore */ }
       try { toast.success(`Reminder: ${cur} IST`, { description: "Time to review / exit positions" }); } catch (_) { /* ignore */ }
     }
-  }, [h, m, s, now, push, alarm, isWeekday, weekday, holidayName]);
+  }, [h, m, s, now, push, alarm, isWeekday, weekday, holidayName, sessionHm, openMin]);
 
   const closedTone = isWeekend || !!holidayName;
   const statusLine = inAlertWindow

@@ -12,7 +12,7 @@ import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSet
 import InfoTip from "@/components/InfoTip";
 
 const ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
-const ADMIN_ONLY_PAGES = new Set(["positions", "sell-candidates"]);
+const ADMIN_ONLY_PAGES = new Set(["positions", "sell-candidates", "index-events"]);
 const DASHBOARD_PAGES = [
   { id: "oi-change", label: "OI Change" },
   { id: "open-interest", label: "Open Interest" },
@@ -24,7 +24,7 @@ const DASHBOARD_PAGES = [
   { id: "activity", label: "Activity" },
   { id: "holidays", label: "Events" },
   { id: "straddle", label: "Straddle" },
-  { id: "index-events", label: "Index Risk" },
+  { id: "index-events", label: "Index Risk", adminOnly: true },
   { id: "cas", label: "CAS Expiry" },
 ];
 
@@ -60,6 +60,7 @@ export default function SettingsModal({
           positions_poll_interval_seconds: 30,
           market_open_ist: "09:15",
           market_close_ist: "15:40",
+          second_session_ist: "12:00",
           expire_admin_on_market_close: false,
           admin_session_ttl_minutes: 480,
           alert_enabled_indices: ["NIFTY"],
@@ -338,6 +339,21 @@ export default function SettingsModal({
                       onChange={(e) => setSettings({ ...settings, market_close_ist: e.target.value })}
                       className="h-9"
                     />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">
+                      2nd session notify (IST)
+                    </Label>
+                    <Input
+                      data-testid="second-session-ist"
+                      type="time"
+                      value={settings.second_session_ist || "12:00"}
+                      onChange={(e) => setSettings({ ...settings, second_session_ist: e.target.value })}
+                      className="h-9 max-w-[12rem]"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Big clock toast + desktop notify at this time (default 12:00).
+                    </p>
                   </div>
                 </div>
                 <label className="flex items-center gap-2 py-1 cursor-pointer">

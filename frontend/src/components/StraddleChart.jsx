@@ -116,7 +116,6 @@ function StraddleTooltip({ active, payload, label }) {
       <div className="font-semibold text-slate-900 mb-2">{formatTimeShort(label)}</div>
       <div className="text-slate-700">Straddle price: <span className="font-semibold text-teal-600">{formatNumber(point.premium)}</span></div>
       <div className="text-slate-700">Index spot: <span className="font-semibold text-slate-900">{formatNumber(point.underlying)}</span></div>
-      <div className="text-slate-700">Synthetic future: <span className="font-semibold text-slate-900">{formatNumber(point.synthetic)}</span></div>
       <div className="text-slate-700">Strike / CE / PE: <span className="font-semibold text-slate-900">{point.strike || "—"} · {formatNumber(point.ce_ltp)} / {formatNumber(point.pe_ltp)}</span></div>
     </div>
   );
@@ -172,6 +171,20 @@ function buildSessionTicks(start, end) {
   return ticks;
 }
 
+/** Drop session outliers that create comb spikes (near-zero drops or 3× jumps). */
+function filterPremiumOutliers(points) {
+  if (!points?.length) return points || [];
+  const vals = points.map((p) => Number(p.premium)).filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+  if (vals.length < 5) return points;
+  const mid = vals[Math.floor(vals.length / 2)];
+  const lo = Math.max(1, mid * 0.35);
+  const hi = Math.max(mid * 2.5, mid + 200);
+  return points.filter((p) => {
+    const v = Number(p.premium);
+    return Number.isFinite(v) && v >= lo && v <= hi;
+  });
+}
+
 function normalizePoint(raw, winStart) {
   const now = raw.ts ? (typeof raw.ts === "number" ? raw.ts : Date.parse(raw.ts)) : Date.now();
   if (!Number.isFinite(now)) return null;
@@ -186,7 +199,7 @@ function normalizePoint(raw, winStart) {
         : null;
   if (premium == null || !Number.isFinite(premium) || premium <= 0) return null;
   // Hard reject obviously broken quotes (wrong-leg / stale LTP → 1000+ spikes).
-  if (premium > 800) return null;
+  if (premium > 2500) return null;
   if (ce != null && pe != null) {
     const c = Number(ce);
     const p = Number(pe);
@@ -200,10 +213,6 @@ function normalizePoint(raw, winStart) {
     atm: raw.atm ?? raw.strike ?? null,
     ce_ltp: ce != null ? Number(ce) : null,
     pe_ltp: pe != null ? Number(pe) : null,
-    synthetic:
-      underlying != null && ce != null && pe != null
-        ? Number(underlying) + (Number(ce) - Number(pe))
-        : null,
   };
 }
 
@@ -294,8 +303,12 @@ export default function StraddleChart({
     setPoints((prev) => {
       const sessionPrev = filterSessionPoints(prev, activeDate);
       const last = sessionPrev.length ? sessionPrev[sessionPrev.length - 1] : null;
-      if (last?.premium > 0 && point.premium > Math.max(last.premium * 3, last.premium + 200)) {
-        return prev; // skip live spike vs last good tick
+      if (last?.premium > 0) {
+        // Reject both explosive spikes and near-zero drops that create comb charts.
+        if (point.premium > Math.max(last.premium * 3, last.premium + 200)) return prev;
+        if (point.premium < Math.min(last.premium * 0.35, last.premium - 50) && last.premium > 40) {
+          return prev;
+        }
       }
       const next = upsertBucketed(sessionPrev, point, bucketMs);
       if (next.length > maxPoints) return next.slice(next.length - maxPoints);
@@ -303,7 +316,14 @@ export default function StraddleChart({
     });
   };
 
-  // History — merge into live series (never wipe ticks that arrived first).
+  // Hard reset chart state when index/expiry changes so we never blend
+  // NIFTY (~100) premiums into a SENSEX (~700) series (or vice versa).
+  useEffect(() => {
+    setPoints([]);
+    setMeta(null);
+  }, [index, expiry]);
+
+  // History — replace series for this index (do not merge foreign ticks).
   useEffect(() => {
     let cancelled = false;
     const loadHistory = async () => {
@@ -318,28 +338,25 @@ export default function StraddleChart({
         const arr = (h.history || [])
           .map((s) => normalizePoint(s, null))
           .filter(Boolean);
+        // Drop residual outliers vs session median before plotting.
+        const cleaned = filterPremiumOutliers(arr);
         const sliced = downsampleToBuckets(
-          filterSessionPoints(arr, sessionDate),
+          filterSessionPoints(cleaned, sessionDate),
           bucketMs,
         ).slice(-maxPoints);
-        setPoints((prev) => {
-          const live = filterSessionPoints(prev, sessionDate);
-          const merged = mergePointSeries(sliced, live, bucketMs, maxPoints);
-          return filterSessionPoints(merged, sessionDate);
-        });
+        // Replace — never merge previous index's live points into the new series.
+        setPoints(filterSessionPoints(sliced, sessionDate));
         if (sliced.length) {
           const last = sliced[sliced.length - 1];
-          setMeta((prev) => {
-            if (prev && prev.ts && prev.ts >= last.ts) return prev;
-            return {
-              ts: last.ts,
-              atm: last.atm || last.strike || null,
-              underlying: last.underlying || null,
-              premium: last.premium || null,
-              ce_ltp: last.ce_ltp,
-              pe_ltp: last.pe_ltp,
-              strike: last.atm || last.strike,
-            };
+          setMeta({
+            ts: last.ts,
+            atm: last.atm || last.strike || null,
+            underlying: last.underlying || null,
+            premium: last.premium || null,
+            ce_ltp: last.ce_ltp,
+            pe_ltp: last.pe_ltp,
+            strike: last.atm || last.strike,
+            index,
           });
         }
       } catch (_e) { /* ignore */ }
@@ -482,10 +499,6 @@ export default function StraddleChart({
         minute: "2-digit",
       })
     : null;
-  const synthetic =
-    meta && meta.underlying != null && meta.ce_ltp != null && meta.pe_ltp != null
-      ? Number(meta.underlying) + (Number(meta.ce_ltp) - Number(meta.pe_ltp))
-      : null;
 
   return (
     <div className="w-full" data-testid="straddle-chart">
@@ -582,7 +595,6 @@ export default function StraddleChart({
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-4 text-[11px] text-slate-600 bg-white/90 px-3 py-1 rounded-full border border-slate-100">
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-500" />Straddle Price</span>
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-300" />Index Spot</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-400" />Synthetic Future</span>
           </div>
           <div className="pointer-events-none absolute bottom-10 right-6 text-[10px] text-slate-400">
             {chartWindow.label}
@@ -590,7 +602,7 @@ export default function StraddleChart({
         </div>
 
         {/* FinanceDeft-style summary strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-x-4 gap-y-3 px-5 py-3 border-t border-slate-200 bg-slate-50/90 text-[12px]">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-x-4 gap-y-3 px-5 py-3 border-t border-slate-200 bg-slate-50/90 text-[12px]">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Straddle Price</div>
             <div className="font-mono font-bold text-teal-700 text-base tabular-nums">
@@ -601,12 +613,6 @@ export default function StraddleChart({
             <div className="text-[10px] uppercase tracking-wider text-slate-500">{index} Spot</div>
             <div className="font-mono font-semibold text-slate-900 tabular-nums">
               {meta?.underlying != null ? Number(meta.underlying).toFixed(2) : "—"}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">Synthetic Future</div>
-            <div className="font-mono font-semibold text-slate-900 tabular-nums">
-              {synthetic != null ? synthetic.toFixed(2) : "—"}
             </div>
           </div>
           <div>

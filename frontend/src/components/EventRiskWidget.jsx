@@ -1,12 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { Calendar, AlertTriangle, TrendingUp, Users, Building2, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { Calendar, AlertTriangle, TrendingUp, Users, Building2, Clock, ChevronDown, ChevronUp, X } from "lucide-react";
 import {
   UPLOAD_FRESHNESS,
   uploadAgeDays,
   isUploadStale,
   formatUploadAge,
 } from "@/lib/uploadFreshness";
+
+const DISMISS_LS_KEY = "oi_event_risk_dismissed";
+
+function loadDismissed() {
+  try {
+    return localStorage.getItem(DISMISS_LS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveDismissed(on) {
+  try {
+    localStorage.setItem(DISMISS_LS_KEY, on ? "1" : "0");
+  } catch { /* noop */ }
+}
 
 /**
  * EventRiskWidget — shows upcoming index event risk for the current strategy
@@ -120,6 +136,7 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
   const [err, setErr] = useState(null);
   const [showAll, setShowAll] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [dismissed, setDismissed] = useState(() => loadDismissed());
 
   useEffect(() => {
     if (!activeIndex) return;
@@ -178,6 +195,31 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
 
   const label = INDEX_LABEL[activeIndex] || activeIndex;
 
+  // Guests / public users never see Index Event Risk.
+  if (!isAdmin) return null;
+
+  if (dismissed) {
+    return (
+      <div
+        data-testid="event-risk-widget-dismissed"
+        className="mt-1 border border-dashed border-slate-200 dark:border-slate-700 rounded-md bg-slate-50/80 dark:bg-slate-900/40 px-3 py-2 flex items-center justify-between gap-2"
+      >
+        <span className="text-xs text-slate-500">Upcoming Index Event Risk hidden</span>
+        <button
+          type="button"
+          data-testid="event-risk-show-again"
+          className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 dark:text-sky-300"
+          onClick={() => {
+            setDismissed(false);
+            saveDismissed(false);
+          }}
+        >
+          Show again
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid="event-risk-widget"
@@ -194,8 +236,22 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
             {label}
           </span>
         </div>
-        <div className="text-[11px] text-slate-500 dark:text-slate-400">
-          {loading ? "Loading…" : err ? <span className="text-rose-500">{err}</span> : `${upcoming.length} upcoming`}
+        <div className="flex items-center gap-2">
+          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+            {loading ? "Loading…" : err ? <span className="text-rose-500">{err}</span> : `${upcoming.length} upcoming`}
+          </div>
+          <button
+            type="button"
+            data-testid="event-risk-dismiss"
+            title="Hide Index Event Risk"
+            className="inline-flex items-center justify-center w-6 h-6 rounded-sm text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+            onClick={() => {
+              setDismissed(true);
+              saveDismissed(true);
+            }}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 

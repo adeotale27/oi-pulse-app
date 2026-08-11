@@ -66,8 +66,12 @@ export default function RightPanel({
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
       if (item.pageId == null) return true;
-      // Positions is admin-only (API + desk) — never expose via stale visible_pages.
-      if (item.pageId === "positions" || item.pageId === "sell-candidates") {
+      // Positions / Index Event Risk are admin-only — never expose to guests.
+      if (
+        item.pageId === "positions"
+        || item.pageId === "sell-candidates"
+        || item.pageId === "index-events"
+      ) {
         return isAdmin;
       }
       return isAdmin || visiblePages.includes(item.pageId);
@@ -193,10 +197,17 @@ export default function RightPanel({
           )}
           {selectedView === "straddle" && (
             <div className="p-3">
-              <StraddleChart index={activeIndex} expiry={selectedExpiry} position={"long"} qty={1} pollMs={straddlePollMs} />
+              <StraddleChart
+                key={`rp-${activeIndex}-${selectedExpiry || "auto"}`}
+                index={activeIndex}
+                expiry={selectedExpiry}
+                position={"long"}
+                qty={1}
+                pollMs={straddlePollMs}
+              />
             </div>
           )}
-          {selectedView === "index-events" && (
+          {selectedView === "index-events" && isAdmin && (
             <EventRiskWidget
               activeIndex={activeIndex}
               refreshKey={uploadRefreshKey}
