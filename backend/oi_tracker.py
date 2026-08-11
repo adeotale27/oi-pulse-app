@@ -1046,6 +1046,33 @@ class OITracker:
                 ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
                 pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
                 premium = round(ce_p + pe_p, 2)
+
+            # Reject garbage quotes that blow up the chart (spikes to 1000+).
+            if premium <= 0 or ce_p <= 0 or pe_p <= 0 or price <= 0:
+                return
+            # Sticky ATM: keep last ATM until spot moves ≥ 0.6× step to avoid
+            # half-step flicker swapping CE/PE legs mid-bucket.
+            try:
+                from oi_service import INDEX_CONFIG
+                step = float((INDEX_CONFIG.get(index_name) or {}).get("step") or 50)
+            except Exception:
+                step = 50.0
+            prev_q = self.last_straddle_quote.get(index_name) or {}
+            prev_atm = int(prev_q.get("atm") or 0)
+            if prev_atm and abs(price - prev_atm) < 0.6 * step:
+                # Recompute premium at sticky ATM only when quote already matches.
+                if atm != prev_atm and snap.get("ce_ltp") is not None:
+                    # Quote was for a new ATM — skip until sticky zone is left.
+                    return
+                atm = prev_atm
+            prev_prem = float(prev_q.get("premium") or 0)
+            if prev_prem > 0 and premium > max(prev_prem * 3.0, prev_prem + 200):
+                logger.warning(
+                    "[_store_straddle_sample] skip outlier %s premium=%.2f vs prev=%.2f",
+                    index_name, premium, prev_prem,
+                )
+                return
+
             trade_date = now_ist().date().isoformat()
             doc = {
                 "index": index_name,

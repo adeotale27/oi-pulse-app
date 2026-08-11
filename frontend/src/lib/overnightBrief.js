@@ -8,6 +8,9 @@ import { EVENT_WARNING_MINUTE, getMarketOpenMinute } from "@/lib/marketTimes";
 /** Sunday-night auto surface (IST). */
 export const SUNDAY_BRIEF_MINUTE = 20 * 60; // 20:00 IST
 
+/** Midday — start of 2nd cash/FO session focus window (IST). */
+export const SECOND_SESSION_MINUTE = 12 * 60; // 12:00 IST
+
 export { EVENT_WARNING_MINUTE };
 
 const INDEX_IMPACT_TYPES = new Set(["Quarterly Results", "Board Meeting"]);

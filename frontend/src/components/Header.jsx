@@ -25,10 +25,11 @@ import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { kiteModeBadge, kiteModeBadgeClass } from "@/lib/kiteModeLabel";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
+const PRIVACY_EVENT = "oi-positions-privacy";
 const PRIVACY_MASK = "••••";
 
 /** Admin-only Today P&L chip for the header (beside the clock). */
-function HeaderTodayPnl({ enabled, status }) {
+function HeaderTodayPnl({ enabled, status, pollMs = 15_000 }) {
   const [pnl, setPnl] = useState(null);
   const [openCount, setOpenCount] = useState(0);
   const [hasRows, setHasRows] = useState(false);
@@ -40,10 +41,13 @@ function HeaderTodayPnl({ enabled, status }) {
     const syncPrivacy = () => {
       try { setPrivacy(localStorage.getItem(PRIVACY_LS_KEY) === "1"); } catch { /* noop */ }
     };
-    const id = setInterval(syncPrivacy, 1500);
+    // Same-tab toggle fires a custom event; other tabs use `storage`.
+    window.addEventListener(PRIVACY_EVENT, syncPrivacy);
     window.addEventListener("storage", syncPrivacy);
+    const id = setInterval(syncPrivacy, 5000);
     return () => {
       clearInterval(id);
+      window.removeEventListener(PRIVACY_EVENT, syncPrivacy);
       window.removeEventListener("storage", syncPrivacy);
     };
   }, []);
@@ -63,7 +67,9 @@ function HeaderTodayPnl({ enabled, status }) {
     }
   }, [enabled]);
 
-  useQuiescentAwarePolling(load, 30_000, [load, enabled], {
+  // Keep header P&L fresh even when Positions tab is not mounted.
+  const interval = Math.max(5_000, Math.min(120_000, Number(pollMs) || 15_000));
+  useQuiescentAwarePolling(load, interval, [load, enabled, interval], {
     status,
     allowDuringQuiescent: true,
     dedupeKey: "header-today-pnl",
@@ -129,6 +135,8 @@ export default function Header({
   onToggleHeaderRail,
   /** Merge DataTruth / market / Kite banners into one slim bar. */
   slimStatusRail = false,
+  /** Positions book poll interval (ms) — keeps header Today P&L fresh in background. */
+  positionsPollMs = 15_000,
   onToggleSlimStatusRail,
 }) {
   const price = current?.price ?? 0;
@@ -504,8 +512,8 @@ export default function Header({
           />
         </div>
 
-        {/* Index tiles or slim rail chips — scroll on narrow laptops instead of clipping */}
-        <div className={`flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 justify-start ${headerRail ? "overflow-x-auto" : "overflow-hidden items-stretch"}`}>
+        {/* Index tiles — always allow horizontal scroll so BANKNIFTY is not clipped */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 justify-start overflow-x-auto items-stretch">
           <TickerStrip
             layout={headerRail ? "rail" : "header"}
             activeIndex={activeIndex}
@@ -515,7 +523,7 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-auto">
-          <HeaderTodayPnl enabled={!!kiteLive} status={status} />
+          <HeaderTodayPnl enabled={!!kiteLive} status={status} pollMs={positionsPollMs} />
           <div className={headerRail ? "hidden md:block origin-right" : "hidden xl:block"}>
             <BigClock compact />
           </div>
@@ -816,7 +824,7 @@ export default function Header({
         data-testid="header-secondary-row"
       >
         <div className="xl:hidden flex items-center gap-2">
-          <HeaderTodayPnl enabled={!!kiteLive} status={status} />
+          <HeaderTodayPnl enabled={!!kiteLive} status={status} pollMs={positionsPollMs} />
           <BigClock compact />
         </div>
         <div className="flex items-center gap-4 min-w-0 overflow-hidden flex-wrap">

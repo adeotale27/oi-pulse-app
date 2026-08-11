@@ -65,6 +65,8 @@ function loadPrivacyMode() {
 function savePrivacyMode(on) {
   try {
     localStorage.setItem(PRIVACY_LS_KEY, on ? "1" : "0");
+    // Same-tab listeners (Header Today P&L) — `storage` only fires cross-tab.
+    window.dispatchEvent(new CustomEvent("oi-positions-privacy", { detail: { on: !!on } }));
   } catch { /* noop */ }
 }
 
@@ -944,7 +946,7 @@ export default function PositionsPanel({
           </Popover>
           <label
             className="inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[11px] text-slate-600 cursor-pointer select-none hover:border-emerald-300"
-            title="Mask Qty, Avg, P&L and ₹ amounts on this Positions page only"
+            title="Mask Qty, Avg, P&L and ₹ amounts on Positions and Today P&L in the header"
             data-testid="positions-privacy-toggle"
           >
             {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}

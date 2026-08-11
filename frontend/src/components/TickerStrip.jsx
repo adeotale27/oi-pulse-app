@@ -156,7 +156,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
 
   // Header: light desk tiles — black names/prices; change stays green/red.
   const stripClass = isHeader
-    ? "flex flex-nowrap items-stretch gap-1.5 min-w-0 w-auto max-w-full overflow-hidden"
+    ? "flex flex-nowrap items-stretch gap-1.5 min-w-0 w-auto max-w-full overflow-x-auto"
     : dense
       ? "grid grid-cols-3 gap-1.5"
       : "grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-stretch";
@@ -192,7 +192,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             data-testid={`ticker-${t.index}`}
             className={`text-left rounded-md border ${tones.shell} ${
               isHeader
-                ? "px-2.5 py-1.5 shrink-0 min-w-[8.75rem] max-w-[12rem]"
+                ? "px-2 py-1.5 shrink-0 min-w-[7.25rem] max-w-[11rem]"
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
