@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useCallback } from "react";
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import useClickOutside from "@/hooks/useClickOutside";
 
@@ -36,6 +36,9 @@ export default function MobileStickyChrome({
   onMove,
   onResetLayout,
   marketOpen = false,
+  infoTilesOpen,
+  onToggleInfoTiles,
+  infoTiles,
 }) {
   const [open, setOpen] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
@@ -286,6 +289,50 @@ export default function MobileStickyChrome({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {typeof onToggleInfoTiles === "function" && (
+        <div
+          className="border-t border-slate-100 dark:border-slate-800"
+          data-testid="mobile-info-tiles-bar"
+        >
+          {infoTilesOpen ? (
+            <div className="flex items-stretch gap-1 px-1 py-1.5">
+              <div
+                className="min-w-0 flex-1 overflow-x-auto tabs-scroll relative z-30"
+                data-testid="mobile-info-tiles-wrap"
+              >
+                {infoTiles}
+              </div>
+              <button
+                type="button"
+                onClick={() => onToggleInfoTiles(false)}
+                title="Hide info tiles — more room for charts"
+                aria-label="Hide info tiles"
+                aria-expanded="true"
+                data-testid="btn-toggle-info-tiles-mobile"
+                className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex justify-end px-2 py-1">
+              <button
+                type="button"
+                onClick={() => onToggleInfoTiles(true)}
+                title="Show holiday / FII / event tiles"
+                aria-label="Show info tiles"
+                aria-expanded="false"
+                data-testid="btn-toggle-info-tiles-mobile"
+                className="inline-flex items-center gap-1 h-8 px-2.5 rounded-sm text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Events
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -29,7 +29,7 @@ const PRIVACY_EVENT = "oi-positions-privacy";
 const PRIVACY_MASK = "••••";
 
 /** Admin-only Today P&L chip for the header (beside the clock). */
-function HeaderTodayPnl({ enabled, status, pollMs = 15_000 }) {
+function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
   const [pnl, setPnl] = useState(null);
   const [openCount, setOpenCount] = useState(0);
   const [hasRows, setHasRows] = useState(false);
@@ -85,7 +85,10 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000 }) {
 
   return (
     <div
-      className="hidden md:flex flex-col items-end leading-tight px-1.5 shrink-0"
+      className={
+        className ||
+        "hidden md:flex flex-col items-end leading-tight px-1.5 shrink-0"
+      }
       data-testid="header-today-pnl"
       title={openCount > 0 ? `Today P&L · ${openCount} open` : "Today P&L (includes exited today)"}
     >
@@ -342,14 +345,56 @@ export default function Header({
         className="md:hidden px-2.5 py-1.5 flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800"
         data-testid="mobile-header-tools"
       >
-        <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack-mobile">
-          <Badge
-            data-testid="mode-badge-mobile"
-            className={`rounded-sm text-[10px] px-1.5 py-0 h-5 ${modeBadgeCls}`}
-            title={modeBadge.title}
-          >
-            {modeBadge.short}
-          </Badge>
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack-mobile">
+            <Badge
+              data-testid="mode-badge-mobile"
+              className={`rounded-sm text-[10px] px-1.5 py-0 h-5 ${modeBadgeCls}`}
+              title={modeBadge.title}
+            >
+              {modeBadge.short}
+            </Badge>
+            {lastPulledAt && (
+              <span
+                className="text-[9px] font-mono-data tabular-nums text-slate-500 dark:text-slate-400"
+                data-testid="mobile-live-as-of"
+                title="Live data as of"
+              >
+                {new Date(lastPulledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
+          <HeaderTodayPnl
+            enabled={!!kiteLive}
+            status={status}
+            pollMs={positionsPollMs}
+            className="flex md:hidden flex-col items-start leading-tight shrink-0"
+          />
+          {isGuestUser && (() => {
+            const guestName = authState.guest_name || (typeof window !== "undefined" ? sessionStorage.getItem("oi_guest_name") : null) || "Guest";
+            const exitGuest = async () => {
+              await logoutGuest();
+              window.location.reload();
+            };
+            return (
+              <div
+                className="flex flex-col items-start leading-tight min-w-0"
+                data-testid="guest-session-chip-mobile"
+              >
+                <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100 truncate max-w-[5.5rem]">
+                  {guestName}
+                </span>
+                <button
+                  type="button"
+                  onClick={exitGuest}
+                  className="text-[9px] font-medium text-rose-600 hover:text-rose-700 hover:underline"
+                  data-testid="guest-session-exit-mobile"
+                >
+                  Exit
+                </button>
+              </div>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-1.5 shrink-0 ml-auto">
           {isAdmin && (
@@ -400,6 +445,15 @@ export default function Header({
                 View
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {typeof onToggleSlimStatusRail === "function" && (
+                <DropdownMenuItem
+                  data-testid="mobile-menu-slim-status"
+                  onSelect={(e) => { e.preventDefault(); onToggleSlimStatusRail(); }}
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                  {slimStatusRail ? "Stacked status banners" : "One slim status bar"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 data-testid="mobile-menu-notifications"
                 onSelect={(e) => { e.preventDefault(); onToggleNotif?.(); }}

@@ -96,6 +96,17 @@
   scrollbar-width: thin;
 }
 
+/* Mobile info tiles: snap scroll for easier swipe between tiles */
+@media (max-width: 767px) {
+  [data-testid="mobile-info-tiles-wrap"] .tabs-scroll,
+  [data-testid="mobile-info-tiles-wrap"] {
+    scroll-snap-type: x proximity;
+  }
+  [data-testid="mobile-info-tiles-wrap"] [data-testid^="info-tile-"] {
+    scroll-snap-align: start;
+  }
+}
+
 /* Subtle live grid under the shell (very light) */
 .oi-shell::before {
   content: "";
