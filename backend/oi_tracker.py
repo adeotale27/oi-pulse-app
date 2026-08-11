@@ -1102,6 +1102,15 @@ class OITracker:
         # Weekday alert focus (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu) unless overridden today.
         self._refresh_alert_indices_for_today()
         alert_idxs = self.settings.get("alert_enabled_indices") or []
+        if isinstance(alert_idxs, str):
+            alert_idxs = [alert_idxs]
+        elif not isinstance(alert_idxs, (list, tuple)):
+            alert_idxs = []
+        alert_idxs = [str(x) for x in alert_idxs if x]
+        # Never silently alert nobody — fall back to weekday defaults if empty.
+        if not alert_idxs:
+            alert_idxs = list(default_alert_indices_for_today() or [])
+            self.settings["alert_enabled_indices"] = alert_idxs
         # Admin alert focus is authoritative: non-selected indices never alert,
         # even while their OI data continues to poll/load.
         if index_name not in alert_idxs:
