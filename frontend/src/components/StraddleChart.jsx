@@ -9,12 +9,16 @@ import {
   CartesianGrid,
   ReferenceDot,
 } from "recharts";
-import { fetchStraddle, fetchStraddleHistory } from "../lib/api";
+import { fetchStraddleTick, fetchStraddleHistory } from "../lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { sessionAnchorDateIST } from "@/lib/holidays";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const SESSION_OPEN_MIN = 9 * 60 + 15; // 09:15 IST
+/** Chart display resolution — denser than admin persistence when live ticks arrive. */
+const CHART_BUCKET_MS = 15_000;
+/** Live REST poll when WS is unavailable — keep the line moving like FinanceDeft. */
+const LIVE_POLL_MS = 15_000;
 
 function formatTimeShort(ts) {
   try {
@@ -38,7 +42,6 @@ function daysToExpiryLabel(expiryISO) {
   try {
     const [y, m, d] = String(expiryISO).split("-").map(Number);
     if (!y || !m || !d) return null;
-    // Expiry close ~15:30 IST
     const expiryMs = Date.UTC(y, m - 1, d, 10, 0); // 15:30 IST = 10:00 UTC
     const now = Date.now();
     const days = (expiryMs - now) / (24 * 60 * 60 * 1000);
@@ -51,7 +54,7 @@ function daysToExpiryLabel(expiryISO) {
   }
 }
 
-/** Keep one point per sample bucket (default 60s) — matches 1-min reference charts. */
+/** Keep one point per sample bucket — last write wins inside the bucket. */
 function upsertBucketed(prev, point, bucketMs) {
   const bucket = Math.floor(point.ts / bucketMs) * bucketMs;
   const nextPoint = { ...point, ts: bucket };
@@ -86,13 +89,24 @@ function downsampleToBuckets(arr, bucketMs) {
   return out;
 }
 
+function mergePointSeries(base, extra, bucketMs, maxPoints) {
+  const merged = downsampleToBuckets(
+    [...(base || []), ...(extra || [])]
+      .filter((p) => Number.isFinite(p?.ts) && p.premium != null)
+      .sort((a, b) => a.ts - b.ts),
+    bucketMs,
+  );
+  if (merged.length > maxPoints) return merged.slice(merged.length - maxPoints);
+  return merged;
+}
+
 function StraddleTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
     <div className="rounded-md border border-slate-200 bg-white/95 p-3 text-left text-sm text-slate-900 shadow-lg">
       <div className="font-semibold text-slate-900 mb-2">{formatTimeShort(label)}</div>
-      <div className="text-slate-700">Straddle price: <span className="font-semibold text-sky-600">{formatNumber(point.premium)}</span></div>
+      <div className="text-slate-700">Straddle price: <span className="font-semibold text-teal-600">{formatNumber(point.premium)}</span></div>
       <div className="text-slate-700">Index spot: <span className="font-semibold text-slate-900">{formatNumber(point.underlying)}</span></div>
       <div className="text-slate-700">Synthetic future: <span className="font-semibold text-slate-900">{formatNumber(point.synthetic)}</span></div>
       <div className="text-slate-700">Strike / CE / PE: <span className="font-semibold text-slate-900">{point.strike || "—"} · {formatNumber(point.ce_ltp)} / {formatNumber(point.pe_ltp)}</span></div>
@@ -137,11 +151,43 @@ function filterSessionPoints(arr, tradeDate) {
 function buildSessionTicks(start, end) {
   if (start == null || end == null || end <= start) return [start].filter(Boolean);
   const span = end - start;
-  const step = span <= 90 * 60_000 ? 15 * 60_000 : 45 * 60_000;
+  const step =
+    span <= 10 * 60_000 ? 1 * 60_000
+      : span <= 45 * 60_000 ? 5 * 60_000
+        : span <= 90 * 60_000 ? 15 * 60_000
+          : 45 * 60_000;
   const ticks = [start];
   for (let t = start + step; t < end - step / 2; t += step) ticks.push(t);
   if (ticks[ticks.length - 1] !== end) ticks.push(end);
   return ticks;
+}
+
+function normalizePoint(raw, winStart) {
+  const now = raw.ts ? (typeof raw.ts === "number" ? raw.ts : Date.parse(raw.ts)) : Date.now();
+  if (!Number.isFinite(now)) return null;
+  const underlying = raw.underlying ?? raw.price ?? null;
+  const ce = raw.ce_ltp;
+  const pe = raw.pe_ltp;
+  const premium =
+    raw.premium != null
+      ? Number(raw.premium)
+      : ce != null && pe != null
+        ? Number(ce) + Number(pe)
+        : null;
+  if (premium == null || !Number.isFinite(premium)) return null;
+  return {
+    ts: winStart != null ? Math.max(now, winStart) : now,
+    premium,
+    underlying: underlying != null ? Number(underlying) : null,
+    strike: raw.atm ?? raw.strike ?? null,
+    atm: raw.atm ?? raw.strike ?? null,
+    ce_ltp: ce != null ? Number(ce) : null,
+    pe_ltp: pe != null ? Number(pe) : null,
+    synthetic:
+      underlying != null && ce != null && pe != null
+        ? Number(underlying) + (Number(ce) - Number(pe))
+        : null,
+  };
 }
 
 export default function StraddleChart({
@@ -149,7 +195,7 @@ export default function StraddleChart({
   expiry = null,
   position = "long",
   qty = 1,
-  pollMs = 60000,
+  pollMs = 15000,
   maxPoints = 7200,
   useWs = true,
 }) {
@@ -159,13 +205,14 @@ export default function StraddleChart({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const wsRef = useRef(null);
   const tradeDateRef = useRef(tradeDate);
-  const bucketMs = Math.max(30_000, Number(pollMs) || 60_000);
+  // Display bucket stays dense; admin pollMs only hints persistence / REST cadence.
+  const bucketMs = CHART_BUCKET_MS;
+  const livePollMs = Math.max(5_000, Math.min(LIVE_POLL_MS, Number(pollMs) || LIVE_POLL_MS));
 
   useEffect(() => {
     tradeDateRef.current = tradeDate;
   }, [tradeDate]);
 
-  // Advance the right edge during live session; also flip session date at open.
   useEffect(() => {
     const id = setInterval(() => {
       const now = Date.now();
@@ -188,36 +235,30 @@ export default function StraddleChart({
     return true;
   };
 
-  const pushLivePoint = (raw) => {
-    const now = raw.ts ? (typeof raw.ts === "number" ? raw.ts : Date.parse(raw.ts)) : Date.now();
-    if (!Number.isFinite(now)) return;
+  const applyMeta = (point, ts) => {
+    setMeta({
+      ts: ts || point.ts,
+      atm: point.atm ?? point.strike,
+      underlying: point.underlying,
+      strike: point.atm ?? point.strike,
+      ce_ltp: point.ce_ltp,
+      pe_ltp: point.pe_ltp,
+      premium: point.premium,
+    });
+  };
 
-    const pointDate = toIstDateString(now);
+  const pushLivePoint = (raw) => {
     const activeDate = tradeDateRef.current;
-    // Never stitch yesterday's close onto today's live series.
+    const pointDate = toIstDateString(raw.ts ? (typeof raw.ts === "number" ? raw.ts : Date.parse(raw.ts)) : Date.now());
     if (pointDate !== activeDate) return;
 
     const win = sessionWindowMs(activeDate);
-    if (!win || now < win.start - 60_000 || now > win.end) return;
+    if (!win) return;
+    const point = normalizePoint(raw, win.start);
+    if (!point) return;
+    if (point.ts < win.start - 60_000 || point.ts > win.end) return;
 
-    const point = {
-      ts: Math.max(now, win.start),
-      premium: raw.premium,
-      underlying: raw.underlying,
-      strike: raw.atm ?? raw.strike,
-      ce_ltp: raw.ce_ltp,
-      pe_ltp: raw.pe_ltp,
-      synthetic: Number(raw.underlying) + (Number(raw.ce_ltp || 0) - Number(raw.pe_ltp || 0)),
-    };
-    setMeta({
-      ts: now,
-      atm: raw.atm ?? raw.strike,
-      underlying: raw.underlying,
-      strike: raw.atm ?? raw.strike,
-      ce_ltp: raw.ce_ltp,
-      pe_ltp: raw.pe_ltp,
-      premium: raw.premium,
-    });
+    applyMeta(point, point.ts);
     setPoints((prev) => {
       const sessionPrev = filterSessionPoints(prev, activeDate);
       const next = upsertBucketed(sessionPrev, point, bucketMs);
@@ -226,61 +267,7 @@ export default function StraddleChart({
     });
   };
 
-  useEffect(() => {
-    let stopped = false;
-    setPoints([]);
-    setMeta(null);
-    if (useWs && typeof window !== "undefined") {
-      let conn = null;
-      try {
-        const { connectStraddleWS } = require("../lib/straddleWs");
-        conn = connectStraddleWS(index, { expiry, position, qty }, (msg) => {
-          if (stopped) return;
-          if (msg && msg.premium != null) pushLivePoint(msg);
-        });
-
-        if (conn && typeof conn.isStarted === "function" && conn.isStarted()) {
-          wsRef.current = conn;
-          return () => {
-            stopped = true;
-            wsRef.current && wsRef.current.stop && wsRef.current.stop();
-          };
-        }
-      } catch (_e) {
-        /* fall back to polling */
-      }
-    }
-
-    let running = true;
-    const tick = async () => {
-      try {
-        if (!isMarketOpen()) return;
-        const res = await fetchStraddle(index, { expiry, position, qty });
-        if (stopped) return;
-        pushLivePoint({ ...res, ts: Date.now() });
-      } catch (_e) { /* ignore */ }
-    };
-    try {
-      if (isMarketQuiescent()) {
-        return () => {
-          running = false;
-          stopped = true;
-        };
-      }
-    } catch (_e) { /* fall through */ }
-
-    tick();
-    const id = setInterval(() => {
-      if (running) tick();
-    }, pollMs);
-    return () => {
-      running = false;
-      stopped = true;
-      clearInterval(id);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, expiry, position, qty, pollMs, maxPoints, useWs, bucketMs, tradeDate]);
-
+  // History — merge into live series (never wipe ticks that arrived first).
   useEffect(() => {
     let cancelled = false;
     const loadHistory = async () => {
@@ -292,40 +279,115 @@ export default function StraddleChart({
           setTradeDate(resolvedDate);
         }
         const sessionDate = resolvedDate || tradeDate;
-        const arr = (h.history || []).map((s) => ({
-          ts: typeof s.ts === "number" ? s.ts : Date.parse(s.ts),
-          premium: s.premium,
-          underlying: s.underlying,
-          atm: s.atm,
-          ce_ltp: s.ce_ltp,
-          pe_ltp: s.pe_ltp,
-          strike: s.atm,
-          synthetic: s.underlying + ((s.ce_ltp || 0) - (s.pe_ltp || 0)),
-        }));
+        const arr = (h.history || [])
+          .map((s) => normalizePoint(s, null))
+          .filter(Boolean);
         const sliced = downsampleToBuckets(
           filterSessionPoints(arr, sessionDate),
           bucketMs,
         ).slice(-maxPoints);
-        setPoints(sliced);
+        setPoints((prev) => {
+          const live = filterSessionPoints(prev, sessionDate);
+          const merged = mergePointSeries(sliced, live, bucketMs, maxPoints);
+          return filterSessionPoints(merged, sessionDate);
+        });
         if (sliced.length) {
           const last = sliced[sliced.length - 1];
-          setMeta({
-            ts: last.ts,
-            atm: last.atm || last.strike || null,
-            underlying: last.underlying || null,
-            premium: last.premium || null,
-            ce_ltp: last.ce_ltp,
-            pe_ltp: last.pe_ltp,
-            strike: last.atm || last.strike,
+          setMeta((prev) => {
+            if (prev && prev.ts && prev.ts >= last.ts) return prev;
+            return {
+              ts: last.ts,
+              atm: last.atm || last.strike || null,
+              underlying: last.underlying || null,
+              premium: last.premium || null,
+              ce_ltp: last.ce_ltp,
+              pe_ltp: last.pe_ltp,
+              strike: last.atm || last.strike,
+            };
           });
         }
       } catch (_e) { /* ignore */ }
     };
     loadHistory();
+    // Soft refresh history every 2 min so reopened tabs catch sampler density.
+    const refreshId = setInterval(loadHistory, 120_000);
     return () => {
       cancelled = true;
+      clearInterval(refreshId);
     };
   }, [index, expiry, maxPoints, bucketMs, tradeDate]);
+
+  // Live feed — public WS + REST tick safety net (15s).
+  useEffect(() => {
+    let stopped = false;
+    let conn = null;
+    let pollId = null;
+    let running = true;
+    let wsAlive = false;
+
+    const tick = async () => {
+      try {
+        if (!isMarketOpen()) return;
+        // Prefer WS when connected — avoid double Kite quote load.
+        if (wsAlive) return;
+        const res = await fetchStraddleTick(index, { expiry });
+        if (stopped) return;
+        pushLivePoint(res);
+      } catch (_e) { /* ignore */ }
+    };
+
+    const startPolling = () => {
+      if (pollId) return;
+      tick();
+      pollId = setInterval(() => {
+        if (running) tick();
+      }, livePollMs);
+    };
+
+    try {
+      if (isMarketQuiescent()) {
+        return () => {
+          running = false;
+          stopped = true;
+        };
+      }
+    } catch (_e) { /* fall through */ }
+
+    if (useWs && typeof window !== "undefined") {
+      try {
+        const { connectStraddleWS } = require("../lib/straddleWs");
+        conn = connectStraddleWS(
+          index,
+          { expiry, position, qty },
+          (msg) => {
+            if (stopped) return;
+            if (msg?.status === "market_closed") return;
+            if (msg && msg.premium != null) {
+              wsAlive = true;
+              pushLivePoint(msg);
+            }
+          },
+          () => { wsAlive = true; },
+          () => { wsAlive = false; },
+        );
+        wsRef.current = conn;
+        startPolling();
+      } catch (_e) {
+        startPolling();
+      }
+    } else {
+      startPolling();
+    }
+
+    return () => {
+      running = false;
+      stopped = true;
+      if (pollId) clearInterval(pollId);
+      try { conn && conn.stop && conn.stop(); } catch (_) { /* noop */ }
+      wsRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, expiry, position, qty, livePollMs, maxPoints, useWs, bucketMs, tradeDate]);
 
   const chartWindow = useMemo(() => {
     const win = sessionWindowMs(tradeDate) || {
@@ -335,11 +397,9 @@ export default function StraddleChart({
     const liveToday = toIstDateString(nowMs) === tradeDate;
     let end = win.end;
     if (liveToday && nowMs >= win.start && nowMs < win.end) {
-      // Live session: right edge tracks "now" (with a small pad), like FinanceDeft.
-      end = Math.min(win.end, Math.max(win.start + 15 * 60_000, nowMs + bucketMs));
-      if (points.length) {
-        end = Math.max(end, Math.min(win.end, points[points.length - 1].ts + bucketMs));
-      }
+      // FinanceDeft-style: right edge tracks "now" tightly — no forced 15-min span.
+      const lastTs = points.length ? points[points.length - 1].ts : win.start;
+      end = Math.min(win.end, Math.max(nowMs + bucketMs, lastTs + bucketMs, win.start + 60_000));
     }
     const start = win.start;
     const ticks = buildSessionTicks(start, end);
@@ -410,14 +470,14 @@ export default function StraddleChart({
                 : "Loading…"}
             </div>
             <div className="text-[10px] text-slate-400 mt-0.5">
-              {Math.round(bucketMs / 1000)}s samples · 1-min style
+              {Math.round(bucketMs / 1000)}s chart · live {Math.round(livePollMs / 1000)}s
             </div>
           </div>
         </div>
 
-        <div className="px-4 py-3 h-[340px] bg-white relative">
+        <div className="px-4 py-3 h-[360px] bg-white relative">
           <ResponsiveContainer>
-            <LineChart data={sessionPoints} margin={{ top: 12, right: 36, left: 0, bottom: 22 }}>
+            <LineChart data={sessionPoints} margin={{ top: 12, right: 36, left: 8, bottom: 8 }}>
               <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical={false} />
               <XAxis
                 dataKey="ts"
@@ -431,15 +491,9 @@ export default function StraddleChart({
                 axisLine={false}
                 tickLine={false}
                 allowDataOverflow
-                label={{
-                  value: chartWindow.label,
-                  position: "insideBottomRight",
-                  offset: -8,
-                  fill: "#94a3b8",
-                  fontSize: 11,
-                }}
               />
               <YAxis
+                yAxisId="premium"
                 tick={{ fontSize: 11, fill: "#94a3b8" }}
                 stroke="#e2e8f0"
                 axisLine={false}
@@ -447,13 +501,22 @@ export default function StraddleChart({
                 domain={yDomain}
                 width={56}
                 tickFormatter={(v) => Number(v).toFixed(2)}
+                label={{
+                  value: "Straddle Price",
+                  angle: -90,
+                  position: "insideLeft",
+                  fill: "#94a3b8",
+                  fontSize: 10,
+                  offset: 4,
+                }}
               />
               <Tooltip content={<StraddleTooltip />} cursor={{ stroke: "rgba(15, 23, 42, 0.08)", strokeWidth: 1 }} />
               <Line
+                yAxisId="premium"
                 type="monotone"
                 dataKey="premium"
                 name="Straddle Price"
-                stroke="#0ea5e9"
+                stroke="#14b8a6"
                 dot={false}
                 strokeWidth={2.25}
                 isAnimationActive={false}
@@ -461,16 +524,17 @@ export default function StraddleChart({
               />
               {lastPoint && lastPoint.premium != null && (
                 <ReferenceDot
+                  yAxisId="premium"
                   x={lastPoint.ts}
                   y={lastPoint.premium}
                   r={4}
-                  fill="#0ea5e9"
+                  fill="#14b8a6"
                   stroke="#fff"
                   strokeWidth={2}
                   label={{
                     value: formatNumber(lastPoint.premium),
                     position: "right",
-                    fill: "#0284c7",
+                    fill: "#0f766e",
                     fontSize: 11,
                     fontWeight: 700,
                   }}
@@ -478,51 +542,63 @@ export default function StraddleChart({
               )}
             </LineChart>
           </ResponsiveContainer>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-4 text-[11px] text-slate-600 bg-white/90 px-3 py-1 rounded-full border border-slate-100">
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-500" />Straddle Price</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-300" />Index Spot</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-400" />Synthetic Future</span>
+          </div>
+          <div className="pointer-events-none absolute bottom-10 right-6 text-[10px] text-slate-400">
+            {chartWindow.label}
+          </div>
         </div>
 
-        {/* Primary metrics — match white reference */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 px-5 py-4 border-t border-slate-100 bg-white">
-          <div className="flex flex-col gap-0.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Straddle</div>
-            <div className="text-2xl font-bold text-sky-600 tabular-nums">
+        {/* FinanceDeft-style summary strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-x-4 gap-y-3 px-5 py-3 border-t border-slate-200 bg-slate-50/90 text-[12px]">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Straddle Price</div>
+            <div className="font-mono font-bold text-teal-700 text-base tabular-nums">
               {meta?.premium != null ? Number(meta.premium).toFixed(2) : "—"}
             </div>
           </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{index} Spot</div>
-            <div className="text-2xl font-bold text-slate-900 tabular-nums">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">{index} Spot</div>
+            <div className="font-mono font-semibold text-slate-900 tabular-nums">
               {meta?.underlying != null ? Number(meta.underlying).toFixed(2) : "—"}
             </div>
           </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Synthetic Future</div>
-            <div className="text-2xl font-bold text-slate-900 tabular-nums">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Synthetic Future</div>
+            <div className="font-mono font-semibold text-slate-900 tabular-nums">
               {synthetic != null ? synthetic.toFixed(2) : "—"}
             </div>
           </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Strike / CE / PE</div>
-            <div className="text-base font-semibold text-slate-800 tabular-nums">
-              {meta?.strike != null && meta?.ce_ltp != null && meta?.pe_ltp != null
-                ? `${meta.strike} · ${Number(meta.ce_ltp).toFixed(2)} / ${Number(meta.pe_ltp).toFixed(2)}`
-                : "—"}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Straddle Strike</div>
+            <div className="font-mono font-semibold text-slate-900 tabular-nums">{meta?.strike ?? "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">
+              {meta?.strike != null ? `${meta.strike}CE` : "CE"}
+            </div>
+            <div className="font-mono font-semibold text-slate-900 tabular-nums">
+              {meta?.ce_ltp != null ? Number(meta.ce_ltp).toFixed(2) : "—"}
             </div>
           </div>
-        </div>
-
-        {/* Secondary row — inspired by reference desk strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-5 py-2.5 border-t border-slate-100 bg-slate-50/80 text-[11px]">
           <div>
-            <span className="text-slate-500 uppercase tracking-wider">Strike</span>
-            <div className="font-mono font-semibold text-slate-800">{meta?.strike ?? "—"}</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">
+              {meta?.strike != null ? `${meta.strike}PE` : "PE"}
+            </div>
+            <div className="font-mono font-semibold text-slate-900 tabular-nums">
+              {meta?.pe_ltp != null ? Number(meta.pe_ltp).toFixed(2) : "—"}
+            </div>
           </div>
           <div>
-            <span className="text-slate-500 uppercase tracking-wider">Days to expiry</span>
-            <div className="font-mono font-semibold text-slate-800">{dte ?? "—"}</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Days to Expiry</div>
+            <div className="font-mono font-semibold text-slate-900 tabular-nums">{dte ?? "—"}</div>
           </div>
-          <div className="sm:col-span-2">
-            <span className="text-slate-500 uppercase tracking-wider">Last updated</span>
-            <div className="font-mono font-semibold text-slate-800">{lastUpdated ?? "—"}</div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Last Updated</div>
+            <div className="font-mono font-semibold text-slate-800 text-[11px]">{lastUpdated ?? "—"}</div>
           </div>
         </div>
       </div>

@@ -228,6 +228,105 @@ class KiteService:
             "strikes": strikes_data,
         }
 
+    def get_atm_straddle_quote(
+        self, index_name: str, expiry: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Lightweight ATM CE+PE+spot quote for dense intraday straddle charts.
+
+        Quotes only 3 instruments (index + ATM call + ATM put) instead of the
+        full OI chain — cheap enough to sample every few seconds like FinanceDeft.
+        """
+        try:
+            self._load_instruments()
+        except Exception as e:
+            logger.error(f"[atm_straddle:{index_name}] load_instruments failed: {e}")
+            return None
+
+        cfg = INDEX_CONFIG[index_name]
+        try:
+            q = self.kite.quote(cfg["quote_symbol"])
+            ltp = float(q[cfg["quote_symbol"]]["last_price"])
+        except Exception as e:
+            logger.error(f"[atm_straddle:{index_name}] index quote failed: {e}")
+            return None
+
+        step = cfg["step"]
+        atm = int(round(ltp / step) * step)
+
+        import pandas as pd
+        opt_df = self.instruments_df[
+            (self.instruments_df["name"] == cfg["name"])
+            & (self.instruments_df["segment"] == cfg["segment"])
+        ].copy()
+        if opt_df.empty:
+            return None
+        opt_df["expiry"] = pd.to_datetime(opt_df["expiry"])
+        available = sorted(opt_df["expiry"].unique())
+        if not available:
+            return None
+        if expiry:
+            selected = pd.to_datetime(expiry)
+            if selected not in available:
+                selected = available[0]
+        else:
+            selected = available[0]
+        expiry_opt = opt_df[opt_df["expiry"] == selected]
+        ce = expiry_opt[(expiry_opt["strike"] == atm) & (expiry_opt["instrument_type"] == "CE")]
+        pe = expiry_opt[(expiry_opt["strike"] == atm) & (expiry_opt["instrument_type"] == "PE")]
+        if ce.empty or pe.empty:
+            # ATM may sit between listed strikes right after a move — pick nearest.
+            strikes = sorted({int(x) for x in expiry_opt["strike"].unique() if x is not None})
+            if not strikes:
+                return None
+            atm = int(min(strikes, key=lambda x: abs(x - atm)))
+            ce = expiry_opt[(expiry_opt["strike"] == atm) & (expiry_opt["instrument_type"] == "CE")]
+            pe = expiry_opt[(expiry_opt["strike"] == atm) & (expiry_opt["instrument_type"] == "PE")]
+            if ce.empty or pe.empty:
+                return None
+
+        ce_sym = ce.iloc[0]["tradingsymbol"]
+        pe_sym = pe.iloc[0]["tradingsymbol"]
+        tokens = []
+        for sym in (ce_sym, pe_sym):
+            tok = self.instrument_token_map.get(sym)
+            if tok is not None:
+                tokens.append(int(tok))
+        if len(tokens) < 2:
+            return None
+        try:
+            quotes = self.kite.quote(tokens)
+        except Exception as e:
+            logger.error(f"[atm_straddle:{index_name}] options quote failed: {e}")
+            return None
+
+        sym_to_data = {}
+        for tok, data in quotes.items():
+            sym = self.token_to_symbol.get(int(tok))
+            if sym:
+                sym_to_data[sym] = data
+        ce_d = sym_to_data.get(ce_sym, {})
+        pe_d = sym_to_data.get(pe_sym, {})
+        ce_ltp = float(ce_d.get("last_price", 0) or 0)
+        pe_ltp = float(pe_d.get("last_price", 0) or 0)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        return {
+            "index": index_name,
+            "timestamp": now_iso,
+            "price": float(ltp),
+            "atm": int(atm),
+            "expiry": str(pd.Timestamp(selected).date()),
+            "ce_ltp": ce_ltp,
+            "pe_ltp": pe_ltp,
+            "premium": round(ce_ltp + pe_ltp, 2),
+            "strikes": [{
+                "strike": int(atm),
+                "ce_ltp": ce_ltp,
+                "pe_ltp": pe_ltp,
+                "ce_oi": int(ce_d.get("oi", 0) or 0),
+                "pe_oi": int(pe_d.get("oi", 0) or 0),
+            }],
+        }
+
 
 # MockService moved to backend/dev/mock_service.py and is imported only when ENABLE_DEV_MOCK=true
 # This keeps demo/mock code available for local development while preventing

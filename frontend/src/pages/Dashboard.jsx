@@ -780,7 +780,7 @@ export default function Dashboard() {
   }, [alarm, push, activeIndex]);
 
   // ---- Straddle + Positions poll intervals (from API settings) ----
-  const [straddlePollMs, setStraddlePollMs] = useState(60000); // default 1 minute
+  const [straddlePollMs, setStraddlePollMs] = useState(15000); // dense chart default 15s
   const [positionsPollMs, setPositionsPollMs] = useState(30000);
 
   // Prefetch expiries for every enabled index once settings land (keeps SENSEX warm on NIFTY tab).
