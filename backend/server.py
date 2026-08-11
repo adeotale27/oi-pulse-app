@@ -24,7 +24,7 @@ from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
 from market_hours import (
     is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend, display_hours, configure_hours,
-    session_anchor_date, session_window_utc, previous_trading_day,
+    session_anchor_date, session_window_utc, previous_trading_day, now_ist,
 )
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
@@ -1031,7 +1031,6 @@ async def get_expiries(index_name: str):
     # Cap to the first 8 nearest unexpired (Kite instrument list can span
     # multiple years of monthlies which drowns the UI).
     from datetime import date as _date, datetime as _datetime
-    from market_hours import now_ist
     today = now_ist().date()
     parsed = []
     for d in all_dates:
