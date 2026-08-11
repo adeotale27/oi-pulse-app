@@ -307,7 +307,7 @@ async def _straddle_sampler():
                 )
             except Exception:
                 poll_interval_seconds = STRADDLE_SAMPLE_INTERVAL_SECONDS
-            poll_interval_seconds = max(5, min(120, int(poll_interval_seconds)))
+            poll_interval_seconds = max(5, min(30, int(poll_interval_seconds)))
 
             enabled = tracker.settings.get("straddle_enabled_indices") if tracker else None
             if not enabled:
@@ -1577,7 +1577,7 @@ async def get_straddle_tick(index_name: str, expiry: Optional[str] = None):
         raise HTTPException(404, "Unknown index")
 
     try:
-        interval = max(5, int(tracker.settings.get("straddle_poll_interval_seconds", 15)))
+        interval = max(5, min(30, int(tracker.settings.get("straddle_poll_interval_seconds", 15))))
     except Exception:
         interval = 15
 
@@ -1906,7 +1906,7 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
             try:
                 poll_interval_seconds = max(
                     5,
-                    min(60, int(tracker.settings.get("straddle_poll_interval_seconds", 15))),
+                    min(30, int(tracker.settings.get("straddle_poll_interval_seconds", 15))),
                 )
                 from market_hours import is_market_open as is_market_open_fn
                 if not is_market_open_fn(datetime.now(IST)):
