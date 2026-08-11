@@ -410,7 +410,10 @@ export default function PositionsAnalyzeModal({
   fallbackSpot = null,
   oiByIndex = null,
   vix = null,
+  privacyMode = false,
 }) {
+  const MASK = "••••";
+  const money = (v, dp = 0) => (privacyMode ? MASK : fmt(v, dp));
   const byIndex = useMemo(() => groupPositionsByIndex(rows), [rows]);
   const indices = useMemo(() => Array.from(byIndex.keys()), [byIndex]);
   const [activeIndex, setActiveIndex] = useState(indices[0] || "NIFTY");
@@ -651,7 +654,7 @@ export default function PositionsAnalyzeModal({
                 }`}
                 data-testid="analyze-selected-pnl"
               >
-                Live {fmt(selectedPnl, 0)}
+                Live {money(selectedPnl, 0)}
               </span>
               <span className="text-slate-500">
                 {activeLegs.length} leg{activeLegs.length === 1 ? "" : "s"} in scenario
@@ -718,7 +721,7 @@ export default function PositionsAnalyzeModal({
                               idxSelectedPnl >= 0 ? "text-emerald-700" : "text-rose-700"
                             }`}
                           >
-                            {fmt(idxSelectedPnl, 0)}
+                            {money(idxSelectedPnl, 0)}
                           </span>
                         </div>
                         <div className="text-[10px] text-slate-400 font-mono-data">
@@ -791,17 +794,23 @@ export default function PositionsAnalyzeModal({
                                 >
                                   {exited ? "X" : l.quantity < 0 ? "S" : "B"}
                                 </span>{" "}
-                                <span className="font-mono-data">{exited ? 0 : Math.abs(l.quantity)}×</span>{" "}
+                                <span className="font-mono-data">{privacyMode ? MASK : (exited ? 0 : Math.abs(l.quantity))}×</span>{" "}
                                 <span className="font-medium">
                                   {l.strike}
                                   {l.side}
                                 </span>
                                 <div
                                   className={`font-mono-data ${
-                                    exited ? "text-slate-400" : l.pnl >= 0 ? "text-emerald-700" : "text-rose-700"
+                                    privacyMode
+                                      ? "text-slate-500"
+                                      : exited
+                                        ? "text-slate-400"
+                                        : l.pnl >= 0
+                                          ? "text-emerald-700"
+                                          : "text-rose-700"
                                   }`}
                                 >
-                                  {fmt(l.pnl, 0)}
+                                  {money(l.pnl, 0)}
                                   {exited ? " · closed" : ""}
                                 </div>
                               </span>
@@ -820,7 +829,7 @@ export default function PositionsAnalyzeModal({
                 className={`font-mono-data ${selectedPnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}
                 data-testid="analyze-total-selected"
               >
-                {fmt(selectedPnl, 0)}
+                {money(selectedPnl, 0)}
               </span>
             </div>
           </div>
@@ -831,26 +840,26 @@ export default function PositionsAnalyzeModal({
               <Metric
                 label="Best case"
                 sub="Max profit on path"
-                value={fmt(payoff.summary.maxProfit, 0)}
+                value={money(payoff.summary.maxProfit, 0)}
                 tone="emerald"
               />
               <Metric
                 label="Room left"
                 sub="Premium still to earn"
-                value={payoff.summary.profitLeft != null ? fmt(payoff.summary.profitLeft, 0) : "—"}
+                value={payoff.summary.profitLeft != null ? money(payoff.summary.profitLeft, 0) : "—"}
                 tone="slate"
               />
               <Metric
                 label="Worst case"
                 sub="Max loss on path"
-                value={payoff.summary.unlimitedLoss ? "Open-ended" : fmt(payoff.summary.maxLoss, 0)}
+                value={payoff.summary.unlimitedLoss ? "Open-ended" : money(payoff.summary.maxLoss, 0)}
                 tone="rose"
               />
               <Metric
                 label="At target"
                 sub="Scenario P&L"
-                value={projected != null ? fmt(projected, 0) : fmt(selectedPnl, 0)}
-                tone={(projected ?? selectedPnl) >= 0 ? "emerald" : "rose"}
+                value={projected != null ? money(projected, 0) : money(selectedPnl, 0)}
+                tone={privacyMode ? "slate" : ((projected ?? selectedPnl) >= 0 ? "emerald" : "rose")}
               />
             </div>
 
@@ -961,7 +970,7 @@ export default function PositionsAnalyzeModal({
                 />
                 <Row k="Spot now" v={spot != null ? Number(spot).toFixed(2) : "—"} />
                 <Row k="Your target" v={tgt ? Number(tgt).toFixed(2) : "—"} />
-                <Row k="Live P&L" v={fmt(selectedPnl, 0)} strong />
+                <Row k="Live P&L" v={money(selectedPnl, 0)} strong />
               </div>
             </section>
 
@@ -981,7 +990,7 @@ export default function PositionsAnalyzeModal({
                 />
                 <Row
                   k="Time ₹/day (Θ)"
-                  v={bookThetaInr != null ? fmt(bookThetaInr, 0) : "—"}
+                  v={bookThetaInr != null ? money(bookThetaInr, 0) : "—"}
                   tip="Capped to premium left — same desk-safe θ as Positions ₹/day (not raw BS)"
                 />
                 <Row k="Vega" v={payoff.greeks.vega?.toFixed?.(1) ?? "—"} />

@@ -268,7 +268,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           {verdict.advice}
         </p>
         <p className="text-[10px] opacity-60">
-          Minimize keeps a chip until next session open (09:15 trading day). Tap the chip anytime to re-read.
+          Minimize keeps a chip until next session open (admin market hours). Tap the chip anytime to re-read.
         </p>
         {holidayNote && (
           <div

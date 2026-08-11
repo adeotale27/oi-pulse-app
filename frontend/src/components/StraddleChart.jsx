@@ -10,11 +10,10 @@ import {
   ReferenceDot,
 } from "recharts";
 import { fetchStraddleTick, fetchStraddleHistory } from "../lib/api";
-import { isMarketQuiescent } from "@/lib/marketTimes";
+import { isMarketQuiescent, getMarketOpenMinute, getMarketCloseMinute, getMarketOpenHm, getMarketCloseHm } from "@/lib/marketTimes";
 import { sessionAnchorDateIST } from "@/lib/holidays";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-const SESSION_OPEN_MIN = 9 * 60 + 15; // 09:15 IST
 /** Chart display resolution — denser than admin persistence when live ticks arrive. */
 const CHART_BUCKET_MS = 15_000;
 /** Live REST poll when WS is unavailable — keep the line moving like FinanceDeft. */
@@ -42,7 +41,16 @@ function daysToExpiryLabel(expiryISO) {
   try {
     const [y, m, d] = String(expiryISO).split("-").map(Number);
     if (!y || !m || !d) return null;
-    const expiryMs = Date.UTC(y, m - 1, d, 10, 0); // 15:30 IST = 10:00 UTC
+    const expiryCloseMin = getMarketCloseMinute();
+    const hh = Math.floor(expiryCloseMin / 60);
+    const mm = expiryCloseMin % 60;
+    // Convert IST close to approximate UTC for day-count (IST = UTC+5:30)
+    const utcH = hh - 5;
+    const utcM = mm - 30;
+    let adjH = utcH;
+    let adjM = utcM;
+    if (adjM < 0) { adjM += 60; adjH -= 1; }
+    const expiryMs = Date.UTC(y, m - 1, d, adjH, adjM);
     const now = Date.now();
     const days = (expiryMs - now) / (24 * 60 * 60 * 1000);
     if (!Number.isFinite(days)) return null;
@@ -128,10 +136,12 @@ function istDateToUtcMs(dateStr, hour, minute) {
   return Date.UTC(year, month - 1, day, hour, minute) - IST_OFFSET_MS;
 }
 
-/** Session window [09:15, 15:40] IST for a trade date. */
+/** Session window from admin market_open_ist / market_close_ist for a trade date. */
 function sessionWindowMs(tradeDate) {
-  const start = istDateToUtcMs(tradeDate, 9, 15);
-  const end = istDateToUtcMs(tradeDate, 15, 40);
+  const openMin = getMarketOpenMinute();
+  const closeMin = getMarketCloseMinute();
+  const start = istDateToUtcMs(tradeDate, Math.floor(openMin / 60), openMin % 60);
+  const end = istDateToUtcMs(tradeDate, Math.floor(closeMin / 60), closeMin % 60);
   if (start == null || end == null) return null;
   return { start, end };
 }
@@ -140,7 +150,7 @@ function sessionWindowMs(tradeDate) {
 function filterSessionPoints(arr, tradeDate) {
   const win = sessionWindowMs(tradeDate);
   if (!win || !arr?.length) return [];
-  // Allow 09:14 pre-open poll tick through to first 09:15 bucket.
+  // Allow 1m pre-open poll tick through to first open bucket.
   const lo = win.start - 60_000;
   return arr
     .filter((p) => Number.isFinite(p.ts) && p.ts >= lo && p.ts <= win.end)
@@ -201,7 +211,7 @@ export default function StraddleChart({
 }) {
   const [points, setPoints] = useState([]);
   const [meta, setMeta] = useState(null);
-  const [tradeDate, setTradeDate] = useState(() => sessionAnchorDateIST(new Date(), SESSION_OPEN_MIN));
+  const [tradeDate, setTradeDate] = useState(() => sessionAnchorDateIST(new Date(), getMarketOpenMinute()));
   const [nowMs, setNowMs] = useState(() => Date.now());
   const wsRef = useRef(null);
   const tradeDateRef = useRef(tradeDate);
@@ -217,7 +227,7 @@ export default function StraddleChart({
     const id = setInterval(() => {
       const now = Date.now();
       setNowMs(now);
-      const nextAnchor = sessionAnchorDateIST(new Date(now), SESSION_OPEN_MIN);
+      const nextAnchor = sessionAnchorDateIST(new Date(now), getMarketOpenMinute());
       setTradeDate((prev) => (prev === nextAnchor ? prev : nextAnchor));
     }, 15_000);
     return () => clearInterval(id);
@@ -230,9 +240,8 @@ export default function StraddleChart({
     const minutes = istTime.getMinutes();
     const day = istTime.getDay();
     if (day === 0 || day === 6) return false;
-    if (hours < 9 || (hours === 9 && minutes < 15)) return false;
-    if (hours > 15 || (hours === 15 && minutes > 40)) return false;
-    return true;
+    const nowMin = hours * 60 + minutes;
+    return nowMin >= getMarketOpenMinute() && nowMin <= getMarketCloseMinute();
   };
 
   const applyMeta = (point, ts) => {
@@ -390,9 +399,15 @@ export default function StraddleChart({
   }, [index, expiry, position, qty, livePollMs, maxPoints, useWs, bucketMs, tradeDate]);
 
   const chartWindow = useMemo(() => {
+    const openMin = getMarketOpenMinute();
+    const closeMin = getMarketCloseMinute();
+    const openH = Math.floor(openMin / 60);
+    const openM = openMin % 60;
+    const closeH = Math.floor(closeMin / 60);
+    const closeM = closeMin % 60;
     const win = sessionWindowMs(tradeDate) || {
-      start: istDateToUtcMs(sessionAnchorDateIST(), 9, 15),
-      end: istDateToUtcMs(sessionAnchorDateIST(), 15, 40),
+      start: istDateToUtcMs(sessionAnchorDateIST(), openH, openM),
+      end: istDateToUtcMs(sessionAnchorDateIST(), closeH, closeM),
     };
     const liveToday = toIstDateString(nowMs) === tradeDate;
     let end = win.end;
@@ -404,11 +419,13 @@ export default function StraddleChart({
     const start = win.start;
     const ticks = buildSessionTicks(start, end);
     const isLive = liveToday && nowMs >= win.start && nowMs <= win.end + 60_000;
+    const openHm = getMarketOpenHm();
+    const closeHm = getMarketCloseHm();
     return {
       start,
       end,
       ticks,
-      label: isLive ? "09:15 IST → live" : `09:15 – 15:40 IST · ${tradeDate}`,
+      label: isLive ? `${openHm} IST → live` : `${openHm} – ${closeHm} IST · ${tradeDate}`,
     };
   }, [tradeDate, nowMs, bucketMs, points]);
 

@@ -361,7 +361,9 @@ export default function Header({
           </Button>
           <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className="w-4 h-4 mr-1.5" />
-            {kiteBtnLabel}
+            <span className={isAdmin && status?.kite_user_id ? "text-emerald-600 font-semibold" : undefined}>
+              {kiteBtnLabel}
+            </span>
           </Button>
           <Button
             data-testid="btn-mobile-fresh-pull"
@@ -715,7 +717,9 @@ export default function Header({
               title={kiteBtnTitle}
             >
               <KeyRound className="w-4 h-4 mr-1.5" />
-              {kiteBtnLabel}
+              <span className={isAdmin && status?.kite_user_id ? "text-emerald-600 font-semibold" : undefined}>
+                {kiteBtnLabel}
+              </span>
             </Button>
           </div>
           )}
@@ -795,7 +799,9 @@ export default function Header({
           </Button>
           <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className="w-4 h-4 mr-1.5" />
-            {kiteBtnLabel}
+            <span className={isAdmin && status?.kite_user_id ? "text-emerald-600 font-semibold" : undefined}>
+              {kiteBtnLabel}
+            </span>
           </Button>
           <Button
             data-testid="btn-tablet-fresh-pull"

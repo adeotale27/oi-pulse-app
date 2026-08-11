@@ -588,7 +588,7 @@ class SettingsIn(BaseModel):
     enabled_indices: Optional[List[str]] = None
     oi_poll_interval_seconds: Optional[int] = None  # OI data pull interval (15/30/60)
     straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
-    positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (15/30/60)
+    positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (5–3600s)
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
     market_open_ist: Optional[str] = None   # e.g. "09:15"
@@ -1153,8 +1153,10 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if int(patch["straddle_poll_interval_seconds"]) not in (15, 30, 60, 120):
             raise HTTPException(400, "straddle_poll_interval_seconds must be 15, 30, 60, or 120")
     if "positions_poll_interval_seconds" in patch:
-        if int(patch["positions_poll_interval_seconds"]) not in (15, 30, 60):
-            raise HTTPException(400, "positions_poll_interval_seconds must be 15, 30, or 60")
+        v = int(patch["positions_poll_interval_seconds"])
+        if v < 5 or v > 3600:
+            raise HTTPException(400, "positions_poll_interval_seconds must be between 5 and 3600")
+        patch["positions_poll_interval_seconds"] = v
     for key in ("market_open_ist", "market_close_ist"):
         if key in patch:
             try:

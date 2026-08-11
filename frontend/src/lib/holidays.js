@@ -3,6 +3,8 @@
 // If NSE releases a revised list, update `HOLIDAYS_RAW` below.
 // Format: { date: 'YYYY-MM-DD', name: 'Holiday name' }
 
+import { getMarketOpenMinute } from "./marketTimes";
+
 const HOLIDAYS_RAW = [
   // ---------- 2025 ----------
   { date: "2025-02-26", name: "Mahashivratri" },
@@ -111,9 +113,9 @@ export function previousTradingDayIST(iso = todayIST()) {
  * • Pre-open / weekend / holiday → previous trading day
  *
  * @param {Date} [now]
- * @param {number} [openMinute=9*60+15] minutes since midnight IST
+ * @param {number} [openMinute] minutes since midnight IST (defaults to admin market_open_ist)
  */
-export function sessionAnchorDateIST(now = new Date(), openMinute = 9 * 60 + 15) {
+export function sessionAnchorDateIST(now = new Date(), openMinute = getMarketOpenMinute()) {
   const today = toIST(now);
   if (!isTradingDayIST(today)) return previousTradingDayIST(today);
   const parts = new Intl.DateTimeFormat("en-GB", {

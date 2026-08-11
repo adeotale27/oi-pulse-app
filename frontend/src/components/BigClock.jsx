@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNotify } from "@/hooks/useNotify";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { FNO_CLOSE_MINUTE, WEEKEND_START_MINUTE, REMINDER_MINUTES, hmFromMinutes } from "@/lib/marketTimes";
+import { FNO_CLOSE_MINUTE, WEEKEND_START_MINUTE, REMINDER_MINUTES, hmFromMinutes, getMarketOpenMinute, getMarketOpenHm } from "@/lib/marketTimes";
 import {
   EVENT_WARNING_MINUTE,
   SUNDAY_BRIEF_MINUTE,
@@ -87,9 +87,10 @@ export default function BigClock({ compact = false }) {
   const isWeekday = isTradingDay;
   const holidayName = holidayToday?.name || null;
 
+  const openMin = getMarketOpenMinute();
   const inAlertWindow =
     isTradingDay &&
-    minutesOfDay >= (15 * 60 + 10) &&
+    minutesOfDay >= Math.max(openMin, FNO_CLOSE_MINUTE - 20) &&
     minutesOfDay < FNO_CLOSE_MINUTE;
 
   useEffect(() => {
@@ -101,24 +102,27 @@ export default function BigClock({ compact = false }) {
     }).format(now);
     const minuteKey = `${key}|${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
     const cur = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const openHm = getMarketOpenHm();
+    const preOpenHm = hmFromMinutes(Math.max(0, openMin - 16));
+    const auctionHm = hmFromMinutes(Math.max(0, openMin - 15));
 
     const scheduledAlerts = [
       {
-        time: "08:59",
+        time: preOpenHm,
         days: [1, 2, 3, 4, 5],
         title: "Market is about to open",
         description: "Market is about to open.",
         toast: "Market is about to open.",
       },
       {
-        time: "09:00",
+        time: auctionHm,
         days: [1, 2, 3, 4, 5],
         title: "Market has opened",
         description: "Market has opened. Have a profitable day.",
         toast: "Market opened — have a profitable day",
       },
       {
-        time: "09:15",
+        time: openHm,
         days: [1, 2, 3, 4, 5],
         title: "Trading has begun",
         description: "Trading has begun.",
