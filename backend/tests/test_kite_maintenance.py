@@ -27,3 +27,19 @@ def test_merge_prefers_api_over_bulletin():
     assert out["source"] == "kite_api"
     out2 = merge_maintenance(None, bulletin=bulletin)
     assert out2["source"] == "zerodha_bulletin"
+
+
+def test_merge_keeps_api_notice_when_bulletin_inactive():
+    current = {
+        "active": True,
+        "message": "503 Service Unavailable",
+        "source": "kite_api",
+    }
+    bulletin = {
+        "active": False,
+        "message": None,
+        "source": "zerodha_bulletin",
+        "error": "URLError: timed out",
+    }
+    out = merge_maintenance(current, bulletin=bulletin)
+    assert out is current

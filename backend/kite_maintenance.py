@@ -118,16 +118,17 @@ def merge_maintenance(
     api_error: Any = None,
     bulletin: Optional[dict] = None,
 ) -> Optional[dict]:
-    """Prefer live API maintenance signals; fall back to bulletin headlines."""
+    """Prefer live API maintenance signals; fall back to bulletin headlines.
+
+    Never clear a sticky kite_api notice just because the bulletin scrape failed
+    or returned inactive — only a successful kite call should clear API notices.
+    """
     from_api = notice_from_error(api_error, source="kite_api") if api_error else None
     if from_api:
         return from_api
     if bulletin and bulletin.get("active") and bulletin.get("message"):
         return bulletin
-    # Clear sticky API notice when neither source is active.
-    if current and current.get("source") == "kite_api" and not from_api:
-        if bulletin and not bulletin.get("active"):
-            return None
+    # Keep sticky API / bulletin notices; do not clear on scrape error / inactive.
     if current and current.get("active"):
         return current
     return None

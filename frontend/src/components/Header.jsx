@@ -71,30 +71,35 @@ export default function Header({
     is_guest: false,
     public_access_open: !!publicAccessOpen,
   });
+  // Auth state — Dashboard owns /auth/state. When assumedAdmin, only listen
+  // for shared broadcasts (no duplicate poll).
   {
     let alive = true;
+    const apply = (data) => {
+      if (alive && data) setAuthState(data);
+    };
     const load = async () => {
+      if (assumedAdmin) return;
       try {
         const { data } = await api.get("/auth/state");
-        if (alive) setAuthState(data);
+        apply(data);
       } catch (err) {
         console.error("[Header] auth_state fetch failed", err);
-        if (alive && assumedAdmin) {
-          setAuthState((prev) => ({
-            ...prev,
-            is_admin: true,
-            public_access_open: publicAccessOpen != null ? !!publicAccessOpen : !!prev.public_access_open,
-          }));
-        }
       }
     };
-    useQuiescentAwarePolling(load, 60_000, [], {
-      // Dashboard already owns /auth/state — skip duplicate mount hit when admin is known.
+    useQuiescentAwarePolling(load, 60_000, [assumedAdmin], {
       immediate: !assumedAdmin,
       allowDuringQuiescent: true,
       dedupeKey: "header-auth",
     });
-    useEffect(() => () => { alive = false; }, []);
+    useEffect(() => {
+      const onState = (e) => apply(e?.detail);
+      window.addEventListener("oi-admin-auth-state", onState);
+      return () => {
+        alive = false;
+        window.removeEventListener("oi-admin-auth-state", onState);
+      };
+    }, []);
   }
 
   useEffect(() => {

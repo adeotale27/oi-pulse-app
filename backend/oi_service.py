@@ -81,6 +81,12 @@ class KiteService:
                 self.token_to_symbol[token] = sym
         self._loaded = True
 
+    def reload_instruments(self, force: bool = False):
+        """Refresh the instrument universe (weekly expiry roll / new contracts)."""
+        if force:
+            self._loaded = False
+        self._load_instruments()
+
     def list_expiries(self, index_name: str):
         try:
             self._load_instruments()

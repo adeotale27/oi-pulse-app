@@ -189,8 +189,11 @@ class OITracker:
         self.last_error: Optional[str] = None
         self.kite_user_id: Optional[str] = None
         self.kite_maintenance: Optional[Dict[str, Any]] = None
+        # When True, admin intentionally set offline / signed out — Positions must not heal.
+        self.offline_sticky: bool = False
         self.last_snapshot: Dict[str, Dict[str, Any]] = {}
         self.last_updated_at: Optional[str] = None
+        self._instruments_loaded_at: Optional[datetime] = None
         self.settings: Dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.selected_expiry: Dict[str, Optional[str]] = {i: None for i in INDICES}
         # Throttle straddle history to ~1 sample per straddle_poll_interval (default 60s).
@@ -468,6 +471,7 @@ class OITracker:
                 self.kite_service = KiteService(api_key, access_token)
                 self.mode = "kite"
                 self.last_error = None
+                self.offline_sticky = False
                 logger.info("KiteService initialized from stored credentials.")
                 # Refresh profile identity when missing (admin UI shows user id).
                 if not self.kite_user_id:
@@ -529,6 +533,13 @@ class OITracker:
         self.last_error = None
         self.kite_user_id = uid or self.kite_user_id
         self.kite_maintenance = None
+        self.offline_sticky = False
+        try:
+            if self.kite_service:
+                self.kite_service.reload_instruments(force=True)
+                self._instruments_loaded_at = datetime.now(timezone.utc)
+        except Exception as e:
+            logger.warning("instruments reload after set_credentials failed: %s", e)
         try:
             await self.seed_default_expiries()
         except Exception as e:
@@ -551,7 +562,10 @@ class OITracker:
         if mode == "kite" and self.kite_service is None:
             raise RuntimeError("No Kite credentials configured")
         self.mode = mode
-        if mode == "kite":
+        if mode == "offline":
+            self.offline_sticky = True
+        else:
+            self.offline_sticky = False
             try:
                 await self.start()
             except Exception as e:
@@ -569,20 +583,34 @@ class OITracker:
             return self.kite_service
         return None
 
-    async def seed_default_expiries(self):
-        """Lock nearest expiry for every enabled index so background polls stay warm.
+    async def seed_default_expiries(self, *, force_roll: bool = False):
+        """Lock nearest unexpired expiry for every enabled index.
 
-        Without this, the poller used expiry=None (nearest-at-call-time) while the
-        UI sent an explicit expiry after tab select — first /change for SENSEX often
-        missed cache until the user clicked that tab.
+        Re-seeds when missing, when force_roll=True (morning / after instrument
+        reload), or when the currently selected expiry is already past.
         """
         if self.mode != "kite" or not self.kite_service:
             return
+        today = now_ist().date()
         enabled = self.settings.get("enabled_indices", INDICES)
         for idx in enabled:
             if idx not in INDICES:
                 continue
-            if self.selected_expiry.get(idx):
+            current = self.selected_expiry.get(idx)
+            need = force_roll or not current
+            if current and not need:
+                try:
+                    from datetime import date as _date, datetime as _datetime
+                    d = (
+                        _datetime.fromisoformat(current).date()
+                        if "T" in str(current)
+                        else _date.fromisoformat(str(current)[:10])
+                    )
+                    if d < today:
+                        need = True
+                except Exception:
+                    need = True
+            if not need:
                 continue
             try:
                 dates = await asyncio.to_thread(self.kite_service.list_expiries, idx)
@@ -591,6 +619,33 @@ class OITracker:
                     logger.info("Seeded default expiry for %s → %s", idx, dates[0])
             except Exception as e:
                 logger.warning("seed_default_expiries(%s) failed: %s", idx, e)
+
+    async def ensure_instruments_fresh(self) -> None:
+        """Reload Kite instruments at most once per IST trading day (expiry roll)."""
+        if self.mode != "kite" or not self.kite_service:
+            return
+        now = datetime.now(timezone.utc)
+        loaded = self._instruments_loaded_at
+        # Reload if never loaded today (IST calendar day).
+        ist_today = now_ist().date()
+        need = loaded is None
+        if loaded is not None:
+            try:
+                loaded_ist = loaded.astimezone(IST).date() if loaded.tzinfo else loaded.date()
+                need = loaded_ist < ist_today
+            except Exception:
+                need = True
+        if not need:
+            # Still roll expiries that went past.
+            await self.seed_default_expiries(force_roll=False)
+            return
+        try:
+            self.kite_service.reload_instruments(force=True)
+            self._instruments_loaded_at = now
+            await self.seed_default_expiries(force_roll=True)
+            logger.info("Reloaded Kite instruments + rolled default expiries for %s", ist_today)
+        except Exception as e:
+            logger.warning("ensure_instruments_fresh failed: %s", e)
 
     async def start(self):
         if self.running and self._task is not None and not self._task.done():
@@ -803,6 +858,11 @@ class OITracker:
             logger.debug("[_poll_once] tracker offline: skipping live fetch cycle", extra={"metrics": dict(self.metrics)})
             self.last_updated_at = datetime.now(timezone.utc).isoformat()
             return
+
+        try:
+            await self.ensure_instruments_fresh()
+        except Exception as e:
+            logger.warning("ensure_instruments_fresh in poll: %s", e)
 
         svc = self._get_service()
         enabled = [i for i in self.settings.get("enabled_indices", INDICES) if i in INDICES]

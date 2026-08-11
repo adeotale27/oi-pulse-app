@@ -833,6 +833,7 @@ async def vault_save(payload: VaultIn, _admin: bool = Depends(require_admin)):
     if needs_reauth and tracker is not None:
         tracker.kite_service = None
         tracker.mode = "offline"
+        tracker.offline_sticky = True
         tracker.last_error = (
             "API key updated — complete Kite login (request_token) or paste a "
             "fresh access_token to go live."
@@ -910,6 +911,7 @@ async def clear_vault(_admin: bool = Depends(require_admin)):
         tracker.mode = "offline"
         tracker.kite_user_id = None
         tracker.kite_maintenance = None
+        tracker.offline_sticky = True
         tracker.last_error = "Kite signed out — connect again to go live."
     return {"ok": True, "mode": "offline"}
 
@@ -1007,7 +1009,8 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
                     if doc:
                         snap = doc
             except Exception as e:
-                raise HTTPException(500, str(e))
+                logger.exception("get_current_oi live fetch failed for %s", idx)
+                raise HTTPException(503, _sanitize_public_error(str(e)) or "Data feed temporarily unavailable")
     if not snap:
         raise HTTPException(503, "No data yet")
     return snap
@@ -1018,19 +1021,29 @@ async def get_expiries(index_name: str):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
+    # Best-effort: roll past selections + refresh instruments once/day.
+    try:
+        await tracker.ensure_instruments_fresh()
+    except Exception:
+        pass
     all_dates = tracker.list_expiries(idx)
 
-    # Cap to the first 8 nearest (Kite instrument list can span multiple years
-    # of monthly expiries which drowns the UI).
+    # Cap to the first 8 nearest unexpired (Kite instrument list can span
+    # multiple years of monthlies which drowns the UI).
     from datetime import date as _date, datetime as _datetime
+    from market_hours import now_ist
+    today = now_ist().date()
     parsed = []
     for d in all_dates:
         try:
-            parsed.append(_datetime.fromisoformat(d).date() if "T" in d else _date.fromisoformat(d))
+            parsed.append(
+                _datetime.fromisoformat(d).date()
+                if "T" in str(d)
+                else _date.fromisoformat(str(d)[:10])
+            )
         except Exception:
             continue
-    parsed.sort()
-    parsed = parsed[:8]
+    parsed = sorted({p for p in parsed if p >= today})[:8]
     dates = [p.isoformat() for p in parsed]
 
     # Annotate each date as weekly / monthly. Heuristic: an expiry is "monthly"
@@ -1048,7 +1061,6 @@ async def get_expiries(index_name: str):
     # (they're all monthly) and expose a hint.
     only_monthlies = idx == "BANKNIFTY" and all(len(v) == 1 for v in by_month.values())
 
-    today = _date.today()
     meta = []
     for p in parsed:
         iso = p.isoformat()
@@ -1063,11 +1075,21 @@ async def get_expiries(index_name: str):
             "label": label,
         })
 
+    selected = tracker.selected_expiry.get(idx)
+    # If tracker still points at a past / missing expiry, surface the nearest live one.
+    if selected not in dates:
+        selected = dates[0] if dates else None
+        if selected:
+            try:
+                tracker.set_expiry(idx, selected)
+            except Exception:
+                pass
+
     return {
         "index": idx,
         "expiries": dates,
         "expiries_meta": meta,
-        "selected": tracker.selected_expiry.get(idx),
+        "selected": selected,
         "note": (
             "BANKNIFTY weekly expiries were discontinued by NSE in Nov-2024. "
             "Only monthly (last-Tuesday-of-month) contracts are listed."
@@ -1108,11 +1130,14 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown straddle index: {i}")
     if "visible_pages" in patch:
-        if not patch["visible_pages"]:
+        admin_only = {"positions", "sell-candidates"}
+        pages = [p for p in (patch["visible_pages"] or []) if p not in admin_only]
+        if not pages:
             raise HTTPException(400, "At least one public dashboard page is required")
-        for p in patch["visible_pages"]:
+        for p in pages:
             if p not in DASHBOARD_PAGE_KEYS:
                 raise HTTPException(400, f"Unknown dashboard page: {p}")
+        patch["visible_pages"] = pages
     if "oi_poll_interval_seconds" in patch:
         if int(patch["oi_poll_interval_seconds"]) not in (15, 30, 60):
             raise HTTPException(400, "oi_poll_interval_seconds must be 15, 30, or 60")
@@ -1554,12 +1579,27 @@ async def get_straddle(index_name: str, expiry: Optional[str] = None, position: 
     if not snap or (expiry and snap.get("expiry") != expiry):
         try:
             svc = tracker._get_service()
-            snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
-            if snap:
-                snap["mode"] = tracker.mode
-                tracker.last_snapshot[idx] = snap
+            if not svc:
+                # Fall back to DB cache when offline / no live client.
+                doc = await db.oi_snapshots.find_one(
+                    {"index": idx, **({"expiry": expiry} if expiry else {})},
+                    sort=[("timestamp", -1)],
+                    projection={"_id": 0},
+                )
+                if doc:
+                    snap = doc
+                else:
+                    raise HTTPException(503, "No data yet for straddle calculation")
+            else:
+                snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
+                if snap:
+                    snap["mode"] = tracker.mode
+                    tracker.last_snapshot[idx] = snap
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(500, str(e))
+            logger.exception("get_straddle live fetch failed for %s", idx)
+            raise HTTPException(503, _sanitize_public_error(str(e)) or "Data feed temporarily unavailable")
 
     if not snap:
         raise HTTPException(503, "No data yet for straddle calculation")
@@ -3230,7 +3270,7 @@ async def admin_refresh_day(
 
 # ------------------- Zerodha positions -------------------
 @api_router.get("/positions")
-async def get_positions(_who: str = Depends(require_desk_user)):
+async def get_positions(_admin: bool = Depends(require_admin)):
     """Fetch F&O positions from the user's Kite account (net + day).
 
     Includes:
@@ -3238,8 +3278,7 @@ async def get_positions(_who: str = Depends(require_desk_user)):
       • Same-day exited / squared-off legs (net quantity = 0 but buy/sell qty > 0)
         — Zerodha keeps these in `positions().net` until EOD with realised PnL
 
-    Only available when Kite credentials are loaded. Returns a normalised list with
-    parsed strike / side / expiry for options so the frontend can overlay them.
+    Admin-only — never expose the live broker book to guests.
     Also returns equity funds (read-only margins) for the seller desk tile."""
     # Prefer the live Kite client — do not drop Positions just because the OI
     # poller mode flag briefly flipped offline.
@@ -3253,13 +3292,20 @@ async def get_positions(_who: str = Depends(require_desk_user)):
             "transient": False,
             "token_issue": True,
         }
+    # Respect intentional offline — do not auto-heal mode back to kite.
     if tracker.mode != "kite":
-        # Credentials exist — heal mode so OI + Positions stay on the same live path.
-        try:
-            tracker.mode = "kite"
-            await tracker.start()
-        except Exception as e:
-            logger.warning("positions: heal mode→kite failed: %s", e)
+        if getattr(tracker, "offline_sticky", False):
+            return {
+                "mode": tracker.mode,
+                "positions": [],
+                "funds": None,
+                "error": "Kite is offline. Switch to LIVE (or reconnect) to pull positions.",
+                "kite_connected": False,
+                "transient": False,
+                "token_issue": False,
+            }
+        # Brief mode flap with credentials still loaded — use client without flipping mode.
+        pass
 
     try:
         kite = tracker.kite_service.kite
@@ -3578,11 +3624,11 @@ def _ist_today_ymd() -> str:
 
 
 @api_router.get("/positions/brokerage-day")
-async def get_brokerage_day(_who: str = Depends(require_desk_user)):
+async def get_brokerage_day(_admin: bool = Depends(require_admin)):
     """Day's brokerage via Kite virtual contract note (read-only).
 
     Prefers kite.trades() fills (reliable prices) then COMPLETE orders.
-    Never returns API keys, secrets, or access tokens. Desk users (admin/guest).
+    Never returns API keys, secrets, or access tokens. Admin-only.
     """
     from kite_charges import (
         aggregate_contract_notes,
@@ -3591,26 +3637,21 @@ async def get_brokerage_day(_who: str = Depends(require_desk_user)):
     )
 
     if tracker.mode != "kite" or not tracker.kite_service:
-        # Same stickiness as /positions: credentials beat a stale mode flag.
-        if not tracker.kite_service:
+        if not tracker.kite_service or getattr(tracker, "offline_sticky", False):
             return {
                 "ok": False,
                 "brokerage": None,
                 "charges_total": None,
                 "order_count": 0,
-                "error": "Kite not connected.",
+                "error": "Kite not connected." if not tracker.kite_service else "Kite is offline.",
             }
-        try:
-            tracker.mode = "kite"
-            await tracker.start()
-        except Exception:
-            pass
+        # Credentials present + non-sticky offline flap — use client without flipping mode.
+        pass
     try:
         kite = tracker.kite_service.kite
     except Exception as e:
         err = f"Kite client: {type(e).__name__}: {e}"
-        if _who == "guest":
-            err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
+        err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
         return {
             "ok": False,
             "brokerage": None,
@@ -3635,9 +3676,7 @@ async def get_brokerage_day(_who: str = Depends(require_desk_user)):
         logger.warning("kite.trades for charges failed: %s", trades_err)
 
     if orders_err and trades_err:
-        err = f"Kite orders/trades: {orders_err}"
-        if _who == "guest":
-            err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
+        err = _sanitize_public_error(f"Kite orders/trades: {orders_err}") or "Data feed temporarily unavailable"
         return {
             "ok": False,
             "brokerage": None,
@@ -3689,9 +3728,7 @@ async def get_brokerage_day(_who: str = Depends(require_desk_user)):
             chunk_errors.append(msg)
 
     if not notes and chunk_errors:
-        err = f"Charges API: {chunk_errors[0]}"
-        if _who == "guest":
-            err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
+        err = _sanitize_public_error(f"Charges API: {chunk_errors[0]}") or "Data feed temporarily unavailable"
         return {
             "ok": False,
             "brokerage": None,
