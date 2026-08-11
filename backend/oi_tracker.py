@@ -1010,9 +1010,9 @@ class OITracker:
 
     async def _store_straddle_sample(self, index_name: str, snap: Dict[str, Any]):
         try:
-            # Keep chart density at the configured straddle interval (default 15–60s).
+            # Chart density capped at 30s even if admin picks 60/120 (FinanceDeft-style).
             try:
-                interval = max(5, int(self.settings.get("straddle_poll_interval_seconds", 15)))
+                interval = max(5, min(30, int(self.settings.get("straddle_poll_interval_seconds", 15))))
             except Exception:
                 interval = 15
             now_utc = datetime.now(timezone.utc)
