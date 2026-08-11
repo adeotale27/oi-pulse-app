@@ -848,6 +848,15 @@ class OITracker:
                     extra={"metrics": dict(self.metrics)},
                 )
                 self.last_error = str(err)
+                try:
+                    from kite_maintenance import notice_from_error, merge_maintenance
+
+                    if notice_from_error(self.last_error):
+                        self.kite_maintenance = merge_maintenance(
+                            self.kite_maintenance, api_error=self.last_error
+                        )
+                except Exception:
+                    pass
                 continue
 
             if not snap:
@@ -860,6 +869,8 @@ class OITracker:
                 continue
 
             any_ok = True
+            if isinstance(self.kite_maintenance, dict) and self.kite_maintenance.get("source") == "kite_api":
+                self.kite_maintenance = None
             snap["mode"] = self.mode
             self.last_snapshot[idx] = snap
             self.metrics["successful_snapshots"] += 1
