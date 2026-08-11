@@ -25,6 +25,7 @@ import {
   impliedVol,
   shortPremiumLeft,
   extrinsicPremium,
+  dailyThetaRupees,
 } from "@/lib/blackScholes";
 import { computeSellCandidates } from "@/lib/sellCandidates";
 import {
@@ -70,7 +71,7 @@ const POSITIONS_GUIDE = (
     </p>
     <p>
       <b>Direction tilt (Δ)</b> — are you accidentally betting up or down? Near 0 is best for sellers.
-      <b> Daily time money (Θ)</b> — rough ₹ you earn/pay each day from time passing.
+      <b> Daily time money (Θ ₹/day)</b> — rough ₹ from time passing, capped to premium left (not your P&amp;L).
     </p>
     <p>
       <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
@@ -436,6 +437,7 @@ export default function PositionsPanel({
                 quantity: p.quantity,
                 thetaPerUnit: theta,
                 nowMs,
+                T,
               });
               extrinsicLeft = Number.isFinite(left.extrinsicLeft) ? left.extrinsicLeft : null;
               thetaToClose = Number.isFinite(left.thetaToClose) ? left.thetaToClose : null;
@@ -456,6 +458,18 @@ export default function PositionsPanel({
       const displayPnl = exited
         ? (p.booked_pnl != null ? Number(p.booked_pnl) : Number(p.pnl) || 0)
         : Number(p.pnl) || 0;
+      // Desk-safe ₹/day — never show BS θ blow-ups larger than premium left.
+      const thetaInr = exited
+        ? null
+        : dailyThetaRupees({
+            thetaPerUnit: theta,
+            quantity: p.quantity,
+            marketPrice: Number(p.last_price || p.average_price),
+            S,
+            K: p.strike,
+            isCall: p.side === "CE",
+            T,
+          });
       return {
         ...p,
         exited,
@@ -466,6 +480,7 @@ export default function PositionsPanel({
         dte: exited ? null : dte,
         delta: exited ? null : delta,
         theta: exited ? null : theta,
+        thetaInr,
         gamma: exited ? null : gamma,
         iv: exited ? null : iv,
         distancePct: exited ? null : distancePct,
@@ -554,7 +569,8 @@ export default function PositionsPanel({
       // Live book greeks only from open legs; Today P&L includes exits.
       if (!r.exited) {
         if (r.delta != null && Number.isFinite(r.delta)) netDelta += r.delta * r.quantity;
-        if (r.theta != null && Number.isFinite(r.theta)) netTheta += r.theta * r.quantity;
+        if (r.thetaInr != null && Number.isFinite(r.thetaInr)) netTheta += r.thetaInr;
+        else if (r.theta != null && Number.isFinite(r.theta)) netTheta += r.theta * r.quantity;
       }
       if (!r.exited && r.isShort && r.isOpt) {
         shortCount += 1;
@@ -982,11 +998,13 @@ export default function PositionsPanel({
           hint={
             stats.exitedCount > 0
               ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
-              : brokerage?.charges_total != null
-                ? `After charges ₹ ${fmt(stats.netPnl - Number(brokerage.charges_total || 0), 0)}`
-                : brokerage?.error
-                  ? "Charges temporarily unavailable"
-                  : "Open + booked exits"
+              : brokerage?.charges_total != null && Number(brokerage.charges_total) > 0
+                ? `After charges ₹ ${fmt(stats.netPnl - Number(brokerage.charges_total), 2)}`
+                : brokerage?.charges_total === 0
+                  ? "No day charges yet"
+                  : brokerage?.error
+                    ? "Charges temporarily unavailable"
+                    : "Open + booked exits"
           }
           tip={(
             <div className="space-y-1.5">
@@ -1005,23 +1023,42 @@ export default function PositionsPanel({
         />
         <StatBox
           label="Cash left"
-          value={
-            funds?.net != null
-              ? "₹ " + fmt(funds.net, 0)
-              : funds?.live_balance != null
-                ? "₹ " + fmt(funds.live_balance, 0)
+          value={(() => {
+            // Prefer free cash / live balance for "cash left"; net can go deeply
+            // negative under F&O span even when cash itself is fine.
+            const v =
+              funds?.live_balance != null
+                ? funds.live_balance
                 : funds?.cash != null
-                  ? "₹ " + fmt(funds.cash, 0)
-                  : "—"
+                  ? funds.cash
+                  : funds?.net;
+            return v != null ? "₹ " + fmt(v, 0) : "—";
+          })()}
+          tone={
+            (funds?.live_balance ?? funds?.cash ?? funds?.net) != null
+            && Number(funds?.live_balance ?? funds?.cash ?? funds?.net) < 0
+              ? "rose"
+              : "slate"
           }
-          tone="slate"
-          hint={funds?.utilised_debits != null ? `Blocked ₹ ${fmt(funds.utilised_debits, 0)}` : "Free to trade"}
+          hint={
+            funds?.utilised_debits != null
+              ? `Blocked ₹ ${fmt(funds.utilised_debits, 0)}`
+              : funds?.net != null && funds?.live_balance != null && funds.net !== funds.live_balance
+                ? `Net avail ₹ ${fmt(funds.net, 0)}`
+                : "Free to trade"
+          }
           tip={(
             <div className="space-y-1.5">
-              <p>Money still free in Kite for new trades (read-only).</p>
+              <p>Money Kite still shows as free for new trades (read-only margins).</p>
               <p>
+                Live: {funds?.live_balance != null ? `₹ ${fmt(funds.live_balance, 0)}` : "—"}.
                 Cash: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
+                Net: {funds?.net != null ? `₹ ${fmt(funds.net, 0)}` : "—"}.
                 Collateral: {funds?.collateral != null ? `₹ ${fmt(funds.collateral, 0)}` : "—"}.
+              </p>
+              <p className="text-[11px] opacity-80">
+                Large negative <b>net</b> with big blocked margin is normal for a heavy short F&amp;O
+                book — it is not a P&amp;L loss.
               </p>
             </div>
           )}
@@ -1033,8 +1070,9 @@ export default function PositionsPanel({
           hint={stats.netTheta >= 0 ? "Time is paying you" : "Time is costing you"}
           tip={(
             <p>
-              Rough ₹ you earn (or pay) each day just because time passes — if the market stays away
-              from your sold strikes. Sellers usually want this green / positive.
+              Rough ₹ from time passing if the market stays put — capped to premium still left in
+              each option (so expiry-day Black–Scholes cannot show fake −₹10k on a ₹500 long).
+              This is <b>not</b> your P&amp;L; P&amp;L matches Kite in the P&amp;L column.
             </p>
           )}
         />
@@ -1115,7 +1153,7 @@ export default function PositionsPanel({
         {rows.length === 0 ? (
           <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No F&amp;O positions today.</div>
         ) : rows.map((r) => {
-          const thetaInr = !r.exited && Number.isFinite(r.theta) ? r.theta * r.quantity : null;
+          const thetaInr = !r.exited && Number.isFinite(r.thetaInr) ? r.thetaInr : null;
           return (
             <div
               key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}
@@ -1211,8 +1249,10 @@ export default function PositionsPanel({
                 <th className="text-right px-2.5 py-3 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     ₹/day
-                    <InfoTip title="Daily time money" size="xs" testId="theta-col-tip">
-                      Rough ₹ this leg earns or costs each day as time passes. Sold options usually earn.
+                    <InfoTip title="Daily time money (not P&L)" size="xs" testId="theta-col-tip">
+                      Estimate of ₹ this leg earns or costs from time passing — capped to premium
+                      left so expiry-day maths cannot invent huge fake losses. Your real P&amp;L is
+                      the P&amp;L column (matches Kite).
                     </InfoTip>
                   </span>
                 </th>
@@ -1270,7 +1310,7 @@ export default function PositionsPanel({
                 </td>
               </tr>
             ) : rows.map((r, idx) => {
-              const thetaInr = !r.exited && Number.isFinite(r.theta) ? r.theta * r.quantity : null;
+              const thetaInr = !r.exited && Number.isFinite(r.thetaInr) ? r.thetaInr : null;
               const prev = rows[idx - 1];
               const showExitedDivider = r.exited && prev && !prev.exited;
               return (
@@ -1610,8 +1650,8 @@ export default function PositionsPanel({
                       {i > 0 ? " · " : ""}
                       <b className="font-mono-data">{r.strike}{r.side}</b>
                       {" "}₹{fmt(r.extrinsicLeft, 0)}
-                      {r.theta != null && (
-                        <span className="text-emerald-700"> · Θ ₹{fmt(r.theta * r.quantity, 0)}/d</span>
+                      {r.thetaInr != null && (
+                        <span className="text-emerald-700"> · Θ ₹{fmt(r.thetaInr, 0)}/d</span>
                       )}
                     </span>
                   ))}

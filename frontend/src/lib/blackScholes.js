@@ -139,9 +139,49 @@ export function extrinsicPremium(marketPrice, S, K, isCall) {
 }
 
 /**
+ * Desk-safe ₹/day from theta.
+ *
+ * Raw Black–Scholes θ blows up as T→0 (√T in the denominator) — on expiry day a
+ * ₹0.45 far-OTM long can show “−₹10,000 / day” while the whole position is only
+ * worth a few hundred. Cap |θ ₹| by remaining extrinsic so the number can never
+ * exceed premium that can still decay (or that you can still lose to decay).
+ *
+ * @returns {number|null} signed rupees for the full quantity (short → usually +)
+ */
+export function dailyThetaRupees({
+  thetaPerUnit,
+  quantity,
+  marketPrice,
+  S,
+  K,
+  isCall,
+  T,
+}) {
+  if (thetaPerUnit == null || !Number.isFinite(thetaPerUnit)) return null;
+  if (quantity == null || !Number.isFinite(quantity) || quantity === 0) return null;
+  const raw = thetaPerUnit * quantity;
+  if (!Number.isFinite(raw)) return null;
+
+  const extPer = extrinsicPremium(marketPrice, S, K, isCall);
+  if (extPer == null || !Number.isFinite(extPer)) return raw;
+
+  const absQty = Math.abs(quantity);
+  const extTotal = extPer * absQty;
+  // Life left in calendar days; floor ~30 minutes so we never divide by ~0.
+  const daysLeft = Math.max(Number(T) > 0 ? Number(T) * 365 : 0, 1 / 48);
+  // In one displayed "day", you cannot burn more than remaining extrinsic
+  // when expiry is today; otherwise average burn ≤ extrinsic / daysLeft.
+  const maxAbs = daysLeft >= 1 ? extTotal / daysLeft : extTotal;
+  if (!(maxAbs > 0)) return 0;
+  if (raw > maxAbs) return maxAbs;
+  if (raw < -maxAbs) return -maxAbs;
+  return raw;
+}
+
+/**
  * Estimate remaining premium a short option seller can still collect.
  * - Extrinsic left × |qty|  (dies by expiry close if held)
- * - Also θ × fraction of day left × qty (signed; shorts earn +θ)
+ * - Also θ × fraction of day left × qty (signed; shorts earn +θ), capped to extrinsic
  */
 export function shortPremiumLeft({
   marketPrice,
@@ -151,6 +191,7 @@ export function shortPremiumLeft({
   quantity,
   thetaPerUnit = null,
   nowMs = Date.now(),
+  T = null,
 }) {
   const isShort = quantity < 0;
   if (!isShort) return { extrinsicLeft: null, thetaToClose: null };
@@ -158,10 +199,25 @@ export function shortPremiumLeft({
   const absQty = Math.abs(quantity);
   const extrinsicLeft = ext != null ? ext * absQty : null;
   const minsLeft = minutesToCloseIST(nowMs);
-  const thetaToClose =
-    thetaPerUnit != null && minsLeft > 0
-      ? thetaPerUnit * quantity * (minsLeft / (24 * 60))
-      : null;
+  let thetaToClose = null;
+  if (thetaPerUnit != null && minsLeft > 0) {
+    const dayTheta = dailyThetaRupees({
+      thetaPerUnit,
+      quantity,
+      marketPrice,
+      S,
+      K,
+      isCall,
+      T: T != null ? T : minsLeft / (365 * 24 * 60),
+    });
+    if (dayTheta != null) {
+      thetaToClose = dayTheta * (minsLeft / (24 * 60));
+      // Never claim more by-close than extrinsic still in the short.
+      if (extrinsicLeft != null && Math.abs(thetaToClose) > extrinsicLeft) {
+        thetaToClose = Math.sign(thetaToClose) * extrinsicLeft;
+      }
+    }
+  }
   return { extrinsicLeft, thetaToClose, minutesToClose: minsLeft };
 }
 

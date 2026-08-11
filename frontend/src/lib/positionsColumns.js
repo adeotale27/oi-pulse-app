@@ -11,7 +11,7 @@ export const POSITIONS_COLUMN_DEFS = [
   { id: "ltp", label: "LTP", defaultOn: true },
   { id: "pnl", label: "P&L", defaultOn: true },
   { id: "tilt", label: "Tilt", defaultOn: true },
-  { id: "theta", label: "₹/day", defaultOn: true },
+  { id: "theta", label: "Θ ₹/day", defaultOn: true },
   { id: "stillEarn", label: "Still earn", defaultOn: true },
   { id: "iv", label: "IV", defaultOn: false },
   { id: "dte", label: "Days left", defaultOn: true },
