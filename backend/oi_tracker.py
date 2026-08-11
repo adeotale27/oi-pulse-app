@@ -151,7 +151,7 @@ DEFAULT_SETTINGS = {
     "compare_minutes": 3,       # compare with snapshot from N minutes ago
     "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"],  # which indices to poll
     "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
-    "straddle_poll_interval_seconds": 60,  # Straddle data pull interval (default 60 = 1 minute)
+    "straddle_poll_interval_seconds": 15,  # Dense straddle chart samples (FinanceDeft-style)
     "positions_poll_interval_seconds": 30,  # Positions desk auto-refresh (admin)
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
     "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "alerts", "activity", "holidays", "straddle", "index-events"],
@@ -196,8 +196,9 @@ class OITracker:
         self._instruments_loaded_at: Optional[datetime] = None
         self.settings: Dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.selected_expiry: Dict[str, Optional[str]] = {i: None for i in INDICES}
-        # Throttle straddle history to ~1 sample per straddle_poll_interval (default 60s).
+        # Throttle straddle history to ~1 sample per straddle_poll_interval (default 15s).
         self._last_straddle_sample_at: Dict[str, datetime] = {}
+        self.last_straddle_quote: Dict[str, Dict[str, Any]] = {}
         self._last_successful_poll_at: Optional[datetime] = None
         self.metrics = Counter({
             "poll_cycles": 0,
@@ -1009,38 +1010,44 @@ class OITracker:
 
     async def _store_straddle_sample(self, index_name: str, snap: Dict[str, Any]):
         try:
-            # Keep chart density at ~1-minute (configurable), even if OI polls faster.
+            # Keep chart density at the configured straddle interval (default 15–60s).
             try:
-                interval = max(30, int(self.settings.get("straddle_poll_interval_seconds", 60)))
+                interval = max(5, int(self.settings.get("straddle_poll_interval_seconds", 15)))
             except Exception:
-                interval = 60
+                interval = 15
             now_utc = datetime.now(timezone.utc)
             last = self._last_straddle_sample_at.get(index_name)
-            if last is not None and (now_utc - last).total_seconds() < max(5, interval - 2):
+            if last is not None and (now_utc - last).total_seconds() < max(3, interval - 2):
                 return
 
             atm = int(snap.get("atm") or 0)
             price = float(snap.get("price") or 0.0)
-            strikes = snap.get("strikes", [])
-            strike_obj = None
-            for s in strikes:
-                if int(s.get("strike")) == atm:
-                    strike_obj = s
-                    break
-            if not strike_obj and strikes:
-                strikes_list = sorted([int(s.get("strike")) for s in strikes if s.get("strike") is not None])
-                if strikes_list:
-                    closest = min(strikes_list, key=lambda x: abs(x - atm))
-                    for s in strikes:
-                        if int(s.get("strike")) == closest:
-                            strike_obj = s
-                            atm = closest
-                            break
-            ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
-            pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
-            premium = round(ce_p + pe_p, 2)
+            # Prefer pre-computed premium from lightweight ATM quote.
+            if snap.get("premium") is not None and snap.get("ce_ltp") is not None:
+                ce_p = float(snap.get("ce_ltp") or 0)
+                pe_p = float(snap.get("pe_ltp") or 0)
+                premium = round(float(snap.get("premium")), 2)
+            else:
+                strikes = snap.get("strikes", [])
+                strike_obj = None
+                for s in strikes:
+                    if int(s.get("strike")) == atm:
+                        strike_obj = s
+                        break
+                if not strike_obj and strikes:
+                    strikes_list = sorted([int(s.get("strike")) for s in strikes if s.get("strike") is not None])
+                    if strikes_list:
+                        closest = min(strikes_list, key=lambda x: abs(x - atm))
+                        for s in strikes:
+                            if int(s.get("strike")) == closest:
+                                strike_obj = s
+                                atm = closest
+                                break
+                ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
+                pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+                premium = round(ce_p + pe_p, 2)
             trade_date = now_ist().date().isoformat()
-            await self.db.straddle_samples.insert_one({
+            doc = {
                 "index": index_name,
                 "expiry": snap.get("expiry"),
                 "trade_date": trade_date,
@@ -1051,8 +1058,18 @@ class OITracker:
                 "ce_ltp": round(ce_p, 2),
                 "pe_ltp": round(pe_p, 2),
                 "created_at": now_utc.isoformat(),
-            })
+            }
+            await self.db.straddle_samples.insert_one(doc)
             self._last_straddle_sample_at[index_name] = now_utc
+            self.last_straddle_quote[index_name] = {
+                "ts": doc["ts"],
+                "premium": premium,
+                "underlying": round(price, 2),
+                "atm": atm,
+                "ce_ltp": round(ce_p, 2),
+                "pe_ltp": round(pe_p, 2),
+                "expiry": snap.get("expiry"),
+            }
             await self._prune_straddle_history(index_name)
         except Exception as e:
             self.metrics["straddle_store_errors"] += 1

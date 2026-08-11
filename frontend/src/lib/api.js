@@ -271,6 +271,8 @@ export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);
 export const fetchStraddle = (idx, opts = {}) =>
   api.get(`/straddle/${idx}`, { params: opts }).then((r) => r.data);
+export const fetchStraddleTick = (idx, opts = {}) =>
+  api.get(`/straddle/${idx}/tick`, { params: opts }).then((r) => r.data);
 export const fetchStraddleHistory = (idx, minutes = 60, opts = {}) => {
   const params = { ...opts };
   if (minutes != null) params.minutes = minutes;

@@ -64,7 +64,7 @@ tracker = None
 
 # Straddle sample retention (hours)
 STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
-STRADDLE_SAMPLE_INTERVAL_SECONDS = int(os.environ.get("STRADDLE_SAMPLE_INTERVAL_SECONDS", "60"))  # default 60s straddle sampling
+STRADDLE_SAMPLE_INTERVAL_SECONDS = int(os.environ.get("STRADDLE_SAMPLE_INTERVAL_SECONDS", "15"))  # dense chart default
 STRADDLE_INDICES = ["NIFTY", "SENSEX"]
 
 # notifier DB will be attached during startup
@@ -291,33 +291,42 @@ async def _persist_straddle_sample(index_name: str, snap: dict):
 
 
 async def _straddle_sampler():
-    """Derive straddle samples from the tracker's last OI snapshots.
+    """Dense ATM straddle sampler for the intraday chart (FinanceDeft-style).
 
-    The poller already stores straddle samples on every successful OI tick.
-    This loop only fills gaps using cached snapshots — it never hits Kite —
-    so we avoid duplicate ~62-token quote batches for NIFTY/SENSEX.
-    Honors admin `straddle_enabled_indices` setting.
+    Uses a lightweight 3-instrument quote (spot + ATM CE + PE) so we can sample
+    every ~15s without re-pulling the full OI chain. Falls back to last OI
+    snapshot when Kite is offline.
     """
     while True:
         try:
             try:
-                poll_interval_seconds = int(tracker.settings.get("straddle_poll_interval_seconds", STRADDLE_SAMPLE_INTERVAL_SECONDS))
+                poll_interval_seconds = int(
+                    tracker.settings.get(
+                        "straddle_poll_interval_seconds", STRADDLE_SAMPLE_INTERVAL_SECONDS
+                    )
+                )
             except Exception:
                 poll_interval_seconds = STRADDLE_SAMPLE_INTERVAL_SECONDS
+            poll_interval_seconds = max(5, min(120, int(poll_interval_seconds)))
 
             enabled = tracker.settings.get("straddle_enabled_indices") if tracker else None
             if not enabled:
                 enabled = STRADDLE_INDICES
 
             if is_market_open() and tracker:
+                svc = tracker._get_service() if hasattr(tracker, "_get_service") else None
                 for idx in enabled:
                     if idx not in INDEX_CONFIG:
                         continue
                     try:
-                        snap = tracker.last_snapshot.get(idx)
+                        snap = None
+                        exp = tracker.selected_expiry.get(idx)
+                        if svc and hasattr(svc, "get_atm_straddle_quote"):
+                            snap = await asyncio.to_thread(svc.get_atm_straddle_quote, idx, exp)
                         if not snap:
-                            continue
-                        await _persist_straddle_sample(idx, snap)
+                            snap = tracker.last_snapshot.get(idx)
+                        if snap:
+                            await _persist_straddle_sample(idx, snap)
                     except Exception as e:
                         logger.warning(f"straddle sampler failed for {idx}: {e}")
                 await asyncio.sleep(poll_interval_seconds)
@@ -1141,8 +1150,8 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if int(patch["oi_poll_interval_seconds"]) not in (15, 30, 60):
             raise HTTPException(400, "oi_poll_interval_seconds must be 15, 30, or 60")
     if "straddle_poll_interval_seconds" in patch:
-        if int(patch["straddle_poll_interval_seconds"]) not in (30, 60, 120):
-            raise HTTPException(400, "straddle_poll_interval_seconds must be 30, 60, or 120")
+        if int(patch["straddle_poll_interval_seconds"]) not in (15, 30, 60, 120):
+            raise HTTPException(400, "straddle_poll_interval_seconds must be 15, 30, 60, or 120")
     if "positions_poll_interval_seconds" in patch:
         if int(patch["positions_poll_interval_seconds"]) not in (15, 30, 60):
             raise HTTPException(400, "positions_poll_interval_seconds must be 15, 30, or 60")
@@ -1560,6 +1569,92 @@ async def get_vrp(index_name: str, days: int = Query(30, ge=5, le=90)):
     return await compute_vrp(tracker.kite_service, db, idx, iv_pct, days=days)
 
 
+@api_router.get("/straddle/{index_name}/tick")
+async def get_straddle_tick(index_name: str, expiry: Optional[str] = None):
+    """Lightweight ATM straddle tick for the intraday chart (spot + CE + PE)."""
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(404, "Unknown index")
+
+    try:
+        interval = max(5, int(tracker.settings.get("straddle_poll_interval_seconds", 15)))
+    except Exception:
+        interval = 15
+
+    # Prefer sampler cache when fresh — avoids N clients × Kite quotes.
+    cached_q = getattr(tracker, "last_straddle_quote", {}).get(idx)
+    if cached_q:
+        ts = _parse_straddle_ts(cached_q.get("ts"))
+        age = (datetime.now(timezone.utc) - ts).total_seconds() if ts else 9999
+        if age <= interval + 2 and (not expiry or cached_q.get("expiry") == expiry):
+            return {
+                "index": idx,
+                "ts": cached_q.get("ts") or datetime.now(timezone.utc).isoformat(),
+                "atm": cached_q.get("atm"),
+                "underlying": cached_q.get("underlying"),
+                "strike": cached_q.get("atm"),
+                "ce_ltp": cached_q.get("ce_ltp"),
+                "pe_ltp": cached_q.get("pe_ltp"),
+                "premium": cached_q.get("premium"),
+                "expiry": cached_q.get("expiry"),
+                "cached": True,
+            }
+
+    snap = None
+    try:
+        svc = tracker._get_service()
+        exp = expiry or tracker.selected_expiry.get(idx)
+        if svc and hasattr(svc, "get_atm_straddle_quote"):
+            snap = await asyncio.to_thread(svc.get_atm_straddle_quote, idx, exp)
+        if not snap:
+            cached = tracker.last_snapshot.get(idx)
+            if cached and (not expiry or cached.get("expiry") == expiry):
+                snap = cached
+    except Exception as e:
+        logger.exception("get_straddle_tick failed for %s", idx)
+        raise HTTPException(503, _sanitize_public_error(str(e)) or "Data feed temporarily unavailable")
+
+    if not snap:
+        raise HTTPException(503, "No data yet for straddle")
+
+    atm = int(snap.get("atm") or 0)
+    price = float(snap.get("price") or 0.0)
+    if snap.get("ce_ltp") is not None and snap.get("pe_ltp") is not None:
+        ce_p = float(snap.get("ce_ltp") or 0)
+        pe_p = float(snap.get("pe_ltp") or 0)
+    else:
+        strike_obj = None
+        for s in snap.get("strikes", []):
+            if int(s.get("strike")) == atm:
+                strike_obj = s
+                break
+        ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
+        pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+    premium = round(ce_p + pe_p, 2)
+    try:
+        await _persist_straddle_sample(idx, {
+            **snap,
+            "atm": atm,
+            "price": price,
+            "ce_ltp": ce_p,
+            "pe_ltp": pe_p,
+            "premium": premium,
+        })
+    except Exception:
+        pass
+    return {
+        "index": idx,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "atm": atm,
+        "underlying": round(price, 2),
+        "strike": atm,
+        "ce_ltp": round(ce_p, 2),
+        "pe_ltp": round(pe_p, 2),
+        "premium": premium,
+        "expiry": snap.get("expiry"),
+    }
+
+
 @api_router.get("/straddle/{index_name}")
 async def get_straddle(index_name: str, expiry: Optional[str] = None, position: str = Query("long"), qty: int = Query(1, ge=1), span_steps: Optional[int] = Query(None, ge=4), points: int = Query(81, ge=5, le=801)):
     """Return a straddle payoff series for the ATM strike.
@@ -1590,10 +1685,17 @@ async def get_straddle(index_name: str, expiry: Optional[str] = None, position: 
                 else:
                     raise HTTPException(503, "No data yet for straddle calculation")
             else:
-                snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
+                # Prefer lightweight ATM quote for premium; fall back to full chain.
+                if hasattr(svc, "get_atm_straddle_quote"):
+                    snap = await asyncio.to_thread(
+                        svc.get_atm_straddle_quote, idx, expiry or tracker.selected_expiry.get(idx)
+                    )
+                if not snap:
+                    snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
                 if snap:
                     snap["mode"] = tracker.mode
-                    tracker.last_snapshot[idx] = snap
+                    if snap.get("strikes") and len(snap.get("strikes") or []) > 1:
+                        tracker.last_snapshot[idx] = snap
         except HTTPException:
             raise
         except Exception as e:
@@ -1619,7 +1721,7 @@ async def get_straddle(index_name: str, expiry: Optional[str] = None, position: 
             break
     if not strike_obj:
         # pick the closest available strike
-        strikes_list = sorted([int(s.get("strike")) for s in snap.get("strikes", [])])
+        strikes_list = sorted([int(s.get("strike")) for s in snap.get("strikes", []) if s.get("strike") is not None])
         if strikes_list:
             closest = min(strikes_list, key=lambda x: abs(x - atm))
             for s in snap.get("strikes", []):
@@ -1628,8 +1730,12 @@ async def get_straddle(index_name: str, expiry: Optional[str] = None, position: 
                     atm = closest
                     break
 
-    ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
-    pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+    if snap.get("ce_ltp") is not None and snap.get("pe_ltp") is not None and not strike_obj:
+        ce_p = float(snap.get("ce_ltp") or 0)
+        pe_p = float(snap.get("pe_ltp") or 0)
+    else:
+        ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else snap.get("ce_ltp") or 0)
+        pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else snap.get("pe_ltp") or 0)
     premium = ce_p + pe_p
 
     # build price grid
@@ -1739,6 +1845,12 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
         query["created_at"] = {"$gte": cutoff}
     docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=(minutes * 120) if minutes else 5000)
 
+    # Expiry mismatch (UI pin vs sampler) — still return today's series so the
+    # chart is not empty / 2-point sparse while ATM rolls.
+    if not docs and expiry:
+        relaxed = {k: v for k, v in query.items() if k != "expiry"}
+        docs = await db.straddle_samples.find(relaxed, {"_id": 0}).sort("ts", 1).to_list(length=5000)
+
     # If empty (weekend/holiday after 09:14, or missing samples), fall back to previous trading day.
     if not docs and date is None:
         previous_date = _previous_trading_day(datetime.now(IST))
@@ -1746,6 +1858,9 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
             query["trade_date"] = previous_date.isoformat()
             query.pop("created_at", None)
             docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=5000)
+            if not docs and expiry:
+                relaxed = {k: v for k, v in query.items() if k != "expiry"}
+                docs = await db.straddle_samples.find(relaxed, {"_id": 0}).sort("ts", 1).to_list(length=5000)
             target_date = previous_date
 
     # Intraday chart only — never return overnight / prior-close points.
@@ -1756,9 +1871,11 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
 
 @api_router.websocket("/ws/straddle/{index_name}")
 async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[str] = None, position: str = Query("long"), qty: int = Query(1)):
-    """WebSocket that streams latest straddle premium every 1s as JSON.
+    """Public WebSocket streaming ATM straddle premium for the intraday chart.
 
-    Message format: { ts: ISO, premium: float, underlying: float, atm: int, ce_ltp: float, pe_ltp: float }
+    Message format: { ts, premium, underlying, atm, ce_ltp, pe_ltp }
+    No credentials in payloads. Optional admin_token is accepted but not required
+    — straddle is a public page (same as FinanceDeft).
     """
     await websocket.accept()
     idx = index_name.upper()
@@ -1766,124 +1883,120 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
         await websocket.close(code=1003)
         return
 
-    # Authenticate via admin token passed as query param or header
-    def _get_token_from_scope() -> str:
-        # WebSocket headers are available on websocket.scope["headers"] as list of (k,v)
-        try:
-            # try header first
-            for k, v in websocket.scope.get("headers", []):
-                if k.decode().lower() in ("x-admin-token", "authorization"):
-                    s = v.decode()
-                    if k.decode().lower() == "authorization" and s.lower().startswith("bearer "):
-                        return s[7:].strip()
-                    return s.strip()
-        except Exception:
-            pass
-        # fallback to query params
-        try:
-            qs = websocket.scope.get("query_string", b"").decode()
-            params = dict((pair.split("=", 1) if "=" in pair else (pair, "")) for pair in qs.split("&") if pair)
-            return params.get("admin_token") or params.get("token") or ""
-        except Exception:
-            return ""
-
-    token = _get_token_from_scope()
-    if not token:
-        await websocket.close(code=4401)
-        return
-
-    # validate session
+    # Optional session bump (admin); guests/anonymous still get the public feed.
     try:
-        sess = await db.admin_sessions.find_one({"_id": token})
-        if not sess:
-            await websocket.close(code=4401)
-            return
-        # check expiry similarly to _admin_from_request
-        try:
-            created_at = datetime.fromisoformat(sess.get("created_at"))
-        except Exception:
-            await websocket.close(code=4401)
-            return
-        age = (datetime.now(timezone.utc) - created_at).total_seconds()
-        if age > ADMIN_SESSION_TTL_SECONDS:
-            try:
-                await db.admin_sessions.delete_one({"_id": token})
-            except Exception:
-                pass
-            await websocket.close(code=4401)
-            return
-        # session ok — proceed
+        qs = websocket.scope.get("query_string", b"").decode()
+        params = dict((pair.split("=", 1) if "=" in pair else (pair, "")) for pair in qs.split("&") if pair)
+        token = (params.get("admin_token") or params.get("token") or "").strip()
+        if token:
+            sess = await db.admin_sessions.find_one({"_id": token})
+            if sess:
+                try:
+                    await db.admin_sessions.update_one(
+                        {"_id": token},
+                        {"$set": {"last_seen": datetime.now(timezone.utc).isoformat()}},
+                    )
+                except Exception:
+                    pass
     except Exception:
-        await websocket.close(code=4401)
-        return
+        pass
 
     try:
-        # Re-read poll interval each iteration so admin settings apply without reconnect.
         while True:
             try:
                 poll_interval_seconds = max(
                     5,
-                    int(tracker.settings.get("straddle_poll_interval_seconds", 60)),
+                    min(60, int(tracker.settings.get("straddle_poll_interval_seconds", 15))),
                 )
-                # Only fetch new data during market hours (9:15 AM - 3:30 PM IST, Mon-Fri)
                 from market_hours import is_market_open as is_market_open_fn
                 if not is_market_open_fn(datetime.now(IST)):
-                    # Market closed, return last known data or empty
                     await websocket.send_json({"status": "market_closed"})
                     await asyncio.sleep(60)
                     continue
-                
-                # Prefer last OI snapshot (no extra Kite hit); fall back to live fetch.
-                snap = tracker.last_snapshot.get(idx)
+
+                snap = None
+                svc = tracker._get_service()
+                exp = expiry or tracker.selected_expiry.get(idx)
+                # Prefer fresh sampler cache — one Kite quote path for all WS clients.
+                cached_q = getattr(tracker, "last_straddle_quote", {}).get(idx)
+                if cached_q:
+                    ts = _parse_straddle_ts(cached_q.get("ts"))
+                    age = (datetime.now(timezone.utc) - ts).total_seconds() if ts else 9999
+                    if age <= poll_interval_seconds + 2 and (not expiry or cached_q.get("expiry") == expiry):
+                        await websocket.send_json({
+                            "ts": cached_q.get("ts") or datetime.now(timezone.utc).isoformat(),
+                            "premium": cached_q.get("premium"),
+                            "underlying": cached_q.get("underlying"),
+                            "atm": cached_q.get("atm"),
+                            "ce_ltp": cached_q.get("ce_ltp"),
+                            "pe_ltp": cached_q.get("pe_ltp"),
+                            "expiry": cached_q.get("expiry"),
+                        })
+                        await asyncio.sleep(poll_interval_seconds)
+                        continue
+
+                if svc and hasattr(svc, "get_atm_straddle_quote"):
+                    try:
+                        snap = await asyncio.to_thread(svc.get_atm_straddle_quote, idx, exp)
+                    except Exception:
+                        snap = None
                 if not snap or (expiry and snap.get("expiry") != expiry):
-                    svc = tracker._get_service()
-                    if svc:
-                        snap = await asyncio.to_thread(svc.get_snapshot, idx, expiry or tracker.selected_expiry.get(idx))
+                    cached = tracker.last_snapshot.get(idx)
+                    if cached and (not expiry or cached.get("expiry") == expiry):
+                        snap = cached
+
                 if snap:
                     atm = int(snap.get("atm") or 0)
                     price = float(snap.get("price") or 0.0)
-                    # find ATM strike object
-                    strike_obj = None
-                    for s in snap.get("strikes", []):
-                        if int(s.get("strike")) == atm:
-                            strike_obj = s
-                            break
-                    if not strike_obj and snap.get("strikes"):
-                        # fallback to closest
-                        strikes_list = sorted([int(s.get("strike")) for s in snap.get("strikes", [])])
-                        closest = min(strikes_list, key=lambda x: abs(x - atm))
+                    if snap.get("ce_ltp") is not None and snap.get("pe_ltp") is not None:
+                        ce_p = float(snap.get("ce_ltp") or 0)
+                        pe_p = float(snap.get("pe_ltp") or 0)
+                    else:
+                        strike_obj = None
                         for s in snap.get("strikes", []):
-                            if int(s.get("strike")) == closest:
+                            if int(s.get("strike")) == atm:
                                 strike_obj = s
-                                atm = closest
                                 break
-
-                    ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
-                    pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
-                    premium = ce_p + pe_p
+                        if not strike_obj and snap.get("strikes"):
+                            strikes_list = sorted(
+                                [int(s.get("strike")) for s in snap.get("strikes", []) if s.get("strike") is not None]
+                            )
+                            if strikes_list:
+                                closest = min(strikes_list, key=lambda x: abs(x - atm))
+                                for s in snap.get("strikes", []):
+                                    if int(s.get("strike")) == closest:
+                                        strike_obj = s
+                                        atm = closest
+                                        break
+                        ce_p = float(strike_obj.get("ce_ltp", 0) if strike_obj else 0)
+                        pe_p = float(strike_obj.get("pe_ltp", 0) if strike_obj else 0)
+                    premium = round(ce_p + pe_p, 2)
                     payload = {
                         "ts": datetime.now(timezone.utc).isoformat(),
-                        "premium": round(premium, 2),
+                        "premium": premium,
                         "underlying": round(price, 2),
                         "atm": atm,
                         "ce_ltp": round(ce_p, 2),
                         "pe_ltp": round(pe_p, 2),
+                        "expiry": snap.get("expiry"),
                     }
-                    # Persist sample via the centralized tracker helper for consistent behavior.
                     try:
-                        await _persist_straddle_sample(idx, snap)
+                        await _persist_straddle_sample(idx, {
+                            **snap,
+                            "atm": atm,
+                            "price": price,
+                            "ce_ltp": ce_p,
+                            "pe_ltp": pe_p,
+                            "premium": premium,
+                        })
                     except Exception:
-                        logger.warning(
-                            "ws_straddle: sample persistence failed for %s",
-                            idx,
-                            exc_info=True,
-                        )
+                        logger.warning("ws_straddle: sample persistence failed for %s", idx, exc_info=True)
                     await websocket.send_json(payload)
                 else:
                     await websocket.send_json({"error": "no_snapshot"})
-            except Exception as e:
+            except Exception:
                 try:
-                    await websocket.send_json({"error": str(e)})
+                    await websocket.send_json({"error": "temporarily_unavailable"})
                 except Exception:
                     pass
             await asyncio.sleep(poll_interval_seconds)

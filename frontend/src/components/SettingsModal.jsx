@@ -58,7 +58,7 @@ export default function SettingsModal({
           enabled_indices: ["NIFTY", "SENSEX", "BANKNIFTY"],
           straddle_enabled_indices: ["NIFTY", "SENSEX"],
           oi_poll_interval_seconds: 15,
-          straddle_poll_interval_seconds: 60,
+          straddle_poll_interval_seconds: 15,
           positions_poll_interval_seconds: 30,
           market_open_ist: "09:15",
           market_close_ist: "15:40",
@@ -401,17 +401,18 @@ export default function SettingsModal({
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
                     Straddle Data Pull Interval
                     <InfoTip title="Straddle Poll Interval">
-                      How frequently to pull straddle premium data. Default 60s (1 minute).
+                      How often to sample ATM straddle premium for the intraday chart. Default 15s (dense, FinanceDeft-style).
                     </InfoTip>
                   </Label>
                   <div className="flex gap-2">
-                    {[30, 60, 120].map((val) => (
+                    {[15, 30, 60, 120].map((val) => (
                       <Button
                         key={val}
                         variant={settings.straddle_poll_interval_seconds === val ? "default" : "outline"}
                         size="sm"
                         onClick={() => setSettings({ ...settings, straddle_poll_interval_seconds: val })}
                         className="flex-1 text-xs"
+                        data-testid={`straddle-poll-${val}`}
                       >
                         {val}s
                       </Button>
