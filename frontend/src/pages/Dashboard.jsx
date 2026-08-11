@@ -545,15 +545,20 @@ export default function Dashboard() {
   const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
   const [enabledIndices, setEnabledIndices] = useState(INDICES);
   // Admin Alert Settings focus — OI toasts/sounds only for these indices.
-  // OI data may still poll for other enabled_indices; alerts must not.
-  const [alertEnabledIndices, setAlertEnabledIndices] = useState(["NIFTY"]);
+  // null = not loaded yet → do not client-suppress (backend /alerts already scopes).
+  // A hardcoded ["NIFTY"] default used to swallow SENSEX-focus days while still
+  // advancing the toast cursor, so alerts looked "dead" forever after.
+  const [alertEnabledIndices, setAlertEnabledIndices] = useState(null);
   const alertEnabledRef = useRef(alertEnabledIndices);
   useEffect(() => {
     alertEnabledRef.current = alertEnabledIndices;
   }, [alertEnabledIndices]);
   const indexInAlertFocus = useCallback((idx) => {
     const list = alertEnabledRef.current;
-    return Array.isArray(list) && list.length > 0 && list.includes(idx);
+    if (list == null) return true; // settings not loaded — allow
+    if (!Array.isArray(list) || list.length === 0) return true;
+    const u = String(idx || "").toUpperCase();
+    return list.some((x) => String(x).toUpperCase() === u);
   }, []);
   const [oiLoading, setOiLoading] = useState(false);
   const [showStrikeRange, setShowStrikeRange] = useState(false);
@@ -758,53 +763,66 @@ export default function Dashboard() {
     }
   };
 
-  // Poll alerts — toast/sound for new backend alerts on admin alert-focus indices
-  // only, regardless of which dashboard tab is open (Positions, Straddle, etc.).
+  // Poll alerts — toast/sound for new backend alerts regardless of which
+  // dashboard tab is open (Positions, Straddle, etc.). Backend /alerts already
+  // filters by admin alert-focus indices; do not re-filter here or a stale
+  // client default can skip every toast while burning the cursor.
   const loadAlerts = useCallback(async () => {
     try {
       const data = await fetchAlerts();
       const list = data.alerts || [];
       setAlerts(list);
-      if (list.length && lastAlertIdRef.current !== list[0].created_at) {
-        const isFirstLoad = lastAlertIdRef.current === null;
-        const prevId = lastAlertIdRef.current;
-        lastAlertIdRef.current = list[0].created_at;
-        if (!isFirstLoad) {
-          // Surface every new alert since last poll (newest last → toast newest on top).
-          const fresh = [];
-          for (const a of list) {
-            if (prevId && a.created_at === prevId) break;
-            fresh.push(a);
-            if (fresh.length >= 5) break;
-          }
-          for (const a of fresh.reverse()) {
-            // Defense in depth: never toast an index outside admin alert focus
-            // (e.g. SENSEX still polling while only NIFTY is selected for alerts).
-            if (!indexInAlertFocus(a.index)) continue;
-            const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
-            const toastFn = isBullish ? toast.success : toast.error;
-            toastFn(a.message || `OI alert · ${a.index}`, {
-              description: [
-                a.index,
-                a.direction,
-                a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
-                a.atm != null ? `ATM ${a.atm}` : null,
-              ].filter(Boolean).join(" · "),
-              duration: 8000,
-            });
-            playForAlert("reversal");
-            push(`OI Reversal · ${a.index}`, a.direction || a.message || "OI alert");
-          }
-          if (fresh.some((a) => indexInAlertFocus(a.index))) {
-            setFlash(true);
-            setTimeout(() => setFlash(false), 1800);
-          }
-        }
+
+      if (!list.length) {
+        // Empty poll must not leave cursor at null — otherwise the first real
+        // alert looks like "first hydrate" and is silently swallowed.
+        if (lastAlertIdRef.current === null) lastAlertIdRef.current = "";
+        return;
+      }
+
+      const newestId = list[0].created_at;
+      if (lastAlertIdRef.current === null) {
+        // First non-empty hydrate — seed cursor only, no historical toasts.
+        lastAlertIdRef.current = newestId;
+        return;
+      }
+      if (newestId === lastAlertIdRef.current) return;
+
+      const prevId = lastAlertIdRef.current;
+      lastAlertIdRef.current = newestId;
+
+      // Surface every new alert since last poll (newest last → toast newest on top).
+      const fresh = [];
+      for (const a of list) {
+        if (prevId && a.created_at === prevId) break;
+        // After clear/empty sentinel (""), treat entire current page as new
+        // but cap so we do not spam a huge backlog.
+        fresh.push(a);
+        if (fresh.length >= 5) break;
+      }
+      for (const a of fresh.reverse()) {
+        const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
+        const toastFn = isBullish ? toast.success : toast.error;
+        toastFn(a.message || `OI alert · ${a.index}`, {
+          description: [
+            a.index,
+            a.direction,
+            a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
+            a.atm != null ? `ATM ${a.atm}` : null,
+          ].filter(Boolean).join(" · "),
+          duration: 8000,
+        });
+        playForAlert("reversal");
+        push(`OI Reversal · ${a.index}`, a.direction || a.message || "OI alert");
+      }
+      if (fresh.length) {
+        setFlash(true);
+        setTimeout(() => setFlash(false), 1800);
       }
     } catch (e) {
       console.error("loadAlerts failed", e);
     }
-  }, [push, indexInAlertFocus]);
+  }, [push]);
 
   // Keep Alerts UI visibility in a ref so the poller does not remount on tab switches.
   const alertViewRef = useRef({ activeTab, rightPanelView, showRightPanel });
@@ -1037,7 +1055,8 @@ export default function Dashboard() {
   const handleClearAlerts = async () => {
     await clearAlerts();
     setAlerts([]);
-    lastAlertIdRef.current = null;
+    // Sentinel (not null): next real alert must toast, not look like first hydrate.
+    lastAlertIdRef.current = "";
     toast.success("Alerts cleared");
   };
 
@@ -1569,10 +1588,13 @@ export default function Dashboard() {
     });
   }, [alerts, pushActivity, indexInAlertFocus]);
 
-  const focusedAlerts = useMemo(
-    () => (alerts || []).filter((a) => indexInAlertFocus(a.index)),
-    [alerts, alertEnabledIndices, indexInAlertFocus],
-  );
+  const focusedAlerts = useMemo(() => {
+    if (alertEnabledIndices == null) return alerts || [];
+    if (!Array.isArray(alertEnabledIndices) || !alertEnabledIndices.length) {
+      return alerts || [];
+    }
+    return (alerts || []).filter((a) => indexInAlertFocus(a.index));
+  }, [alerts, alertEnabledIndices, indexInAlertFocus]);
 
   return (
     <div className="oi-shell relative h-screen flex flex-col overflow-hidden">

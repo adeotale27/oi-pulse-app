@@ -1117,6 +1117,12 @@ async def set_expiry(index_name: str, payload: ExpiryIn, _admin: bool = Depends(
 
 @api_router.get("/settings")
 async def get_settings():
+    # Keep weekday alert focus in sync (same as /config) so the desk never
+    # reads a stale/null alert_enabled_indices and suppresses toasts.
+    try:
+        tracker._refresh_alert_indices_for_today()
+    except Exception:
+        pass
     return tracker.settings
 
 
@@ -2075,8 +2081,17 @@ async def get_alerts(limit: int = 50):
             if tracker:
                 tracker._refresh_alert_indices_for_today()
                 focus = tracker.settings.get("alert_enabled_indices") or []
+                if isinstance(focus, str):
+                    focus = [focus]
+                elif not isinstance(focus, (list, tuple)):
+                    focus = []
+                focus = [str(x) for x in focus if x]
+                if not focus:
+                    # Never treat blank focus as "alert nobody".
+                    from market_hours import default_alert_indices_for_today
+                    focus = list(default_alert_indices_for_today() or [])
                 if focus:
-                    query["index"] = {"$in": list(focus)}
+                    query["index"] = {"$in": focus}
         except Exception:
             pass
         docs = await db.alerts.find(
