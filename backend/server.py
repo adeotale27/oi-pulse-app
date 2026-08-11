@@ -3058,8 +3058,10 @@ async def telegram_huge_shift(
             focus = tracker.settings.get("alert_enabled_indices") or []
             if payload.index not in focus:
                 return {"ok": False, "reason": "index_not_in_alert_focus"}
-    except Exception:
-        pass
+    except Exception as e:
+        # Fail closed — never send Telegram for an unverified focus check.
+        logging.getLogger(__name__).warning("telegram_huge_shift focus check failed: %s", e)
+        return {"ok": False, "reason": "alert_focus_check_failed"}
     try:
         await _notifier.alert_huge_shift(payload.model_dump())
     except Exception as e:

@@ -1259,7 +1259,7 @@ export default function Dashboard() {
       const desc = `PE ${formatDelta(changeSummary.pe)} · CE ${formatDelta(changeSummary.ce)}`;
       if (changeSummary.bullish) toast.success(msg, { description: desc, duration: 6000 });
       else toast.error(msg, { description: desc, duration: 6000 });
-      try { alarm(); } catch (_) { /* noop */ }
+      try { playForAlert("reversal"); } catch (_) { /* noop */ }
       try { push(`OI Change · ${activeIndex}`, msg); } catch (_) { /* noop */ }
       try {
         pushActivity({
@@ -1310,10 +1310,34 @@ export default function Dashboard() {
           pe: changeSummary.pe,
         });
       } catch (_) { /* noop */ }
+      setFlash(true);
+      setTimeout(() => setFlash(false), 1800);
     }
-  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push, changeAlertPct, previous, status?.market, pushActivity, indexInAlertFocus]);
+  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, push, changeAlertPct, previous, status?.market, pushActivity, indexInAlertFocus]);
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
+  const emitHugeShiftNotify = useCallback((shift) => {
+    try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
+    try {
+      push(
+        `HUGE OI SHIFT · ${shift.index}`,
+        `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
+      );
+    } catch (_) { /* noop */ }
+    try {
+      api.post("/telegram/huge-shift", {
+        index: shift.index,
+        side: shift.side,
+        value: shift.value,
+        direction: shift.value > 0 ? "build" : "unwind",
+        window: shift.window,
+        price: shift.price,
+        atm: shift.atm,
+        contributing: shift.contributing || [],
+      }).catch(() => { /* silent — user already sees the modal */ });
+    } catch (_) { /* noop */ }
+  }, [push]);
+
   const handleHugeShift = useCallback((shift) => {
     // Admin alert focus first — viewing SENSEX must not alert if only NIFTY is selected.
     if (!indexInAlertFocus(shift.index)) return;
@@ -1345,34 +1369,17 @@ export default function Dashboard() {
       snapshotTs: bookmarkTs,
       message: `${shift.side} OI ${shift.value > 0 ? "build" : "unwind"} across ATM ± 1 in ${shift.window} min`,
     });
+    // Always notify immediately (toast path = desktop Notification + Telegram + sound)
+    // even when another modal is already open — queue only delays the modal UI.
+    emitHugeShiftNotify(shift);
     // If a modal is already showing, queue this one; user must acknowledge
     // each in turn so nothing gets missed.
     if (hugeShift) {
-      hugeShiftQueueRef.current.push({ ...shift, snapshotTs: bookmarkTs });
+      hugeShiftQueueRef.current.push({ ...shift, snapshotTs: bookmarkTs, notified: true });
       return;
     }
     setHugeShift({ ...shift, snapshotTs: bookmarkTs });
-    try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
-    try {
-      push(
-        `HUGE OI SHIFT · ${shift.index}`,
-        `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
-      );
-    } catch (_) { /* noop */ }
-    // Forward to Telegram (fire-and-forget; backend no-ops if not configured).
-    try {
-      api.post("/telegram/huge-shift", {
-        index: shift.index,
-        side: shift.side,
-        value: shift.value,
-        direction: shift.value > 0 ? "build" : "unwind",
-        window: shift.window,
-        price: shift.price,
-        atm: shift.atm,
-        contributing: shift.contributing || [],
-      }).catch(() => { /* silent — user already sees the modal */ });
-    } catch (_) { /* noop */ }
-  }, [activeIndex, hugeShift, siren, push, pushActivity, changeBundle, current?.timestamp, indexInAlertFocus]);
+  }, [activeIndex, hugeShift, pushActivity, changeBundle, current?.timestamp, indexInAlertFocus, emitHugeShiftNotify]);
 
   const dismissHugeShift = useCallback(() => {
     setHugeShift(null);
@@ -1381,6 +1388,7 @@ export default function Dashboard() {
       const next = hugeShiftQueueRef.current.shift();
       if (next) {
         setHugeShift(next);
+        // Sound again when the next modal surfaces (Notification/TG already sent on detect).
         try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
       }
     }, 250);
@@ -1401,8 +1409,10 @@ export default function Dashboard() {
     thresholdAbs: oiSettings.hugeShiftAbs,
     cooldownMs: 120000,
     onShift: handleHugeShift,
-    // Only evaluate while market is open — outside the window data is frozen.
-    enabled: !(status?.market && status.market.is_market_open === false),
+    // Only evaluate while market is open and this index is in admin alert focus.
+    enabled:
+      !(status?.market && status.market.is_market_open === false)
+      && indexInAlertFocus(activeIndex),
     // Fed from the main loadOI batch (`also=` windows) — no extra API calls.
     changeBundle,
   });
