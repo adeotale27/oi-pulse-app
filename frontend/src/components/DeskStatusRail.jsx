@@ -76,7 +76,7 @@ export default function DeskStatusRail({
       aria-live="polite"
       className={`w-full border-b ${tone.bar} px-3 sm:px-4 py-1`}
     >
-      <div className="flex items-center gap-2 sm:gap-3 text-[11px] flex-wrap min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap min-w-0">
         <span
           className={`inline-flex items-center gap-1.5 font-bold tracking-wide uppercase px-1.5 py-0.5 rounded-sm shrink-0 ${tone.badge}`}
           data-testid="data-truth-badge"
@@ -86,8 +86,8 @@ export default function DeskStatusRail({
           )}
           {truth.badge}
         </span>
-        <span className="font-mono-data font-semibold truncate" data-testid="data-truth-asof">
-          {asOfLive ? `as of ${asOfLive}` : truth.asOfLabel}
+        <span className="font-mono-data font-semibold truncate tracking-tight" data-testid="data-truth-asof">
+          {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
         </span>
 
         {marketBits && (

@@ -64,19 +64,19 @@ export function buildDataTruth({
     return {
       mode: "OFFLINE",
       badge: "OFFLINE",
-      asOfLabel: asOfClock ? `data as of ${asOfClock} IST` : dataDate ? `session ${dataDate}` : "—",
-      detail: "API key required · not live",
+      asOfLabel: asOfClock ? `Live data as of ${asOfClock} IST` : dataDate ? `Session ${dataDate}` : "—",
+      detail: "Kite API required · board is not live",
       tone: "offline",
     };
   }
 
   if (isLive && open) {
-    const ageNote = age != null ? ` · ${Math.round(age)}s ago` : "";
+    const ageNote = age != null ? `Updated ${Math.round(age)}s ago` : "Updating on schedule";
     return {
       mode: "LIVE",
       badge: "LIVE",
-      asOfLabel: asOfClock ? `data as of ${asOfClock} IST` : "data as of —",
-      detail: `Market open · polling${ageNote}`,
+      asOfLabel: asOfClock ? `Live data as of ${asOfClock} IST` : "Live data as of —",
+      detail: `Market open · ${ageNote}`,
       tone: "live",
     };
   }
@@ -89,8 +89,8 @@ export function buildDataTruth({
         ? `${dataDate}${asOfClock ? ` · ${asOfClock} IST` : ""}`
         : asOfClock
           ? `${asOfClock} IST`
-          : "prior close",
-      detail: "Not live · OI polling paused until next open · GIFT/VIX may still update",
+          : "Prior close",
+      detail: "Market closed · OI paused until next open · GIFT/VIX may still update",
       tone: "session",
     };
   }
@@ -100,9 +100,9 @@ export function buildDataTruth({
   return {
     mode: "STALE",
     badge: "STALE",
-    asOfLabel: asOfClock ? `last tick ${asOfClock} IST` : "last tick unknown",
+    asOfLabel: asOfClock ? `Last update ${asOfClock} IST` : "Last update unknown",
     detail: reason === "stale_cache"
-      ? "Market open but snapshot lagging — not guaranteed live"
+      ? "Market open but snapshot lagging — treat as delayed"
       : String(reason).replace(/_/g, " "),
     tone: "warn",
   };

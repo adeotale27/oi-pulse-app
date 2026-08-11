@@ -21,35 +21,36 @@ function fmtLtp(v, dp = 2) {
   return fmtNum(v, dp);
 }
 
-// Per-index visual identity + up/down wash for readable desk tiles.
+// Per-index visual identity + light desk tiles (names/prices stay near-black).
 const INDEX_STYLE = {
   NIFTY:     { label: "NIFTY 50",   short: "NIFTY",  dot: "bg-sky-500" },
   SENSEX:    { label: "SENSEX",     short: "SENSEX", dot: "bg-amber-500" },
-  BANKNIFTY: { label: "BANK NIFTY", short: "BANK",   dot: "bg-emerald-500" },
+  BANKNIFTY: { label: "BANK NIFTY", short: "BNF",    dot: "bg-emerald-500" },
 };
 
-function tileTone(up, flat) {
+/** Light normal-header tiles: black name + price; only %/points stay green/red. */
+function headerTileTone(up, flat) {
   if (flat) {
     return {
-      shell: "border-slate-600/60 bg-slate-800/80",
-      label: "text-slate-300",
-      price: "text-slate-100",
-      chg: "text-slate-400",
+      shell: "border-slate-200 bg-white shadow-sm",
+      label: "text-slate-950",
+      price: "text-slate-950",
+      chg: "text-slate-500",
     };
   }
   if (up) {
     return {
-      shell: "border-emerald-500/50 bg-gradient-to-br from-emerald-950/90 to-emerald-900/50",
-      label: "text-emerald-200",
-      price: "text-emerald-300",
-      chg: "text-emerald-400",
+      shell: "border-emerald-200/90 bg-gradient-to-br from-emerald-50/70 to-white shadow-sm",
+      label: "text-slate-950",
+      price: "text-slate-950",
+      chg: "text-emerald-600",
     };
   }
   return {
-    shell: "border-rose-500/50 bg-gradient-to-br from-rose-950/90 to-rose-900/50",
-    label: "text-rose-200",
-    price: "text-rose-300",
-    chg: "text-rose-400",
+    shell: "border-rose-200/90 bg-gradient-to-br from-rose-50/70 to-white shadow-sm",
+    label: "text-slate-950",
+    price: "text-slate-950",
+    chg: "text-rose-600",
   };
 }
 
@@ -126,12 +127,12 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
               }`}
             >
-              <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-900 dark:text-slate-100">
                 {shortLabel}
               </span>
               <Arrow className={`w-3 h-3 shrink-0 ${toneCls}`} strokeWidth={2.5} aria-hidden />
               <span
-                className={`font-semibold ${toneCls}`}
+                className="font-semibold text-slate-950 dark:text-slate-50"
                 data-testid={`ticker-${t.index}-ltp`}
               >
                 {ltpLabel}
@@ -153,7 +154,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     );
   }
 
-  // Header: colorful up/down desk tiles (readable on dark header).
+  // Header: light desk tiles — black names/prices; change stays green/red.
   const stripClass = isHeader
     ? "flex flex-nowrap items-stretch gap-1.5 min-w-0 w-auto max-w-full overflow-hidden"
     : dense
@@ -167,15 +168,15 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const up = t.change > 0;
         const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
         const tones = isHeader
-          ? tileTone(up, flat)
+          ? headerTileTone(up, flat)
           : {
               shell: flat
                 ? "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                 : up
                   ? "border-emerald-300 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/50 dark:to-slate-900"
                   : "border-rose-300 bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/50 dark:to-slate-900",
-              label: flat ? "text-slate-600 dark:text-slate-400" : up ? "text-emerald-800 dark:text-emerald-200" : "text-rose-800 dark:text-rose-200",
-              price: flat ? "text-slate-900 dark:text-slate-100" : up ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300",
+              label: flat ? "text-slate-700 dark:text-slate-300" : up ? "text-emerald-900 dark:text-emerald-200" : "text-rose-900 dark:text-rose-200",
+              price: "text-slate-950 dark:text-slate-50",
               chg: flat ? "text-slate-500" : up ? "text-emerald-600" : "text-rose-600",
             };
         const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
@@ -191,34 +192,36 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             data-testid={`ticker-${t.index}`}
             className={`text-left rounded-md border ${tones.shell} ${
               isHeader
-                ? "px-2.5 py-1.5 shrink-0 min-w-[8.25rem] max-w-[11rem]"
+                ? "px-2.5 py-1.5 shrink-0 min-w-[8.75rem] max-w-[12rem]"
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
-            } hover:brightness-110 transition-all ${
-              isActive ? "ring-2 ring-sky-400/70 shadow-md" : ""
+            } hover:brightness-[0.99] transition-all ${
+              isActive ? "ring-2 ring-sky-400/80 shadow-md" : ""
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
           >
-            <div className={`flex items-center justify-between gap-1 text-[9px] uppercase tracking-widest font-semibold ${tones.label} ${useCompact ? "gap-0.5" : "gap-3"}`}>
+            <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label} ${
+              isHeader ? "text-[11px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"
+            }`}>
               <div className="flex items-center gap-1 min-w-0">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
                 <span className="truncate">{useCompact ? shortLabel : s.label}</span>
               </div>
-              <div className={`text-[10px] font-mono-data tabular-nums shrink-0 ${tones.chg}`} data-testid={`ticker-${t.index}-pct`}>
+              <div className={`font-mono-data tabular-nums shrink-0 font-semibold ${tones.chg} ${isHeader ? "text-[11px]" : "text-[10px]"}`} data-testid={`ticker-${t.index}-pct`}>
                 {flat ? "0.00%" : `${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%`}
               </div>
             </div>
             <div className={`mt-1 ${useCompact ? "space-y-0.5" : "flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3 sm:mt-1.5"}`}>
               <div
-                className={`${useCompact ? "text-[12px]" : "text-base sm:text-sm"} font-mono-data font-bold tabular-nums leading-none ${tones.price}`}
+                className={`${isHeader ? "text-sm" : useCompact ? "text-[12px]" : "text-base sm:text-sm"} font-mono-data font-bold tabular-nums leading-none ${tones.price}`}
                 data-testid={`ticker-${t.index}-ltp`}
               >
                 {ltpLabel}
               </div>
               <div
                 className={`inline-flex items-center gap-1 font-mono-data tabular-nums leading-none ${tones.chg} ${
-                  useCompact ? "text-[10px]" : "gap-1.5 text-xs sm:text-[11px]"
+                  isHeader ? "text-[11px]" : useCompact ? "text-[10px]" : "gap-1.5 text-xs sm:text-[11px]"
                 }`}
                 data-testid={`ticker-${t.index}-chg`}
               >

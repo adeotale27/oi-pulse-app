@@ -483,7 +483,7 @@ export default function Header({
         <div className="flex items-center gap-1.5 shrink-0">
           <OiPulseLogo className={headerRail ? "w-6 h-6" : "w-8 h-8"} />
           <div className="leading-tight">
-            <div className={`${headerRail ? "text-xs" : "text-sm"} font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent`}>
+            <div className={`${headerRail ? "text-sm" : "text-base"} font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent`}>
               OI Pulse
             </div>
           </div>
@@ -523,24 +523,24 @@ export default function Header({
             <div
               className={
                 headerRail
-                  ? "hidden md:flex items-center gap-1.5 px-1.5 font-mono-data text-[10px] text-slate-600 dark:text-slate-300"
-                  : "hidden 2xl:flex flex-col items-start gap-0 px-2 py-1 min-w-[100px] font-mono-data text-slate-600 dark:text-slate-300"
+                  ? "hidden md:flex items-center gap-1.5 px-1.5 font-mono-data text-[11px] text-slate-600 dark:text-slate-300"
+                  : "hidden 2xl:flex flex-col items-start gap-0 px-2 py-1 min-w-[120px] font-mono-data text-slate-600 dark:text-slate-300"
               }
               data-testid="oi-and-time"
               title={nowLabel ? `Now ${nowLabel}` : undefined}
             >
               {headerRail ? (
                 <>
-                  <span className="uppercase tracking-wider text-slate-400">OI</span>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                  <span className="uppercase tracking-wider text-slate-500 text-[10px]">Live as of</span>
+                  <span className="font-semibold text-slate-950 dark:text-slate-100">
                     {new Date(lastPulledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}
                   </span>
                 </>
               ) : (
                 <>
-                  <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">OI pulled</div>
-                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{new Date(lastPulledAt).toLocaleTimeString()}</div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Live data as of</div>
+                  <div className="text-base font-semibold text-slate-950 dark:text-slate-100">{new Date(lastPulledAt).toLocaleTimeString()}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${status?.market && status.market.is_market_open ? "bg-emerald-500" : "bg-slate-300"}`} />
                     <span className={`font-semibold ${status?.market && status.market.is_market_open ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}>{nowLabel}</span>
                   </div>
@@ -832,8 +832,8 @@ export default function Header({
           />
         </div>
         {lastPulledAt && (
-          <div className="ml-auto text-[10px] font-mono-data text-slate-500 dark:text-slate-400 shrink-0" data-testid="oi-pulled-secondary">
-            OI pulled {new Date(lastPulledAt).toLocaleTimeString()}
+          <div className="ml-auto text-[11px] font-mono-data text-slate-500 dark:text-slate-400 shrink-0" data-testid="oi-pulled-secondary">
+            Live data as of {new Date(lastPulledAt).toLocaleTimeString()}
           </div>
         )}
       </div>
@@ -952,14 +952,14 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   }
   return (
     <div className="flex flex-col min-w-[5.5rem]" data-testid="vix-metric">
-      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 dark:text-slate-300 font-semibold">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-800 dark:text-slate-200 font-bold">
         <div className="flex items-center gap-1.5">INDIA VIX</div>
-        <div className={`text-[10px] font-mono-data ${toneCls}`}>{hasData ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—"}</div>
+        <div className={`text-[11px] font-mono-data ${toneCls}`}>{hasData ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—"}</div>
       </div>
       <div className="flex items-baseline gap-1.5 mt-0.5">
-        <div className={`text-sm font-semibold font-mono-data ${hasData ? "text-slate-900 dark:text-slate-100" : "text-slate-400"}`} data-testid="vix-value">{hasData ? Number(v).toFixed(2) : "—"}</div>
+        <div className={`text-base font-bold font-mono-data ${hasData ? "text-slate-950 dark:text-slate-50" : "text-slate-400"}`} data-testid="vix-value">{hasData ? Number(v).toFixed(2) : "—"}</div>
         {pts != null && Number.isFinite(pts) && (
-          <div className={`text-[11px] font-mono-data ${toneCls}`} data-testid="vix-change">{pts >= 0 ? "+" : ""}{Number(pts).toFixed(2)}</div>
+          <div className={`text-xs font-mono-data ${toneCls}`} data-testid="vix-change">{pts >= 0 ? "+" : ""}{Number(pts).toFixed(2)}</div>
         )}
       </div>
     </div>
@@ -1171,7 +1171,7 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
         </button>
       ) : (
         <>
-      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-800 dark:text-slate-200 font-bold">
         <div className="flex items-center gap-1.5">
           {/* persistent status dot — click opens full sessions modal */}
           {isGift && (
@@ -1191,10 +1191,10 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
           )}
           {label}
         </div>
-        <div className={`text-[10px] font-mono-data ${toneCls}`}>{hasData ? `${chgPct >= 0 ? "+" : ""}${chgPct.toFixed(2)}%` : "—"}</div>
+        <div className={`text-[11px] font-mono-data ${toneCls}`}>{hasData ? `${chgPct >= 0 ? "+" : ""}${chgPct.toFixed(2)}%` : "—"}</div>
       </div>
       <div className="flex items-center justify-between gap-2 mt-1">
-        <div className={`text-sm font-mono-data font-semibold text-slate-900 tabular-nums leading-none`}>{hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</div>
+        <div className={`text-base font-mono-data font-bold text-slate-950 dark:text-slate-50 tabular-nums leading-none`}>{hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</div>
         <div className={`flex items-center gap-1 text-[11px] font-mono-data tabular-nums leading-none shrink-0 ${toneCls}`}>
           <span aria-hidden>{arrow}</span>
           <span>{chg > 0 ? "+" : ""}{chg.toFixed(2)}</span>

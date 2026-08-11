@@ -66,9 +66,9 @@ export default function DataTruthStrip({
       aria-live="polite"
       className={`w-full border-b ${tone.bar} ${emphasize ? "py-2" : "py-1.5"} px-3 sm:px-4`}
     >
-      <div className="flex items-center gap-2 sm:gap-3 text-xs flex-wrap">
+      <div className="flex items-center gap-2 sm:gap-3 text-sm flex-wrap">
         <span
-          className={`inline-flex items-center gap-1.5 font-bold tracking-wide text-[11px] uppercase px-2 py-0.5 rounded-sm ${tone.badge}`}
+          className={`inline-flex items-center gap-1.5 font-bold tracking-wide text-xs uppercase px-2 py-0.5 rounded-sm ${tone.badge}`}
           data-testid="data-truth-badge"
         >
           {(truth.mode === "LIVE" || truth.mode === "STALE") && (
@@ -76,11 +76,11 @@ export default function DataTruthStrip({
           )}
           {truth.badge}
         </span>
-        <span className="font-mono-data font-semibold" data-testid="data-truth-asof">
-          {asOfLive ? `data as of ${asOfLive} IST` : truth.asOfLabel}
+        <span className="font-mono-data font-semibold tracking-tight" data-testid="data-truth-asof">
+          {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
         </span>
         <span className="opacity-80 hidden sm:inline">·</span>
-        <span className="opacity-90 text-[11px] sm:text-xs hidden sm:inline" data-testid="data-truth-detail">
+        <span className="opacity-90 text-xs sm:text-sm hidden sm:inline" data-testid="data-truth-detail">
           {truth.detail}
         </span>
       </div>
