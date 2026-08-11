@@ -55,6 +55,7 @@ export default function Header({
   publicAccessOpen = null,
   /** Slim one-line index + VIX/GIFT rail instead of tall ticker tiles. */
   headerRail = false,
+  onToggleHeaderRail,
   /** Merge DataTruth / market / Kite banners into one slim bar. */
   slimStatusRail = false,
   onToggleSlimStatusRail,
@@ -241,7 +242,8 @@ export default function Header({
   return (
     <header
       data-testid="dashboard-header"
-      className="oi-header w-full relative z-20"
+      className={`oi-header w-full relative z-20 ${headerRail ? "oi-header-slim" : "oi-header-desk"}`}
+      data-density={headerRail ? "slim" : "desk"}
     >
       <GiftSessionsModal open={giftModalOpen} onOpenChange={setGiftModalOpen} windows={giftSessions} serverIst={extras?.server_time_ist} />
 
@@ -403,8 +405,8 @@ export default function Header({
           </div>
         </div>
 
-        {/* VIX / GIFT — no ATM (already in sidebar). Slim = inline chips; normal = stacked metrics on wide screens */}
-        <div className={`${headerRail ? "flex" : "hidden 2xl:flex"} items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
+        {/* VIX / GIFT — always visible; slim = chips, normal = stacked metrics */}
+        <div className={`flex items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
           <VixMetric value={vix} sessionOpen={vixSessionOpen} liveVix={extras.vix} inline={headerRail} />
           <ExtraTickerCell
             label="GIFT NIFTY"
@@ -565,6 +567,15 @@ export default function Header({
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 {darkMode ? "Light mode" : "Dark mode"}
               </DropdownMenuItem>
+              {typeof onToggleHeaderRail === "function" && (
+                <DropdownMenuItem
+                  data-testid="menu-toggle-header-density"
+                  onSelect={(e) => { e.preventDefault(); onToggleHeaderRail(); }}
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  {headerRail ? "Normal header (tiles)" : "Slim header"}
+                </DropdownMenuItem>
+              )}
               {typeof onToggleSlimStatusRail === "function" && (
                 <DropdownMenuItem
                   data-testid="menu-toggle-slim-status"
@@ -823,6 +834,9 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   // Compact tile: top-right % change, big price below — like the ticker tiles.
   const v = liveVix?.last != null && liveVix.last > 0 ? liveVix.last : (value ?? 0);
   const pct = liveVix && liveVix.change_pct != null ? Number(liveVix.change_pct) : (sessionOpen && v ? ((v - sessionOpen) / sessionOpen) * 100 : 0);
+  const pts = liveVix && liveVix.change != null
+    ? Number(liveVix.change)
+    : (sessionOpen && v ? v - sessionOpen : null);
   const tone = pct > 0.05 ? "rose" : pct < -0.05 ? "emerald" : "slate";
   const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-slate-500 dark:text-slate-400";
   const hasData = v != null && v > 0;
@@ -837,21 +851,25 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
         <span className={`font-semibold ${hasData ? "text-slate-900 dark:text-slate-100" : "text-slate-400"}`} data-testid="vix-value">
           {hasData ? Number(v).toFixed(2) : "—"}
         </span>
-        <span className={toneCls}>{hasData ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : ""}</span>
+        {hasData && pts != null && Number.isFinite(pts) && (
+          <span className={toneCls} data-testid="vix-change">
+            {pts >= 0 ? "+" : ""}{pts.toFixed(2)}
+          </span>
+        )}
+        <span className={toneCls}>{hasData ? `(${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)` : ""}</span>
       </div>
     );
   }
   return (
-    <div className="flex flex-col" data-testid="vix-metric">
-      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 font-semibold">
+    <div className="flex flex-col min-w-[5.5rem]" data-testid="vix-metric">
+      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-slate-600 dark:text-slate-300 font-semibold">
         <div className="flex items-center gap-1.5">INDIA VIX</div>
         <div className={`text-[10px] font-mono-data ${toneCls}`}>{hasData ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—"}</div>
       </div>
       <div className="flex items-baseline gap-1.5 mt-0.5">
         <div className={`text-sm font-semibold font-mono-data ${hasData ? "text-slate-900 dark:text-slate-100" : "text-slate-400"}`} data-testid="vix-value">{hasData ? Number(v).toFixed(2) : "—"}</div>
-        {/* show absolute change next to price if available */}
-        {liveVix && (liveVix.change != null) && (
-          <div className={`text-[11px] font-mono-data ${toneCls}`}>{liveVix.change >= 0 ? "+" : ""}{Number(liveVix.change).toFixed(2)}</div>
+        {pts != null && Number.isFinite(pts) && (
+          <div className={`text-[11px] font-mono-data ${toneCls}`} data-testid="vix-change">{pts >= 0 ? "+" : ""}{Number(pts).toFixed(2)}</div>
         )}
       </div>
     </div>
@@ -1054,7 +1072,12 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
           <span className="font-semibold text-slate-900 dark:text-slate-100">
             {hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}
           </span>
-          <span className={toneCls}>{hasData ? `${chgPct >= 0 ? "+" : ""}${chgPct.toFixed(2)}%` : ""}</span>
+          {hasData && (
+            <span className={toneCls} data-testid="gift-change">
+              {chg >= 0 ? "+" : ""}{chg.toFixed(1)}
+            </span>
+          )}
+          <span className={toneCls}>{hasData ? `(${chgPct >= 0 ? "+" : ""}${chgPct.toFixed(2)}%)` : ""}</span>
         </button>
       ) : (
         <>
