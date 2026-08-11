@@ -1774,6 +1774,23 @@ export default function Dashboard() {
               onFavorite={handleFavoriteTab}
               onMove={handleMoveTab}
               marketOpen={status?.market?.is_market_open === true}
+              infoTilesOpen={infoTilesOpen}
+              onToggleInfoTiles={setInfoTilesOpen}
+              infoTiles={
+                <InfoTilesRow
+                  order={tileOrder}
+                  onReorder={handleReorderTiles}
+                  onFavorite={handleFavoriteTile}
+                  onMove={handleMoveTile}
+                  isAdmin={!!authState.is_admin}
+                  showImpact={showImpactTile}
+                  activeIndex={activeIndex}
+                  onOpenHolidays={openHolidaysTab}
+                  onOpenIndexEvents={openIndexEventsTab}
+                  compact
+                  testId="dashboard-info-tiles-mobile"
+                />
+              }
             />
           </div>
 

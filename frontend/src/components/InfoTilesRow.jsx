@@ -22,6 +22,7 @@ export default function InfoTilesRow({
   onOpenHolidays,
   onOpenIndexEvents,
   wide = false,
+  compact = false,
   testId = "dashboard-info-tiles",
 }) {
   const [draggingId, setDraggingId] = useState(null);
@@ -142,7 +143,11 @@ export default function InfoTilesRow({
   if (canMove) tipParts.push("Alt+←/→ to nudge");
   const tileTitle = tipParts.length ? tipParts.join(" · ") : undefined;
 
-  const widthCls = wide ? "w-44 2xl:w-48 shrink-0" : "w-44 shrink-0";
+  const widthCls = compact
+    ? "w-[9.25rem] shrink-0"
+    : wide
+      ? "w-44 2xl:w-48 shrink-0"
+      : "w-44 shrink-0";
 
   return (
     <div
