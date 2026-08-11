@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
@@ -23,6 +23,77 @@ import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
 import { isTradingDayIST, todayIST } from "@/lib/holidays";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { kiteModeBadge, kiteModeBadgeClass } from "@/lib/kiteModeLabel";
+
+const PRIVACY_LS_KEY = "oi_positions_privacy";
+const PRIVACY_MASK = "••••";
+
+/** Admin-only Today P&L chip for the header (beside the clock). */
+function HeaderTodayPnl({ enabled, status }) {
+  const [pnl, setPnl] = useState(null);
+  const [openCount, setOpenCount] = useState(0);
+  const [hasRows, setHasRows] = useState(false);
+  const [privacy, setPrivacy] = useState(() => {
+    try { return localStorage.getItem(PRIVACY_LS_KEY) === "1"; } catch { return false; }
+  });
+
+  useEffect(() => {
+    const syncPrivacy = () => {
+      try { setPrivacy(localStorage.getItem(PRIVACY_LS_KEY) === "1"); } catch { /* noop */ }
+    };
+    const id = setInterval(syncPrivacy, 1500);
+    window.addEventListener("storage", syncPrivacy);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("storage", syncPrivacy);
+    };
+  }, []);
+
+  const load = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      const { data } = await api.get("/positions");
+      const rows = Array.isArray(data?.positions) ? data.positions : [];
+      const open = rows.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
+      const total = data?.pnl_today?.total;
+      setOpenCount(open);
+      setHasRows(rows.length > 0);
+      setPnl(total != null && Number.isFinite(Number(total)) ? Number(total) : null);
+    } catch {
+      /* keep last good value */
+    }
+  }, [enabled]);
+
+  useQuiescentAwarePolling(load, 30_000, [load, enabled], {
+    status,
+    allowDuringQuiescent: true,
+    dedupeKey: "header-today-pnl",
+  });
+
+  if (!enabled || !hasRows) return null;
+  if (pnl == null) return null;
+
+  const positive = pnl >= 0;
+  const label = privacy
+    ? PRIVACY_MASK
+    : `${positive ? "+" : ""}${pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  return (
+    <div
+      className="hidden md:flex flex-col items-end leading-tight px-1.5 shrink-0"
+      data-testid="header-today-pnl"
+      title={openCount > 0 ? `Today P&L · ${openCount} open` : "Today P&L (includes exited today)"}
+    >
+      <span className="text-[9px] uppercase tracking-wider text-slate-400">Today P&L</span>
+      <span
+        className={`font-mono-data text-sm font-bold tabular-nums ${
+          privacy ? "text-slate-500" : positive ? "text-emerald-600" : "text-rose-600"
+        }`}
+      >
+        {privacy ? label : `₹${label}`}
+      </span>
+    </div>
+  );
+}
 
 export default function Header({
   status,
@@ -123,11 +194,22 @@ export default function Header({
     try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }
   // Admin-only: when Kite is live, show the connected Zerodha user id on the button.
-  const kiteBtnLabel =
-    isAdmin && status?.kite_user_id ? String(status.kite_user_id) : "Kite API";
-  const kiteBtnTitle = isAdmin && status?.kite_user_id
-    ? `Kite live as ${status.kite_user_id} — open credentials`
+  const kiteUserId = isAdmin && status?.kite_user_id ? String(status.kite_user_id) : null;
+  const kiteBtnLabel = kiteUserId || "Kite API";
+  const kiteBtnTitle = kiteUserId
+    ? `Kite live as ${kiteUserId} — open credentials`
     : "Connect / refresh Kite API credentials";
+  // Match Admin button / OI Pulse emerald green when showing the logged-in user id.
+  const kiteBtnCls = kiteUserId
+    ? "rounded-sm h-8 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400 font-semibold"
+    : "rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700";
+  const kiteLive =
+    isAdmin && (
+      status?.mode === "kite"
+      || !!status?.has_kite_credentials
+      || !!status?.kite_ok
+      || !!status?.kite_user_id
+    );
 
   // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
   // to avoid duplicate network requests across components.
@@ -359,9 +441,9 @@ export default function Header({
             <Settings2 className="w-4 h-4 mr-1.5" />
             Alert settings
           </Button>
-          <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds} title={kiteBtnTitle}>
-            <KeyRound className="w-4 h-4 mr-1.5" />
-            <span className={isAdmin && status?.kite_user_id ? "text-emerald-600 font-semibold" : undefined}>
+          <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
+            <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
+            <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
               {kiteBtnLabel}
             </span>
           </Button>
@@ -433,6 +515,7 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-auto">
+          <HeaderTodayPnl enabled={!!kiteLive} status={status} />
           <div className={headerRail ? "hidden md:block origin-right" : "hidden xl:block"}>
             <BigClock compact />
           </div>
@@ -712,12 +795,12 @@ export default function Header({
             <Button
               data-testid="btn-open-credentials"
               variant="outline" size="sm"
-              className="rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+              className={kiteBtnCls}
               onClick={onOpenCreds}
               title={kiteBtnTitle}
             >
-              <KeyRound className="w-4 h-4 mr-1.5" />
-              <span className={isAdmin && status?.kite_user_id ? "text-emerald-600 font-semibold" : undefined}>
+              <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
+              <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
                 {kiteBtnLabel}
               </span>
             </Button>
@@ -732,7 +815,8 @@ export default function Header({
         className="2xl:hidden px-3 sm:px-4 pb-2 flex items-center gap-3 flex-wrap border-t border-slate-100/80 dark:border-slate-800/80 pt-1.5"
         data-testid="header-secondary-row"
       >
-        <div className="xl:hidden">
+        <div className="xl:hidden flex items-center gap-2">
+          <HeaderTodayPnl enabled={!!kiteLive} status={status} />
           <BigClock compact />
         </div>
         <div className="flex items-center gap-4 min-w-0 overflow-hidden flex-wrap">
@@ -797,9 +881,9 @@ export default function Header({
             <Settings2 className="w-4 h-4 mr-1.5" />
             Alert settings
           </Button>
-          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className="rounded-sm" onClick={onOpenCreds} title={kiteBtnTitle}>
-            <KeyRound className="w-4 h-4 mr-1.5" />
-            <span className={isAdmin && status?.kite_user_id ? "text-emerald-600 font-semibold" : undefined}>
+          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
+            <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
+            <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
               {kiteBtnLabel}
             </span>
           </Button>
