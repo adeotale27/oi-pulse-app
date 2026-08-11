@@ -7,6 +7,7 @@ import {
   EVENT_WARNING_MINUTE,
   SUNDAY_BRIEF_MINUTE,
   buildEventWarningCopy,
+  SECOND_SESSION_MINUTE,
 } from "@/lib/overnightBrief";
 import { isHoliday, todayIST } from "@/lib/holidays";
 
@@ -129,6 +130,13 @@ export default function BigClock({ compact = false }) {
         toast: "Trading has begun.",
       },
       {
+        time: hmFromMinutes(SECOND_SESSION_MINUTE),
+        days: [1, 2, 3, 4, 5],
+        title: "2nd session started",
+        description: "It is 12:00 IST — start of the 2nd session. Review open risk and afternoon bias.",
+        toast: "2nd session started · 12:00 IST",
+      },
+      {
         time: hmFromMinutes(WEEKEND_START_MINUTE),
         days: [5],
         title: "Market closed for weekend",
@@ -157,6 +165,35 @@ export default function BigClock({ compact = false }) {
       try { push(scheduled.title, scheduled.description); } catch (_) { /* ignore */ }
       try { alarm(); } catch (_) { /* ignore */ }
       try { toast.success(scheduled.toast, { description: scheduled.description }); } catch (_) { /* ignore */ }
+    }
+
+    // At the open: if tomorrow (or carry window) has multiple events, surface them
+    // from the Big Clock so the desk sees India CPI + US CPI etc. early.
+    if (
+      isWeekday &&
+      cur === openHm &&
+      !notifiedRef.current.has(`${minuteKey}|multi-events`)
+    ) {
+      notifiedRef.current.add(`${minuteKey}|multi-events`);
+      (async () => {
+        const copy = await showCarryToast(weekday);
+        if (!copy?.hasEvents || !(copy.lines?.length > 1)) return;
+        try {
+          push(copy.title, copy.lines.slice(0, 4).join(" · "));
+        } catch (_) { /* ignore */ }
+        try {
+          toast(copy.title, {
+            id: `open-events-${key}`,
+            description: copy.lines.slice(0, 8).join("\n"),
+            duration: 20000,
+            closeButton: true,
+            important: true,
+            classNames: {
+              toast: "border-2 border-amber-500 bg-amber-50 text-amber-950",
+            },
+          });
+        } catch (_) { /* ignore */ }
+      })();
     }
 
     // 15:15 sticky event / carry warning — must be dismissed manually.

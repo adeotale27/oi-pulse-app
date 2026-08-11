@@ -123,6 +123,8 @@ export default function useQuiescentAwarePolling(callback, ms, deps = [], option
     }
 
     return makeCleanup(id);
+    // Depend on market-open flag only — full `status` object identity changes
+    // every status poll and was recreating intervals unnecessarily.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, ms, status, immediate, allowDuringQuiescent, dedupeKey]);
+  }, [...deps, ms, status?.market?.is_market_open, immediate, allowDuringQuiescent, dedupeKey]);
 }

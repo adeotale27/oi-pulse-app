@@ -83,7 +83,7 @@ export default function SettingsModal({
       }
       cur.delete(idx);
     } else cur.add(idx);
-    setSettings({ ...settings, enabled_indices: Array.from(cur) });
+    setSettings({ ...settings, enabled_indices: ALL_INDICES.filter((i) => cur.has(i)) });
   };
 
   const toggleAlertIndex = (idx) => {

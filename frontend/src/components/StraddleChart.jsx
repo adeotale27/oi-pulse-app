@@ -184,7 +184,14 @@ function normalizePoint(raw, winStart) {
       : ce != null && pe != null
         ? Number(ce) + Number(pe)
         : null;
-  if (premium == null || !Number.isFinite(premium)) return null;
+  if (premium == null || !Number.isFinite(premium) || premium <= 0) return null;
+  // Hard reject obviously broken quotes (wrong-leg / stale LTP → 1000+ spikes).
+  if (premium > 800) return null;
+  if (ce != null && pe != null) {
+    const c = Number(ce);
+    const p = Number(pe);
+    if (!(c > 0) || !(p > 0)) return null;
+  }
   return {
     ts: winStart != null ? Math.max(now, winStart) : now,
     premium,
@@ -198,6 +205,22 @@ function normalizePoint(raw, winStart) {
         ? Number(underlying) + (Number(ce) - Number(pe))
         : null,
   };
+}
+
+/** Robust Y domain — ignore extreme outliers so one bad tick cannot break the chart. */
+function robustPremiumDomain(points) {
+  const vals = points
+    .map((p) => Number(p.premium))
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b);
+  if (!vals.length) return [0, 1];
+  const mid = vals[Math.floor(vals.length / 2)];
+  const filtered = vals.filter((v) => v <= Math.max(mid * 2.5, mid + 150));
+  const use = filtered.length >= Math.max(3, Math.floor(vals.length * 0.7)) ? filtered : vals;
+  const lo = use[0];
+  const hi = use[use.length - 1];
+  const pad = Math.max(0.5, (hi - lo) * 0.12);
+  return [Math.max(0, lo - pad), hi + pad];
 }
 
 export default function StraddleChart({
@@ -270,6 +293,10 @@ export default function StraddleChart({
     applyMeta(point, point.ts);
     setPoints((prev) => {
       const sessionPrev = filterSessionPoints(prev, activeDate);
+      const last = sessionPrev.length ? sessionPrev[sessionPrev.length - 1] : null;
+      if (last?.premium > 0 && point.premium > Math.max(last.premium * 3, last.premium + 200)) {
+        return prev; // skip live spike vs last good tick
+      }
       const next = upsertBucketed(sessionPrev, point, bucketMs);
       if (next.length > maxPoints) return next.slice(next.length - maxPoints);
       return next;
@@ -434,23 +461,16 @@ export default function StraddleChart({
     [points, tradeDate],
   );
 
-  const yDomain = useMemo(() => {
-    if (!sessionPoints.length) return [0, 1];
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const p of sessionPoints) {
-      const v = Number(p.premium);
-      if (Number.isFinite(v)) {
-        if (v < lo) lo = v;
-        if (v > hi) hi = v;
-      }
-    }
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [0, 1];
-    const pad = Math.max(0.5, (hi - lo) * 0.12);
-    return [Math.max(0, lo - pad), hi + pad];
-  }, [sessionPoints]);
+  const yDomain = useMemo(() => robustPremiumDomain(sessionPoints), [sessionPoints]);
 
-  const lastPoint = sessionPoints.length ? sessionPoints[sessionPoints.length - 1] : null;
+  const chartPoints = useMemo(() => {
+    if (!sessionPoints.length || yDomain[1] <= yDomain[0]) return sessionPoints;
+    const hi = yDomain[1] * 1.05;
+    // Drop residual outliers from the line so spikes cannot stretch the path.
+    return sessionPoints.filter((p) => Number(p.premium) <= hi);
+  }, [sessionPoints, yDomain]);
+
+  const lastPoint = chartPoints.length ? chartPoints[chartPoints.length - 1] : null;
   const dte = daysToExpiryLabel(expiry);
   const lastUpdated = meta?.ts
     ? new Date(meta.ts).toLocaleString([], {
@@ -494,7 +514,7 @@ export default function StraddleChart({
 
         <div className="px-4 py-3 h-[360px] bg-white relative">
           <ResponsiveContainer>
-            <LineChart data={sessionPoints} margin={{ top: 12, right: 36, left: 8, bottom: 8 }}>
+            <LineChart data={chartPoints} margin={{ top: 12, right: 36, left: 8, bottom: 8 }}>
               <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical={false} />
               <XAxis
                 dataKey="ts"

@@ -26,6 +26,12 @@ export default function ReplayScrubber({
   const [playing, setPlaying] = useState(false);
   const [bookmarkLabel, setBookmarkLabel] = useState(null);
   const pendingJumpRef = useRef(null);
+  // Keep parent callbacks in refs so history fetch does not re-fire on every
+  // Dashboard re-render (unstable inline onJumpConsumed caused a pending storm).
+  const onReplayFrameRef = useRef(onReplayFrame);
+  const onJumpConsumedRef = useRef(onJumpConsumed);
+  useEffect(() => { onReplayFrameRef.current = onReplayFrame; }, [onReplayFrame]);
+  useEffect(() => { onJumpConsumedRef.current = onJumpConsumed; }, [onJumpConsumed]);
 
   // External jump request — auto-arm replay and remember the target.
   useEffect(() => {
@@ -42,26 +48,30 @@ export default function ReplayScrubber({
 
   useEffect(() => {
     if (!active) {
-      onReplayFrame?.(null);
-      return;
+      onReplayFrameRef.current?.(null);
+      return undefined;
     }
-    let cancelled = false;
-    api.get(`/history/${index}`, { params: { minutes } }).then((r) => {
-      if (cancelled) return;
-      const hist = r.data.history || [];
-      setHistory(hist);
-      const target = pendingJumpRef.current;
-      if (target && hist.length) {
-        const idx = findClosestFrame(hist, target);
-        setPos(idx >= 0 ? idx : hist.length - 1);
-        pendingJumpRef.current = null;
-        onJumpConsumed?.();
-      } else {
-        setPos(Math.max(0, hist.length - 1));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [active, index, minutes, onReplayFrame, onJumpConsumed]);
+    const controller = new AbortController();
+    api.get(`/history/${index}`, { params: { minutes }, signal: controller.signal })
+      .then((r) => {
+        const hist = r.data.history || [];
+        setHistory(hist);
+        const target = pendingJumpRef.current;
+        if (target && hist.length) {
+          const idx = findClosestFrame(hist, target);
+          setPos(idx >= 0 ? idx : hist.length - 1);
+          pendingJumpRef.current = null;
+          onJumpConsumedRef.current?.();
+        } else {
+          setPos(Math.max(0, hist.length - 1));
+        }
+      })
+      .catch((e) => {
+        if (e?.code === "ERR_CANCELED" || e?.name === "CanceledError" || e?.name === "AbortError") return;
+        console.error("Replay history load failed", e);
+      });
+    return () => { controller.abort(); };
+  }, [active, index, minutes]);
 
   // If history already loaded and a new jump arrives, seek without reloading.
   useEffect(() => {
@@ -71,14 +81,14 @@ export default function ReplayScrubber({
       setPos(idx);
       setPlaying(false);
       pendingJumpRef.current = null;
-      onJumpConsumed?.();
+      onJumpConsumedRef.current?.();
     }
-  }, [jumpToTs, active, history, onJumpConsumed]);
+  }, [jumpToTs, active, history]);
 
   useEffect(() => {
     if (!active || !history.length) return;
-    onReplayFrame?.(history[pos] || null);
-  }, [pos, history, active, onReplayFrame]);
+    onReplayFrameRef.current?.(history[pos] || null);
+  }, [pos, history, active]);
 
   // auto-play
   useEffect(() => {

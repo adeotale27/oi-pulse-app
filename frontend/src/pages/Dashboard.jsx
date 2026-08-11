@@ -69,6 +69,17 @@ import { Play, HelpCircle } from "lucide-react";
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 const INDEX_STEP = { NIFTY: 50, SENSEX: 100, BANKNIFTY: 100 };
+
+/** Keep tracked indices in a stable canonical order (NIFTY → SENSEX → BANKNIFTY). */
+function normalizeEnabledIndices(list) {
+  const set = new Set(
+    (Array.isArray(list) ? list : [])
+      .map((x) => String(x || "").trim().toUpperCase().replace(/\s+/g, ""))
+      .map((x) => (x === "BANKNIFTY" || x === "BANK" ? "BANKNIFTY" : x))
+      .filter((x) => INDICES.includes(x)),
+  );
+  return INDICES.filter((i) => set.has(i));
+}
 const POLL_OPTIONS = [15000, 30000, 60000];
 const DEFAULT_POLL_MS = 15000;
 const DASHBOARD_PAGES = [
@@ -259,6 +270,7 @@ export default function Dashboard() {
     try { return window.matchMedia("(max-width: 767px)").matches; } catch { return false; }
   });
   const [replayJumpTs, setReplayJumpTs] = useState(null);
+  const clearReplayJump = useCallback(() => setReplayJumpTs(null), []);
   const [vixSessionOpen, setVixSessionOpen] = useState(() => {
     try {
       const raw = localStorage.getItem("vixSessionOpen");
@@ -657,13 +669,16 @@ export default function Dashboard() {
   }, [istToday]);
 
   // Poll OI for ALL enabled indices in the background; UI updates only for the active tab.
+  const oiInflightRef = useRef(false);
   const loadOI = useCallback(async () => {
+    if (oiInflightRef.current) return; // never stack overlapping multi-index waves
     const indices = enabledIndicesRef.current?.length ? enabledIndicesRef.current : INDICES;
     const active = activeIndexRef.current;
     // Active tab still waits for its expiry picker to settle (avoids cross-index expiry).
     if (active && !expiryReady && !expiryByIndexRef.current[active]?.selected) return;
 
     const gen = ++oiReqGenRef.current;
+    oiInflightRef.current = true;
     setOiLoading(true);
     const also = [
       ...(oiSettings.hugeShiftWindows || [1, 3, 5]),
@@ -720,6 +735,7 @@ export default function Dashboard() {
       if (gen !== oiReqGenRef.current) return;
       console.error("loadOI failed", e);
     } finally {
+      oiInflightRef.current = false;
       if (gen === oiReqGenRef.current) setOiLoading(false);
     }
   }, [expiryReady, oiSettings.hugeShiftWindows, ensureExpiryForIndex, applyOiPayload]);
@@ -1675,6 +1691,7 @@ export default function Dashboard() {
         onToggleHeaderRail={() => setHeaderRail((v) => !v)}
         slimStatusRail={slimStatusRail}
         onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
+        positionsPollMs={positionsPollMs}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {
           // Clear warm caches then re-hydrate every enabled index after Fresh Pull.
@@ -2069,7 +2086,7 @@ export default function Dashboard() {
                           index={activeIndex}
                           minutes={180}
                           jumpToTs={replayJumpTs}
-                          onJumpConsumed={() => setReplayJumpTs(null)}
+                          onJumpConsumed={clearReplayJump}
                           onReplayFrame={setReplayFrame}
                         />
                       )}
@@ -2233,7 +2250,11 @@ export default function Dashboard() {
                   )}
 
                   {authState.is_admin && (
-                    <TabsContent value="positions" className="mt-0">
+                    <TabsContent
+                      value="positions"
+                      className="mt-0 data-[state=inactive]:hidden"
+                      forceMount
+                    >
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
                       isKiteMode={kiteLiveConnected}

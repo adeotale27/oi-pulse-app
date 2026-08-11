@@ -27,7 +27,7 @@ const INDEX_THEME = {
     dot:         "bg-amber-500",
   },
   BANKNIFTY: {
-    label: "BANK NIFTY",
+    label: "BNF",
     activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-300 shadow-md shadow-emerald-500/20",
     idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-emerald-100",
     dot:         "bg-emerald-500",
@@ -364,17 +364,21 @@ export default function Sidebar({
                 key={idx}
                 data-testid={`btn-index-${idx}`}
                 onClick={() => onChangeIndex(idx)}
-                className={`relative text-[11px] font-semibold rounded-md py-2 px-1 border transition-all leading-tight ${
+                className={`relative text-[10px] sm:text-[11px] font-semibold rounded-md py-2 px-0.5 border transition-all leading-tight min-w-0 ${
                   active ? theme.activeCls : theme.idleCls
                 } ${veryStale ? "index-chip-stale" : ""}`}
                 title={
-                  pulled
-                    ? veryStale
-                      ? `STALE · last OI ${fmtPull(pulled)} IST (${age}s behind)`
-                      : marketOpen
-                        ? `Last OI ${fmtPull(pulled)} IST`
-                        : `Last session OI ${fmtPull(pulled)} IST (market closed)`
-                    : "No warm snapshot yet"
+                  idx === "BANKNIFTY"
+                    ? (pulled
+                      ? `BANK NIFTY · last OI ${fmtPull(pulled)} IST`
+                      : "BANK NIFTY · no warm snapshot yet")
+                    : pulled
+                      ? veryStale
+                        ? `STALE · last OI ${fmtPull(pulled)} IST (${age}s behind)`
+                        : marketOpen
+                          ? `Last OI ${fmtPull(pulled)} IST`
+                          : `Last session OI ${fmtPull(pulled)} IST (market closed)`
+                      : "No warm snapshot yet"
                 }
               >
                 <span className={`absolute top-1 left-1.5 w-1.5 h-1.5 rounded-full ${theme.dot} ${active ? "opacity-100" : "opacity-70"}`} />
