@@ -12,11 +12,11 @@ export default function OIPulledBadge({ lastPulledAt, isMarketOpen, nowIso, onCl
       className={`w-full rounded-sm border px-2.5 py-1.5 text-left transition-colors hover:brightness-95 bg-transparent border-slate-200 dark:border-slate-700`}
       title={`Last OI pull: ${pulledTime}`}
     >
-      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest opacity-90 text-slate-700 dark:text-slate-300">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-widest opacity-90 text-slate-700 dark:text-slate-300">
         <div className="flex items-center gap-2">
-          <span className="text-[10px]">OI pulled</span>
+          <span className="text-[11px]">Live data as of</span>
         </div>
-        <div className="text-xs font-mono-data text-slate-500 dark:text-slate-400">{pulledTime}</div>
+        <div className="text-sm font-mono-data font-semibold text-slate-900 dark:text-slate-100">{pulledTime}</div>
       </div>
       <div className="mt-1 flex items-center justify-between">
         <div className="flex items-center gap-2">

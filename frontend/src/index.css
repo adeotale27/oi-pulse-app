@@ -138,7 +138,7 @@ input[type="number"] {
   }
 
   .oi-header {
-    background: rgba(255, 255, 255, 0.86);
+    background: rgba(255, 255, 255, 0.92);
     border-bottom: 1px solid var(--oi-panel-border);
     backdrop-filter: blur(12px) saturate(1.15);
     box-shadow: 0 8px 24px -20px rgba(15, 55, 70, 0.35);
@@ -146,28 +146,13 @@ input[type="number"] {
     overflow-y: hidden;
   }
 
-  /* Normal desk header — dark, high-contrast tiles (readable vs slim rail). */
+  /* Normal desk header — light, high-contrast (not forced dark). */
   .oi-header.oi-header-desk {
-    background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
-    border-bottom: 1px solid #1e293b;
-    box-shadow: 0 10px 28px -16px rgba(0, 0, 0, 0.55);
-    color: #e2e8f0;
-  }
-
-  .oi-header.oi-header-desk .text-slate-900,
-  .oi-header.oi-header-desk .text-slate-800 {
-    color: #f1f5f9 !important;
-  }
-
-  .oi-header.oi-header-desk .text-slate-600,
-  .oi-header.oi-header-desk .text-slate-500,
-  .oi-header.oi-header-desk .text-slate-400 {
-    color: #94a3b8 !important;
-  }
-
-  .oi-header.oi-header-desk .border-slate-200,
-  .oi-header.oi-header-desk .border-slate-100 {
-    border-color: #334155 !important;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 8px 22px -18px rgba(15, 55, 70, 0.28);
+    color: #0f172a;
+    font-size: 13px;
   }
 
   .oi-header * {
@@ -186,7 +171,9 @@ input[type="number"] {
   }
 
   .dark .oi-header.oi-header-desk {
-    background: linear-gradient(180deg, #020617 0%, #0b1220 100%);
+    background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+    border-bottom-color: #1e293b;
+    color: #e2e8f0;
   }
 
   .oi-sidebar {
