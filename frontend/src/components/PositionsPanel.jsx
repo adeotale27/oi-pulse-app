@@ -54,13 +54,21 @@ function fmt(v, dp = 2) {
   return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
-/** Prefer live/cash for "cash left"; net can be deeply negative under F&O span. */
-function freeCashValue(funds) {
+/** Kite equity margins — prefer real cash, not live_balance (goes deeply negative under F&O SPAN). */
+function fundsBreakdown(funds) {
   if (!funds) return null;
-  if (funds.live_balance != null) return Number(funds.live_balance);
-  if (funds.cash != null) return Number(funds.cash);
-  if (funds.net != null) return Number(funds.net);
-  return null;
+  const cash =
+    funds.cash != null ? Number(funds.cash)
+      : funds.opening_balance != null ? Number(funds.opening_balance)
+        : null;
+  const used =
+    funds.utilised_debits != null ? Number(funds.utilised_debits)
+      : (funds.span != null || funds.exposure != null)
+        ? Number(funds.span || 0) + Number(funds.exposure || 0)
+        : null;
+  const net = funds.net != null ? Number(funds.net) : null;
+  const live = funds.live_balance != null ? Number(funds.live_balance) : null;
+  return { cash, used, net, live };
 }
 
 const POSITIONS_GUIDE = (
@@ -1048,35 +1056,42 @@ export default function PositionsPanel({
           )}
         />
         <StatBox
-          label="Cash left"
+          label="Funds available"
           value={(() => {
-            const v = freeCashValue(funds);
-            return v != null ? "₹ " + fmt(v, 0) : "—";
+            const b = fundsBreakdown(funds);
+            if (!b || b.cash == null) return "—";
+            return "₹ " + fmt(b.cash, 0);
           })()}
-          tone={
-            freeCashValue(funds) != null && freeCashValue(funds) < 0
-              ? "rose"
-              : "slate"
-          }
-          hint={
-            funds?.utilised_debits != null
-              ? `Blocked ₹ ${fmt(funds.utilised_debits, 0)}`
-              : funds?.net != null && funds?.live_balance != null && funds.net !== funds.live_balance
-                ? `Net avail ₹ ${fmt(funds.net, 0)}`
-                : "Free to trade"
-          }
+          tone={(() => {
+            const b = fundsBreakdown(funds);
+            if (!b) return "slate";
+            if (b.cash != null && b.cash < 0) return "rose";
+            if (b.net != null && b.net < 0) return "amber";
+            return "slate";
+          })()}
+          hint={(() => {
+            const b = fundsBreakdown(funds);
+            if (!b) return "Kite equity margins";
+            const bits = [];
+            if (b.used != null) bits.push(`Used margin ₹ ${fmt(b.used, 0)}`);
+            if (b.net != null) bits.push(`Net ₹ ${fmt(b.net, 0)}`);
+            return bits.length ? bits.join(" · ") : "Available cash";
+          })()}
           tip={(
             <div className="space-y-1.5">
-              <p>Money Kite still shows as free for new trades (read-only margins).</p>
               <p>
-                Live: {funds?.live_balance != null ? `₹ ${fmt(funds.live_balance, 0)}` : "—"}.
+                <b>Available cash</b> is Kite <code>available.cash</code> (opening cash / collateral cash).
+                <b> Used margin</b> is <code>utilised.debits</code> (SPAN + exposure + premium).
+              </p>
+              <p>
                 Cash: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
+                Used: {funds?.utilised_debits != null ? `₹ ${fmt(funds.utilised_debits, 0)}` : "—"}.
                 Net: {funds?.net != null ? `₹ ${fmt(funds.net, 0)}` : "—"}.
-                Collateral: {funds?.collateral != null ? `₹ ${fmt(funds.collateral, 0)}` : "—"}.
+                Live bal: {funds?.live_balance != null ? `₹ ${fmt(funds.live_balance, 0)}` : "—"}.
               </p>
               <p className="text-[11px] opacity-80">
-                Large negative <b>net</b> with big blocked margin is normal for a heavy short F&amp;O
-                book — it is not a P&amp;L loss.
+                Live balance can go deeply negative on a heavy short F&amp;O book — that is SPAN
+                utilisation, not a P&amp;L loss. We show cash + used margin instead.
               </p>
             </div>
           )}
@@ -1158,11 +1173,20 @@ export default function PositionsPanel({
               By close today ≈ <b className="font-mono-data text-emerald-800">₹ {fmt(stats.thetaToClose, 0)}</b>
             </span>
           )}
-          {freeCashValue(funds) != null && (
-            <span title="Free cash in Kite (live/cash preferred over net)">
-              Cash left <b className="font-mono-data">₹ {fmt(freeCashValue(funds), 0)}</b>
-            </span>
-          )}
+          {(() => {
+            const b = fundsBreakdown(funds);
+            if (!b || (b.cash == null && b.used == null)) return null;
+            return (
+              <span title="Kite equity margins — available cash vs used margin">
+                {b.cash != null && (
+                  <>Cash <b className="font-mono-data">₹ {fmt(b.cash, 0)}</b></>
+                )}
+                {b.used != null && (
+                  <>{b.cash != null ? " · " : ""}Used <b className="font-mono-data">₹ {fmt(b.used, 0)}</b></>
+                )}
+              </span>
+            );
+          })()}
         </div>
       )}
 

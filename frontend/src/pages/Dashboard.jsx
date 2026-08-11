@@ -241,8 +241,8 @@ export default function Dashboard() {
       const stored = localStorage.getItem("oiHeaderRail");
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
-    // Default on: one slim index+ATM/VIX/GIFT rail (toggle off in View).
-    return true;
+    // Default normal (tall colorful tiles) — slim is hard to read; toggle in View.
+    return false;
   });
   const [slimStatusRail, setSlimStatusRail] = useState(() => {
     try {
@@ -1183,6 +1183,15 @@ export default function Dashboard() {
   // the user on every 15-second pull while the same condition persists.
   const lastPctAlertRef = useRef(0);
 
+  const pushActivity = useCallback((ev) => {
+    // Dedupe: same (type,index,strike,side,window,bucket-of-minute) inside a run.
+    const bucket = Math.floor(Date.now() / (60 * 1000)); // 1-minute bucket
+    const key = `${ev.type}|${ev.index}|${ev.strike || ""}|${ev.side || ""}|${ev.window || ""}|${bucket}`;
+    if (seenActivityRef.current.has(key)) return;
+    seenActivityRef.current.add(key);
+    setActivity((prev) => [{ ...ev, id: `${key}:${Date.now()}` }, ...prev].slice(0, 200));
+  }, []);
+
   useEffect(() => {
     if (!changeSummary || !lastPulledAt) return;
     // Update "last pull change" every time new data arrives so the UI can show
@@ -1207,6 +1216,16 @@ export default function Dashboard() {
       else toast.error(msg, { description: desc, duration: 6000 });
       try { alarm(); } catch (_) { /* noop */ }
       try { push(`OI Change · ${activeIndex}`, msg); } catch (_) { /* noop */ }
+      try {
+        pushActivity({
+          type: "oi-intensity",
+          index: activeIndex,
+          at: new Date().toISOString(),
+          message: msg,
+          ce: changeSummary.ce,
+          pe: changeSummary.pe,
+        });
+      } catch (_) { /* noop */ }
       setFlash(true);
       setTimeout(() => setFlash(false), 1800);
     }
@@ -1221,7 +1240,7 @@ export default function Dashboard() {
     if (
       worstPct >= changeAlertPct &&
       now - lastPctAlertRef.current > ALERT_COOLDOWN_MS &&
-      historyReady // don't fire during the warming-up window; the % is unreliable then
+      previous // fire once we have a compare baseline (even while warming toward full window)
     ) {
       lastPctAlertRef.current = now;
       const which = cePctAbs >= pePctAbs ? "CE" : "PE";
@@ -1233,20 +1252,23 @@ export default function Dashboard() {
       const isBull = (which === "PE" && pctVal >= 0) || (which === "CE" && pctVal < 0);
       if (isBull) toast.success(title, { description: desc, duration: 7000 });
       else toast.error(title, { description: desc, duration: 7000 });
+      try { playForAlert("reversal"); } catch (_) { /* noop */ }
       try { push(`OI Change Alert · ${activeIndex}`, title); } catch (_) { /* noop */ }
+      try {
+        pushActivity({
+          type: "oi-change-alert",
+          index: activeIndex,
+          side: which,
+          at: new Date().toISOString(),
+          message: title,
+          ce: changeSummary.ce,
+          pe: changeSummary.pe,
+        });
+      } catch (_) { /* noop */ }
     }
-  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push, changeAlertPct, historyReady, status?.market]);
+  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, alarm, push, changeAlertPct, previous, status?.market, pushActivity]);
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
-  const pushActivity = useCallback((ev) => {
-    // Dedupe: same (type,index,strike,side,window,bucket-of-minute) inside a run.
-    const bucket = Math.floor(Date.now() / (60 * 1000)); // 1-minute bucket
-    const key = `${ev.type}|${ev.index}|${ev.strike || ""}|${ev.side || ""}|${ev.window || ""}|${bucket}`;
-    if (seenActivityRef.current.has(key)) return;
-    seenActivityRef.current.add(key);
-    setActivity((prev) => [{ ...ev, id: `${key}:${Date.now()}` }, ...prev].slice(0, 200));
-  }, []);
-
   const handleHugeShift = useCallback((shift) => {
     // Silence shifts for indices other than the currently viewed one.
     if (shift.index !== activeIndex) return;
@@ -1566,6 +1588,7 @@ export default function Dashboard() {
         compact={compact}
         onToggleCompact={() => setCompact((v) => !v)}
         headerRail={headerRail}
+        onToggleHeaderRail={() => setHeaderRail((v) => !v)}
         slimStatusRail={slimStatusRail}
         onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
         spotPrices={liveSpotPrices}
@@ -1739,7 +1762,7 @@ export default function Dashboard() {
                     sessionMinutes={dayBiasSummary?.minutes}
                   />
                 )}
-                {!historyReady && (() => {
+                {activeTab === "oi-change" && !historyReady && (() => {
                   // Live countdown: available minutes grows by (now - fetchedAt).
                   const elapsedSinceFetchSec = Math.max(0, (warmingTick - availableFetchedAtRef.current) / 1000);
                   const liveAvailMin = availableHistoryMin + elapsedSinceFetchSec / 60;
@@ -1751,35 +1774,17 @@ export default function Dashboard() {
                   return (
                     <div
                       data-testid="history-warming-banner"
-                      className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-700 px-3 py-2 text-xs flex items-center gap-2 flex-wrap"
+                      className="rounded-md border border-slate-200 bg-slate-50 text-slate-600 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-700 px-3 py-1.5 text-[11px] flex items-center gap-2 flex-wrap"
                     >
-                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
                       {previous ? (
                         <span>
-                          History warming up — we only have {liveAvailMin.toFixed(1)} min of snapshots so the {timeframeLabel} bars are approximate.
-                          <span className="ml-1">
-                            True {timeframeLabel} compare unlocks in{" "}
-                            <span
-                              data-testid="warming-countdown"
-                              className="inline-block font-mono-data font-semibold text-amber-900 dark:text-amber-100 tabular-nums"
-                            >
-                              {clock}
-                            </span>
-                          </span>
+                          Showing last {liveAvailMin.toFixed(1)} min (warming to {timeframeLabel}).
+                          <span className="ml-1 opacity-80">Full compare in {clock}</span>
                         </span>
                       ) : (
                         <span>
-                          Not enough stored history yet for a {timeframeLabel} comparison ({liveAvailMin.toFixed(1)} min available).
-                          <span className="ml-1">
-                            Unlocks in{" "}
-                            <span
-                              data-testid="warming-countdown"
-                              className="inline-block font-mono-data font-semibold text-amber-900 dark:text-amber-100 tabular-nums"
-                            >
-                              {clock}
-                            </span>
-                            . Try a shorter timeframe to see bars sooner.
-                          </span>
+                          Collecting snapshots for {timeframeLabel} · {liveAvailMin.toFixed(1)} min so far · unlocks in {clock}
                         </span>
                       )}
                       <span className="ml-auto flex items-center gap-1.5 text-[11px]" data-testid="change-alert-threshold-wrapper">
@@ -1794,13 +1799,33 @@ export default function Dashboard() {
                             const v = parseFloat(e.target.value);
                             if (Number.isFinite(v) && v > 0) setChangeAlertPct(v);
                           }}
-                          className="w-14 px-1 py-0.5 rounded border border-amber-300 bg-white/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-100 font-mono-data text-right"
+                          className="w-14 px-1 py-0.5 rounded border border-slate-300 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono-data text-right"
                         />
                         <span className="opacity-80">%</span>
                       </span>
                     </div>
                   );
                 })()}
+                {activeTab === "oi-change" && historyReady && (
+                  <div className="flex justify-end -mb-1" data-testid="change-alert-threshold-wrapper">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+                      <span>Alert on ≥</span>
+                      <input
+                        data-testid="change-alert-threshold"
+                        type="number"
+                        step="0.5"
+                        min="0.1"
+                        value={changeAlertPct}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (Number.isFinite(v) && v > 0) setChangeAlertPct(v);
+                        }}
+                        className="w-14 px-1 py-0.5 rounded border border-slate-200 bg-white dark:bg-slate-900 font-mono-data text-right"
+                      />
+                      <span>%</span>
+                    </label>
+                  </div>
+                )}
                 <div
                   className={`oi-panel oi-rise p-4 transition-all duration-700 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
@@ -2429,8 +2454,6 @@ export default function Dashboard() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         isAdmin={authState.is_admin}
-        headerRail={headerRail}
-        onHeaderRailChange={setHeaderRail}
         onSaved={(settings) => {
           loadStatus();
           if (Array.isArray(settings.visible_pages)) {
@@ -2441,6 +2464,9 @@ export default function Dashboard() {
           }
           if (typeof settings.straddle_poll_interval_seconds === "number") {
             setStraddlePollMs(settings.straddle_poll_interval_seconds * 1000);
+          }
+          if (typeof settings.positions_poll_interval_seconds === "number") {
+            setPositionsPollMs(settings.positions_poll_interval_seconds * 1000);
           }
           if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
             setEnabledIndices(settings.enabled_indices);

@@ -146,6 +146,30 @@ input[type="number"] {
     overflow-y: hidden;
   }
 
+  /* Normal desk header — dark, high-contrast tiles (readable vs slim rail). */
+  .oi-header.oi-header-desk {
+    background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
+    border-bottom: 1px solid #1e293b;
+    box-shadow: 0 10px 28px -16px rgba(0, 0, 0, 0.55);
+    color: #e2e8f0;
+  }
+
+  .oi-header.oi-header-desk .text-slate-900,
+  .oi-header.oi-header-desk .text-slate-800 {
+    color: #f1f5f9 !important;
+  }
+
+  .oi-header.oi-header-desk .text-slate-600,
+  .oi-header.oi-header-desk .text-slate-500,
+  .oi-header.oi-header-desk .text-slate-400 {
+    color: #94a3b8 !important;
+  }
+
+  .oi-header.oi-header-desk .border-slate-200,
+  .oi-header.oi-header-desk .border-slate-100 {
+    border-color: #334155 !important;
+  }
+
   .oi-header * {
     scrollbar-width: none;
   }
@@ -159,6 +183,10 @@ input[type="number"] {
   .dark .oi-header {
     background: rgba(8, 20, 28, 0.82);
     box-shadow: 0 10px 28px -18px rgba(0, 0, 0, 0.7);
+  }
+
+  .dark .oi-header.oi-header-desk {
+    background: linear-gradient(180deg, #020617 0%, #0b1220 100%);
   }
 
   .oi-sidebar {

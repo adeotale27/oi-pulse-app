@@ -3516,6 +3516,9 @@ async def get_positions(_admin: bool = Depends(require_admin)):
             "utilised_debits": util.get("debits"),
             "span": util.get("span"),
             "exposure": util.get("exposure"),
+            "option_premium": util.get("option_premium"),
+            "m2m_unrealised": util.get("m2m_unrealised"),
+            "m2m_realised": util.get("m2m_realised"),
         }
     except Exception as e:
         logger.warning("kite.margins failed: %s", e)
