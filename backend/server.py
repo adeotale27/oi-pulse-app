@@ -558,6 +558,10 @@ class CredentialsIn(BaseModel):
     access_token: str
 
 
+class AccessTokenOnlyIn(BaseModel):
+    access_token: str
+
+
 class ModeIn(BaseModel):
     mode: str  # "kite" | "offline"
 
@@ -610,6 +614,14 @@ class RefreshTokenIn(BaseModel):
     request_token: str
 
 
+class VaultIn(BaseModel):
+    """Persist or clear long-lived Kite API key / secret (Fernet-encrypted)."""
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+    clear_api_key: Optional[bool] = False
+    clear_api_secret: Optional[bool] = False
+
+
 @api_router.get("/")
 async def root():
     return {"message": "NSE OI Tracker API", "indices": list(INDEX_CONFIG.keys())}
@@ -640,6 +652,34 @@ async def set_credentials(payload: CredentialsIn, _admin: bool = Depends(require
     return {"ok": True, "mode": tracker.mode}
 
 
+@api_router.post("/credentials/access-token")
+async def set_access_token_only(payload: AccessTokenOnlyIn, _admin: bool = Depends(require_admin)):
+    """Update daily access_token using the Fernet-vaulted api_key (no re-entry)."""
+    doc = await db.credentials.find_one({"_id": "kite"})
+    api_key = None
+    try:
+        if doc and doc.get("api_key_enc"):
+            api_key = _fernet().decrypt(doc["api_key_enc"].encode()).decode()
+        elif doc and doc.get("api_key"):
+            api_key = doc.get("api_key")
+    except Exception:
+        api_key = None
+    if not api_key:
+        raise HTTPException(400, "No stored API key — enter api_key once, then paste access_token.")
+    token = str(payload.access_token or "").strip()
+    if not token:
+        raise HTTPException(400, "access_token required")
+    try:
+        await tracker.set_credentials(api_key, token)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        await extra_tickers.force_refresh()
+    except Exception:
+        pass
+    return {"ok": True, "mode": tracker.mode}
+
+
 @api_router.post("/kite/generate-session")
 async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(require_admin)):
     """Exchange api_key + api_secret + request_token for a fresh access_token
@@ -657,19 +697,32 @@ async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(requ
         await tracker.set_credentials(payload.api_key, access_token)
     except Exception as e:
         raise HTTPException(400, str(e))
-    if payload.remember:
-        enc = _fernet().encrypt(payload.api_secret.encode()).decode()
+    # Always vault key + secret (Fernet) so daily login needs only request_token.
+    if payload.remember is not False:
+        enc_secret = _fernet().encrypt(payload.api_secret.encode()).decode()
+        enc_key = _fernet().encrypt(payload.api_key.encode()).decode()
         await db.credentials.update_one(
             {"_id": "kite"},
-            {"$set": {"api_secret_enc": enc}},
+            {
+                "$set": {
+                    "api_secret_enc": enc_secret,
+                    "api_key_enc": enc_key,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                "$unset": {"api_key": "", "access_token": ""},
+            },
             upsert=True,
         )
-    return {"ok": True, "mode": tracker.mode, "user_id": data.get("user_id"), "remembered": bool(payload.remember)}
+    return {"ok": True, "mode": tracker.mode, "user_id": data.get("user_id"), "remembered": payload.remember is not False}
 
 
 @api_router.get("/kite/vault")
 async def vault_status(_admin: bool = Depends(require_admin)):
-    doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key_enc": 1, "api_secret_enc": 1, "api_key": 1})
+    """Vault status for the credentials modal — never returns plaintext secret."""
+    doc = await db.credentials.find_one(
+        {"_id": "kite"},
+        {"_id": 0, "api_key_enc": 1, "api_secret_enc": 1, "api_key": 1, "updated_at": 1},
+    )
     api_key = None
     if doc:
         try:
@@ -679,7 +732,8 @@ async def vault_status(_admin: bool = Depends(require_admin)):
                 api_key = doc.get("api_key")
         except Exception:
             api_key = None
-    # Build login URL server-side so the UI never reconstructs api_key from a hint.
+    has_secret = bool(doc and doc.get("api_secret_enc"))
+    # Login URL is built server-side (admin-only). Secret never leaves the vault.
     login_url = (
         f"https://kite.zerodha.com/connect/login?v=3&api_key={api_key}"
         if api_key
@@ -687,10 +741,47 @@ async def vault_status(_admin: bool = Depends(require_admin)):
     )
     return {
         "has_api_key": bool(api_key),
-        "has_api_secret": bool(doc and doc.get("api_secret_enc")),
+        "has_api_secret": has_secret,
         "api_key_hint": (api_key[:4] + "***") if api_key else None,
+        "api_secret_hint": "••••••••" if has_secret else None,
         "login_url": login_url,
+        "updated_at": doc.get("updated_at") if doc else None,
+        "storage": "fernet",
     }
+
+
+@api_router.post("/kite/vault")
+async def vault_save(payload: VaultIn, _admin: bool = Depends(require_admin)):
+    """Save or clear long-lived api_key / api_secret (Fernet ciphertext in Mongo)."""
+    unset: dict = {}
+    sets: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+
+    if payload.clear_api_key:
+        unset["api_key_enc"] = ""
+        unset["api_key"] = ""
+    elif payload.api_key is not None:
+        key = str(payload.api_key).strip()
+        if not key:
+            raise HTTPException(400, "api_key cannot be empty")
+        sets["api_key_enc"] = _fernet().encrypt(key.encode()).decode()
+        unset["api_key"] = ""
+
+    if payload.clear_api_secret:
+        unset["api_secret_enc"] = ""
+    elif payload.api_secret is not None:
+        secret = str(payload.api_secret).strip()
+        if not secret:
+            raise HTTPException(400, "api_secret cannot be empty")
+        sets["api_secret_enc"] = _fernet().encrypt(secret.encode()).decode()
+
+    if len(sets) == 1 and not unset:
+        raise HTTPException(400, "Nothing to update")
+
+    update: dict = {"$set": sets}
+    if unset:
+        update["$unset"] = unset
+    await db.credentials.update_one({"_id": "kite"}, update, upsert=True)
+    return await vault_status(_admin=True)
 
 
 @api_router.post("/kite/refresh")
@@ -706,16 +797,20 @@ async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_a
     except Exception:
         api_key = None
     if not doc or not api_key or not doc.get("api_secret_enc"):
-        raise HTTPException(400, "No stored api_key/api_secret — use Generate flow first with 'remember' enabled.")
+        raise HTTPException(400, "No stored api_key/api_secret — save them once in Credentials first.")
     try:
         api_secret = _fernet().decrypt(doc["api_secret_enc"].encode()).decode()
-    except Exception as e:
-        raise HTTPException(400, f"Vault decrypt failed: {e}")
+    except Exception:
+        raise HTTPException(400, "Stored api_secret could not be decrypted — re-enter API secret.")
     try:
         from kiteconnect import KiteConnect
         kc = KiteConnect(api_key=api_key)
         data = kc.generate_session(payload.request_token, api_secret=api_secret)
         access_token = data.get("access_token")
+        if not access_token:
+            raise RuntimeError("No access_token returned by Kite")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(400, f"{type(e).__name__}: {e}")
     try:
@@ -736,7 +831,10 @@ async def clear_vault(_admin: bool = Depends(require_admin)):
 
 @api_router.get("/credentials/status")
 async def credentials_status(_admin: bool = Depends(require_admin)):
-    doc = await db.credentials.find_one({"_id": "kite"}, {"_id": 0, "api_key_enc": 1, "api_key": 1, "updated_at": 1})
+    doc = await db.credentials.find_one(
+        {"_id": "kite"},
+        {"_id": 0, "api_key_enc": 1, "api_key": 1, "api_secret_enc": 1, "updated_at": 1},
+    )
     api_key = None
     if doc:
         try:
@@ -748,8 +846,10 @@ async def credentials_status(_admin: bool = Depends(require_admin)):
             api_key = None
     return {
         "configured": bool(doc and (doc.get("api_key_enc") or doc.get("api_key"))),
+        "has_api_secret": bool(doc and doc.get("api_secret_enc")),
         "api_key_hint": (api_key[:4] + "***") if api_key else None,
         "updated_at": doc.get("updated_at") if doc else None,
+        "storage": "fernet",
     }
 
 
