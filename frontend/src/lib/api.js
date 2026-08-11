@@ -285,6 +285,8 @@ export const kiteVaultStatus = () =>
   api.get("/kite/vault").then((r) => r.data);
 export const saveKiteVault = (payload) =>
   api.post("/kite/vault", payload).then((r) => r.data);
+export const clearKiteVault = () =>
+  api.delete("/kite/vault").then((r) => r.data);
 export const refreshKiteSession = (request_token) =>
   api.post("/kite/refresh", { request_token }).then((r) => r.data);
 export const setMode = (mode) => api.post("/mode", { mode }).then((r) => r.data);

@@ -5,13 +5,14 @@ import {
   refreshKiteSession,
   saveCredentials,
   saveKiteVault,
+  clearKiteVault,
 } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { KeyRound, ExternalLink, X, ShieldCheck } from "lucide-react";
+import { KeyRound, ExternalLink, X, ShieldCheck, LogOut } from "lucide-react";
 
 /** Masked vault field with clear (×) — never hydrates plaintext secret from the server. */
 function VaultSecretField({
@@ -367,39 +368,79 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
           </a>
         </div>
         <div className="flex items-center justify-between pt-2 gap-2 flex-wrap">
-          <Button
-            data-testid="btn-save-credentials"
-            onClick={submit}
-            disabled={saving}
-            className="rounded-sm bg-slate-900 hover:bg-slate-800"
-          >
-            {saving ? "Saving..." : "Save & Go Live"}
-          </Button>
-          {genMode && (apiKey.trim() || apiSecret.trim()) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              data-testid="btn-save-credentials"
+              onClick={submit}
+              disabled={saving}
+              className="rounded-sm bg-slate-900 hover:bg-slate-800"
+            >
+              {saving ? "Saving..." : "Save & Go Live"}
+            </Button>
+            {genMode && (apiKey.trim() || apiSecret.trim()) && (
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="btn-save-vault-only"
+                disabled={saving}
+                className="rounded-sm"
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    const v = await persistKeySecretIfTyped();
+                    if (v?.needs_reauth) {
+                      toast.message("API key updated — login with request_token (or paste access_token) to go live");
+                      onSaved?.();
+                    } else {
+                      toast.success("API key / secret saved encrypted");
+                    }
+                  } catch (e) {
+                    toast.error(e?.response?.data?.detail || "Vault save failed");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                Save key &amp; secret
+              </Button>
+            )}
+          </div>
+          {(status?.configured || vault?.has_api_key || vault?.has_api_secret || keyStored || secretStored) && (
             <Button
               type="button"
               variant="outline"
-              data-testid="btn-save-vault-only"
+              data-testid="btn-kite-signout"
               disabled={saving}
-              className="rounded-sm"
+              className="rounded-sm border-rose-200 text-rose-800 hover:bg-rose-50 hover:text-rose-900"
+              title="Wipe vaulted Kite key/secret/token and go offline"
               onClick={async () => {
+                const ok = window.confirm(
+                  "Sign out of Kite / broker?\n\nThis clears the saved API key, secret, and access token on this server and switches OI Pulse to offline. You can connect again anytime.",
+                );
+                if (!ok) return;
                 setSaving(true);
                 try {
-                  const v = await persistKeySecretIfTyped();
-                  if (v?.needs_reauth) {
-                    toast.message("API key updated — login with request_token (or paste access_token) to go live");
-                    onSaved?.();
-                  } else {
-                    toast.success("API key / secret saved encrypted");
-                  }
+                  await clearKiteVault();
+                  setApiKey("");
+                  setApiSecret("");
+                  setToken("");
+                  setRequestToken("");
+                  setKeyStored(false);
+                  setSecretStored(false);
+                  setVault(null);
+                  setStatus(null);
+                  toast.success("Signed out of Kite — desk is offline");
+                  onSaved?.();
+                  onOpenChange?.(false);
                 } catch (e) {
-                  toast.error(e?.response?.data?.detail || "Vault save failed");
+                  toast.error(e?.response?.data?.detail || "Broker sign-out failed");
                 } finally {
                   setSaving(false);
                 }
               }}
             >
-              Save key &amp; secret
+              <LogOut className="w-3.5 h-3.5 mr-1.5" />
+              Sign out of Kite
             </Button>
           )}
         </div>

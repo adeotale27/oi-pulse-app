@@ -891,15 +891,27 @@ async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_a
 
 @api_router.delete("/kite/vault")
 async def clear_vault(_admin: bool = Depends(require_admin)):
+    """Sign out of the broker — wipe vaulted Kite credentials and go offline."""
     await db.credentials.update_one(
         {"_id": "kite"},
-        {"$unset": {"api_key_enc": "", "access_token_enc": "", "api_secret_enc": "", "api_key": "", "access_token": ""}},
+        {
+            "$unset": {
+                "api_key_enc": "",
+                "access_token_enc": "",
+                "api_secret_enc": "",
+                "api_key": "",
+                "access_token": "",
+                "kite_user_id": "",
+            }
+        },
     )
     if tracker is not None:
         tracker.kite_service = None
         tracker.mode = "offline"
-        tracker.last_error = "Kite vault cleared — add credentials to go live."
-    return {"ok": True}
+        tracker.kite_user_id = None
+        tracker.kite_maintenance = None
+        tracker.last_error = "Kite signed out — connect again to go live."
+    return {"ok": True, "mode": "offline"}
 
 
 @api_router.get("/credentials/status")
