@@ -1145,8 +1145,8 @@ class OITracker:
             "last_error": self.last_error,
             "has_kite_credentials": self.kite_service is not None,
             "kite_ok": kite_ok,
-            # Missing credentials is a setup issue; live token death is token_bad only.
-            "kite_token_issue": bool(token_bad) or (self.kite_service is None),
+            # Missing credentials → has_kite_credentials=false. Token death only.
+            "kite_token_issue": bool(token_bad),
             "poll_interval_seconds": poll_interval_seconds,
             "stale_after_seconds": self.stale_after_seconds(),
             "market": ms,

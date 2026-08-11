@@ -54,6 +54,10 @@ export default function AdminControls({
   const [accessOpen, setAccessOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const prevPendingRef = useRef(null);
+  const publicAccessOpenRef = useRef(publicAccessOpen);
+  useEffect(() => {
+    publicAccessOpenRef.current = publicAccessOpen;
+  }, [publicAccessOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -86,16 +90,21 @@ export default function AdminControls({
       if (assumedAdmin) {
         const fallback = {
           is_admin: true,
-          public_access_open: !!publicAccessOpen,
+          public_access_open: !!publicAccessOpenRef.current,
           pending_access_count: 0,
         };
         setState((prev) => prev || fallback);
       }
     }
-  }, [assumedAdmin, publicAccessOpen]);
+  }, [assumedAdmin]);
+
+  // Pending guests: poll a bit faster. Otherwise 15s — was 3s and spammed /auth/state
+  // (3 AdminControls mounts share one owner, but still ~20 calls/min in Network).
+  const pendingCount = Number(state?.pending_access_count || 0);
+  const authPollMs = pendingCount > 0 || accessOpen ? 5_000 : 15_000;
 
   // One shared poller; every instance also listens for broadcasts.
-  useQuiescentAwarePolling(refresh, 3_000, [refresh], {
+  useQuiescentAwarePolling(refresh, authPollMs, [refresh, authPollMs], {
     immediate: true,
     allowDuringQuiescent: true,
     dedupeKey: "admin-controls-auth-state",

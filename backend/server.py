@@ -752,19 +752,44 @@ async def vault_status(_admin: bool = Depends(require_admin)):
 
 @api_router.post("/kite/vault")
 async def vault_save(payload: VaultIn, _admin: bool = Depends(require_admin)):
-    """Save or clear long-lived api_key / api_secret (Fernet ciphertext in Mongo)."""
+    """Save or clear long-lived api_key / api_secret (Fernet ciphertext in Mongo).
+
+    Rotating api_key invalidates the stored access_token — a token is bound to
+    the app key that issued it. Keeping the old token with a new key produces
+    TokenException: Incorrect api_key or access_token on every Kite call.
+    """
     unset: dict = {}
     sets: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    needs_reauth = False
+
+    doc = await db.credentials.find_one({"_id": "kite"})
+    old_key = None
+    if doc:
+        try:
+            if doc.get("api_key_enc"):
+                old_key = _fernet().decrypt(doc["api_key_enc"].encode()).decode()
+            else:
+                old_key = doc.get("api_key")
+        except Exception:
+            old_key = None
 
     if payload.clear_api_key:
         unset["api_key_enc"] = ""
         unset["api_key"] = ""
+        unset["access_token_enc"] = ""
+        unset["access_token"] = ""
+        needs_reauth = True
     elif payload.api_key is not None:
         key = str(payload.api_key).strip()
         if not key:
             raise HTTPException(400, "api_key cannot be empty")
         sets["api_key_enc"] = _fernet().encrypt(key.encode()).decode()
         unset["api_key"] = ""
+        if old_key and key != old_key:
+            # New app key cannot use the previous access_token.
+            unset["access_token_enc"] = ""
+            unset["access_token"] = ""
+            needs_reauth = True
 
     if payload.clear_api_secret:
         unset["api_secret_enc"] = ""
@@ -781,7 +806,18 @@ async def vault_save(payload: VaultIn, _admin: bool = Depends(require_admin)):
     if unset:
         update["$unset"] = unset
     await db.credentials.update_one({"_id": "kite"}, update, upsert=True)
-    return await vault_status(_admin=True)
+
+    if needs_reauth and tracker is not None:
+        tracker.kite_service = None
+        tracker.mode = "offline"
+        tracker.last_error = (
+            "API key updated — complete Kite login (request_token) or paste a "
+            "fresh access_token to go live."
+        )
+
+    status = await vault_status(_admin=True)
+    status["needs_reauth"] = needs_reauth
+    return status
 
 
 @api_router.post("/kite/refresh")
@@ -826,6 +862,10 @@ async def clear_vault(_admin: bool = Depends(require_admin)):
         {"_id": "kite"},
         {"$unset": {"api_key_enc": "", "access_token_enc": "", "api_secret_enc": "", "api_key": "", "access_token": ""}},
     )
+    if tracker is not None:
+        tracker.kite_service = None
+        tracker.mode = "offline"
+        tracker.last_error = "Kite vault cleared — add credentials to go live."
     return {"ok": True}
 
 
@@ -3181,6 +3221,19 @@ async def get_positions(_who: str = Depends(require_desk_user)):
         raw = await asyncio.to_thread(kite.positions)
         net = raw.get("net", []) if isinstance(raw, dict) else (raw or [])
         day = raw.get("day", []) if isinstance(raw, dict) else []
+        # Successful Kite call — drop sticky TokenException so the banner clears.
+        err_low = (tracker.last_error or "").lower()
+        if any(
+            k in err_low
+            for k in (
+                "tokenexception",
+                "invalid token",
+                "incorrect `api_key`",
+                "incorrect api_key",
+                "access_token",
+            )
+        ):
+            tracker.last_error = None
     except Exception as e:
         msg = f"{type(e).__name__}: {e}"
         low = msg.lower()

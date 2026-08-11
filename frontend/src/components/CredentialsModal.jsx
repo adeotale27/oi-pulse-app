@@ -385,8 +385,13 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
               onClick={async () => {
                 setSaving(true);
                 try {
-                  await persistKeySecretIfTyped();
-                  toast.success("API key / secret saved encrypted");
+                  const v = await persistKeySecretIfTyped();
+                  if (v?.needs_reauth) {
+                    toast.message("API key updated — login with request_token (or paste access_token) to go live");
+                    onSaved?.();
+                  } else {
+                    toast.success("API key / secret saved encrypted");
+                  }
                 } catch (e) {
                   toast.error(e?.response?.data?.detail || "Vault save failed");
                 } finally {
