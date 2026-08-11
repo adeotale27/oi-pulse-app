@@ -1102,7 +1102,9 @@ class OITracker:
         # Weekday alert focus (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu) unless overridden today.
         self._refresh_alert_indices_for_today()
         alert_idxs = self.settings.get("alert_enabled_indices") or []
-        if alert_idxs and index_name not in alert_idxs:
+        # Admin alert focus is authoritative: non-selected indices never alert,
+        # even while their OI data continues to poll/load.
+        if index_name not in alert_idxs:
             return
         cutoff_min = int(self.settings.get("compare_minutes", 3))
         threshold_pct = float(self.settings.get("threshold_pct", 15.0))
