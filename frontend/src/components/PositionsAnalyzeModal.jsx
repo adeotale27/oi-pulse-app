@@ -16,7 +16,9 @@ import {
   buildOiBars,
   sigmaBands,
   resolvePositionSpot,
+  positionExpiryISO,
 } from "@/lib/positionPayoff";
+import { dailyThetaRupees, yearsToExpiry } from "@/lib/blackScholes";
 
 function fmt(v, dp = 0) {
   if (v == null || Number.isNaN(v)) return "—";
@@ -53,29 +55,36 @@ function PayoffSvg({
 }) {
   const svgRef = useRef(null);
   const [hover, setHover] = useState(null); // { spot, expiry, scenario, x, y }
-  const [pinned, setPinned] = useState(null);
 
-  if (!spots?.length) {
+  const pad = { l: 52, r: 18, t: 20, b: 30 };
+  const w = width - pad.l - pad.r;
+  const h = height - pad.t - pad.b;
+
+  const scales = useMemo(() => {
+    if (!spots?.length) return null;
+    const allY = [...expiryPnl, ...targetPnl, 0];
+    let yMin = Math.min(...allY);
+    let yMax = Math.max(...allY);
+    if (yMin === yMax) {
+      yMin -= 1;
+      yMax += 1;
+    }
+    const xMin = spots[0];
+    const xMax = spots[spots.length - 1];
+    return { yMin, yMax, xMin, xMax };
+  }, [spots, expiryPnl, targetPnl]);
+
+  if (!spots?.length || !scales) {
     return (
       <div className="h-[280px] flex items-center justify-center text-xs text-slate-400">
         Select open legs to draw the book payoff
       </div>
     );
   }
-  const pad = { l: 52, r: 18, t: 20, b: 30 };
-  const w = width - pad.l - pad.r;
-  const h = height - pad.t - pad.b;
-  const allY = [...expiryPnl, ...targetPnl, 0];
-  let yMin = Math.min(...allY);
-  let yMax = Math.max(...allY);
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
-  }
-  const xMin = spots[0];
-  const xMax = spots[spots.length - 1];
-  const xScale = (x) => pad.l + ((x - xMin) / (xMax - xMin)) * w;
-  const yScale = (y) => pad.t + ((yMax - y) / (yMax - yMin)) * h;
+
+  const { yMin, yMax, xMin, xMax } = scales;
+  const xScale = (x) => pad.l + ((x - xMin) / (xMax - xMin || 1)) * w;
+  const yScale = (y) => pad.t + ((yMax - y) / (yMax - yMin || 1)) * h;
   const pathOf = (ys) =>
     ys.map((y, i) => `${i === 0 ? "M" : "L"}${xScale(spots[i]).toFixed(1)},${yScale(y).toFixed(1)}`).join(" ");
   const zeroY = yScale(0);
@@ -112,25 +121,50 @@ function PayoffSvg({
     };
   };
 
-  const active = hover || pinned;
+  const pinnedRead =
+    targetSpot != null && Number.isFinite(targetSpot)
+      ? {
+          spot: targetSpot,
+          expiry: interpAt(spots, expiryPnl, targetSpot),
+          scenario: interpAt(spots, targetPnl, targetSpot),
+          x: xScale(targetSpot),
+          y: yScale(interpAt(spots, targetPnl, targetSpot) ?? 0),
+        }
+      : null;
+  const active = hover || pinnedRead;
+
+  const onPointer = (clientX, { pin = false } = {}) => {
+    const next = readAt(clientX);
+    if (!next) return;
+    if (pin) {
+      if (typeof onPickSpot === "function") onPickSpot(Math.round(next.spot));
+    } else {
+      setHover(next);
+    }
+  };
 
   return (
     <div className="relative" data-testid="payoff-chart-wrap">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-auto cursor-crosshair select-none"
+        className="w-full h-auto cursor-crosshair select-none touch-none"
         data-testid="payoff-svg"
-        onMouseMove={(e) => {
-          const next = readAt(e.clientX);
-          setHover(next);
-        }}
+        onMouseMove={(e) => onPointer(e.clientX)}
         onMouseLeave={() => setHover(null)}
-        onClick={(e) => {
-          const next = readAt(e.clientX);
-          if (!next) return;
-          setPinned(next);
-          if (typeof onPickSpot === "function") onPickSpot(Math.round(next.spot));
+        onClick={(e) => onPointer(e.clientX, { pin: true })}
+        onTouchStart={(e) => {
+          const t = e.touches?.[0];
+          if (t) onPointer(t.clientX);
+        }}
+        onTouchMove={(e) => {
+          const t = e.touches?.[0];
+          if (t) onPointer(t.clientX);
+        }}
+        onTouchEnd={(e) => {
+          const t = e.changedTouches?.[0];
+          if (t) onPointer(t.clientX, { pin: true });
+          setHover(null);
         }}
       >
         <defs>
@@ -271,7 +305,7 @@ function PayoffSvg({
         >
           <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
             Spot {Math.round(active.spot)}
-            {pinned && !hover ? " · pinned" : ""}
+            {!hover && pinnedRead ? " · pinned" : ""}
           </div>
           <div className="mt-1 space-y-0.5 font-mono-data text-[11px]">
             <div className="flex justify-between gap-3">
@@ -287,11 +321,11 @@ function PayoffSvg({
               </span>
             </div>
           </div>
-          <div className="mt-1 text-[9px] text-slate-400">Click to set target</div>
+          <div className="mt-1 text-[9px] text-slate-400">Tap / click to set target</div>
         </div>
       ) : (
         <div className="px-1 pt-1 text-[10px] text-slate-400" data-testid="payoff-hover-hint">
-          Hover the chart for P&amp;L at any spot · click to pin as target
+          Hover or drag for P&amp;L at any spot · tap/click to pin as target
         </div>
       )}
     </div>
@@ -384,22 +418,50 @@ export default function PositionsAnalyzeModal({
   const [selected, setSelected] = useState(() => new Set());
   const [targetFrac, setTargetFrac] = useState(0);
   const [targetSpot, setTargetSpot] = useState(null);
+  const selectionKeyRef = useRef(null);
+  const targetDirtyRef = useRef(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      selectionKeyRef.current = null;
+      targetDirtyRef.current = false;
+      return;
+    }
     const first = indices[0];
-    if (first) {
+    if (first && !indices.includes(activeIndex)) {
+      setActiveIndex(first);
+      setExpanded(new Set([first]));
+    } else if (first && selectionKeyRef.current == null) {
       setActiveIndex(first);
       setExpanded(new Set([first]));
     }
-  }, [open, indices]);
+  }, [open, indices, activeIndex]);
 
+  // Seed / prune selection — full reset only when modal opens or index changes,
+  // never on every positions poll (byIndex identity churn).
   useEffect(() => {
     if (!open) return;
+    const key = String(activeIndex);
     const legs = byIndex.get(activeIndex) || [];
-    setSelected(
-      new Set(legs.filter((l) => !l.exited && Number(l.quantity) !== 0).map((l) => l.tradingsymbol)),
-    );
+    const openSyms = legs
+      .filter((l) => !l.exited && Number(l.quantity) !== 0)
+      .map((l) => l.tradingsymbol);
+    if (selectionKeyRef.current !== key) {
+      selectionKeyRef.current = key;
+      targetDirtyRef.current = false;
+      setSelected(new Set(openSyms));
+      return;
+    }
+    setSelected((prev) => {
+      const alive = new Set(openSyms);
+      let changed = false;
+      const next = new Set();
+      for (const s of prev) {
+        if (alive.has(s)) next.add(s);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
   }, [open, activeIndex, byIndex]);
 
   const spot = resolvePositionSpot(
@@ -409,8 +471,24 @@ export default function PositionsAnalyzeModal({
   );
 
   useEffect(() => {
+    if (!open) return;
+    if (targetDirtyRef.current) return;
     if (spot != null && Number.isFinite(spot)) setTargetSpot(spot);
   }, [spot, activeIndex, open]);
+
+  const setTargetFromUser = (v) => {
+    targetDirtyRef.current = true;
+    setTargetSpot(v);
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   const legs = byIndex.get(activeIndex) || [];
   const activeLegs = useMemo(
@@ -461,6 +539,31 @@ export default function PositionsAnalyzeModal({
     return interpAt(payoff.spots, payoff.targetPnl, targetSpot);
   }, [payoff, targetSpot]);
 
+  const bookThetaInr = useMemo(() => {
+    let total = 0;
+    let n = 0;
+    for (const leg of activeLegs) {
+      let capped = Number.isFinite(leg.thetaInr) ? leg.thetaInr : null;
+      if (capped == null) {
+        const T = yearsToExpiry(positionExpiryISO(leg), Date.now());
+        capped = dailyThetaRupees({
+          thetaPerUnit: leg.theta,
+          quantity: leg.quantity,
+          marketPrice: Number(leg.last_price || leg.average_price),
+          S: spot,
+          K: leg.strike,
+          isCall: leg.side === "CE",
+          T,
+        });
+      }
+      if (capped != null && Number.isFinite(capped)) {
+        total += capped;
+        n += 1;
+      }
+    }
+    return n ? total : null;
+  }, [activeLegs, spot]);
+
   if (!open) return null;
 
   const toggle = (sym) => {
@@ -506,6 +609,7 @@ export default function PositionsAnalyzeModal({
   const timePct = Math.round(targetFrac * 100);
 
   const resetScenario = () => {
+    targetDirtyRef.current = false;
     if (spot != null) setTargetSpot(spot);
     setTargetFrac(0);
   };
@@ -558,7 +662,7 @@ export default function PositionsAnalyzeModal({
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-md text-[11px] hidden sm:inline-flex"
+              className="h-8 rounded-md text-[11px] inline-flex"
               onClick={resetScenario}
               data-testid="analyze-reset-scenario"
             >
@@ -571,9 +675,9 @@ export default function PositionsAnalyzeModal({
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[230px_minmax(0,1fr)_210px]">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)_210px]">
           {/* Legs */}
-          <div className="border-r border-slate-200 overflow-auto bg-white" data-testid="analyze-leg-panel">
+          <div className="border-b lg:border-b-0 lg:border-r border-slate-200 overflow-auto bg-white max-h-[40vh] lg:max-h-none" data-testid="analyze-leg-panel">
             {indices.length === 0 ? (
               <div className="text-[11px] text-slate-400 p-3">No option legs</div>
             ) : (
@@ -784,7 +888,7 @@ export default function PositionsAnalyzeModal({
               </div>
               <div className="p-2 sm:p-3">
                 <PayoffSvg
-                  key={`${activeIndex}-${payoff.spots?.[0] ?? 0}-${payoff.spots?.[(payoff.spots?.length || 1) - 1] ?? 0}`}
+                  key={activeIndex}
                   spots={payoff.spots}
                   expiryPnl={payoff.expiryPnl}
                   targetPnl={payoff.targetPnl}
@@ -793,7 +897,7 @@ export default function PositionsAnalyzeModal({
                   projected={projected}
                   oiBars={oiBars}
                   sd={sd}
-                  onPickSpot={setTargetSpot}
+                  onPickSpot={setTargetFromUser}
                 />
               </div>
             </div>
@@ -809,7 +913,7 @@ export default function PositionsAnalyzeModal({
                 max={spotHi}
                 step={spotStep}
                 disabled={spot == null}
-                onChange={setTargetSpot}
+                onChange={setTargetFromUser}
                 testId="analyze-spot-slider"
                 presets={
                   spot == null
@@ -844,13 +948,17 @@ export default function PositionsAnalyzeModal({
           </div>
 
           {/* Book read */}
-          <div className="border-l border-slate-200 p-3 sm:p-4 space-y-4 overflow-auto bg-white">
+          <div className="border-t lg:border-t-0 lg:border-l border-slate-200 p-3 sm:p-4 space-y-4 overflow-auto bg-white">
             <section>
               <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400 font-semibold mb-2">
                 Scenario
               </div>
               <div className="space-y-2 text-[12px]">
-                <Row k="Chance in band" v={`${payoff.summary.popHint ?? "—"}%`} tip="Rough POP inside ±1σ" />
+                <Row
+                  k="Chance in band"
+                  v={`${payoff.summary.popHint ?? "—"}%`}
+                  tip="Rough share of the ±6% expiry curve that finishes ≥ 0 (not a true σ POP)"
+                />
                 <Row k="Spot now" v={spot != null ? Number(spot).toFixed(2) : "—"} />
                 <Row k="Your target" v={tgt ? Number(tgt).toFixed(2) : "—"} />
                 <Row k="Live P&L" v={fmt(selectedPnl, 0)} strong />
@@ -873,8 +981,8 @@ export default function PositionsAnalyzeModal({
                 />
                 <Row
                   k="Time ₹/day (Θ)"
-                  v={payoff.greeks.theta != null ? fmt(payoff.greeks.theta, 0) : "—"}
-                  tip="Rough rupees from one day of time"
+                  v={bookThetaInr != null ? fmt(bookThetaInr, 0) : "—"}
+                  tip="Capped to premium left — same desk-safe θ as Positions ₹/day (not raw BS)"
                 />
                 <Row k="Vega" v={payoff.greeks.vega?.toFixed?.(1) ?? "—"} />
               </div>

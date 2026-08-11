@@ -584,25 +584,60 @@ export default function Dashboard() {
     }
   }, []);
 
-  const ensureExpiryForIndex = useCallback(async (idx) => {
+  const istToday = useCallback(() => {
+    try {
+      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    } catch {
+      return new Date().toISOString().slice(0, 10);
+    }
+  }, []);
+
+  const ensureExpiryForIndex = useCallback(async (idx, { force = false } = {}) => {
+    const today = istToday();
     const cached = expiryByIndexRef.current[idx];
-    if (cached?.selected || cached?.fetched) return cached;
+    const selectedPast = !!(cached?.selected && String(cached.selected).slice(0, 10) < today);
+    const selectedMissing = !!(
+      cached?.selected
+      && Array.isArray(cached.list)
+      && cached.list.length
+      && !cached.list.includes(cached.selected)
+    );
+    const staleDay = !!(cached?.asOf && cached.asOf !== today);
+    if (!force && !selectedPast && !selectedMissing && !staleDay && (cached?.selected || cached?.fetched)) {
+      return cached;
+    }
     try {
       const r = await api.get(`/expiries/${idx}`);
       const list = r.data.expiries || [];
       const meta = r.data.expiries_meta || [];
       const note = r.data.note || null;
-      const selected = r.data.selected && list.includes(r.data.selected) ? r.data.selected : (list[0] || null);
-      const entry = { list, meta, note, selected, fetched: true };
+      const serverSel = r.data.selected && list.includes(r.data.selected) ? r.data.selected : null;
+      // Keep a still-valid user/cache pick; otherwise take server nearest (weekly roll).
+      let selected = serverSel || list[0] || null;
+      if (
+        cached?.selected
+        && list.includes(cached.selected)
+        && String(cached.selected).slice(0, 10) >= today
+      ) {
+        selected = cached.selected;
+      }
+      const entry = { list, meta, note, selected, fetched: true, asOf: today };
       expiryByIndexRef.current[idx] = entry;
+      if (idx === activeIndexRef.current) {
+        setExpiries(list);
+        setExpiriesMeta(meta);
+        setExpiriesNote(note);
+        setSelectedExpiry(selected);
+        setExpiryReady(true);
+      }
       return entry;
     } catch (e) {
       console.error(`loadExpiries(${idx}) failed`, e);
-      const entry = { list: [], meta: [], note: null, selected: null, fetched: true };
+      const entry = { list: [], meta: [], note: null, selected: null, fetched: true, asOf: today };
       expiryByIndexRef.current[idx] = entry;
       return entry;
     }
-  }, []);
+  }, [istToday]);
 
   // Poll OI for ALL enabled indices in the background; UI updates only for the active tab.
   const loadOI = useCallback(async () => {
@@ -686,24 +721,19 @@ export default function Dashboard() {
       setExpiryReady(false);
       setSelectedExpiry(null);
     }
-    api.get(`/expiries/${activeIndex}`).then((r) => {
-      if (cancelled) return;
-      const list = r.data.expiries || [];
-      const meta = r.data.expiries_meta || [];
-      const note = r.data.note || null;
-      setExpiries(list);
-      setExpiriesMeta(meta);
-      setExpiriesNote(note);
-      const selected = r.data.selected && list.includes(r.data.selected) ? r.data.selected : (list[0] || null);
-      setSelectedExpiry(selected);
-      expiryByIndexRef.current[activeIndex] = { list, meta, note, selected, fetched: true };
+    ensureExpiryForIndex(activeIndex, { force: true }).then((entry) => {
+      if (cancelled || !entry) return;
+      setExpiries(entry.list || []);
+      setExpiriesMeta(entry.meta || []);
+      setExpiriesNote(entry.note || null);
+      setSelectedExpiry(entry.selected || null);
       setExpiryReady(true);
     }).catch((e) => {
       console.error("loadExpiries failed", e);
       if (!cancelled) setExpiryReady(true); // allow unscoped fetch as fallback
     });
     return () => { cancelled = true; };
-  }, [activeIndex]);
+  }, [activeIndex, ensureExpiryForIndex]);
 
   const handleChangeExpiry = async (exp) => {
     setSelectedExpiry(exp);
@@ -842,18 +872,30 @@ export default function Dashboard() {
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, []);
 
-  // Auth state — once on mount + every 60s (not every OI poll).
+  // Auth state — once on mount + every 60s (broadcast so Header/Sidebar don't re-poll).
   useEffect(() => {
     let cancelled = false;
     const refreshAuth = async () => {
       try {
         const { data } = await api.get("/auth/state");
-        if (!cancelled) setAuthState(data);
+        if (cancelled) return;
+        setAuthState(data);
+        try {
+          window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: data }));
+        } catch (_) { /* noop */ }
       } catch (_) { /* ignore */ }
     };
     refreshAuth();
     const id = setInterval(refreshAuth, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
+    const onState = (e) => {
+      if (!cancelled && e?.detail) setAuthState(e.detail);
+    };
+    window.addEventListener("oi-admin-auth-state", onState);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener("oi-admin-auth-state", onState);
+    };
   }, []);
 
   useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings" });
@@ -2042,7 +2084,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("sell-candidates")) && (
+                  {authState.is_admin && (
                     <TabsContent value="sell-candidates" className="mt-0">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm font-semibold">{activeIndex} Sell Candidates — safest strikes to short</div>
@@ -2081,11 +2123,12 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("positions")) && (
+                  {authState.is_admin && (
                     <TabsContent value="positions" className="mt-0">
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
                       isKiteMode={kiteLiveConnected}
+                      hasKiteCredentials={status ? !!status.has_kite_credentials : null}
                       current={filteredCurrent || current}
                       previous={previous}
                       vix={current?.vix || status?.vix}
@@ -2101,7 +2144,7 @@ export default function Dashboard() {
                       onOpenKite={openKiteCreds}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
-                          type: "huge-shift",
+                          type: "adjust-watch",
                           index: activeIndex,
                           strike: payload.strike,
                           side: payload.side,

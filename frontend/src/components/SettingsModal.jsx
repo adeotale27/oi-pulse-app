@@ -12,13 +12,14 @@ import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSet
 import InfoTip from "@/components/InfoTip";
 
 const ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+const ADMIN_ONLY_PAGES = new Set(["positions", "sell-candidates"]);
 const DASHBOARD_PAGES = [
   { id: "oi-change", label: "OI Change" },
   { id: "open-interest", label: "Open Interest" },
   { id: "strike-table", label: "Strike Table" },
-  { id: "sell-candidates", label: "Sell Candidates" },
+  { id: "sell-candidates", label: "Sell Candidates", adminOnly: true },
   { id: "buildup", label: "Build-up" },
-  { id: "positions", label: "Positions" },
+  { id: "positions", label: "Positions", adminOnly: true },
   { id: "alerts", label: "Alerts" },
   { id: "activity", label: "Activity" },
   { id: "holidays", label: "Events" },
@@ -107,7 +108,10 @@ export default function SettingsModal({
   };
 
   const toggleVisiblePage = (pageId) => {
+    if (ADMIN_ONLY_PAGES.has(pageId)) return;
     const cur = new Set(Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id));
+    // Never persist admin-only pages as public.
+    for (const id of ADMIN_ONLY_PAGES) cur.delete(id);
     if (cur.has(pageId)) {
       if (cur.size <= 1) {
         toast.error("Keep at least one public page visible");
@@ -128,8 +132,13 @@ export default function SettingsModal({
       saveOISettings(local);
       onLocalSaved?.(local);
       if (isAdmin) {
-        const { data } = await api.post("/settings", settings);
-        const saved = data || settings;
+        const payload = {
+          ...settings,
+          visible_pages: (Array.isArray(settings.visible_pages) ? settings.visible_pages : [])
+            .filter((id) => !ADMIN_ONLY_PAGES.has(id)),
+        };
+        const { data } = await api.post("/settings", payload);
+        const saved = data || payload;
         setSettings(saved);
         toast.success("Settings saved — polling & alerts updated");
         onSaved?.(saved);
@@ -502,26 +511,36 @@ export default function SettingsModal({
                   Choose which dashboard pages should be visible to public visitors. Admin users still see all pages.
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {DASHBOARD_PAGES.map((page) => (
+                  {DASHBOARD_PAGES.map((page) => {
+                    const adminOnly = !!page.adminOnly || ADMIN_ONLY_PAGES.has(page.id);
+                    return (
                     <label
                       key={page.id}
-                      className="flex items-center gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                      className={`flex items-center gap-2 py-2 px-3 rounded-sm border border-slate-200 ${
+                        adminOnly ? "opacity-60 cursor-not-allowed bg-slate-50" : "hover:bg-slate-50 cursor-pointer"
+                      }`}
                     >
                       <Checkbox
                         data-testid={`visible-page-${page.id}`}
-                        checked={(Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id)).includes(page.id)}
+                        disabled={adminOnly}
+                        checked={
+                          adminOnly
+                            ? false
+                            : (Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id)).includes(page.id)
+                        }
                         onCheckedChange={() => toggleVisiblePage(page.id)}
                       />
                       <div>
                         <div className="text-sm font-medium">{page.label}</div>
-                        {page.id === "sell-candidates" || page.id === "positions" ? (
-                          <div className="text-[10px] text-slate-500">Admin-only page</div>
+                        {adminOnly ? (
+                          <div className="text-[10px] text-slate-500">Admin-only — never shown to guests</div>
                         ) : page.id === "cas" ? (
                           <div className="text-[10px] text-slate-500">Guests can view; only admin can Activate / Live</div>
                         ) : null}
                       </div>
                     </label>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <label

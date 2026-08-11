@@ -204,18 +204,21 @@ export default function Sidebar({
     const load = async () => {
       try {
         const api = (await import('@/lib/api')).api;
-        const [noteResp, authResp] = await Promise.all([
-          api.get('/sidebar/note').catch(() => ({ data: { text: "", updated_at: null } })),
-          api.get('/auth/state').catch(() => ({ data: { is_admin: false } })),
-        ]);
+        const noteResp = await api.get('/sidebar/note').catch(() => ({ data: { text: "", updated_at: null } }));
         if (!alive) return;
         const text = noteResp.data?.text || "";
         setNote(text);
         setEditText(text);
         setNoteUpdatedAt(noteResp.data?.updated_at || null);
-        setIsAdmin(Boolean(authResp.data?.is_admin));
-        if (Boolean(authResp.data?.is_admin)) {
-          setIsEditing(!text);
+        // One-shot auth for note editing — further updates via Dashboard broadcast.
+        try {
+          const { data } = await api.get('/auth/state');
+          if (!alive) return;
+          const admin = Boolean(data?.is_admin) && !data?.is_guest;
+          setIsAdmin(admin);
+          if (admin) setIsEditing(!text);
+        } catch (_) {
+          /* ignore */
         }
       } catch (e) {
         // ignore
@@ -224,7 +227,19 @@ export default function Sidebar({
       }
     };
     load();
-    return () => { alive = false; };
+    const onState = (e) => {
+      if (!alive) return;
+      const data = e?.detail;
+      if (data && typeof data.is_admin === "boolean") {
+        const admin = Boolean(data.is_admin) && !data.is_guest;
+        setIsAdmin(admin);
+      }
+    };
+    window.addEventListener("oi-admin-auth-state", onState);
+    return () => {
+      alive = false;
+      window.removeEventListener("oi-admin-auth-state", onState);
+    };
   }, []);
 
   const saveNote = async () => {

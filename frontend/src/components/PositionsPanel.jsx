@@ -54,6 +54,15 @@ function fmt(v, dp = 2) {
   return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
+/** Prefer live/cash for "cash left"; net can be deeply negative under F&O span. */
+function freeCashValue(funds) {
+  if (!funds) return null;
+  if (funds.live_balance != null) return Number(funds.live_balance);
+  if (funds.cash != null) return Number(funds.cash);
+  if (funds.net != null) return Number(funds.net);
+  return null;
+}
+
 const POSITIONS_GUIDE = (
   <div className="space-y-2 text-[12px] leading-relaxed">
     <p>
@@ -199,6 +208,7 @@ export default function PositionsPanel({
   onAdjustmentAlert,
   positionsPollMs = 30000,
   onOpenKite,
+  hasKiteCredentials = null,
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
@@ -210,7 +220,8 @@ export default function PositionsPanel({
   const [error, setError] = useState(null);
   const [errorHard, setErrorHard] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
-  const stickyKiteRef = useRef(!!isKiteMode);
+  const [stickyKite, setStickyKite] = useState(!!isKiteMode);
+  const brokerageGen = useRef(0);
   const [adjustThreshPct, setAdjustThreshPct] = useState(60);
   const [toggles, setToggles] = useState(() => loadPositionsToggles());
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -276,8 +287,10 @@ export default function PositionsPanel({
   }, []);
 
   const loadBrokerage = useCallback(async () => {
+    const gen = ++brokerageGen.current;
     try {
       const { data } = await api.get("/positions/brokerage-day");
+      if (gen !== brokerageGen.current) return;
       if (!data) return;
       // Keep last good totals on soft failures (Charges API blip).
       if (data.ok === false && data.charges_total == null) {
@@ -317,8 +330,13 @@ export default function PositionsPanel({
       // Keep last good book on transient Kite blips — do not wipe the table.
       if (next.length > 0 || !data.error || hard) {
         setPositions(next);
-        if (data.funds) setFunds(data.funds);
-        if (data.pnl_today) setPnlToday(data.pnl_today);
+        if (hard && (data.kite_connected === false || data.token_issue === true)) {
+          setFunds(data.funds ?? null);
+          setPnlToday(data.pnl_today ?? null);
+        } else {
+          if (data.funds) setFunds(data.funds);
+          if (data.pnl_today) setPnlToday(data.pnl_today);
+        }
         if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
         if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
       }
@@ -344,10 +362,18 @@ export default function PositionsPanel({
   }, [pollMs]);
 
   useEffect(() => {
-    if (isKiteMode) stickyKiteRef.current = true;
-  }, [isKiteMode]);
+    if (isKiteMode) {
+      setStickyKite(true);
+      return;
+    }
+    // Sign-out: credentials gone → stop sticky polling as if still live.
+    // Keep sticky only while credentials may still exist (brief mode flaps).
+    if (hasKiteCredentials === false) {
+      setStickyKite(false);
+    }
+  }, [isKiteMode, hasKiteCredentials]);
 
-  const kiteReady = isKiteMode || stickyKiteRef.current;
+  const kiteReady = isKiteMode || stickyKite;
 
   useEffect(() => {
     if (!kiteReady) return undefined;
@@ -1024,19 +1050,11 @@ export default function PositionsPanel({
         <StatBox
           label="Cash left"
           value={(() => {
-            // Prefer free cash / live balance for "cash left"; net can go deeply
-            // negative under F&O span even when cash itself is fine.
-            const v =
-              funds?.live_balance != null
-                ? funds.live_balance
-                : funds?.cash != null
-                  ? funds.cash
-                  : funds?.net;
+            const v = freeCashValue(funds);
             return v != null ? "₹ " + fmt(v, 0) : "—";
           })()}
           tone={
-            (funds?.live_balance ?? funds?.cash ?? funds?.net) != null
-            && Number(funds?.live_balance ?? funds?.cash ?? funds?.net) < 0
+            freeCashValue(funds) != null && freeCashValue(funds) < 0
               ? "rose"
               : "slate"
           }
@@ -1120,7 +1138,7 @@ export default function PositionsPanel({
         <OvernightRiskScore
           vix={vix}
           netDelta={stats.netDelta}
-          positionsCount={rows.length}
+          positionsCount={stats.openCount}
           minutesToExpiry={stats.minMinutes}
         />
       </div>
@@ -1140,9 +1158,9 @@ export default function PositionsPanel({
               By close today ≈ <b className="font-mono-data text-emerald-800">₹ {fmt(stats.thetaToClose, 0)}</b>
             </span>
           )}
-          {funds?.net != null && (
-            <span title="Free cash in Kite">
-              Cash left <b className="font-mono-data">₹ {fmt(funds.net, 0)}</b>
+          {freeCashValue(funds) != null && (
+            <span title="Free cash in Kite (live/cash preferred over net)">
+              Cash left <b className="font-mono-data">₹ {fmt(freeCashValue(funds), 0)}</b>
             </span>
           )}
         </div>

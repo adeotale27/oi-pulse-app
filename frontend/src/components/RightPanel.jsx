@@ -66,6 +66,10 @@ export default function RightPanel({
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
       if (item.pageId == null) return true;
+      // Positions is admin-only (API + desk) — never expose via stale visible_pages.
+      if (item.pageId === "positions" || item.pageId === "sell-candidates") {
+        return isAdmin;
+      }
       return isAdmin || visiblePages.includes(item.pageId);
     }),
     [visiblePages, isAdmin]
@@ -155,9 +159,12 @@ export default function RightPanel({
               onSetFilter={setActivityFilter}
             />
           )}
-          {selectedView === "positions" && (
+          {selectedView === "positions" && isAdmin && (
             <PositionsPanel
               isKiteMode={isKiteMode}
+              hasKiteCredentials={status?.has_kite_credentials != null
+                ? !!status.has_kite_credentials
+                : null}
               current={filteredCurrent || current}
               previous={previous}
               vix={vixNow}
