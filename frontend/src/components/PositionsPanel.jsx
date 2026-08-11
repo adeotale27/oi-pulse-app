@@ -13,9 +13,11 @@ import {
   ChevronDown,
   ChevronUp,
   Receipt,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { isMarketQuiescent } from "@/lib/marketTimes";
+import { isMarketQuiescent, getMarketCloseHm } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -49,9 +51,31 @@ import OvernightRiskScore from "@/components/OvernightRiskScore";
 import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import InfoTip from "@/components/InfoTip";
 
+const PRIVACY_LS_KEY = "oi_positions_privacy";
+const PRIVACY_MASK = "••••";
+
+function loadPrivacyMode() {
+  try {
+    return localStorage.getItem(PRIVACY_LS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function savePrivacyMode(on) {
+  try {
+    localStorage.setItem(PRIVACY_LS_KEY, on ? "1" : "0");
+  } catch { /* noop */ }
+}
+
 function fmt(v, dp = 2) {
   if (v == null || Number.isNaN(v)) return "—";
   return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+
+/** Mask money / qty figures when Positions privacy mode is on (admin only). */
+function priv(privacy, visible) {
+  return privacy ? PRIVACY_MASK : visible;
 }
 
 /** Kite equity margins — prefer real cash, not live_balance (goes deeply negative under F&O SPAN). */
@@ -132,7 +156,8 @@ function positionLabel(r) {
   return r?.display_name || r?.tradingsymbol || "—";
 }
 
-function AvgCell({ row }) {
+function AvgCell({ row, privacy = false }) {
+  if (privacy) return <span className="text-slate-400 tracking-widest">{PRIVACY_MASK}</span>;
   if (row?.exited) {
     // Kite shows 0.00 average on flat / squared-off rows.
     return <span className="text-slate-400">0.00</span>;
@@ -236,6 +261,7 @@ export default function PositionsPanel({
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [secsLeft, setSecsLeft] = useState(() => Math.max(1, Math.round(positionsPollMs / 1000)));
   const [colVis, setColVis] = useState(() => loadColumnVisibility());
+  const [privacyMode, setPrivacyMode] = useState(() => loadPrivacyMode());
   const [colsOpen, setColsOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
@@ -819,11 +845,13 @@ export default function PositionsPanel({
                 <Receipt className="w-3 h-3 text-slate-400" />
                 <span className="text-slate-400">Charges</span>
                 <span className="font-mono-data font-semibold text-slate-800">
-                  {brokerage?.charges_total != null
-                    ? `₹${fmt(brokerage.charges_total, 0)}`
-                    : brokerage?.brokerage != null
-                      ? `₹${fmt(brokerage.brokerage, 0)}`
-                      : "—"}
+                  {privacyMode
+                    ? PRIVACY_MASK
+                    : brokerage?.charges_total != null
+                      ? `₹${fmt(brokerage.charges_total, 0)}`
+                      : brokerage?.brokerage != null
+                        ? `₹${fmt(brokerage.brokerage, 0)}`
+                        : "—"}
                 </span>
                 {brokerage?.book?.open_today > 0 ? (
                   <span className="text-[9px] text-amber-700 font-semibold" title="Open / pending orders today">
@@ -875,7 +903,7 @@ export default function PositionsPanel({
                     >
                       <span className="text-slate-500">{row.label}</span>
                       <span className="font-mono-data font-medium text-slate-800">
-                        ₹{fmt(row.amount, 2)}
+                        {privacyMode ? PRIVACY_MASK : `₹${fmt(row.amount, 2)}`}
                       </span>
                     </div>
                   ))}
@@ -890,13 +918,13 @@ export default function PositionsPanel({
                     <div className="rounded-sm bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 space-y-0.5">
                       <div className="font-semibold uppercase tracking-wider text-slate-400">GST detail</div>
                       {brokerage.gst.igst ? (
-                        <div className="flex justify-between"><span>IGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.igst, 2)}</span></div>
+                        <div className="flex justify-between"><span>IGST</span><span className="font-mono-data">{privacyMode ? PRIVACY_MASK : `₹${fmt(brokerage.gst.igst, 2)}`}</span></div>
                       ) : null}
                       {brokerage.gst.cgst ? (
-                        <div className="flex justify-between"><span>CGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.cgst, 2)}</span></div>
+                        <div className="flex justify-between"><span>CGST</span><span className="font-mono-data">{privacyMode ? PRIVACY_MASK : `₹${fmt(brokerage.gst.cgst, 2)}`}</span></div>
                       ) : null}
                       {brokerage.gst.sgst ? (
-                        <div className="flex justify-between"><span>SGST</span><span className="font-mono-data">₹{fmt(brokerage.gst.sgst, 2)}</span></div>
+                        <div className="flex justify-between"><span>SGST</span><span className="font-mono-data">{privacyMode ? PRIVACY_MASK : `₹${fmt(brokerage.gst.sgst, 2)}`}</span></div>
                       ) : null}
                     </div>
                   ) : null}
@@ -905,11 +933,32 @@ export default function PositionsPanel({
               <div className="border-t border-slate-100 px-3 py-2.5 flex items-center justify-between bg-slate-50/80">
                 <span className="text-xs font-semibold text-slate-700">Total today</span>
                 <span className="font-mono-data text-sm font-bold text-slate-900" data-testid="charges-total">
-                  {brokerage?.charges_total != null ? `₹${fmt(brokerage.charges_total, 2)}` : "—"}
+                  {privacyMode
+                    ? PRIVACY_MASK
+                    : brokerage?.charges_total != null
+                      ? `₹${fmt(brokerage.charges_total, 2)}`
+                      : "—"}
                 </span>
               </div>
             </PopoverContent>
           </Popover>
+          <label
+            className="inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[11px] text-slate-600 cursor-pointer select-none hover:border-emerald-300"
+            title="Mask Qty, Avg, P&L and ₹ amounts on this Positions page only"
+            data-testid="positions-privacy-toggle"
+          >
+            {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
+            <span>Privacy</span>
+            <Switch
+              checked={privacyMode}
+              onCheckedChange={(on) => {
+                setPrivacyMode(!!on);
+                savePrivacyMode(!!on);
+              }}
+              className="scale-75 origin-center"
+              data-testid="positions-privacy-switch"
+            />
+          </label>
           <Button
             size="sm"
             variant="outline"
@@ -1027,18 +1076,20 @@ export default function PositionsPanel({
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-2">
         <StatBox
           label="Today P&L"
-          value={"₹ " + fmt(stats.netPnl)}
-          tone={stats.netPnl >= 0 ? "emerald" : "rose"}
+          value={priv(privacyMode, "₹ " + fmt(stats.netPnl))}
+          tone={privacyMode ? "slate" : stats.netPnl >= 0 ? "emerald" : "rose"}
           hint={
-            stats.exitedCount > 0
-              ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
-              : brokerage?.charges_total != null && Number(brokerage.charges_total) > 0
-                ? `After charges ₹ ${fmt(stats.netPnl - Number(brokerage.charges_total), 2)}`
-                : brokerage?.charges_total === 0
-                  ? "No day charges yet"
-                  : brokerage?.error
-                    ? "Charges temporarily unavailable"
-                    : "Open + booked exits"
+            privacyMode
+              ? "Masked"
+              : stats.exitedCount > 0
+                ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
+                : brokerage?.charges_total != null && Number(brokerage.charges_total) > 0
+                  ? `After charges ₹ ${fmt(stats.netPnl - Number(brokerage.charges_total), 2)}`
+                  : brokerage?.charges_total === 0
+                    ? "No day charges yet"
+                    : brokerage?.error
+                      ? "Charges temporarily unavailable"
+                      : "Open + booked exits"
           }
           tip={(
             <div className="space-y-1.5">
@@ -1046,23 +1097,27 @@ export default function PositionsPanel({
                 <b>Today P&amp;L</b> = open positions + same-day <b>exited</b> booked P&amp;L
                 (exited legs stay in the list until end of day).
               </p>
-              <p>
-                Open: ₹ {fmt(stats.openPnl, 0)} · Exited: ₹ {fmt(stats.exitedPnl, 0)}
-                {brokerage?.charges_total != null
-                  ? ` · Day charges ₹ ${fmt(brokerage.charges_total, 0)}`
-                  : ""}
-              </p>
+              {!privacyMode && (
+                <p>
+                  Open: ₹ {fmt(stats.openPnl, 0)} · Exited: ₹ {fmt(stats.exitedPnl, 0)}
+                  {brokerage?.charges_total != null
+                    ? ` · Day charges ₹ ${fmt(brokerage.charges_total, 0)}`
+                    : ""}
+                </p>
+              )}
             </div>
           )}
         />
         <StatBox
           label="Funds available"
           value={(() => {
+            if (privacyMode) return PRIVACY_MASK;
             const b = fundsBreakdown(funds);
             if (!b || b.cash == null) return "—";
             return "₹ " + fmt(b.cash, 0);
           })()}
           tone={(() => {
+            if (privacyMode) return "slate";
             const b = fundsBreakdown(funds);
             if (!b) return "slate";
             if (b.cash != null && b.cash < 0) return "rose";
@@ -1070,6 +1125,7 @@ export default function PositionsPanel({
             return "slate";
           })()}
           hint={(() => {
+            if (privacyMode) return "Masked";
             const b = fundsBreakdown(funds);
             if (!b) return "Kite equity margins";
             const bits = [];
@@ -1083,12 +1139,14 @@ export default function PositionsPanel({
                 <b>Available cash</b> is Kite <code>available.cash</code> (opening cash / collateral cash).
                 <b> Used margin</b> is <code>utilised.debits</code> (SPAN + exposure + premium).
               </p>
-              <p>
-                Cash: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
-                Used: {funds?.utilised_debits != null ? `₹ ${fmt(funds.utilised_debits, 0)}` : "—"}.
-                Net: {funds?.net != null ? `₹ ${fmt(funds.net, 0)}` : "—"}.
-                Live bal: {funds?.live_balance != null ? `₹ ${fmt(funds.live_balance, 0)}` : "—"}.
-              </p>
+              {!privacyMode && (
+                <p>
+                  Cash: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
+                  Used: {funds?.utilised_debits != null ? `₹ ${fmt(funds.utilised_debits, 0)}` : "—"}.
+                  Net: {funds?.net != null ? `₹ ${fmt(funds.net, 0)}` : "—"}.
+                  Live bal: {funds?.live_balance != null ? `₹ ${fmt(funds.live_balance, 0)}` : "—"}.
+                </p>
+              )}
               <p className="text-[11px] opacity-80">
                 Live balance can go deeply negative on a heavy short F&amp;O book — that is SPAN
                 utilisation, not a P&amp;L loss. We show cash + used margin instead.
@@ -1098,9 +1156,9 @@ export default function PositionsPanel({
         />
         <StatBox
           label="Daily time money"
-          value={"₹ " + fmt(stats.netTheta, 0)}
-          tone={stats.netTheta >= 0 ? "emerald" : "rose"}
-          hint={stats.netTheta >= 0 ? "Time is paying you" : "Time is costing you"}
+          value={priv(privacyMode, "₹ " + fmt(stats.netTheta, 0))}
+          tone={privacyMode ? "slate" : stats.netTheta >= 0 ? "emerald" : "rose"}
+          hint={privacyMode ? "Masked" : stats.netTheta >= 0 ? "Time is paying you" : "Time is costing you"}
           tip={(
             <p>
               Rough ₹ from time passing if the market stays put — capped to premium still left in
@@ -1123,9 +1181,9 @@ export default function PositionsPanel({
         />
         <StatBox
           label="Still to earn"
-          value={stats.premiumLeft != null ? "₹ " + fmt(stats.premiumLeft, 0) : "—"}
+          value={privacyMode ? PRIVACY_MASK : (stats.premiumLeft != null ? "₹ " + fmt(stats.premiumLeft, 0) : "—")}
           tone="slate"
-          hint="Left on sold options"
+          hint={privacyMode ? "Masked" : "Left on sold options"}
           tip={(
             <p>
               Premium still sitting in your sold options. If the market stays away until expiry /
@@ -1135,12 +1193,14 @@ export default function PositionsPanel({
         />
         <StatBox
           label="Profit booked today"
-          value={"₹ " + fmt(stats.bookedToday)}
-          tone={stats.bookedToday >= 0 ? "emerald" : "rose"}
+          value={priv(privacyMode, "₹ " + fmt(stats.bookedToday))}
+          tone={privacyMode ? "slate" : stats.bookedToday >= 0 ? "emerald" : "rose"}
           hint={
-            stats.exitedCount > 0
-              ? `${stats.exitedCount} exited · realised`
-              : "No exits booked yet"
+            privacyMode
+              ? "Masked"
+              : stats.exitedCount > 0
+                ? `${stats.exitedCount} exited · realised`
+                : "No exits booked yet"
           }
           tip={(
             <p>
@@ -1170,7 +1230,7 @@ export default function PositionsPanel({
           </span>
           {stats.thetaToClose != null && (
             <span title="Rough money time can still give you by today’s close">
-              By close today ≈ <b className="font-mono-data text-emerald-800">₹ {fmt(stats.thetaToClose, 0)}</b>
+              By close today ≈ <b className="font-mono-data text-emerald-800">{priv(privacyMode, `₹ ${fmt(stats.thetaToClose, 0)}`)}</b>
             </span>
           )}
           {(() => {
@@ -1179,10 +1239,10 @@ export default function PositionsPanel({
             return (
               <span title="Kite equity margins — available cash vs used margin">
                 {b.cash != null && (
-                  <>Cash <b className="font-mono-data">₹ {fmt(b.cash, 0)}</b></>
+                  <>Cash <b className="font-mono-data">{privacyMode ? PRIVACY_MASK : `₹ ${fmt(b.cash, 0)}`}</b></>
                 )}
                 {b.used != null && (
-                  <>{b.cash != null ? " · " : ""}Used <b className="font-mono-data">₹ {fmt(b.used, 0)}</b></>
+                  <>{b.cash != null ? " · " : ""}Used <b className="font-mono-data">{privacyMode ? PRIVACY_MASK : `₹ ${fmt(b.used, 0)}`}</b></>
                 )}
               </span>
             );
@@ -1233,17 +1293,17 @@ export default function PositionsPanel({
                 <div>
                   <div className="text-[10px] uppercase text-slate-400">Qty</div>
                   <div className={r.exited ? "text-slate-400 font-semibold" : r.isShort ? "text-rose-600 font-semibold" : "text-sky-700 font-semibold"}>
-                    {r.exited ? 0 : r.quantity}
+                    {privacyMode ? PRIVACY_MASK : (r.exited ? 0 : r.quantity)}
                   </div>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Avg</div>
-                  <div><AvgCell row={r} /></div>
+                  <div><AvgCell row={r} privacy={privacyMode} /></div>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">P&amp;L</div>
-                  <div className={`font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
-                    {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
+                  <div className={`font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
+                    {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
                   </div>
                 </div>
                 <div>
@@ -1252,8 +1312,8 @@ export default function PositionsPanel({
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">₹/day</div>
-                  <div className={thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700 font-semibold" : "text-rose-700 font-semibold"}>
-                    {thetaInr != null ? fmt(thetaInr, 0) : "—"}
+                  <div className={privacyMode || thetaInr == null ? "" : thetaInr >= 0 ? "text-emerald-700 font-semibold" : "text-rose-700 font-semibold"}>
+                    {privacyMode ? PRIVACY_MASK : (thetaInr != null ? fmt(thetaInr, 0) : "—")}
                   </div>
                 </div>
                 <div>
@@ -1398,20 +1458,20 @@ export default function PositionsPanel({
                 )}
                 {colOn("qty") && (
                   <td className={`text-right px-2 py-2 font-semibold ${r.exited ? "text-slate-400" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
-                    {r.exited ? 0 : r.quantity}
+                    {privacyMode ? PRIVACY_MASK : (r.exited ? 0 : r.quantity)}
                   </td>
                 )}
                 {colOn("avg") && (
                   <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>
-                    <AvgCell row={r} />
+                    <AvgCell row={r} privacy={privacyMode} />
                   </td>
                 )}
                 {colOn("ltp") && (
                   <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
                 )}
                 {colOn("pnl") && (
-                  <td className={`text-right px-2 py-2 font-semibold ${r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
-                    {r.pnl >= 0 ? "+" : ""}{fmt(r.pnl, 0)}
+                  <td className={`text-right px-2 py-2 font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
+                    {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
                   </td>
                 )}
                 {colOn("tilt") && (
@@ -1420,17 +1480,19 @@ export default function PositionsPanel({
                   </td>
                 )}
                 {colOn("theta") && (
-                  <td className={`text-right px-2 py-2 font-semibold ${thetaInr == null ? (r.exited ? "text-slate-300" : "") : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-50" : ""}`}>
-                    {thetaInr != null ? fmt(thetaInr, 0) : "—"}
+                  <td className={`text-right px-2 py-2 font-semibold ${privacyMode || thetaInr == null ? (r.exited ? "text-slate-300" : "") : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-50" : ""}`}>
+                    {privacyMode ? PRIVACY_MASK : (thetaInr != null ? fmt(thetaInr, 0) : "—")}
                   </td>
                 )}
                 {colOn("stillEarn") && (
                   <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : "text-slate-700"}`}>
-                    {!r.exited && r.isShort && r.extrinsicLeft != null ? (
-                      <span title={r.onExpiryDay ? "Expiry day — extrinsic left to 15:30" : "Extrinsic left"}>
-                        ₹{fmt(r.extrinsicLeft, 0)}
-                      </span>
-                    ) : "—"}
+                    {privacyMode
+                      ? PRIVACY_MASK
+                      : (!r.exited && r.isShort && r.extrinsicLeft != null ? (
+                        <span title={r.onExpiryDay ? `Expiry day — extrinsic left to ${getMarketCloseHm()}` : "Extrinsic left"}>
+                          ₹{fmt(r.extrinsicLeft, 0)}
+                        </span>
+                      ) : "—")}
                   </td>
                 )}
                 {colOn("iv") && (
@@ -1574,16 +1636,16 @@ export default function PositionsPanel({
               {expiryClock.active ? (
                 <div className="text-[11px] text-slate-700 space-y-1">
                   <div>
-                    Prem left vs time to 15:30 ·{" "}
+                    Prem left vs time to {getMarketCloseHm()} ·{" "}
                     <b className="font-mono-data">{expiryClock.minutesToClose ?? "—"} min</b>
                     {" · total extrinsic "}
-                    <b className="font-mono-data">₹{fmt(expiryClock.totalExtrinsic, 0)}</b>
+                    <b className="font-mono-data">{privacyMode ? PRIVACY_MASK : `₹${fmt(expiryClock.totalExtrinsic, 0)}`}</b>
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     {expiryClock.items.slice(0, 4).map((it) => (
                       <span key={it.tradingsymbol} className="font-mono-data text-[10px]">
-                        {it.strike}{it.side} ₹{fmt(it.extrinsicLeft, 0)}
-                        {it.rupeesPerMinute != null && (
+                        {it.strike}{it.side} {privacyMode ? PRIVACY_MASK : `₹${fmt(it.extrinsicLeft, 0)}`}
+                        {!privacyMode && it.rupeesPerMinute != null && (
                           <span className="text-slate-500"> · ₹{fmt(it.rupeesPerMinute, 1)}/min</span>
                         )}
                       </span>
@@ -1691,8 +1753,8 @@ export default function PositionsPanel({
                     <span key={r.tradingsymbol}>
                       {i > 0 ? " · " : ""}
                       <b className="font-mono-data">{r.strike}{r.side}</b>
-                      {" "}₹{fmt(r.extrinsicLeft, 0)}
-                      {r.thetaInr != null && (
+                      {" "}{privacyMode ? PRIVACY_MASK : `₹${fmt(r.extrinsicLeft, 0)}`}
+                      {!privacyMode && r.thetaInr != null && (
                         <span className="text-emerald-700"> · Θ ₹{fmt(r.thetaInr, 0)}/d</span>
                       )}
                     </span>
@@ -1788,6 +1850,7 @@ export default function PositionsPanel({
           ...(current ? { [activeIndex]: { ...(oiByIndex[activeIndex] || {}), ...current, strikes: current.strikes || oiByIndex[activeIndex]?.strikes } } : {}),
         }}
         vix={vix}
+        privacyMode={privacyMode}
       />
     </div>
   );

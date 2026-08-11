@@ -130,8 +130,12 @@ export default function SettingsModal({
       saveOISettings(local);
       onLocalSaved?.(local);
       if (isAdmin) {
+        let positionsPoll = parseInt(settings.positions_poll_interval_seconds, 10);
+        if (!Number.isFinite(positionsPoll)) positionsPoll = 30;
+        positionsPoll = Math.min(3600, Math.max(5, positionsPoll));
         const payload = {
           ...settings,
+          positions_poll_interval_seconds: positionsPoll,
           visible_pages: (Array.isArray(settings.visible_pages) ? settings.visible_pages : [])
             .filter((id) => !ADMIN_ONLY_PAGES.has(id)),
         };
@@ -420,24 +424,39 @@ export default function SettingsModal({
 
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
-                    Positions Auto-Refresh
+                    Positions Auto-Refresh (seconds)
                     <InfoTip title="Positions Poll Interval">
-                      How often the Positions desk reloads open Kite positions. Countdown shows on the Refresh button. Default 30s.
+                      How often the Positions desk reloads open Kite positions. Enter any whole number of seconds (5–3600). Countdown shows on the Refresh button. Default 30s.
                     </InfoTip>
                   </Label>
-                  <div className="flex gap-2">
-                    {[15, 30, 60].map((val) => (
-                      <Button
-                        key={val}
-                        variant={settings.positions_poll_interval_seconds === val ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSettings({ ...settings, positions_poll_interval_seconds: val })}
-                        className="flex-1 text-xs"
-                        data-testid={`positions-poll-${val}`}
-                      >
-                        {val}s
-                      </Button>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={5}
+                      max={3600}
+                      step={1}
+                      value={settings.positions_poll_interval_seconds ?? 30}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                          setSettings({ ...settings, positions_poll_interval_seconds: "" });
+                          return;
+                        }
+                        const n = parseInt(raw, 10);
+                        if (!Number.isFinite(n)) return;
+                        setSettings({ ...settings, positions_poll_interval_seconds: n });
+                      }}
+                      onBlur={() => {
+                        let n = parseInt(settings.positions_poll_interval_seconds, 10);
+                        if (!Number.isFinite(n)) n = 30;
+                        n = Math.min(3600, Math.max(5, n));
+                        setSettings({ ...settings, positions_poll_interval_seconds: n });
+                      }}
+                      className="w-28 h-8 text-sm font-mono-data"
+                      data-testid="positions-poll-seconds"
+                    />
+                    <span className="text-xs text-slate-500">seconds</span>
                   </div>
                 </div>
 

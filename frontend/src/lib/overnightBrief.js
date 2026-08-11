@@ -3,7 +3,7 @@
 
 import { eventsWithinDays } from "@/lib/econCalendar";
 import { upcomingHolidays, todayIST, isHoliday, daysBetweenIST, isTradingDayIST } from "@/lib/holidays";
-import { EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
+import { EVENT_WARNING_MINUTE, getMarketOpenMinute } from "@/lib/marketTimes";
 
 /** Sunday-night auto surface (IST). */
 export const SUNDAY_BRIEF_MINUTE = 20 * 60; // 20:00 IST
@@ -384,7 +384,7 @@ export function minimizeStorageKey(triggerKey) {
 }
 
 /**
- * Next cash/F&O session open as epoch ms (09:15 Asia/Kolkata on the next
+ * Next cash/F&O session open as epoch ms (admin market_open_ist on the next
  * trading day). Used so a minimized overnight brief can reopen until then,
  * then auto-clear.
  */
@@ -403,12 +403,17 @@ export function nextSessionOpenMs(fromDate = new Date()) {
   let m = get("month");
   let d = get("day");
   const nowM = get("hour") * 60 + get("minute");
-  const openMinute = 9 * 60 + 15;
+  const openMinute = getMarketOpenMinute();
+  const openH = Math.floor(openMinute / 60);
+  const openMin = openMinute % 60;
+  // IST → UTC: subtract 5h30m
+  let utcH = openH - 5;
+  let utcM = openMin - 30;
+  if (utcM < 0) { utcM += 60; utcH -= 1; }
 
   for (let i = 0; i < 12; i++) {
     const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    // 09:15 IST = 03:45 UTC
-    const openUtc = Date.UTC(y, m - 1, d, 3, 45, 0);
+    const openUtc = Date.UTC(y, m - 1, d, utcH, utcM, 0);
     if (isTradingDayIST(iso)) {
       if (i > 0 || nowM < openMinute) {
         return openUtc;

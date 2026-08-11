@@ -56,7 +56,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api } from "@/lib/api";
-import { isMarketQuiescent, EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
+import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
@@ -133,14 +133,14 @@ function formatDelta(v) {
   return `${sign}${Math.round(abs)}`;
 }
 
-// Minutes elapsed since today's NSE market open (9:15 AM IST), CLAMPED at Index
-// F&O / configured close (15:40 IST). During market hours this returns the live
-// "9:15 → now" window; after close it caps at a full session so "Full Day"
-// stays 9:15 – 15:40. Before open (or on weekends/holidays), return the full
+// Minutes elapsed since today's NSE market open (admin market_open_ist), CLAMPED at
+// configured close (market_close_ist). During market hours this returns the live
+// open → now window; after close it caps at a full session so "Full Day"
+// stays open–close. Before open (or on weekends/holidays), return the full
 // prior session length — NEVER ~24h, which previously pulled yesterday's OI.
-const MARKET_OPEN_MIN = 9 * 60 + 15;   // 9:15 AM IST
-const MARKET_CLOSE_MIN = 15 * 60 + 40; // 15:40 IST (Index F&O / CAS default)
 function minutesSinceMarketOpenIST() {
+  const MARKET_OPEN_MIN = getMarketOpenMinute();
+  const MARKET_CLOSE_MIN = getMarketCloseMinute();
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
@@ -150,7 +150,7 @@ function minutesSinceMarketOpenIST() {
   const m = parseInt(parts.find((p) => p.type === "minute").value, 10);
   const s = parseInt(parts.find((p) => p.type === "second").value, 10);
   const nowMin = h * 60 + m + s / 60;
-  const sessionLen = MARKET_CLOSE_MIN - MARKET_OPEN_MIN; // 385
+  const sessionLen = Math.max(1, MARKET_CLOSE_MIN - MARKET_OPEN_MIN);
 
   if (nowMin >= MARKET_OPEN_MIN && nowMin <= MARKET_CLOSE_MIN) {
     return Math.max(1, Math.ceil(nowMin - MARKET_OPEN_MIN));
@@ -530,6 +530,7 @@ export default function Dashboard() {
   const loadStatus = useCallback(async () => {
     try {
       const s = await fetchStatus();
+      applyMarketHoursFromStatus(s);
       setStatus(s);
     } catch (e) {
       console.error("loadStatus failed", e);
@@ -800,6 +801,7 @@ export default function Dashboard() {
     try {
       const res = await api.get("/settings");
       if (res.data) {
+        applyMarketHoursFromStatus(res.data);
         if (typeof res.data.oi_poll_interval_seconds === "number") {
           const next = res.data.oi_poll_interval_seconds * 1000;
           setPollMs((prev) => (prev === next ? prev : next));
@@ -2455,6 +2457,7 @@ export default function Dashboard() {
         onOpenChange={setSettingsOpen}
         isAdmin={authState.is_admin}
         onSaved={(settings) => {
+          applyMarketHoursFromStatus(settings);
           loadStatus();
           if (Array.isArray(settings.visible_pages)) {
             setVisiblePages(settings.visible_pages);

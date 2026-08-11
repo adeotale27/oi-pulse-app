@@ -1,6 +1,8 @@
 // Black-Scholes pricer + implied volatility solver + Greeks.
 // All inputs use continuous compounding. Time is in years. Sigma is decimal.
 
+import { getMarketCloseMinute, getMarketCloseHm } from "@/lib/marketTimes";
+
 function cnd(x) {
   // Abramowitz & Stegun 7.1.26 rational approximation for the standard
   // normal CDF. Accurate to ~1e-7.
@@ -97,17 +99,19 @@ export function greeks(S, K, T, r, sigma, isCall) {
   return out;
 }
 
-// Time to expiry in YEARS from IST 3:30 PM on expiry date.
+// Time to expiry in YEARS from configured market close (IST) on expiry date.
 export function yearsToExpiry(expiryISO, nowMs = Date.now()) {
   if (!expiryISO) return 0;
-  // Expiry closes at 15:30 IST = 10:00 UTC
-  const [y, m, d] = expiryISO.split("-").map(Number);
-  const expiryMs = Date.UTC(y, m - 1, d, 10, 0);
+  const closeMin = getMarketCloseMinute();
+  const hh = String(Math.floor(closeMin / 60)).padStart(2, "0");
+  const mm = String(closeMin % 60).padStart(2, "0");
+  const expiryMs = Date.parse(`${String(expiryISO).slice(0, 10)}T${hh}:${mm}:00+05:30`);
+  if (!Number.isFinite(expiryMs)) return 0;
   const years = (expiryMs - nowMs) / (365 * 24 * 60 * 60 * 1000);
   return Math.max(0, years);
 }
 
-/** Minutes remaining until 15:30 IST today (0 if already past). */
+/** Minutes remaining until configured market close IST today (0 if already past). */
 export function minutesToCloseIST(nowMs = Date.now()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
@@ -117,9 +121,11 @@ export function minutesToCloseIST(nowMs = Date.now()) {
   }).formatToParts(new Date(nowMs));
   const get = (t) => Number(parts.find((p) => p.type === t)?.value || 0);
   const nowM = get("hour") * 60 + get("minute");
-  const closeM = 15 * 60 + 30;
+  const closeM = getMarketCloseMinute();
   return Math.max(0, closeM - nowM);
 }
+
+export { getMarketCloseHm };
 
 /** Intrinsic value of a European-style option (spot vs strike). */
 export function intrinsicValue(S, K, isCall) {
