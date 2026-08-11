@@ -747,29 +747,41 @@ export default function Dashboard() {
     }
   };
 
-  // Poll alerts
+  // Poll alerts — toast/sound for every new backend alert, regardless of which
+  // index tile or dashboard tab is open (Positions, Straddle, etc.).
   const loadAlerts = useCallback(async () => {
     try {
       const data = await fetchAlerts();
       const list = data.alerts || [];
       setAlerts(list);
-      // detect new alert
       if (list.length && lastAlertIdRef.current !== list[0].created_at) {
         const isFirstLoad = lastAlertIdRef.current === null;
+        const prevId = lastAlertIdRef.current;
         lastAlertIdRef.current = list[0].created_at;
         if (!isFirstLoad) {
-          const a = list[0];
-          // Only surface a toast / sound if the alert is for the currently
-          // active index — user asked to suppress cross-index noise.
-          if (a.index === activeIndex) {
+          // Surface every new alert since last poll (newest last → toast newest on top).
+          const fresh = [];
+          for (const a of list) {
+            if (prevId && a.created_at === prevId) break;
+            fresh.push(a);
+            if (fresh.length >= 5) break;
+          }
+          for (const a of fresh.reverse()) {
             const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
             const toastFn = isBullish ? toast.success : toast.error;
-            toastFn(a.message, {
-              description: `Price ${a.price?.toFixed?.(2)} · ATM ${a.atm}`,
+            toastFn(a.message || `OI alert · ${a.index}`, {
+              description: [
+                a.index,
+                a.direction,
+                a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
+                a.atm != null ? `ATM ${a.atm}` : null,
+              ].filter(Boolean).join(" · "),
               duration: 8000,
             });
             playForAlert("reversal");
-            push(`OI Reversal · ${a.index}`, a.direction);
+            push(`OI Reversal · ${a.index}`, a.direction || a.message || "OI alert");
+          }
+          if (fresh.length) {
             setFlash(true);
             setTimeout(() => setFlash(false), 1800);
           }
@@ -778,7 +790,13 @@ export default function Dashboard() {
     } catch (e) {
       console.error("loadAlerts failed", e);
     }
-  }, [alarm, push, activeIndex]);
+  }, [push]);
+
+  // Keep Alerts UI visibility in a ref so the poller does not remount on tab switches.
+  const alertViewRef = useRef({ activeTab, rightPanelView, showRightPanel });
+  useEffect(() => {
+    alertViewRef.current = { activeTab, rightPanelView, showRightPanel };
+  }, [activeTab, rightPanelView, showRightPanel]);
 
   // ---- Straddle + Positions poll intervals (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(15000); // dense chart default 15s
@@ -917,17 +935,20 @@ export default function Dashboard() {
   }, [timeframe, activeIndex, selectedExpiry, expiryReady, loadOI]);
   useQuiescentAwarePolling(
     async () => {
-      // Avoid 5s spam when right panel merely defaults to "alerts" off-hours / guests.
-      const viewingAlerts =
-        activeTab === "alerts" || (showRightPanel && rightPanelView === "alerts");
-      const liveAdminWatch =
-        authState.is_admin && status?.market?.is_market_open === true;
-      if (viewingAlerts || liveAdminWatch) {
+      // During market hours always poll + toast — Positions / Straddle / any tab.
+      // Off-hours only refresh when the Alerts UI is open (avoid idle spam).
+      const marketClosed = status?.market?.is_market_open === false;
+      if (!marketClosed) {
         await loadAlerts();
+        return;
       }
+      const v = alertViewRef.current;
+      const viewingAlerts =
+        v.activeTab === "alerts" || (v.showRightPanel && v.rightPanelView === "alerts");
+      if (viewingAlerts) await loadAlerts();
     },
     5000,
-    [loadAlerts, authState.is_admin, activeTab, rightPanelView, showRightPanel, status?.market?.is_market_open],
+    [loadAlerts, status?.market?.is_market_open],
     { status, dedupeKey: "dash-alerts" },
   );
 
