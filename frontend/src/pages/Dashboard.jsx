@@ -93,7 +93,7 @@ const DASHBOARD_PAGES = [
   { v: "activity", l: "Activity" },
   { v: "holidays", l: "Events" },
   { v: "straddle", l: "Straddle" },
-  { v: "index-events", l: "Index Risk" },
+  { v: "index-events", l: "Index Risk", adminOnly: true },
   { v: "cas", l: "CAS" },
 ];
 const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
@@ -507,7 +507,8 @@ export default function Dashboard() {
 
   const openHolidaysTab = useCallback(() => setActiveTab("holidays"), []);
   const openIndexEventsTab = useCallback(() => setActiveTab("index-events"), []);
-  const showImpactTile = authState.is_admin || visiblePages.includes("index-events");
+  // Index Event Risk desk is admin-only (not for public/guest users).
+  const showImpactTile = !!authState.is_admin;
 
   // Dark mode -> toggle html.dark class + persist
   useEffect(() => {
@@ -2316,6 +2317,7 @@ export default function Dashboard() {
                     <TabsContent value="straddle" className="mt-0">
                     <div className="text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
                     <StraddleChart
+                      key={`tab-${activeIndex}-${selectedExpiry || "auto"}`}
                       index={activeIndex}
                       expiry={selectedExpiry}
                       position="long"
@@ -2327,12 +2329,12 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("index-events")) && (
+                  {authState.is_admin && (
                     <TabsContent value="index-events" className="mt-0">
                       <EventRiskWidget
                         activeIndex={activeIndex}
                         refreshKey={uploadRefreshKey}
-                        isAdmin={!!authState.is_admin}
+                        isAdmin
                       />
                     </TabsContent>
                   )}

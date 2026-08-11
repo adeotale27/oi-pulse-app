@@ -166,6 +166,7 @@ DEFAULT_SETTINGS = {
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",
+    "second_session_ist": "12:00",  # BigClock 2nd-session notify (configurable)
     "expire_admin_on_market_close": False,  # stay signed in past market close (Remember me / long sessions)
     "admin_session_ttl_minutes": 480,
     # Alert focus indices — weekday defaults applied unless user overrides today
@@ -283,7 +284,7 @@ class OITracker:
             "oi_poll_interval_seconds", "straddle_poll_interval_seconds",
             "positions_poll_interval_seconds",
             "straddle_enabled_indices", "visible_pages",
-            "market_open_ist", "market_close_ist",
+            "market_open_ist", "market_close_ist", "second_session_ist",
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",
             "show_strike_range", "show_writer_defense", "show_suggestion",

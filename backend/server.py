@@ -593,6 +593,7 @@ class SettingsIn(BaseModel):
     visible_pages: Optional[List[str]] = None
     market_open_ist: Optional[str] = None   # e.g. "09:15"
     market_close_ist: Optional[str] = None  # e.g. "15:40" (Index F&O / CAS)
+    second_session_ist: Optional[str] = None  # e.g. "12:00" BigClock 2nd-session notify
     expire_admin_on_market_close: Optional[bool] = None
     admin_session_ttl_minutes: Optional[int] = None
     alert_enabled_indices: Optional[List[str]] = None  # weekday-defaulted alert focus
@@ -1146,7 +1147,7 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown straddle index: {i}")
     if "visible_pages" in patch:
-        admin_only = {"positions", "sell-candidates"}
+        admin_only = {"positions", "sell-candidates", "index-events"}
         pages = [p for p in (patch["visible_pages"] or []) if p not in admin_only]
         if not pages:
             raise HTTPException(400, "At least one public dashboard page is required")
@@ -1165,7 +1166,7 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if v < 5 or v > 3600:
             raise HTTPException(400, "positions_poll_interval_seconds must be between 5 and 3600")
         patch["positions_poll_interval_seconds"] = v
-    for key in ("market_open_ist", "market_close_ist"):
+    for key in ("market_open_ist", "market_close_ist", "second_session_ist"):
         if key in patch:
             try:
                 hh, mm = [int(x) for x in str(patch[key]).split(":")[:2]]
@@ -2132,6 +2133,7 @@ async def get_config():
         "visible_pages": tracker.settings.get("visible_pages"),
         "market_open_ist": tracker.settings.get("market_open_ist", open_hm),
         "market_close_ist": tracker.settings.get("market_close_ist", close_hm),
+        "second_session_ist": tracker.settings.get("second_session_ist", "12:00"),
         "show_strike_range": bool(tracker.settings.get("show_strike_range", False)),
         "show_writer_defense": bool(tracker.settings.get("show_writer_defense", True)),
         "show_suggestion": bool(tracker.settings.get("show_suggestion", True)),

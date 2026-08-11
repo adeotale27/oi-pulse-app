@@ -21,36 +21,56 @@ function fmtLtp(v, dp = 2) {
   return fmtNum(v, dp);
 }
 
-// Per-index visual identity + light desk tiles (names/prices stay near-black).
+// Per-index visual identity — match Sidebar INDEX_THEME (sky / amber / emerald).
 const INDEX_STYLE = {
-  NIFTY:     { label: "NIFTY 50",   short: "NIFTY",  dot: "bg-sky-500" },
-  SENSEX:    { label: "SENSEX",     short: "SENSEX", dot: "bg-amber-500" },
-  BANKNIFTY: { label: "BANK NIFTY", short: "BNF",    dot: "bg-emerald-500" },
+  NIFTY: {
+    label: "NIFTY 50",
+    short: "NIFTY",
+    dot: "bg-sky-500",
+    idleShell: "bg-gradient-to-br from-sky-50 to-cyan-50 text-sky-900 border-sky-100 hover:from-sky-100 hover:to-cyan-100",
+    activeShell: "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-sky-300 shadow-md shadow-sky-500/20",
+    idleChgUp: "text-emerald-700",
+    idleChgDn: "text-rose-700",
+    activeChg: "text-white/90",
+  },
+  SENSEX: {
+    label: "SENSEX",
+    short: "SENSEX",
+    dot: "bg-amber-500",
+    idleShell: "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-800 border-orange-100 hover:from-amber-100 hover:to-orange-100",
+    activeShell: "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-amber-300 shadow-md shadow-orange-500/20",
+    idleChgUp: "text-emerald-700",
+    idleChgDn: "text-rose-700",
+    activeChg: "text-white/90",
+  },
+  BANKNIFTY: {
+    label: "BANK NIFTY",
+    short: "BNF",
+    dot: "bg-emerald-500",
+    idleShell: "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-teal-100",
+    activeShell: "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-300 shadow-md shadow-emerald-500/20",
+    idleChgUp: "text-emerald-800",
+    idleChgDn: "text-rose-700",
+    activeChg: "text-white/90",
+  },
 };
 
-/** Light normal-header tiles: black name + price; only %/points stay green/red. */
-function headerTileTone(up, flat) {
-  if (flat) {
+/** Header tiles: brand gradients like sidebar; only %/points stay green/red when idle. */
+function headerTileTone(indexKey, up, flat, isActive) {
+  const s = INDEX_STYLE[indexKey] || INDEX_STYLE.NIFTY;
+  if (isActive) {
     return {
-      shell: "border-slate-200 bg-white shadow-sm",
-      label: "text-slate-950",
-      price: "text-slate-950",
-      chg: "text-slate-500",
-    };
-  }
-  if (up) {
-    return {
-      shell: "border-emerald-200/90 bg-gradient-to-br from-emerald-50/70 to-white shadow-sm",
-      label: "text-slate-950",
-      price: "text-slate-950",
-      chg: "text-emerald-600",
+      shell: s.activeShell,
+      label: "text-white",
+      price: "text-white",
+      chg: flat ? "text-white/80" : s.activeChg,
     };
   }
   return {
-    shell: "border-rose-200/90 bg-gradient-to-br from-rose-50/70 to-white shadow-sm",
-    label: "text-slate-950",
+    shell: s.idleShell,
+    label: "",
     price: "text-slate-950",
-    chg: "text-rose-600",
+    chg: flat ? "text-slate-500" : up ? s.idleChgUp : s.idleChgDn,
   };
 }
 
@@ -154,7 +174,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     );
   }
 
-  // Header: light desk tiles — black names/prices; change stays green/red.
+  // Header: sidebar-matching brand tiles (sky / amber / emerald).
   const stripClass = isHeader
     ? "flex flex-nowrap items-stretch gap-1.5 min-w-0 w-auto max-w-full overflow-x-auto"
     : dense
@@ -167,8 +187,9 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
         const up = t.change > 0;
         const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
+        const isActive = t.index === activeIndex;
         const tones = isHeader
-          ? headerTileTone(up, flat)
+          ? headerTileTone(t.index, up, flat, isActive)
           : {
               shell: flat
                 ? "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
@@ -180,7 +201,6 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               chg: flat ? "text-slate-500" : up ? "text-emerald-600" : "text-rose-600",
             };
         const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
-        const isActive = t.index === activeIndex;
         const shortLabel = s.short;
         const useCompact = dense || isHeader;
         const ltpLabel = fmtLtp(t.ltp, 2);
@@ -197,15 +217,15 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
             } hover:brightness-[0.99] transition-all ${
-              isActive ? "ring-2 ring-sky-400/80 shadow-md" : ""
+              isActive && !isHeader ? "ring-2 ring-sky-400/80 shadow-md" : ""
             }`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
           >
-            <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label} ${
+            <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label || ""} ${
               isHeader ? "text-[11px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"
             }`}>
               <div className="flex items-center gap-1 min-w-0">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive && isHeader ? "bg-white/90" : s.dot}`} />
                 <span className="truncate">{useCompact ? shortLabel : s.label}</span>
               </div>
               <div className={`font-mono-data tabular-nums shrink-0 font-semibold ${tones.chg} ${isHeader ? "text-[11px]" : "text-[10px]"}`} data-testid={`ticker-${t.index}-pct`}>
@@ -227,7 +247,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               >
                 <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
                 <span>
-                  {flat ? "—" : `${t.change > 0 ? "+" : ""}${fmtNum(t.change, 2)}`}
+                  {flat ? "0.00" : `${t.change > 0 ? "+" : ""}${fmtNum(t.change, 2)}`}
                 </span>
               </div>
             </div>
