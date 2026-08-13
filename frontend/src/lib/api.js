@@ -267,6 +267,16 @@ export const fetchOIChange = (idx, minutes, opts = {}) => {
   return api.get(`/oi/${idx}/change`, { params }).then((r) => r.data);
 };
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
+export const fetchJournalMonth = (year, month) =>
+  api.get("/journal", { params: { year, month } }).then((r) => r.data);
+export const fetchJournalDay = (day) =>
+  api.get(`/journal/${day}`).then((r) => r.data);
+export const saveJournalDay = (day, body) =>
+  api.put(`/journal/${day}`, body).then((r) => r.data);
+export const addJournalScreenshot = (day, body) =>
+  api.post(`/journal/${day}/screenshot`, body).then((r) => r.data);
+export const deleteJournalScreenshot = (day, id) =>
+  api.delete(`/journal/${day}/screenshot/${id}`).then((r) => r.data);
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);
 export const fetchStraddle = (idx, opts = {}) =>
