@@ -9,6 +9,7 @@ import os
 import asyncio
 import logging
 import math
+import re
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -29,6 +30,7 @@ from market_hours import (
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
 import event_risk_service as ers
+import trade_journal as journal
 from fastapi import UploadFile, File, Form
 
 # cryptography import deferred inside _fernet() to reduce startup import cost
@@ -3755,7 +3757,7 @@ async def get_positions(_admin: bool = Depends(require_admin)):
 
     open_pnl = round(sum(_row_day_pnl(r) for r in out if not r.get("exited")), 2)
     exited_pnl = round(sum(_row_day_pnl(r) for r in out if r.get("exited")), 2)
-    return {
+    result = {
         "mode": tracker.mode,
         "positions": out,
         "open_count": open_n,
@@ -3772,12 +3774,155 @@ async def get_positions(_admin: bool = Depends(require_admin)):
         "transient": False,
         "token_issue": False,
     }
+    try:
+        asyncio.create_task(_snapshot_trade_journal(result))
+    except Exception:
+        pass
+    return result
 
 
 def _ist_today_ymd() -> str:
     from datetime import datetime, timezone, timedelta
     ist = timezone(timedelta(hours=5, minutes=30))
     return datetime.now(ist).strftime("%Y-%m-%d")
+
+
+async def _snapshot_trade_journal(payload: Dict[str, Any]) -> None:
+    """Upsert today's P&L snapshot; keep user journal fields."""
+    if db is None:
+        return
+    try:
+        snap = journal.snapshot_from_positions(payload)
+        day = snap["date"]
+        await db.trade_journal.update_one(
+            {"date": day},
+            {"$set": snap, "$setOnInsert": {
+                "went_well": "",
+                "went_wrong": "",
+                "notes": "",
+                "tags": [],
+                "rating": None,
+                "followed_plan": None,
+                "screenshots": [],
+            }},
+            upsert=True,
+        )
+    except Exception:
+        logger = logging.getLogger("server")
+        logger.debug("trade journal snapshot skipped", exc_info=True)
+
+
+class JournalIn(BaseModel):
+    went_well: Optional[str] = None
+    went_wrong: Optional[str] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+    rating: Optional[int] = None
+    followed_plan: Optional[bool] = None
+
+
+class JournalShotIn(BaseModel):
+    name: Optional[str] = None
+    mime: Optional[str] = "image/jpeg"
+    data: str
+
+
+@api_router.get("/journal")
+async def journal_month(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    _admin: bool = Depends(require_admin),
+):
+    """Month calendar of booked / marked-to-market P&L plus journal flags."""
+    now = now_ist()
+    y = int(year or now.year)
+    m = int(month or now.month)
+    if m < 1 or m > 12 or y < 2020 or y > 2100:
+        raise HTTPException(400, "Invalid year/month")
+    start, end = journal.month_bounds(y, m)
+    docs = await db.trade_journal.find(
+        {"date": {"$gte": start, "$lt": end}},
+        {"_id": 0, "screenshots.data": 0},
+    ).to_list(length=40)
+    days = [journal.public_day(d, include_images=False) for d in docs]
+    days = [d for d in days if d]
+    days.sort(key=lambda d: d.get("date") or "")
+    return {
+        "year": y,
+        "month": m,
+        "today": journal.ist_ymd(),
+        "days": days,
+        "stats": journal.month_stats(days),
+        "tags": journal.DEFAULT_TAGS,
+    }
+
+
+@api_router.get("/journal/{day}")
+async def journal_day(day: str, _admin: bool = Depends(require_admin)):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        raise HTTPException(400, "Use YYYY-MM-DD")
+    doc = await db.trade_journal.find_one({"date": day}, {"_id": 0})
+    if not doc:
+        return {"date": day, "empty": True, "tags": journal.DEFAULT_TAGS}
+    out = journal.public_day(doc, include_images=True)
+    out["empty"] = False
+    out["tags_catalog"] = journal.DEFAULT_TAGS
+    return out
+
+
+@api_router.put("/journal/{day}")
+async def journal_save(day: str, payload: JournalIn, _admin: bool = Depends(require_admin)):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        raise HTTPException(400, "Use YYYY-MM-DD")
+    fields = journal.sanitize_journal_fields(payload.model_dump())
+    await db.trade_journal.update_one(
+        {"date": day},
+        {"$set": {**fields, "date": day}, "$setOnInsert": {
+            "pnl_total": 0,
+            "pnl_open": 0,
+            "pnl_exited": 0,
+            "open_count": 0,
+            "exited_count": 0,
+            "trade_count": 0,
+            "win_trades": 0,
+            "loss_trades": 0,
+            "legs": [],
+            "screenshots": [],
+        }},
+        upsert=True,
+    )
+    doc = await db.trade_journal.find_one({"date": day}, {"_id": 0})
+    return journal.public_day(doc, include_images=False)
+
+
+@api_router.post("/journal/{day}/screenshot")
+async def journal_add_shot(day: str, payload: JournalShotIn, _admin: bool = Depends(require_admin)):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        raise HTTPException(400, "Use YYYY-MM-DD")
+    try:
+        shot = journal.decode_screenshot(payload.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    doc = await db.trade_journal.find_one({"date": day}, {"screenshots": 1})
+    existing = (doc or {}).get("screenshots") or []
+    if len(existing) >= journal.MAX_SCREENSHOTS:
+        raise HTTPException(400, f"Max {journal.MAX_SCREENSHOTS} screenshots per day")
+    await db.trade_journal.update_one(
+        {"date": day},
+        {"$set": {"date": day}, "$push": {"screenshots": shot}, "$setOnInsert": {
+            "pnl_total": 0, "legs": [], "went_well": "", "went_wrong": "", "notes": "", "tags": [],
+        }},
+        upsert=True,
+    )
+    return {"id": shot["id"], "name": shot["name"], "mime": shot["mime"]}
+
+
+@api_router.delete("/journal/{day}/screenshot/{shot_id}")
+async def journal_del_shot(day: str, shot_id: str, _admin: bool = Depends(require_admin)):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        raise HTTPException(400, "Use YYYY-MM-DD")
+    await db.trade_journal.update_one({"date": day}, {"$pull": {"screenshots": {"id": shot_id}}})
+    return {"deleted": shot_id}
 
 
 @api_router.get("/positions/brokerage-day")

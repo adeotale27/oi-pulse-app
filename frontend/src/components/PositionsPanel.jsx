@@ -15,6 +15,7 @@ import {
   Receipt,
   Eye,
   EyeOff,
+  BookOpen,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent, getMarketCloseHm } from "@/lib/marketTimes";
@@ -49,6 +50,9 @@ import {
 import { resolvePositionSpot, positionExpiryISO } from "@/lib/positionPayoff";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
 import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
+import OiRiskMeter from "@/components/OiRiskMeter";
+import PositionHeatmap from "@/components/PositionHeatmap";
+import TradeJournalModal from "@/components/TradeJournalModal";
 import InfoTip from "@/components/InfoTip";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
@@ -265,6 +269,8 @@ export default function PositionsPanel({
   const [colVis, setColVis] = useState(() => loadColumnVisibility());
   const [privacyMode, setPrivacyMode] = useState(() => loadPrivacyMode());
   const [colsOpen, setColsOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [highlightSymbol, setHighlightSymbol] = useState(null);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
       return localStorage.getItem("oiPositionsInsightsOpen") === "1";
@@ -964,6 +970,17 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
+            className="h-7 rounded-sm bg-white min-h-[28px] text-emerald-800 border-emerald-200 hover:bg-emerald-50 px-2"
+            onClick={() => setJournalOpen(true)}
+            data-testid="btn-trade-journal"
+            title="Monthly P&L calendar and session notes"
+          >
+            <BookOpen className="w-3.5 h-3.5 mr-1" />
+            Journal
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             className="h-7 rounded-sm bg-white min-h-[28px] text-orange-700 border-orange-200 hover:bg-orange-50 px-2"
             onClick={() => setAnalyzeOpen(true)}
             disabled={!rows.length}
@@ -1075,7 +1092,7 @@ export default function PositionsPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-2">
         <StatBox
           label="Today P&L"
           value={priv(privacyMode, "₹ " + fmt(stats.netPnl))}
@@ -1218,7 +1235,18 @@ export default function PositionsPanel({
           positionsCount={stats.openCount}
           minutesToExpiry={stats.minMinutes}
         />
+        <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
       </div>
+
+      <PositionHeatmap
+        rows={rows}
+        privacy={privacyMode}
+        onSelect={(sym) => {
+          setHighlightSymbol(sym);
+          const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
+      />
 
       {stats.shortCount > 0 && (
         <div className="text-[11px] text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 flex flex-wrap gap-x-4 gap-y-1" data-testid="positions-seller-strip">
@@ -1431,9 +1459,12 @@ export default function PositionsPanel({
               )}
               <tr
                 data-testid="position-row"
+                data-position-symbol={r.tradingsymbol}
                 data-exited={r.exited ? "1" : "0"}
                 className={`border-b border-slate-100/80 ${
-                  r.exited
+                  highlightSymbol && r.tradingsymbol === highlightSymbol
+                    ? "ring-2 ring-emerald-400 bg-emerald-50/80"
+                    : r.exited
                     ? "bg-slate-100/70 text-slate-400 opacity-[0.58]"
                     : r.breachedAdjust
                       ? "bg-rose-50/70"
@@ -1841,6 +1872,11 @@ export default function PositionsPanel({
         <div className="text-[10px] text-slate-400 text-right">Last refresh {new Date(lastRefresh).toLocaleTimeString()}</div>
       )}
 
+      <TradeJournalModal
+        open={journalOpen}
+        onOpenChange={setJournalOpen}
+        privacy={privacyMode}
+      />
       <PositionsAnalyzeModal
         open={analyzeOpen}
         onClose={() => setAnalyzeOpen(false)}
