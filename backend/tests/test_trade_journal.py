@@ -141,10 +141,19 @@ def test_apply_snapshot_locks_live_book_at_close():
     assert day_pnl(out) == 500.5
 
 
-def test_apply_charges_booked_after_charges():
-    from trade_journal import apply_charges
-    snap = snapshot_from_positions(_payload(), date="2026-08-13")
-    apply_charges(snap, {"brokerage": 40.0, "charges_total": 120.5, "source": "kite_virtual_contract"})
+def test_snapshot_fields_are_what_mongo_stores():
+    """Journal snapshot is a Mongo document shape — not Kite and not the browser."""
+    snap = snapshot_from_positions(
+        _payload(),
+        date="2026-08-13",
+        charges={"brokerage": 40.0, "charges_total": 120.5, "source": "kite_virtual_contract"},
+    )
+    for key in (
+        "date", "booked_pnl", "pnl_exited", "pnl_open", "pnl_total",
+        "brokerage", "charges_total", "booked_after_charges", "legs", "snapshot_at",
+    ):
+        assert key in snap
+    assert snap["date"] == "2026-08-13"
     assert snap["brokerage"] == 40.0
     assert snap["charges_total"] == 120.5
     assert snap["booked_after_charges"] == 380.0

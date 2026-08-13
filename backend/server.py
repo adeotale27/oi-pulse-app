@@ -4929,6 +4929,7 @@ async def _startup():
         await db.blocked_ips.create_index("blocked_at")
         await db.user_kite.create_index("guest_token")
         await db.user_kite.create_index([("guest_name", 1), ("ip", 1)])
+        await db.trade_journal.create_index("date", unique=True, name="uniq_journal_date")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 
