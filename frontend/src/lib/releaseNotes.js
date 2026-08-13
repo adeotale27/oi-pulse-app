@@ -4,6 +4,23 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.06",
+    date: "2026-08-13",
+    user: [
+      "Phone index tiles show live price, points, and today’s % for all three indices",
+      "Sidebar slides in from the left again",
+      "Position heatmap is open legs of the index you are on — readable strike labels, no exited SENSEX leftovers",
+      "Tap a journal day: calendar steps aside, date chip under the month, notes on the right; tap the chip to go back",
+      "Year heatmap fills from stored booked days",
+      "Right panel can show OI Change",
+    ],
+    admin: [
+      "Year heatmap fetches GET /journal/year/{year} when the journal opens",
+      "Spot WebSocket merges prices so inactive indices keep LTP; /tickers hydrates prev-close",
+      "Alerts poll every 15s in session unless the Alerts view is open (8s)",
+    ],
+  },
+  {
     version: "5.05",
     date: "2026-08-13",
     user: [

@@ -1831,6 +1831,7 @@ export default function PositionsPanel({
           <PositionHeatmap
             compact
             rows={rows}
+            activeIndex={activeIndex}
             privacy={privacyMode}
             onSelect={(sym) => {
               setHighlightSymbol(sym);
@@ -2154,6 +2155,7 @@ export default function PositionsPanel({
           <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
           <PositionHeatmap
             rows={rows}
+            activeIndex={activeIndex}
             privacy={privacyMode}
             onSelect={(sym) => {
               setHighlightSymbol(sym);

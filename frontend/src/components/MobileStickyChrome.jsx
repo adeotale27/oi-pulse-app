@@ -26,9 +26,7 @@ export default function MobileStickyChrome({
   onSelectIndex,
   spotPrice,
   spotPrices = {},
-  atm,
-  expiry,
-  changePct,
+  indexQuotes = {},
   tabs = [],
   activeTab,
   onChangeTab,
@@ -36,7 +34,6 @@ export default function MobileStickyChrome({
   onFavorite,
   onMove,
   onResetLayout,
-  marketOpen = false,
   infoTilesOpen,
   onToggleInfoTiles,
   infoTiles,
@@ -49,32 +46,6 @@ export default function MobileStickyChrome({
   const canReorder = typeof onReorder === "function";
   const canFavorite = typeof onFavorite === "function";
   const canMove = typeof onMove === "function";
-  const pct =
-    changePct != null && Number.isFinite(Number(changePct))
-      ? Number(changePct)
-      : null;
-  const pctCls =
-    pct == null
-      ? "text-slate-400"
-      : pct > 0
-        ? "text-emerald-600"
-        : pct < 0
-          ? "text-rose-600"
-          : "text-slate-500";
-  const expiryShort = useMemo(() => {
-    if (!expiry) return null;
-    try {
-      const [y, m, d] = String(expiry).split("-").map(Number);
-      if (!y || !m || !d) return expiry;
-      return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        timeZone: "UTC",
-      });
-    } catch {
-      return expiry;
-    }
-  }, [expiry]);
 
   const list = useMemo(() => indices.filter(Boolean), [indices]);
 
@@ -169,13 +140,21 @@ export default function MobileStickyChrome({
         >
           {list.map((idx) => {
             const active = idx === activeIndex;
-            const raw = active
-              ? (spotPrices?.[idx] ?? spotPrice)
-              : spotPrices?.[idx];
+            const q = indexQuotes?.[idx] || {};
+            const raw = q.price ?? (active ? (spotPrices?.[idx] ?? spotPrice) : spotPrices?.[idx]);
             const spotN = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
             const spotTxt = spotN != null
-              ? spotN.toLocaleString("en-IN", { maximumFractionDigits: 2 })
+              ? spotN.toLocaleString("en-IN", { maximumFractionDigits: 1, minimumFractionDigits: 0 })
+              : "—";
+            const pct = q.changePct != null && Number.isFinite(Number(q.changePct))
+              ? Number(q.changePct)
               : null;
+            const pts = q.changePts != null && Number.isFinite(Number(q.changePts))
+              ? Number(q.changePts)
+              : null;
+            const up = (pct ?? pts ?? 0) > 0;
+            const down = (pct ?? pts ?? 0) < 0;
+            const moveCls = up ? "text-emerald-700 dark:text-emerald-300" : down ? "text-rose-700 dark:text-rose-300" : "text-slate-500";
             return (
               <button
                 key={idx}
@@ -194,8 +173,12 @@ export default function MobileStickyChrome({
                     {INDEX_SHORT[idx] || idx}
                   </span>
                 </div>
-                <div className={`mt-0.5 font-mono-data text-[10px] tabular-nums truncate ${active ? "text-slate-700 dark:text-slate-200" : "text-slate-400"}`}>
-                  {spotTxt || (active ? "—" : "tap")}
+                <div className={`mt-0.5 font-mono-data text-[11px] tabular-nums truncate ${active ? "text-slate-800 dark:text-slate-100" : "text-slate-600 dark:text-slate-300"}`}>
+                  {spotTxt}
+                </div>
+                <div className={`font-mono-data text-[9px] tabular-nums leading-tight truncate ${moveCls}`}>
+                  {pts != null ? `${pts > 0 ? "+" : ""}${pts.toFixed(Math.abs(pts) >= 100 ? 0 : 1)}` : "—"}
+                  {pct != null ? ` ${pct > 0 ? "+" : ""}${pct.toFixed(2)}%` : ""}
                 </div>
               </button>
             );
@@ -206,17 +189,6 @@ export default function MobileStickyChrome({
             {pnlSlot}
           </div>
         ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-0.5 font-mono-data text-[10px] text-slate-500" data-testid="mobile-index-meta">
-          {pct != null && (
-            <span className={pctCls}>
-              {pct > 0 ? "+" : ""}
-              {pct.toFixed(2)}%
-            </span>
-          )}
-          {atm != null && <span>ATM {Number(atm).toLocaleString("en-IN")}</span>}
-          {expiryShort && <span>Exp {expiryShort}</span>}
-          {marketOpen ? <span className="text-emerald-600">Live</span> : <span>Last session</span>}
         </div>
       </div>
 

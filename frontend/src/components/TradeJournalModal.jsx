@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen,
   ChevronLeft,
@@ -199,15 +200,9 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   }, [open, year, month, loadMonth]);
 
   useEffect(() => {
-    if (!dayDoc?.date) return undefined;
-    const id = window.setTimeout(() => {
-      const el = document.querySelector('[data-testid="journal-day-editor"]');
-      if (el && window.matchMedia("(max-width: 767px)").matches) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 50);
-    return () => window.clearTimeout(id);
-  }, [dayDoc?.date]);
+    if (!open) return;
+    loadYear(year);
+  }, [open, year, loadYear]);
 
   const byDate = useMemo(() => {
     const m = new Map();
@@ -355,8 +350,78 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const avgWin = Number(stats.avg_win) || 0;
   const avgLoss = Math.abs(Number(stats.avg_loss) || 0);
   const barTotal = avgWin + avgLoss || 1;
-  const heat = yearData?.heatmap;
+  const heat = useMemo(() => {
+    const base = yearData?.heatmap;
+    const monthDays = data?.days || [];
+    const monthHasBooked = monthDays.some(isTraded);
+    const netsEmpty = !(base?.month_nets || []).some((v) => Math.abs(Number(v) || 0) >= 0.01);
+    if (base && !(netsEmpty && monthHasBooked && data?.month === month && data?.year === year)) {
+      return base;
+    }
+    const by_index = {
+      NIFTY: Array(12).fill(0),
+      SENSEX: Array(12).fill(0),
+      BANKNIFTY: Array(12).fill(0),
+    };
+    const month_nets = Array(12).fill(0);
+    const trading = Array(12).fill(0);
+    if (base?.by_index) {
+      for (const idx of Object.keys(by_index)) {
+        by_index[idx] = (base.by_index[idx] || Array(12).fill(0)).slice();
+      }
+    }
+    if (base?.month_nets) {
+      for (let i = 0; i < 12; i += 1) month_nets[i] = Number(base.month_nets[i]) || 0;
+    }
+    if (base?.months) {
+      for (let i = 0; i < 12; i += 1) trading[i] = Number(base.months[i]?.trading_days) || 0;
+    }
+    const mi = month - 1;
+    if (mi >= 0 && mi < 12 && monthHasBooked) {
+      let net = 0;
+      let days = 0;
+      const idxAcc = { NIFTY: 0, SENSEX: 0, BANKNIFTY: 0 };
+      monthDays.forEach((d) => {
+        if (!isTraded(d)) return;
+        net += cellPnl(d);
+        days += 1;
+        const ip = d.booked_index_pnl || {};
+        for (const k of Object.keys(idxAcc)) {
+          idxAcc[k] += Number(ip[k]) || 0;
+        }
+      });
+      month_nets[mi] = net;
+      trading[mi] = days;
+      for (const k of Object.keys(idxAcc)) by_index[k][mi] = idxAcc[k];
+    }
+    return {
+      year,
+      indices: ["NIFTY", "SENSEX", "BANKNIFTY"],
+      by_index,
+      month_nets,
+      months: month_nets.map((v, i) => ({
+        month: i + 1,
+        net_pnl: v,
+        trading_days: trading[i],
+        by_index: {
+          NIFTY: by_index.NIFTY[i],
+          SENSEX: by_index.SENSEX[i],
+          BANKNIFTY: by_index.BANKNIFTY[i],
+        },
+      })),
+    };
+  }, [yearData, data, year, month]);
   const heatMax = Math.max(1, ...(heat?.month_nets || []).map((v) => Math.abs(v)));
+  const yearStats = useMemo(() => {
+    const s = yearData?.stats;
+    if (s && (Number(s.trading_days) || 0) > 0) return s;
+    const nets = heat?.month_nets || [];
+    const net = nets.reduce((a, b) => a + (Number(b) || 0), 0);
+    const days = (heat?.months || []).reduce((a, m) => a + (Number(m.trading_days) || 0), 0);
+    if (days) return { ...(s || {}), net_pnl: net, trading_days: days };
+    return s || {};
+  }, [yearData, heat]);
+  const focused = !!(selected && dayDoc && tab === "calendar");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -403,6 +468,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
         <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 max-md:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           {tab === "calendar" && (
             <>
+              {!focused && (
+              <>
               <div className="md:hidden rounded-xl border border-emerald-200 bg-white px-3 py-2 flex items-center justify-between gap-2 shadow-sm">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Month booked</div>
@@ -450,6 +517,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   </div>
                 </div>
               </div>
+              </>
+              )}
 
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => shiftMonth(-1)} data-testid="journal-prev-month">
@@ -463,6 +532,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   This month
                 </Button>
                 <div className="flex-1" />
+                {!focused && (
                 <div className="hidden md:flex items-center gap-2 text-sm">
                   <span className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Monthly stats</span>
                   <span className={`font-semibold font-mono-data ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
@@ -470,9 +540,19 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   </span>
                   <span className="text-[12px] text-slate-500">{stats.trading_days || 0} days</span>
                 </div>
+                )}
               </div>
 
-              <div className="flex gap-2 min-w-0">
+              <AnimatePresence mode="wait">
+              {!focused && (
+              <motion.div
+                key="journal-cal"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.22 }}
+                className="flex gap-2 min-w-0"
+              >
               <div className="min-w-0 flex-1">
                   <div className="grid grid-cols-7 gap-0.5 md:gap-2 text-[10px] md:text-[12px] uppercase tracking-wide text-slate-500 font-semibold mb-1">
                     {WEEKDAYS.map((d, i) => (
@@ -607,8 +687,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     </div>
                   ))}
                 </div>
-              </div>
-              {loading && <div className="text-xs text-slate-600">Loading calendar…</div>}
+              </motion.div>
+              )}
+              </AnimatePresence>
+              {loading && !focused && <div className="text-xs text-slate-600">Loading calendar…</div>}
             </>
           )}
 
@@ -623,10 +705,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   <ChevronRight className="w-4 h-4" />
                 </Button>
                 <div className="flex-1" />
-                <span className={`font-semibold font-mono-data ${Number(yearData?.stats?.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                  {privacy ? "••••" : compactPnl(yearData?.stats?.net_pnl)}
+                <span className={`font-semibold font-mono-data ${Number(yearStats?.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                  {privacy ? "••••" : compactPnl(yearStats?.net_pnl)}
                 </span>
-                <span className="text-[12px] text-slate-500">{yearData?.stats?.trading_days || 0} days</span>
+                <span className="text-[12px] text-slate-500">{yearStats?.trading_days || 0} days</span>
               </div>
               <div className="md:hidden space-y-1.5" data-testid="journal-year-heatmap-mobile">
                 {MONTH_SHORT.map((m, i) => {
@@ -708,8 +790,33 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
             </div>
           )}
 
-          {dayDoc && tab === "calendar" && (
-            <div className="rounded-2xl border border-emerald-100 p-4 space-y-3 bg-gradient-to-br from-white via-white to-emerald-50/40 shadow-sm" data-testid="journal-day-editor">
+          {focused && (
+            <motion.div
+              key="journal-focus"
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 16 }}
+              transition={{ duration: 0.24 }}
+              className="flex flex-col md:flex-row gap-3 items-stretch md:items-start"
+              data-testid="journal-day-focus"
+            >
+              <button
+                type="button"
+                onClick={() => openDay(selected)}
+                data-testid="journal-focus-date"
+                className="shrink-0 w-full md:w-[6.5rem] rounded-2xl border-2 border-emerald-500 bg-emerald-600 text-white px-3 py-3 text-left shadow-md hover:bg-emerald-700"
+                title="Click to return to calendar"
+              >
+                <div className="text-[10px] uppercase tracking-wide text-emerald-100 font-semibold">Selected</div>
+                <div className="text-3xl font-bold leading-none mt-1">
+                  {Number(String(dayDoc.date).slice(8, 10))}
+                </div>
+                <div className="text-[11px] mt-1 text-emerald-50">
+                  {new Date(`${dayDoc.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short" })}
+                </div>
+                <div className="text-[10px] mt-2 text-emerald-100">Tap to calendar</div>
+              </button>
+            <div className="rounded-2xl border border-emerald-100 p-4 space-y-3 bg-gradient-to-br from-white via-white to-emerald-50/40 shadow-sm flex-1 min-w-0" data-testid="journal-day-editor">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold">
@@ -878,6 +985,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </Button>
               </div>
             </div>
+            </motion.div>
           )}
         </div>
       </DialogContent>

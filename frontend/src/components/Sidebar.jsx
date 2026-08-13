@@ -328,11 +328,10 @@ export default function Sidebar({
   return (
     <aside
       data-testid="sidebar"
-      className="oi-sidebar w-72 shrink-0 h-full flex flex-col overflow-y-auto relative z-10 max-md:w-full max-md:rounded-t-[1.75rem] md:rounded-r-2xl"
+      className="oi-sidebar w-72 shrink-0 h-full flex flex-col overflow-y-auto relative z-10 max-md:w-[min(18rem,88vw)] rounded-r-2xl"
     >
       {/* Index search / switcher — Hide sits on the INDEX row (no "Sidebar" label when open) */}
-      <div className="p-4 border-b border-slate-200/80 dark:border-slate-700/70 max-md:pt-5">
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300 md:hidden" aria-hidden />
+      <div className="p-4 border-b border-slate-200/80 dark:border-slate-700/70">
         <div className="flex items-center justify-between gap-2">
           <Label className="text-[10px] uppercase tracking-widest text-slate-500">Index</Label>
           {typeof onCollapse === "function" && (
