@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,6 +23,7 @@ import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
 import { isTradingDayIST, todayIST } from "@/lib/holidays";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { kiteModeBadge, kiteModeBadgeClass } from "@/lib/kiteModeLabel";
+import { publishTodayPnl, readTodayPnlCache, TODAY_PNL_EVENT } from "@/lib/todayPnl";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_EVENT = "oi-positions-privacy";
@@ -30,8 +31,9 @@ const PRIVACY_MASK = "••••";
 
 /** Admin-only Today P&L chip for the header (beside the clock). */
 function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
-  const [pnl, setPnl] = useState(null);
-  const [openCount, setOpenCount] = useState(0);
+  const cached = readTodayPnlCache();
+  const [pnl, setPnl] = useState(() => cached?.total ?? null);
+  const [openCount, setOpenCount] = useState(() => cached?.open ?? 0);
   const [privacy, setPrivacy] = useState(() => {
     try { return localStorage.getItem(PRIVACY_LS_KEY) === "1"; } catch { return false; }
   });
@@ -51,6 +53,18 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
     };
   }, []);
 
+  useEffect(() => {
+    const apply = (detail) => {
+      if (!detail || !Number.isFinite(Number(detail.total))) return;
+      setPnl(Number(detail.total));
+      if (detail.open != null) setOpenCount(Number(detail.open) || 0);
+    };
+    const onPnl = (e) => apply(e.detail);
+    window.addEventListener(TODAY_PNL_EVENT, onPnl);
+    apply(readTodayPnlCache());
+    return () => window.removeEventListener(TODAY_PNL_EVENT, onPnl);
+  }, []);
+
   const load = useCallback(async () => {
     if (!enabled) return;
     try {
@@ -58,8 +72,10 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
       const rows = Array.isArray(data?.positions) ? data.positions : [];
       const open = rows.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
       const total = data?.pnl_today?.total;
+      const next = total != null && Number.isFinite(Number(total)) ? Number(total) : 0;
       setOpenCount(open);
-      setPnl(total != null && Number.isFinite(Number(total)) ? Number(total) : 0);
+      setPnl(next);
+      publishTodayPnl({ total: next, open });
     } catch {
       /* keep last good value */
     }
@@ -92,7 +108,7 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
       data-testid="header-today-pnl"
       title={openCount > 0 ? `Today P&L · ${openCount} open` : "Today P&L (includes exited today)"}
     >
-      <span className="text-[9px] uppercase tracking-wider text-slate-400">Today P&L</span>
+      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold">Today P&L</span>
       <span
         className={`font-mono-data text-sm font-bold tabular-nums ${
           privacy || waiting ? "text-slate-500" : positive ? "text-emerald-600" : "text-rose-600"
@@ -216,13 +232,6 @@ export default function Header({
   const kiteBtnCls = kiteUserId
     ? "rounded-sm h-8 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400 font-semibold"
     : "rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700";
-  const kiteLive =
-    isAdmin && (
-      status?.mode === "kite"
-      || !!status?.has_kite_credentials
-      || !!status?.kite_ok
-      || !!status?.kite_user_id
-    );
 
   // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
   // to avoid duplicate network requests across components.
@@ -276,9 +285,20 @@ export default function Header({
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   useEffect(() => {
     const open = () => setMobileToolsOpen(true);
+    const toggle = () => setMobileToolsOpen((v) => !v);
+    const close = () => setMobileToolsOpen(false);
     window.addEventListener("oi-open-admin-tools", open);
-    return () => window.removeEventListener("oi-open-admin-tools", open);
+    window.addEventListener("oi-toggle-admin-tools", toggle);
+    window.addEventListener("oi-close-admin-tools", close);
+    return () => {
+      window.removeEventListener("oi-open-admin-tools", open);
+      window.removeEventListener("oi-toggle-admin-tools", toggle);
+      window.removeEventListener("oi-close-admin-tools", close);
+    };
   }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("oi-admin-tools-changed", { detail: { open: mobileToolsOpen } }));
+  }, [mobileToolsOpen]);
   const onRefreshDay = async () => {
     if (!isAdmin) return;
     if (!window.confirm(
@@ -416,15 +436,16 @@ export default function Header({
             <Button
               data-testid="btn-mobile-tools"
               size="sm"
+              aria-pressed={mobileToolsOpen}
               onClick={() => setMobileToolsOpen((v) => !v)}
-              className={`rounded-sm h-8 text-[11px] font-semibold px-2.5 ${
+              className={`rounded-sm h-8 text-[11px] font-semibold px-2.5 min-w-[3.75rem] ${
                 mobileToolsOpen
                   ? "bg-slate-900 text-white hover:bg-slate-800"
                   : "bg-emerald-600 text-white hover:bg-emerald-700"
               }`}
-              title="Admin tools"
+              title={mobileToolsOpen ? "Tools open — tap again to close" : "Admin tools"}
             >
-              {mobileToolsOpen ? "Hide Tools" : "Tools"}
+              Tools
             </Button>
           )}
           <Button
@@ -499,8 +520,19 @@ export default function Header({
           data-testid="mobile-admin-tools"
           className="md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-slate-100 dark:border-slate-800 pt-2 bg-slate-50/80 dark:bg-slate-900/50"
         >
-          <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
-            Admin tools
+          <div className="w-full flex items-center justify-between gap-2 px-0.5">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
+              Admin tools
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+              onClick={() => setMobileToolsOpen(false)}
+              data-testid="btn-mobile-tools-close"
+              title="Close tools"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
           <div className="w-full basis-full">
             <AdminControls
@@ -594,12 +626,14 @@ export default function Header({
           <div className="origin-right">
             <BigClock compact />
           </div>
-          <HeaderTodayPnl
-            enabled={!!kiteLive}
-            status={status}
-            pollMs={positionsPollMs}
-            className="hidden md:flex flex-col items-end leading-tight px-2 shrink-0 border-l border-slate-200 dark:border-slate-700"
-          />
+          {isAdmin && (
+            <HeaderTodayPnl
+              enabled
+              status={status}
+              pollMs={positionsPollMs}
+              className="hidden md:flex flex-col items-end leading-tight px-2 shrink-0 border-l border-slate-200 dark:border-slate-700"
+            />
+          )}
           {lastPulledAt && (
             <div
               className={
@@ -925,15 +959,16 @@ export default function Header({
           <Button
             data-testid="btn-tablet-tools"
             size="sm"
+            aria-pressed={mobileToolsOpen}
             onClick={() => setMobileToolsOpen((v) => !v)}
-            className={`flex-1 rounded-sm h-9 text-xs font-semibold ${
+            className={`rounded-sm h-9 text-xs font-semibold px-4 ${
               mobileToolsOpen
                 ? "bg-slate-900 text-white hover:bg-slate-800"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
-            title="Admin tools: Public access, Settings, Kite API, Fresh Pull"
+            title={mobileToolsOpen ? "Tools open — tap again to close" : "Admin tools: Public access, Settings, Kite API, Fresh Pull"}
           >
-            {mobileToolsOpen ? "Hide Tools" : "Tools · Public / Settings / Admin"}
+            Tools
           </Button>
         </div>
       )}

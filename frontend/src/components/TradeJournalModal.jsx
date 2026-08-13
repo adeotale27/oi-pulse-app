@@ -339,31 +339,33 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none"
+        className="max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none sm:rounded-2xl border-slate-200"
         data-testid="trade-journal-modal"
       >
-        <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100">
+        <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-emerald-700" />
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                <BookOpen className="w-4 h-4" />
+              </span>
               Trade journal
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-slate-600">
               Daily booked P&amp;L is frozen at 15:41 IST after Index F&amp;O close. Flip months for past books; year view consolidates NIFTY / SENSEX / BANKNIFTY.
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-3 flex gap-1 rounded-full bg-slate-100 p-0.5 w-fit">
+          <div className="mt-3 flex gap-1 rounded-full bg-white border border-slate-200 p-0.5 w-fit shadow-sm">
             <button
               type="button"
               onClick={() => setTab("calendar")}
-              className={`h-8 px-3 rounded-full text-[12px] font-semibold ${tab === "calendar" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
+              className={`h-8 px-3 rounded-full text-[12px] font-semibold ${tab === "calendar" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
             >
               Calendar
             </button>
             <button
               type="button"
               onClick={() => setTab("year")}
-              className={`h-8 px-3 rounded-full text-[12px] font-semibold ${tab === "year" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}
+              className={`h-8 px-3 rounded-full text-[12px] font-semibold ${tab === "year" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
               data-testid="journal-year-tab"
             >
               Year heatmap
@@ -375,35 +377,35 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
           {tab === "calendar" && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex items-center gap-3">
+                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
                   <Gauge pct={stats.trade_win_rate} />
                   <div>
-                    <div className="text-[10px] uppercase tracking-widest text-slate-400">Trade win %</div>
-                    <div className="text-lg font-semibold font-mono-data">{stats.trade_win_rate ?? 0}%</div>
-                    <div className="text-[10px] text-slate-400">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">Trade win %</div>
+                    <div className="text-lg font-semibold font-mono-data text-slate-900">{stats.trade_win_rate ?? 0}%</div>
+                    <div className="text-[10px] text-slate-600">
                       {stats.trade_wins || 0} booked wins · {stats.trade_losses || 0} losses
                     </div>
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                  <div className="text-[10px] uppercase tracking-widest text-slate-400">Avg win / loss</div>
-                  <div className="text-lg font-semibold font-mono-data">{stats.avg_win_loss_ratio ?? "—"}</div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">Avg win / loss</div>
+                  <div className="text-lg font-semibold font-mono-data text-slate-900">{stats.avg_win_loss_ratio ?? "—"}</div>
                   <div className="mt-1.5 h-2 rounded-full overflow-hidden flex bg-slate-100">
                     <div className="bg-emerald-500" style={{ width: `${(100 * avgWin) / barTotal}%` }} />
                     <div className="bg-rose-400" style={{ width: `${(100 * avgLoss) / barTotal}%` }} />
                   </div>
-                  <div className="flex justify-between text-[10px] mt-1">
-                    <span className="text-emerald-700">{privacy ? "••••" : compactPnl(avgWin)}</span>
-                    <span className="text-rose-600">{privacy ? "••••" : compactPnl(-avgLoss)}</span>
+                  <div className="flex justify-between text-[10px] mt-1 font-semibold">
+                    <span className="text-emerald-800">{privacy ? "••••" : compactPnl(avgWin)}</span>
+                    <span className="text-rose-700">{privacy ? "••••" : compactPnl(-avgLoss)}</span>
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex items-center gap-3">
+                <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
                   <Gauge pct={stats.win_rate} />
                   <div>
-                    <div className="text-[10px] uppercase tracking-widest text-slate-400">Day win %</div>
-                    <div className="text-lg font-semibold font-mono-data">{stats.win_rate ?? 0}%</div>
-                    <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                      <Trophy className="w-3 h-3" />
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">Day win %</div>
+                    <div className="text-lg font-semibold font-mono-data text-slate-900">{stats.win_rate ?? 0}%</div>
+                    <div className="text-[10px] text-slate-600 flex items-center gap-1">
+                      <Trophy className="w-3 h-3 text-amber-600" />
                       Desk {stats.desk_score ?? "—"} · PF {stats.profit_factor ?? "—"}
                     </div>
                   </div>
@@ -414,7 +416,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => shiftMonth(-1)} data-testid="journal-prev-month">
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
-                <div className="text-base font-semibold min-w-[10rem] text-center" data-testid="journal-month-label">{monthLabel}</div>
+                <div className="text-base font-semibold min-w-[10rem] text-center text-slate-900" data-testid="journal-month-label">{monthLabel}</div>
                 <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => shiftMonth(1)} data-testid="journal-next-month">
                   <ChevronRight className="w-4 h-4" />
                 </Button>
@@ -423,7 +425,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </Button>
                 <div className="flex-1" />
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-[11px] uppercase tracking-wider text-slate-400">Monthly stats</span>
+                  <span className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Monthly stats</span>
                   <span className={`font-semibold font-mono-data ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                     {privacy ? "••••" : compactPnl(stats.net_pnl)}
                   </span>
@@ -433,7 +435,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
 
               <div className="flex gap-2 min-w-0">
                 <div className="flex-1 min-w-0 overflow-x-auto">
-                  <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wider text-slate-400 mb-1">
+                  <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wide text-slate-600 font-semibold mb-1">
                     {WEEKDAYS.map((d) => <div key={d} className="text-center">{d}</div>)}
                   </div>
                   <div className="grid grid-cols-7 gap-1" data-testid="journal-calendar">
@@ -447,10 +449,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const hol = isHoliday(c.iso);
                       const session = isTradingDayIST(c.iso);
                       const tone = traded ? cellClasses(pnl, traded, maxAbs) : hol
-                        ? { box: "bg-amber-50 border-amber-200 text-amber-800", amt: "text-amber-800", invert: false }
+                        ? { box: "bg-amber-50 border-amber-300 text-amber-900", amt: "text-amber-900", invert: false }
                         : !session
-                          ? { box: "bg-slate-50/60 border-slate-100 text-slate-300", amt: "text-slate-300", invert: false }
-                          : { box: "bg-slate-50/80 border-slate-100 text-slate-400", amt: "text-slate-300", invert: false };
+                          ? { box: "bg-rose-50 border-2 border-rose-500 text-black", amt: "text-black", invert: false, weekend: true }
+                          : { box: "bg-white border-slate-200 text-slate-700", amt: "text-slate-500", invert: false };
                       const decided = (doc?.win_trades || 0) + (doc?.loss_trades || 0);
                       const wr = decided > 0 ? `${Math.round((100 * (doc.win_trades || 0)) / decided)}%` : null;
                       const hasNote = !!(doc?.went_well || doc?.went_wrong || doc?.notes);
@@ -464,8 +466,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                             isSel ? "ring-2 ring-violet-500" : ""
                           } ${isToday ? "outline outline-2 outline-violet-400 outline-offset-0" : ""}`}
                         >
-                          <div className={`flex justify-between items-start text-[10px] ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
-                            <span className={`font-semibold ${tone.invert ? "text-white" : "text-slate-700"}`}>{c.day}</span>
+                          <div className={`flex justify-between items-start text-[10px] ${tone.invert ? "text-white/80" : tone.weekend ? "text-black" : "text-slate-600"}`}>
+                            <span className={`font-semibold ${tone.invert ? "text-white" : tone.weekend ? "text-black" : "text-slate-800"}`}>{c.day}</span>
                             <span className="flex items-center gap-0.5">
                               {hasNote ? <FileText className="w-3 h-3" /> : null}
                               {doc?.screenshot_count > 0 ? <span title="Has screenshot">🖼</span> : null}
@@ -490,9 +492,11 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               {hol.name.replace(/\s*\(.*$/, "").split(" ").slice(0, 2).join(" ")}
                             </div>
                           ) : !session ? (
-                            <div className="text-[10px] text-slate-300 mt-4">Off</div>
+                            <div className="text-[9px] font-semibold text-black mt-2 leading-tight">
+                              Weekend<br />Market closed
+                            </div>
                           ) : (
-                            <div className="text-[10px] text-slate-300 mt-4">—</div>
+                            <div className="text-[10px] text-slate-500 mt-4">—</div>
                           )}
                         </button>
                       );
@@ -500,14 +504,14 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   </div>
                 </div>
                 <div className="hidden sm:flex w-[8.5rem] shrink-0 flex-col gap-1.5" data-testid="journal-weekly-recap">
-                  <div className="text-[10px] uppercase tracking-widest text-slate-400 px-0.5">Weekly recap</div>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold px-0.5">Weekly recap</div>
                   {weeks.map((w) => (
-                    <div key={w.label} className="flex-1 min-h-[4.5rem] rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-2">
-                      <div className="text-[10px] font-semibold text-slate-500">{w.label}</div>
+                    <div key={w.label} className="flex-1 min-h-[4.5rem] rounded-2xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+                      <div className="text-[10px] font-semibold text-slate-700">{w.label}</div>
                       <div className={`text-[15px] font-bold font-mono-data leading-tight ${w.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                         {privacy ? "••••" : compactPnl(w.pnl)}
                       </div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="text-[10px] text-slate-600">
                         {w.tradingDays} session{w.tradingDays === 1 ? "" : "s"}
                         {w.booked ? ` · ${w.booked} booked` : ""}
                       </div>
@@ -520,7 +524,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   ))}
                 </div>
               </div>
-              {loading && <div className="text-xs text-slate-400">Loading calendar…</div>}
+              {loading && <div className="text-xs text-slate-600">Loading calendar…</div>}
             </>
           )}
 
@@ -543,7 +547,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 <table className="w-full text-[11px] min-w-[40rem]">
                   <thead>
-                    <tr className="text-slate-400">
+                    <tr className="text-slate-600 bg-slate-50">
                       <th className="text-left p-2 font-medium">Index</th>
                       {MONTH_SHORT.map((m) => (
                         <th key={m} className="p-2 font-medium">{m}</th>
@@ -572,7 +576,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   </tbody>
                 </table>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-600">
                 Month totals are the frozen close P&amp;L for each stored day. Open a month on Calendar to journal that book.
               </p>
             </div>
@@ -736,9 +740,9 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
 
 function Stat({ label, value }) {
   return (
-    <div className="rounded-md bg-slate-50 px-2 py-1.5 border border-slate-100">
-      <div className="text-[10px] uppercase tracking-wider text-slate-400">{label}</div>
-      <div className="font-semibold font-mono-data text-slate-800">{value ?? "—"}</div>
+    <div className="rounded-lg bg-white px-2 py-1.5 border border-slate-200 shadow-sm">
+      <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">{label}</div>
+      <div className="font-semibold font-mono-data text-slate-900">{value ?? "—"}</div>
     </div>
   );
 }

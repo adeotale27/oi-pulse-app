@@ -38,7 +38,14 @@ export default function MobileBottomNav({
 }) {
   const [edit, setEdit] = useState(false);
   const [ids, setIds] = useState(() => loadMobileDock(isAdmin).map((d) => d.id));
+  const [toolsOpen, setToolsOpen] = useState(false);
   const holdRef = useRef({ timer: null, suppressClick: false });
+
+  useEffect(() => {
+    const sync = (e) => setToolsOpen(!!e.detail?.open);
+    window.addEventListener("oi-admin-tools-changed", sync);
+    return () => window.removeEventListener("oi-admin-tools-changed", sync);
+  }, []);
 
   useEffect(() => {
     setIds(loadMobileDock(isAdmin).map((d) => d.id));
@@ -124,7 +131,7 @@ export default function MobileBottomNav({
           const active = item.action === "desk"
             ? deskOpen
             : item.action === "admin-tools"
-              ? false
+              ? toolsOpen
               : activeTab === item.tab && !deskOpen;
           return (
             <button
