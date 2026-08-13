@@ -20,6 +20,7 @@ import {
   deleteJournalScreenshot,
 } from "@/lib/api";
 import { toast } from "sonner";
+import { isHoliday, isTradingDayIST } from "@/lib/holidays";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -73,16 +74,28 @@ function weekBuckets(cells, byDate) {
   for (let i = 0; i < cells.length; i += 7) {
     const slice = cells.slice(i, i + 7).filter(Boolean);
     let pnl = 0;
-    let days = 0;
+    let booked = 0;
     let trades = 0;
+    const holidays = [];
+    let tradingDays = 0;
     for (const c of slice) {
+      const hol = isHoliday(c.iso);
+      if (hol) holidays.push(hol);
+      if (isTradingDayIST(c.iso)) tradingDays += 1;
       const doc = byDate.get(c.iso);
       if (!isTraded(doc)) continue;
       pnl += cellPnl(doc);
-      days += 1;
+      booked += 1;
       trades += Number(doc.trade_count || doc.exited_count || 0);
     }
-    weeks.push({ pnl, days, trades, label: `Week ${weeks.length + 1}` });
+    weeks.push({
+      pnl,
+      booked,
+      trades,
+      tradingDays,
+      holidays,
+      label: `Week ${weeks.length + 1}`,
+    });
   }
   return weeks;
 }
@@ -431,7 +444,13 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const traded = isTraded(doc);
                       const isToday = c.iso === today;
                       const isSel = c.iso === selected;
-                      const tone = cellClasses(pnl, traded, maxAbs);
+                      const hol = isHoliday(c.iso);
+                      const session = isTradingDayIST(c.iso);
+                      const tone = traded ? cellClasses(pnl, traded, maxAbs) : hol
+                        ? { box: "bg-amber-50 border-amber-200 text-amber-800", amt: "text-amber-800", invert: false }
+                        : !session
+                          ? { box: "bg-slate-50/60 border-slate-100 text-slate-300", amt: "text-slate-300", invert: false }
+                          : { box: "bg-slate-50/80 border-slate-100 text-slate-400", amt: "text-slate-300", invert: false };
                       const decided = (doc?.win_trades || 0) + (doc?.loss_trades || 0);
                       const wr = decided > 0 ? `${Math.round((100 * (doc.win_trades || 0)) / decided)}%` : null;
                       const hasNote = !!(doc?.went_well || doc?.went_wrong || doc?.notes);
@@ -466,6 +485,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                                 <div className={`text-[9px] font-semibold ${tone.invert ? "text-white/90" : "text-slate-600"}`}>{wr}</div>
                               ) : null}
                             </>
+                          ) : hol ? (
+                            <div className="text-[9px] text-amber-700 mt-2 leading-tight font-medium" title={hol.name}>
+                              {hol.name.replace(/\s*\(.*$/, "").split(" ").slice(0, 2).join(" ")}
+                            </div>
+                          ) : !session ? (
+                            <div className="text-[10px] text-slate-300 mt-4">Off</div>
                           ) : (
                             <div className="text-[10px] text-slate-300 mt-4">—</div>
                           )}
@@ -474,7 +499,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     })}
                   </div>
                 </div>
-                <div className="hidden sm:flex w-[7.5rem] shrink-0 flex-col gap-1.5" data-testid="journal-weekly-recap">
+                <div className="hidden sm:flex w-[8.5rem] shrink-0 flex-col gap-1.5" data-testid="journal-weekly-recap">
                   <div className="text-[10px] uppercase tracking-widest text-slate-400 px-0.5">Weekly recap</div>
                   {weeks.map((w) => (
                     <div key={w.label} className="flex-1 min-h-[4.5rem] rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-2">
@@ -482,7 +507,15 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       <div className={`text-[15px] font-bold font-mono-data leading-tight ${w.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                         {privacy ? "••••" : compactPnl(w.pnl)}
                       </div>
-                      <div className="text-[10px] text-slate-400">{w.days} days</div>
+                      <div className="text-[10px] text-slate-500">
+                        {w.tradingDays} session{w.tradingDays === 1 ? "" : "s"}
+                        {w.booked ? ` · ${w.booked} booked` : ""}
+                      </div>
+                      {w.holidays?.length ? (
+                        <div className="text-[9px] text-amber-700 leading-tight mt-0.5" title={w.holidays.map((h) => h.name).join(", ")}>
+                          Holiday · {w.holidays.map((h) => h.name.replace(/\s*\(.*$/, "")).join(", ")}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

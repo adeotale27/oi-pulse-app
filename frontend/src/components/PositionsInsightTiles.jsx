@@ -59,10 +59,8 @@ export default function PositionsInsightTiles({ nodes = {} }) {
           </PopoverContent>
         </Popover>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 2xl:grid-cols-8 gap-2">
         {visible.map((id) => {
-          const def = INSIGHT_TILE_DEFS.find((t) => t.id === id);
-          const span = def?.span === 2 ? "col-span-2" : "";
           return (
             <div
               key={id}
@@ -92,7 +90,7 @@ export default function PositionsInsightTiles({ nodes = {} }) {
                   setOrder((prev) => reorderInsights(prev, from, id));
                 }
               }}
-              className={`relative min-w-0 ${span} ${dragging === id ? "opacity-40" : ""} ${
+              className={`relative min-w-0 ${dragging === id ? "opacity-40" : ""} ${
                 overId === id && dragging && dragging !== id ? "ring-2 ring-emerald-400 rounded-md" : ""
               }`}
             >
