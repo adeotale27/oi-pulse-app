@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { KeyRound, ExternalLink, X, ShieldCheck, LogOut } from "lucide-react";
+import { safeHttpUrl } from "@/lib/safeUrl";
 
 /** Masked vault field with clear (×) — never hydrates plaintext secret from the server. */
 function VaultSecretField({
@@ -157,7 +158,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
         v = await persistKeySecretIfTyped();
         toast.success("API key / secret saved encrypted");
       }
-      const url = v?.login_url || null;
+      const url = safeHttpUrl(v?.login_url);
       if (!url) {
         toast.error("Save an API key first, then click login");
         return;
@@ -360,7 +361,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
           <a
             href="https://kite.trade/docs/connect/v3/user/#login-flow"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="text-xs text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
             data-testid="link-kite-docs"
           >

@@ -4,6 +4,36 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.07",
+    date: "2026-08-13",
+    user: [
+      "Phone index prices keep updating; heatmap tap jumps to the position on phone",
+      "If a screen errors, Reload desk brings the board back instead of a blank page",
+    ],
+    admin: [
+      "Login / remember-me capped at 8 POSTs per minute per IP; change-password is rate-limited",
+      "Journal screenshots require matching image magic bytes; API routes are no-store",
+      "New admin passwords use PBKDF2 600k iterations (existing hashes still verify at 120k)",
+      "Security headers: CSP, COOP, X-Permitted-Cross-Domain-Policies",
+    ],
+  },
+  {
+    version: "5.06",
+    date: "2026-08-13",
+    user: [
+      "Phone index tiles show live price, points, and today’s % for all three indices",
+      "Sidebar slides in from the left again",
+      "Position heatmap is open legs of the index you are on — readable strike labels, no exited SENSEX leftovers",
+      "Tap a journal day: calendar steps aside, date chip under the month, notes on the right; tap the chip to go back",
+      "Year heatmap fills from stored booked days",
+      "Right panel can show OI Change",
+    ],
+    admin: [
+      "Year heatmap fetches GET /journal/year/{year} when the journal opens",
+      "Spot WebSocket merges prices so inactive indices keep LTP; /tickers hydrates prev-close",
+    ],
+  },
+  {
     version: "5.05",
     date: "2026-08-13",
     user: [

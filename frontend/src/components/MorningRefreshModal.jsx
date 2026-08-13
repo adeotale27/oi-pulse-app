@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { RefreshCw, ExternalLink, ShieldCheck, AlertTriangle } from "lucide-react";
+import { safeHttpUrl } from "@/lib/safeUrl";
 
 /**
  * Morning Refresh Modal
@@ -48,7 +49,7 @@ export default function MorningRefreshModal({ open, onOpenChange, onRefreshed, o
   }, [open]);
 
   const kiteLoginUrl =
-    vault?.login_url
+    safeHttpUrl(vault?.login_url)
     || "https://kite.zerodha.com/connect/login?v=3";
 
   const doRefresh = async () => {
@@ -120,7 +121,7 @@ export default function MorningRefreshModal({ open, onOpenChange, onRefreshed, o
             <a
               href={kiteLoginUrl}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-3 rounded-sm bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
               data-testid="btn-kite-login"
             >

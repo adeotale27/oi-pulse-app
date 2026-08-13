@@ -5,11 +5,13 @@ import AdminLogin from "@/pages/AdminLogin";
 import KiteCallback from "@/pages/KiteCallback";
 import AuthGate from "@/components/AuthGate";
 import AboutAppModal from "@/components/AboutAppModal";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
 
 function App() {
   return (
     <div className="App">
+      <ErrorBoundary>
       <BrowserRouter>
         <Routes>
           {/* Dedicated admin login page — bypasses guest flow entirely. */}
@@ -33,6 +35,7 @@ function App() {
           />
         </Routes>
       </BrowserRouter>
+      </ErrorBoundary>
       <AboutAppModal />
       <Toaster position="top-right" richColors closeButton />
     </div>

@@ -1,4 +1,5 @@
 import { Wrench } from "lucide-react";
+import { safeHttpUrl } from "@/lib/safeUrl";
 
 /**
  * Surface Zerodha / Kite maintenance the way Kite's own toaster does —
@@ -8,6 +9,7 @@ export default function KiteMaintenanceBanner({ status }) {
   const maint = status?.kite_maintenance;
   if (!maint?.active || !maint?.message) return null;
 
+  const href = safeHttpUrl(maint.url);
   return (
     <div
       data-testid="kite-maintenance-banner"
@@ -20,11 +22,11 @@ export default function KiteMaintenanceBanner({ status }) {
           <div className="text-sm font-semibold leading-tight">Zerodha / Kite maintenance</div>
           <div className="text-xs opacity-85 mt-0.5 leading-snug">{String(maint.message).slice(0, 220)}</div>
         </div>
-        {maint.url ? (
+        {href ? (
           <a
-            href={maint.url}
+            href={href}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="text-[11px] font-semibold underline underline-offset-2 shrink-0"
             data-testid="kite-maintenance-link"
           >

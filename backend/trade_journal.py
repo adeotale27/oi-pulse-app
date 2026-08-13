@@ -7,7 +7,6 @@ from datetime import datetime, time as dtime, timezone
 from typing import Any, Dict, List, Optional
 
 from market_hours import is_trading_day, now_ist
-from datetime import datetime, time as dtime, timezone
 
 # Freeze after the last Positions auto-refresh (Index F&O 15:40 + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
@@ -393,17 +392,31 @@ def decode_screenshot(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not data:
         raise ValueError("Empty image")
     import base64
-    raw = base64.b64decode(data)
+    raw = base64.b64decode(data, validate=False)
     if len(raw) > MAX_SCREENSHOT_BYTES:
         raise ValueError("Image too large (max ~450KB)")
     if len(raw) < 32:
         raise ValueError("Image too small")
+    if not _image_magic_ok(raw, mime):
+        raise ValueError("Image data does not match type")
     return {
         "id": uuid.uuid4().hex[:12],
         "name": name,
         "mime": mime,
         "data": data,
     }
+
+
+def _image_magic_ok(raw: bytes, mime: str) -> bool:
+    if mime == "image/jpeg":
+        return raw[:3] == b"\xff\xd8\xff"
+    if mime == "image/png":
+        return raw.startswith(b"\x89PNG\r\n\x1a\n")
+    if mime == "image/gif":
+        return raw.startswith(b"GIF87a") or raw.startswith(b"GIF89a")
+    if mime == "image/webp":
+        return len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"
+    return False
 
 
 def _booked_index_pnl(d: Dict[str, Any]) -> Dict[str, float]:

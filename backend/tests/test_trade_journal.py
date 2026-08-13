@@ -83,12 +83,24 @@ def test_sanitize_clips_and_tags():
     assert all("<" not in t for t in out["tags"])
 
 
-def test_decode_screenshot_rejects_bad_mime():
+def test_decode_screenshot_rejects_non_image_payload():
+    import base64
+    data = base64.b64encode(b"not-an-image-just-text-padding-xxxxxxxx").decode()
     try:
-        decode_screenshot({"mime": "application/pdf", "data": "aaaa", "name": "x"})
+        decode_screenshot({"mime": "image/jpeg", "data": data, "name": "x.jpg"})
         assert False, "expected error"
     except ValueError:
         pass
+
+
+def test_decode_screenshot_accepts_jpeg_magic():
+    import base64
+    # Minimal JPEG SOI + padding so length >= 32.
+    raw = b"\xff\xd8\xff" + (b"\x00" * 40)
+    data = base64.b64encode(raw).decode()
+    out = decode_screenshot({"mime": "image/jpeg", "data": data, "name": "ok.jpg"})
+    assert out["mime"] == "image/jpeg"
+    assert out["id"]
 
 
 def test_month_bounds():

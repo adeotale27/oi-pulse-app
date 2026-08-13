@@ -125,9 +125,10 @@ def _guest_seconds_remaining(expires_at: datetime, now_utc: Optional[datetime] =
 BLOCKED_IP_MESSAGE = "Unable to process request at this moment"
 
 
-def _pw_hash(password: str, salt: bytes) -> str:
-    """Deterministic salted password hash (PBKDF2-HMAC-SHA256, 120k iters)."""
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 120_000)
+def _pw_hash(password: str, salt: bytes, iterations: int = 600_000) -> str:
+    """Deterministic salted password hash (PBKDF2-HMAC-SHA256)."""
+    iters = max(120_000, int(iterations or 600_000))
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iters)
     return dk.hex()
 
 
@@ -136,7 +137,8 @@ async def _verify_admin_password(password: str) -> bool:
     doc = await db.settings.find_one({"_id": "admin_credentials"})
     if doc and doc.get("password_hash") and doc.get("salt_hex"):
         salt = bytes.fromhex(doc["salt_hex"])
-        return hmac.compare_digest(_pw_hash(password, salt), doc["password_hash"])
+        iters = int(doc.get("pbkdf2_iters") or 120_000)
+        return hmac.compare_digest(_pw_hash(password, salt, iters), doc["password_hash"])
     if ADMIN_PASSWORD:
         return hmac.compare_digest(password, ADMIN_PASSWORD)
     return False
@@ -144,11 +146,13 @@ async def _verify_admin_password(password: str) -> bool:
 
 async def _store_admin_password(new_password: str):
     salt = secrets.token_bytes(16)
+    iters = 600_000
     await db.settings.update_one(
         {"_id": "admin_credentials"},
         {"$set": {
-            "password_hash": _pw_hash(new_password, salt),
+            "password_hash": _pw_hash(new_password, salt, iters),
             "salt_hex": salt.hex(),
+            "pbkdf2_iters": iters,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
         upsert=True,
@@ -4888,6 +4892,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "script-src 'self' 'unsafe-inline' https://*.i.posthog.com https://*.posthog.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: blob: https:; "
+            "connect-src 'self' ws: wss: https:; "
+            "worker-src 'self' blob:"
+        )
+        path = request.url.path
+        if path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
         # HSTS: enable only when served over HTTPS in production
         if os.environ.get('ENABLE_HSTS', 'true').lower() == 'true':
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -4907,9 +4929,16 @@ _RATE_LIMITED_PREFIXES = (
     "/api/telegram/huge-shift",
     "/api/auth/guest",
     "/api/auth/login",
+    "/api/auth/remember-login",
+    "/api/auth/change-password",
+)
+_AUTH_STRICT_PREFIXES = (
+    "/api/auth/login",
+    "/api/auth/remember-login",
 )
 _RATE_LIMIT_MAX = int(os.environ.get('RATE_LIMIT_MAX', '20'))       # requests
 _RATE_LIMIT_WINDOW = int(os.environ.get('RATE_LIMIT_WINDOW', '60')) # seconds
+_AUTH_RATE_LIMIT_MAX = int(os.environ.get('AUTH_RATE_LIMIT_MAX', '8'))
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -4921,11 +4950,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             bucket = _rate_buckets[key]
             while bucket and now - bucket[0] > _RATE_LIMIT_WINDOW:
                 bucket.popleft()
-            if len(bucket) >= _RATE_LIMIT_MAX:
+            limit = _AUTH_RATE_LIMIT_MAX if any(path.startswith(p) for p in _AUTH_STRICT_PREFIXES) else _RATE_LIMIT_MAX
+            if len(bucket) >= limit:
                 return Response(
                     content='{"detail":"Too many requests. Please slow down."}',
                     status_code=429,
                     media_type="application/json",
+                    headers={"Cache-Control": "no-store", "Retry-After": str(_RATE_LIMIT_WINDOW)},
                 )
             bucket.append(now)
         return await call_next(request)

@@ -1,5 +1,27 @@
 # Changelog
 
+## V5.07 — 2026-08-13
+
+Production hardening and leftover desk polish. Alerts are unchanged.
+
+- Phone quotes stay fresh (ticker LTP, not a one-shot seed); one `/tickers` poll shared with the marquee
+- Heatmap tap jumps to the visible position card on phone
+- Sidebar dimmer sits above the dock; Kite login URLs must be http(s)
+- Journal screenshots require real image bytes; login rate limits; CSP / no-store API
+- Desk error boundary so a UI throw does not blank the board
+
+## V5.06 — 2026-08-13
+
+Production polish: mobile quotes, side drawer, journal focus, heatmap, load.
+
+- Phone index tiles show LTP, points, and today’s % for NIFTY / SENSEX / BANKNIFTY (no “tap”, ATM, or last-session row)
+- Sidebar opens from the left again (not a bottom sheet)
+- Right panel dropdown includes **OI Change** (delta bars)
+- Position heatmap is the **open** book of the **active index**, with strike CE/PE labels — closed SENSEX legs no longer linger
+- Journal: tap a day and the calendar / weekly recap step aside; the date chip sits under the month title with notes on the right; tap the chip to restore the month
+- Year heatmap actually loads (and falls back to the current month if the year payload is empty)
+- Spot ticks merge instead of replacing other indices
+
 ## V5.05 — 2026-08-13
 
 Trade journal calendar is readable on phone.

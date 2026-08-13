@@ -58,8 +58,9 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
+import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
+import { safeHttpUrl } from "@/lib/safeUrl";
 import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
@@ -311,6 +312,7 @@ export default function Dashboard() {
   const seenActivityRef = useRef(new Set());          // dedupe key set per session
   const activeIndexRef = useRef(activeIndex);
   const [liveSpotPrices, setLiveSpotPrices] = useState({});
+  const [tickerQuotes, setTickerQuotes] = useState({});
   // Warm cache for ALL enabled indices so switching NIFTY ↔ SENSEX is instant.
   const oiCacheRef = useRef({});          // index -> last /change payload
   const expiryByIndexRef = useRef({});    // index -> { list, meta, note, selected }
@@ -428,7 +430,8 @@ export default function Dashboard() {
   const startUserKite = async () => {
     try {
       const data = await userKiteLoginUrl();
-      if (data?.login_url) window.location.assign(data.login_url);
+      const href = safeHttpUrl(data?.login_url);
+      if (href) window.location.assign(href);
       else toast.error("Kite login URL unavailable");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not start Kite login");
@@ -479,7 +482,7 @@ export default function Dashboard() {
       message.tickers.forEach((ticker) => {
         if (ticker?.index) nextPrices[ticker.index] = ticker.price;
       });
-      setLiveSpotPrices(nextPrices);
+      setLiveSpotPrices((prev) => ({ ...prev, ...nextPrices }));
       const match = message.tickers.find((ticker) => ticker.index === activeIndexRef.current);
       if (!match) return;
       setCurrent((prevCurrent) => {
@@ -926,6 +929,19 @@ export default function Dashboard() {
     }
   }, [push]);
 
+  const loadTickers = useCallback(async () => {
+    try {
+      const data = await fetchTickers();
+      const map = {};
+      for (const t of data?.tickers || []) {
+        if (t?.index) map[t.index] = t;
+      }
+      setTickerQuotes(map);
+    } catch (e) {
+      console.error("loadTickers failed", e);
+    }
+  }, []);
+
   // Keep Alerts UI visibility in a ref so the poller does not remount on tab switches.
   const alertViewRef = useRef({ activeTab, rightPanelView, showRightPanel });
   useEffect(() => {
@@ -1079,6 +1095,7 @@ export default function Dashboard() {
     oiCtxRef.current = { timeframe, activeIndex, selectedExpiry, expiryReady };
     if (expiryReady) loadOI();
   }, [timeframe, activeIndex, selectedExpiry, expiryReady, loadOI]);
+  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers" });
   useQuiescentAwarePolling(
     async () => {
       // During market hours always poll + toast — Positions / Straddle / any tab.
@@ -1707,11 +1724,35 @@ export default function Dashboard() {
     return (alerts || []).filter((a) => indexInAlertFocus(a.index));
   }, [alerts, alertEnabledIndices, indexInAlertFocus]);
 
+  const mobileIndexQuotes = useMemo(() => {
+    const idxs = enabledIndices.length ? enabledIndices : INDICES;
+    const out = {};
+    for (const idx of idxs) {
+      const t = tickerQuotes[idx];
+      const live = liveSpotPrices?.[idx];
+      const fromLive = live != null && Number.isFinite(Number(live)) ? Number(live) : null;
+      const fromActive = idx === activeIndex && current?.price != null ? Number(current.price) : null;
+      const fromTicker = t?.ltp != null ? Number(t.ltp) : null;
+      const price = fromLive ?? fromActive ?? fromTicker;
+      const prev = Number(t?.prev_close || t?.day_open)
+        || (idx === activeIndex ? Number(current?.prev_close || current?.day_open || 0) : 0);
+      const changePts = price != null && prev
+        ? price - prev
+        : (t?.change != null ? Number(t.change) : null);
+      const changePct = price != null && prev
+        ? ((price - prev) / prev) * 100
+        : (t?.change_pct != null ? Number(t.change_pct) : null);
+      out[idx] = { price, changePts, changePct };
+    }
+    return out;
+  }, [enabledIndices, tickerQuotes, liveSpotPrices, activeIndex, current]);
+
   const mobileIndexTicker = isMobile ? (
     <MobileIndexTicker
       activeIndex={activeIndex}
       onSelectIndex={setActiveIndex}
       spotPrices={liveSpotPrices}
+      tickers={Object.values(tickerQuotes)}
     />
   ) : null;
 
@@ -1815,12 +1856,12 @@ export default function Dashboard() {
           <>
             <button
               type="button"
-              className="md:hidden fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px]"
+              className="md:hidden fixed inset-0 z-[45] bg-slate-950/50 backdrop-blur-[2px]"
               aria-label="Close sidebar"
               data-testid="sidebar-mobile-backdrop"
               onClick={() => setCompact(true)}
             />
-            <div className="fixed md:static z-50 md:z-auto inset-y-0 left-0 max-w-[90vw] md:max-w-none shadow-2xl md:shadow-none max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:max-h-[78vh] max-md:w-full max-md:max-w-none max-md:rounded-t-[1.75rem] max-md:overflow-y-auto max-md:ring-1 max-md:ring-white/40">
+            <div className="fixed md:static z-50 md:z-auto inset-y-0 left-0 w-[min(18rem,88vw)] md:w-auto max-w-[90vw] md:max-w-none shadow-2xl md:shadow-none overflow-y-auto">
               <Sidebar
                 indices={enabledIndices.length ? enabledIndices : INDICES}
                 activeIndex={activeIndex}
@@ -1868,18 +1909,8 @@ export default function Dashboard() {
               activeIndex={activeIndex}
               indices={enabledIndices.length ? enabledIndices : INDICES}
               onSelectIndex={setActiveIndex}
-              spotPrices={{
-                ...(liveSpotPrices || {}),
-                [activeIndex]: liveSpotPrices?.[activeIndex] ?? current?.price,
-              }}
-              atm={current?.atm}
-              expiry={selectedExpiry}
-              changePct={(() => {
-                const spot = liveSpotPrices?.[activeIndex] ?? current?.price;
-                const prev = current?.day_open ?? current?.prev_close;
-                if (spot == null || !prev) return null;
-                return ((Number(spot) - Number(prev)) / Number(prev)) * 100;
-              })()}
+              spotPrices={liveSpotPrices}
+              indexQuotes={mobileIndexQuotes}
               tabs={dashboardTabs}
               activeTab={activeTab}
               onChangeTab={(id) => {
@@ -1889,7 +1920,6 @@ export default function Dashboard() {
               onReorder={handleReorderTabs}
               onFavorite={handleFavoriteTab}
               onMove={handleMoveTab}
-              marketOpen={status?.market?.is_market_open === true}
               infoTilesOpen={infoTilesOpen}
               onToggleInfoTiles={setInfoTilesOpen}
               infoTiles={

@@ -19,6 +19,7 @@ export const RIGHT_PANEL_VIEWS = [
   { key: "activity", label: "Activity Feed", pageId: "activity" },
   { key: "positions", label: "Positions", pageId: "positions" },
   { key: "oichart", label: "OI Chart (mini)", pageId: null },
+  { key: "oi-change", label: "OI Change", pageId: "oi-change" },
   { key: "straddle", label: "Straddle", pageId: "straddle" },
   { key: "index-events", label: "Index Risk", pageId: "index-events" },
 ];
@@ -160,7 +161,7 @@ export default function RightPanel({
               onSetFilter={setActivityFilter}
             />
           )}
-          {selectedView === "positions" && isAdmin && (
+          {selectedView === "positions" && (
             <PositionsPanel
               isKiteMode={isKiteMode}
               hasKiteCredentials={status?.has_kite_credentials != null
@@ -188,6 +189,17 @@ export default function RightPanel({
               atm={atm}
               mode={status?.mode}
               showOI={showOI}
+              currentTime={current?.timestamp}
+              prevTime={previous?.timestamp}
+            />
+          )}
+          {selectedView === "oi-change" && (
+            <OIChart
+              current={filteredCurrent}
+              previous={previous}
+              atm={atm}
+              mode={status?.mode}
+              showOI={false}
               currentTime={current?.timestamp}
               prevTime={previous?.timestamp}
             />
