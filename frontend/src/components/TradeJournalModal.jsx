@@ -455,7 +455,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => shiftMonth(-1)} data-testid="journal-prev-month">
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
-                <div className="text-base font-semibold min-w-[10rem] text-center text-slate-900" data-testid="journal-month-label">{monthLabel}</div>
+                <div className="text-sm sm:text-base font-semibold min-w-0 flex-1 sm:flex-none sm:min-w-[10rem] text-center text-slate-900" data-testid="journal-month-label">{monthLabel}</div>
                 <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => shiftMonth(1)} data-testid="journal-next-month">
                   <ChevronRight className="w-4 h-4" />
                 </Button>
