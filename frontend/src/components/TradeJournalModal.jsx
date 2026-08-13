@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { isHoliday, isTradingDayIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
+import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import InfoTip from "@/components/InfoTip";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -242,63 +243,69 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     setDayDoc(null);
   };
 
+  const applyDayPayload = (iso, d) => {
+    const wrn = (d.win_trades || 0) + (d.loss_trades || 0);
+    setDayDoc({
+      went_well: d.went_well || "",
+      went_wrong: d.went_wrong || "",
+      notes: d.notes || "",
+      tags: d.tags || [],
+      rating: d.rating || null,
+      followed_plan: d.followed_plan ?? null,
+      pnl_total: d.display_pnl ?? d.booked_pnl ?? d.pnl_exited ?? d.frozen_pnl,
+      pnl_exited: d.pnl_exited,
+      pnl_open: d.pnl_open,
+      booked_pnl: d.booked_pnl ?? d.pnl_exited,
+      booked_after_charges: d.booked_after_charges,
+      brokerage: d.brokerage,
+      charges_total: d.charges_total,
+      frozen_pnl: d.frozen_pnl,
+      eod_locked: !!d.eod_locked,
+      trade_count: d.trade_count || 0,
+      exited_count: d.exited_count || 0,
+      win_trades: d.win_trades || 0,
+      loss_trades: d.loss_trades || 0,
+      winrate: wrn ? (100 * (d.win_trades || 0) / wrn) : null,
+      legs: d.legs || [],
+      screenshots: d.screenshots || [],
+      empty: !!d.empty,
+      date: iso,
+    });
+  };
+
+  const loadDay = async (iso) => {
+    setSelected(iso);
+    const d = await fetchJournalDay(iso);
+    applyDayPayload(iso, d);
+  };
+
   const openDay = async (iso) => {
     if (selected === iso && dayDoc) {
       setSelected(null);
       setDayDoc(null);
       return;
     }
-    setSelected(iso);
     try {
-      const d = await fetchJournalDay(iso);
-      const wrn = (d.win_trades || 0) + (d.loss_trades || 0);
-      setDayDoc({
-        went_well: d.went_well || "",
-        went_wrong: d.went_wrong || "",
-        notes: d.notes || "",
-        tags: d.tags || [],
-        rating: d.rating || null,
-        followed_plan: d.followed_plan ?? null,
-        pnl_total: d.display_pnl ?? d.booked_pnl ?? d.pnl_exited ?? d.frozen_pnl,
-        pnl_exited: d.pnl_exited,
-        pnl_open: d.pnl_open,
-        booked_pnl: d.booked_pnl ?? d.pnl_exited,
-        booked_after_charges: d.booked_after_charges,
-        brokerage: d.brokerage,
-        charges_total: d.charges_total,
-        frozen_pnl: d.frozen_pnl,
-        eod_locked: !!d.eod_locked,
-        trade_count: d.trade_count || 0,
-        exited_count: d.exited_count || 0,
-        win_trades: d.win_trades || 0,
-        loss_trades: d.loss_trades || 0,
-        winrate: wrn ? (100 * (d.win_trades || 0) / wrn) : null,
-        legs: d.legs || [],
-        screenshots: d.screenshots || [],
-        empty: !!d.empty,
-        date: iso,
-      });
+      await loadDay(iso);
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not open day");
     }
   };
 
   const save = async (override = null) => {
-    const doc = override || dayDoc;
-    if (!doc?.date) return;
+    const doc = resolveJournalSaveDoc(override, dayDoc);
+    const payload = journalSavePayload(doc);
+    if (!payload) return;
     setSaving(true);
     try {
-      await saveJournalDay(doc.date, {
-        went_well: doc.went_well,
-        went_wrong: doc.went_wrong,
-        notes: doc.notes,
-        tags: doc.tags,
-        rating: doc.rating,
-        followed_plan: doc.followed_plan,
-      });
+      await saveJournalDay(payload.day, payload.body);
       toast.success("Journal saved");
-      loadMonth(year, month);
-      loadYear(year);
+      await Promise.all([loadMonth(year, month), loadYear(year)]);
+      try {
+        await loadDay(payload.day);
+      } catch {
+        /* keep the editor as saved locally */
+      }
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Save failed");
     } finally {
@@ -371,7 +378,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none sm:rounded-2xl border-slate-200"
+        className="z-[80] max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none sm:rounded-2xl border-slate-200"
         data-testid="trade-journal-modal"
       >
         <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)]">
@@ -924,7 +931,18 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               </div>
 
               <div className="flex justify-end">
-                <Button size="sm" onClick={save} disabled={saving} data-testid="journal-save" className="bg-emerald-700 hover:bg-emerald-800 text-white">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    save();
+                  }}
+                  disabled={saving}
+                  data-testid="journal-save"
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white"
+                >
                   <Save className="w-3.5 h-3.5 mr-1.5" />
                   {saving ? "Saving…" : "Save journal"}
                 </Button>

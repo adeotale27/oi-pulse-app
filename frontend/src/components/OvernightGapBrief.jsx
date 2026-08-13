@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, Moon, AlertTriangle, TrendingUp, TrendingDown, Minimize2, Maximize2, GripHorizontal } from "lucide-react";
+import { X, Moon, AlertTriangle, TrendingUp, TrendingDown, Minimize2, Maximize2, GripHorizontal, PanelLeft, PanelRight } from "lucide-react";
 import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
+import { readCarryDockSide, snapDockFromClientX, writeCarryDockSide } from "@/lib/carryDock";
 import {
   briefTriggerKey,
   carryHorizonLabel,
@@ -80,7 +81,8 @@ function fmtDelta(v) {
 /**
  * Sticky “Should I carry?” overnight gap brief.
  * Auto-opens from 14:00 IST on a trading day through next market open.
- * Slide the chip to the right edge to dock as a moon icon.
+ * Desktop: left by default; drag the header or use the dock button to move it.
+ * Phone: panel is height-capped with a sticky close bar so it cannot trap the screen.
  */
 export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKNIFTY"] }) {
   const [now, setNow] = useState(() => new Date());
@@ -93,8 +95,15 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   const [indexImpacts, setIndexImpacts] = useState([]);
   const [bottomPx, setBottomPx] = useState(() => readCarryBottom());
   const [iconOnly, setIconOnly] = useState(() => readCarryIconOnly());
+  const [dock, setDock] = useState(() => readCarryDockSide());
   const dragRef = useRef(null);
   const skipClickRef = useRef(false);
+
+  const setDockSide = (side) => {
+    const next = side === "right" ? "right" : "left";
+    setDock(next);
+    writeCarryDockSide(next);
+  };
 
   const clampBottom = useCallback((raw) => {
     const min = dockClearance();
@@ -102,35 +111,46 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     return Math.min(max, Math.max(min, raw));
   }, []);
 
-  const onCarryPointerDown = (e) => {
-    if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) return;
+  const onCarryPointerDown = (e, kind = "mobile") => {
+    const desktop = typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches;
+    if (kind === "mobile" && desktop) return;
+    if (kind === "dock" && !desktop) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const startBottom = bottomPx != null ? bottomPx : dockClearance();
-    dragRef.current = { startY: e.clientY, startX: e.clientX, startBottom, moved: false };
+    dragRef.current = { kind, startY: e.clientY, startX: e.clientX, startBottom, moved: false };
   };
 
   const onCarryPointerMove = (e) => {
     if (!dragRef.current) return;
-    const dy = dragRef.current.startY - e.clientY;
     if (Math.abs(e.clientY - dragRef.current.startY) > 6 || Math.abs(e.clientX - dragRef.current.startX) > 6) {
       dragRef.current.moved = true;
     }
+    if (dragRef.current.kind === "dock") return;
+    const dy = dragRef.current.startY - e.clientY;
     setBottomPx(clampBottom(dragRef.current.startBottom + dy));
   };
 
   const onCarryPointerUp = (e) => {
     if (!dragRef.current) return;
     skipClickRef.current = !!dragRef.current?.moved;
-    const shouldExpand = minimized && !dragRef.current.moved;
+    const kind = dragRef.current.kind;
+    const moved = dragRef.current.moved;
+    const shouldExpand = minimized && !moved;
     const endX = e.clientX;
     const w = typeof window !== "undefined" ? window.innerWidth : 400;
-    const dockRight = endX >= w - 72;
-    if (dockRight) {
+    if (kind === "dock") {
+      if (moved) setDockSide(snapDockFromClientX(endX, w));
+      dragRef.current = null;
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+      return;
+    }
+    const edgeDock = dock === "left" ? endX <= 72 : endX >= w - 72;
+    if (edgeDock) {
       setIconOnly(true);
       setMinimized(true);
       writeCarryIconOnly(true);
-    } else if (endX < w - 120) {
+    } else if (Math.abs(endX - (dock === "left" ? 0 : w)) > 120) {
       setIconOnly(false);
       writeCarryIconOnly(false);
     }
@@ -141,7 +161,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       writeCarryBottom(next);
       return next;
     });
-    if (shouldExpand && !dockRight) setMinimized(false);
+    if (shouldExpand && !edgeDock) setMinimized(false);
   };
 
   const carryPosStyle = {
@@ -251,10 +271,11 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   );
 
   const minimize = () => {
-    if (!triggerKey) return;
     const until = nextSessionOpenMs(new Date());
-    writeBriefMinimize(triggerKey, until);
+    if (triggerKey) writeBriefMinimize(triggerKey, until);
     setMinimized(true);
+    setIconOnly(false);
+    writeCarryIconOnly(false);
   };
 
   const expand = () => {
@@ -288,12 +309,20 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       ? "Overnight gap brief · Sunday night"
       : "Overnight gap brief · Should I carry?";
 
+  const dockEdge = dock === "left"
+    ? (iconOnly ? "left-1" : "left-3")
+    : (iconOnly ? "right-1" : "right-3");
+  const expandedDock = dock === "left"
+    ? "left-3 right-3 sm:right-auto sm:w-[26rem]"
+    : "left-3 right-3 sm:left-auto sm:w-[26rem]";
+
   if (minimized) {
     return (
       <button
         type="button"
         data-testid="overnight-gap-brief-chip"
         data-icon-only={iconOnly ? "1" : "0"}
+        data-dock={dock}
         onClick={() => {
           if (skipClickRef.current) {
             skipClickRef.current = false;
@@ -301,15 +330,15 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           }
           expand();
         }}
-        className={`fixed z-50 md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
-          iconOnly ? "right-1 p-2.5" : "right-3 gap-2 px-3 py-2"
+        className={`fixed z-40 md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${dockEdge} ${
+          iconOnly ? "p-2.5" : "gap-2 px-3 py-2"
         } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
         style={carryPosStyle}
-        onPointerDown={onCarryPointerDown}
+        onPointerDown={(e) => onCarryPointerDown(e, "mobile")}
         onPointerMove={onCarryPointerMove}
         onPointerUp={onCarryPointerUp}
         onPointerCancel={onCarryPointerUp}
-        title="Open overnight gap brief · slide right to moon only"
+        title="Open overnight gap brief · drag to the edge for moon only"
         aria-label="Carry brief"
       >
         <Moon className={iconOnly ? "w-5 h-5" : "w-3.5 h-3.5"} />
@@ -327,53 +356,81 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   return (
     <div
       data-testid="overnight-gap-brief"
-      className={`fixed z-50 md:bottom-3 right-3 left-3 sm:left-auto sm:w-[26rem] rounded-md border-2 shadow-lg ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
-      style={carryPosStyle}
+      data-dock={dock}
+      className={`fixed z-40 md:bottom-3 ${expandedDock} flex flex-col rounded-md border-2 shadow-lg overflow-hidden ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
+      style={{
+        ...carryPosStyle,
+        maxHeight: `min(72dvh, calc(100dvh - ${(bottomPx != null ? bottomPx : 56) + 16}px))`,
+      }}
       role="dialog"
       aria-label={title}
     >
       <div
-        className="flex items-start gap-2 px-3 pt-2.5 pb-1 md:cursor-default"
+        className="sticky top-0 z-10 flex items-start gap-2 px-3 pt-2 pb-2 shrink-0 border-b border-black/10 dark:border-white/10 bg-inherit rounded-t-md"
       >
         <button
           type="button"
-          className="md:hidden mt-0.5 p-0.5 opacity-70 touch-none"
+          className="md:hidden mt-0.5 min-h-11 min-w-11 inline-flex items-center justify-center opacity-80 touch-none"
           aria-label="Drag carry brief"
           data-testid="overnight-gap-brief-drag"
-          onPointerDown={onCarryPointerDown}
+          onPointerDown={(e) => onCarryPointerDown(e, "mobile")}
           onPointerMove={onCarryPointerMove}
           onPointerUp={onCarryPointerUp}
           onPointerCancel={onCarryPointerUp}
         >
-          <GripHorizontal className="w-4 h-4" />
+          <GripHorizontal className="w-5 h-5" />
         </button>
-        <Moon className="w-4 h-4 mt-0.5 shrink-0 opacity-80 hidden md:block" />
-        <div className="min-w-0 flex-1">
+        <div
+          className="hidden md:flex items-center gap-1.5 min-w-0 flex-1 cursor-grab active:cursor-grabbing touch-none"
+          data-testid="overnight-gap-brief-dock-drag"
+          onPointerDown={(e) => onCarryPointerDown(e, "dock")}
+          onPointerMove={onCarryPointerMove}
+          onPointerUp={onCarryPointerUp}
+          onPointerCancel={onCarryPointerUp}
+          title="Drag to the left or right of the desk"
+        >
+          <Moon className="w-4 h-4 shrink-0 opacity-80" />
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-widest opacity-70">Should I carry?</div>
+            <div className="text-sm font-semibold leading-tight">{title}</div>
+          </div>
+        </div>
+        <div className="md:hidden min-w-0 flex-1">
           <div className="text-[10px] uppercase tracking-widest opacity-70">Should I carry?</div>
           <div className="text-sm font-semibold leading-tight">{title}</div>
         </div>
         <button
           type="button"
+          onClick={() => setDockSide(dock === "left" ? "right" : "left")}
+          className="hidden md:inline-flex opacity-70 hover:opacity-100 p-1.5 rounded"
+          aria-label={dock === "left" ? "Move carry brief to the right" : "Move carry brief to the left"}
+          title={dock === "left" ? "Move to right" : "Move to left"}
+          data-testid="overnight-gap-brief-dock-toggle"
+        >
+          {dock === "left" ? <PanelRight className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
+        </button>
+        <button
+          type="button"
           onClick={minimize}
-          className="opacity-60 hover:opacity-100 p-0.5"
+          className="opacity-80 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
           aria-label="Minimize overnight brief until next session"
           title="Minimize until next market open"
           data-testid="overnight-gap-brief-minimize"
         >
-          <Minimize2 className="w-4 h-4" />
+          <Minimize2 className="w-5 h-5 md:w-4 md:h-4" />
         </button>
         <button
           type="button"
           onClick={dismissUntilOpen}
-          className="opacity-60 hover:opacity-100 p-0.5"
-          aria-label="Minimize overnight brief"
+          className="opacity-80 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
+          aria-label="Close overnight brief"
           data-testid="overnight-gap-brief-dismiss"
         >
-          <X className="w-4 h-4" />
+          <X className="w-5 h-5 md:w-4 md:h-4" />
         </button>
       </div>
 
-      <div className="px-3 pb-2 space-y-2.5 text-xs">
+      <div className="px-3 pb-2 pt-2 space-y-2.5 text-xs overflow-y-auto min-h-0 flex-1">
         <div
           className="flex items-center justify-between gap-2 rounded border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 px-2 py-1.5"
           data-testid="overnight-gap-verdict"

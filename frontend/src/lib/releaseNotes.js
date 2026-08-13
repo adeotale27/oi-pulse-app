@@ -4,6 +4,18 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.09",
+    date: "2026-08-13",
+    user: [
+      "Trade journal Save stores notes, tags, and day score (it was ignoring the click)",
+      "Carry brief sits on the left on desktop; drag or tap the dock control to move it",
+      "On phone, Minimize / Close stay on screen so the carry brief cannot trap you",
+    ],
+    admin: [
+      "Journal PUT reloads the day after save; dialogs sit above the carry overlay",
+    ],
+  },
+  {
     version: "5.08",
     date: "2026-08-13",
     user: [

@@ -1,5 +1,14 @@
 # Changelog
 
+## V5.09 — 2026-08-13
+
+Journal save actually persists notes; carry brief docks left and can be closed on phone.
+
+- Save journal ignored the click (the mouse event was treated as the day document) — notes, tags, and score now PUT and reload
+- Carry brief defaults to the left on desktop; drag the header or use the dock control to move it
+- Phone carry brief is height-capped with large Minimize / Close controls so it cannot trap the screen
+- Dialogs sit above the carry chip so Save and other modal actions stay clickable
+
 ## V5.08 — 2026-08-13
 
 Journal year grid stays in lockstep with the open month; Straddle WS is quiet in production.

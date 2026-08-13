@@ -82,6 +82,17 @@ def test_sanitize_clips_and_tags():
     assert "Held" in out["tags"]
     assert all("<" not in t for t in out["tags"])
 
+    kept = sanitize_journal_fields({
+        "went_well": "good day",
+        "tags": ["Expiry", "SENSEX", "Theta", "Plan followed"],
+        "followed_plan": False,
+        "rating": None,
+    })
+    assert kept["went_well"] == "good day"
+    assert kept["tags"] == ["Expiry", "SENSEX", "Theta", "Plan followed"]
+    assert kept["followed_plan"] is False
+    assert kept["rating"] is None
+
 
 def test_decode_screenshot_rejects_non_image_payload():
     import base64
