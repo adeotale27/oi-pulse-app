@@ -1,6 +1,14 @@
 # Changelog
 
+## V5.12 — 2026-08-13
+
+Carry brief matches the mint card (no black bar) and fits on a phone without inner scroll.
+
+- Header uses the same green/amber/rose panel as the body
+- Phone: one-line index rows, short event names, no nested scrolling
+
 ## V5.11 — 2026-08-13
+
 
 Positions Charges / Privacy tiles match Radar and Journal; carry brief parse error gone.
 

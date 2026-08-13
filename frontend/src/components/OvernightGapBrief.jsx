@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, PanelLeft, PanelRight } from "lucide-react";
 import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
 import { readCarryDockSide, snapDockFromClientX, writeCarryDockSide } from "@/lib/carryDock";
-import { carryFocusEvents, sellerCarryAdvice, writerBiasLine } from "@/lib/carryFocus";
+import { carryFocusEvents, eventShortName, sellerCarryAdvice, writerBiasLine } from "@/lib/carryFocus";
 import {
   briefTriggerKey,
   carryHorizonLabel,
@@ -412,35 +412,20 @@ export default function OvernightGapBrief({
   }
 
   return (
-    <>
-    <button
-      type="button"
-      className="md:hidden fixed z-[60] top-[max(0.5rem,env(safe-area-inset-top))] right-3 h-11 w-11 rounded-full bg-slate-900 text-white shadow-lg inline-flex items-center justify-center"
-      onClick={minimize}
-      aria-label="Close carry brief"
-      data-testid="overnight-gap-brief-close-fab"
-    >
-      <X className="w-5 h-5" />
-    </button>
     <div
       data-testid="overnight-gap-brief"
       data-dock={dock}
-      className={`fixed z-40 md:bottom-3 ${expandedDock} flex flex-col rounded-md border-2 shadow-lg overflow-hidden ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
-      style={{
-        ...carryPosStyle,
-        maxHeight: isPhone()
-          ? "min(42dvh, 22rem)"
-          : `min(64dvh, calc(100dvh - ${(bottomPx != null ? bottomPx : 16) + 16}px))`,
-      }}
+      className={`fixed z-40 md:bottom-3 ${expandedDock} flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
+      style={carryPosStyle}
       role="dialog"
       aria-label={title}
     >
       <div
-        className="flex items-center gap-2 px-2 pt-2 pb-2 shrink-0 bg-slate-900 text-white"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 shrink-0 border-b border-black/10 dark:border-white/10"
       >
         <button
           type="button"
-          className="md:hidden min-h-11 min-w-11 inline-flex items-center justify-center opacity-90 touch-none"
+          className="md:hidden p-1 opacity-70 touch-none"
           aria-label="Swipe down to close carry brief"
           data-testid="overnight-gap-brief-drag"
           onPointerDown={(e) => onCarryPointerDown(e, "mobile")}
@@ -448,7 +433,7 @@ export default function OvernightGapBrief({
           onPointerUp={onCarryPointerUp}
           onPointerCancel={onCarryPointerUp}
         >
-          <GripHorizontal className="w-5 h-5" />
+          <GripHorizontal className="w-4 h-4" />
         </button>
         <div
           className="hidden md:flex items-center gap-1.5 min-w-0 flex-1 cursor-grab active:cursor-grabbing touch-none"
@@ -460,19 +445,13 @@ export default function OvernightGapBrief({
           title="Drag to the left or right of the desk"
         >
           <Moon className="w-4 h-4 shrink-0 opacity-80" />
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-widest opacity-70">Short options · next open</div>
-            <div className="text-sm font-semibold leading-tight">{title}</div>
-          </div>
+          <div className="min-w-0 text-sm font-semibold leading-tight">{title}</div>
         </div>
-        <div className="md:hidden min-w-0 flex-1">
-          <div className="text-[10px] uppercase tracking-widest opacity-70">Short options · next open</div>
-          <div className="text-sm font-semibold leading-tight">{title}</div>
-        </div>
+        <div className="md:hidden min-w-0 flex-1 text-sm font-semibold leading-tight">{title}</div>
         <button
           type="button"
           onClick={() => setDockSide(dock === "left" ? "right" : "left")}
-          className="hidden md:inline-flex opacity-80 hover:opacity-100 p-1.5 rounded"
+          className="hidden md:inline-flex opacity-70 hover:opacity-100 p-1 rounded"
           aria-label={dock === "left" ? "Move carry brief to the right" : "Move carry brief to the left"}
           title={dock === "left" ? "Move to right" : "Move to left"}
           data-testid="overnight-gap-brief-dock-toggle"
@@ -482,46 +461,46 @@ export default function OvernightGapBrief({
         <button
           type="button"
           onClick={minimize}
-          className="opacity-90 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
+          className="opacity-80 hover:opacity-100 h-8 w-8 inline-flex items-center justify-center rounded"
           aria-label="Minimize overnight brief until next session"
           title="Minimize until next market open"
           data-testid="overnight-gap-brief-minimize"
         >
-          <Minimize2 className="w-5 h-5 md:w-4 md:h-4" />
+          <Minimize2 className="w-4 h-4" />
         </button>
         <button
           type="button"
           onClick={dismissUntilOpen}
-          className="opacity-90 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
+          className="opacity-80 hover:opacity-100 h-8 w-8 inline-flex items-center justify-center rounded"
           aria-label="Close overnight brief"
           data-testid="overnight-gap-brief-dismiss"
         >
-          <X className="w-5 h-5 md:w-4 md:h-4" />
+          <X className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="px-3 pb-2 pt-2 space-y-2 text-xs overflow-y-auto min-h-0 flex-1">
+      <div className="px-2.5 pb-2 pt-1.5 space-y-1.5 text-xs">
         <div
-          className="flex items-center justify-between gap-2 rounded border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 px-2 py-1.5"
+          className="flex items-center justify-between gap-2 rounded-md bg-white/70 dark:bg-black/20 px-2 py-1"
           data-testid="overnight-gap-verdict"
         >
-          <span className="font-semibold text-sm">{bandLabel}</span>
+          <span className="font-semibold">{bandLabel}</span>
           <span className="font-mono-data opacity-70">{verdict.score}/100</span>
         </div>
-        <p className="leading-snug opacity-90" data-testid="overnight-gap-advice">
+        <p className="leading-snug opacity-90 line-clamp-2 md:line-clamp-none" data-testid="overnight-gap-advice">
           {advice}
         </p>
         {holidayNote && (
           <div
-            className="rounded border border-amber-400/60 bg-amber-100/70 dark:bg-amber-950/40 px-2 py-1.5 text-[11px] leading-snug"
+            className="rounded border border-amber-400/60 bg-amber-100/70 dark:bg-amber-950/40 px-2 py-1 text-[11px] leading-snug"
             data-testid="overnight-gap-holiday-note"
           >
             {holidayNote}
           </div>
         )}
 
-        <div className="flex flex-wrap gap-x-3 gap-y-1 rounded bg-white/60 dark:bg-black/25 px-2 py-1.5">
-          <span data-testid="overnight-gap-gift">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-0.5" data-testid="overnight-gap-gift">
+          <span>
             <span className="opacity-60 mr-1">GIFT</span>
             {giftPct != null && Number.isFinite(giftPct) ? (
               <span className={`font-mono-data font-semibold ${
@@ -537,41 +516,32 @@ export default function OvernightGapBrief({
             <span className="opacity-60 mr-1">VIX</span>
             <span className="font-mono-data font-semibold">{vixNow != null ? vixNow.toFixed(1) : "—"}</span>
           </span>
-          <span className="opacity-60">{carryHorizonLabel(ist.weekday)}</span>
+          <span className="opacity-60 truncate">{carryHorizonLabel(ist.weekday)}</span>
         </div>
 
-        <div>
-          <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1">
-            Session OI · which shorts are supported
-          </div>
+        <div data-testid="overnight-gap-biases">
           {loading && biases.length === 0 ? (
             <div className="opacity-60">Loading session OI…</div>
           ) : (
-            <div className="space-y-1" data-testid="overnight-gap-biases">
+            <div className="space-y-0.5">
               {orderedBiases.map((row) => {
                 const line = writerBiasLine(row);
                 const on = row.index === activeIndex;
                 return (
                   <div
                     key={row.index}
-                    className={`rounded px-2 py-1 ${on ? "bg-white dark:bg-black/40 ring-1 ring-black/10" : "bg-white/60 dark:bg-black/25"}`}
+                    className={`flex items-center gap-2 rounded-md px-2 py-0.5 ${on ? "bg-white/80 dark:bg-black/30" : ""}`}
                     data-testid={`overnight-bias-${row.index}`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold shrink-0">{row.index}</span>
-                      {row.atm != null && (
-                        <span className="font-mono-data opacity-60 text-[10px]">ATM {row.atm}</span>
-                      )}
-                      {row.pcr != null && Number.isFinite(Number(row.pcr)) && (
-                        <span className="font-mono-data opacity-60 text-[10px]">PCR {Number(row.pcr).toFixed(2)}</span>
-                      )}
-                      {row.bias ? (
-                        <span className="ml-auto font-mono-data opacity-60 text-[10px]">
-                          PE {fmtDelta(row.bias.pe)} · CE {fmtDelta(row.bias.ce)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="opacity-80 leading-snug">{line.text}</div>
+                    <span className="font-semibold w-[5.5rem] shrink-0">{row.index}</span>
+                    <span className="font-medium">{line.short}</span>
+                    {row.bias ? (
+                      <span className="ml-auto font-mono-data opacity-60 text-[10px]">
+                        PE {fmtDelta(row.bias.pe)} · CE {fmtDelta(row.bias.ce)}
+                      </span>
+                    ) : (
+                      <span className="ml-auto opacity-50">—</span>
+                    )}
                   </div>
                 );
               })}
@@ -580,37 +550,25 @@ export default function OvernightGapBrief({
         </div>
 
         <div>
-          <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1 flex items-center gap-1">
+          <div className="text-[10px] uppercase tracking-widest opacity-60 mb-0.5 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
-            Into the next open
+            Next open
           </div>
           {focusEvents.length === 0 ? (
-            <div className="opacity-60 px-1">No holiday or heavy index-impact in the carry window.</div>
+            <div className="opacity-60 px-0.5">No holiday or heavy index-impact.</div>
           ) : (
             <ul className="space-y-0.5" data-testid="overnight-gap-events">
-              {focusEvents.map((e) => (
-                <li key={`${e.date}|${e.name}`} className="leading-snug px-1">
+              {focusEvents.slice(0, 3).map((e) => (
+                <li key={`${e.date}|${e.name}`} className="leading-snug px-0.5 truncate">
                   <span className="font-medium">{dayLabel(e.daysAway, ist.weekday)}</span>
                   {" · "}
-                  {e.name}
-                  {e.source === "index-impact" ? (
-                    <span className="opacity-60"> [INDEX]</span>
-                  ) : e.impact ? (
-                    <span className="opacity-60"> [{String(e.impact).toUpperCase()}]</span>
-                  ) : null}
+                  {eventShortName(e)}
                 </li>
               ))}
             </ul>
           )}
         </div>
-
-        {verdict.notes?.length > 0 && (
-          <div className="text-[10px] opacity-60 border-t border-black/10 dark:border-white/10 pt-1.5">
-            {verdict.notes.join(" · ")}
-          </div>
-        )}
       </div>
     </div>
-    </>
   );
 }

@@ -4,6 +4,14 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.12",
+    date: "2026-08-13",
+    user: [
+      "Carry brief no longer has a black header; on phone it is a short card you can read without scrolling inside it",
+    ],
+    admin: [],
+  },
+  {
     version: "5.11",
     date: "2026-08-13",
     user: [

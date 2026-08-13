@@ -29,19 +29,33 @@ export function carryFocusEvents(items = []) {
 export function writerBiasLine(row) {
   const idx = row?.index || "Index";
   const b = row?.bias;
-  if (!b) return { index: idx, text: "no session OI yet", comfortable: null };
+  if (!b) return { index: idx, text: "no session OI yet", short: "no OI", comfortable: null };
   if (b.bullish) {
     return {
       index: idx,
       text: "PE OI built — support; CE shorts sit better than PE shorts",
+      short: "CE shorts OK",
       comfortable: "CE",
     };
   }
   return {
     index: idx,
     text: "CE OI built — resistance; PE shorts sit better than CE shorts",
+    short: "PE shorts OK",
     comfortable: "PE",
   };
+}
+
+/** Compact event label for the phone sheet. */
+export function eventShortName(e) {
+  const n = String(e?.name || "");
+  const impact = n.match(/·\s*([A-Za-z0-9.& -]+)\s*·/);
+  if (impact) {
+    const sym = impact[1].trim();
+    const idx = (e.index || n.split(" ")[0] || "").replace(" impact", "");
+    return idx && !sym.includes(idx) ? `${sym} · ${idx}` : sym;
+  }
+  return n.replace(/^NSE Holiday — /, "Holiday: ").slice(0, 36);
 }
 
 export function sellerCarryAdvice({ band, holidayAdvice, vix, giftPct, focusCount = 0 }) {
