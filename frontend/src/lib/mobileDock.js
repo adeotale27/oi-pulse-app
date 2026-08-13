@@ -7,7 +7,7 @@ export const DOCK_CATALOG = [
   { id: "straddle", label: "Straddle", tab: "straddle" },
   { id: "positions", label: "Positions", tab: "positions" },
   { id: "admin-tools", label: "Settings", action: "admin-tools", adminOnly: true },
-  { id: "holidays", label: "Events", tab: "holidays" },
+  { id: "index-events", label: "Risk", tab: "index-events" },
   { id: "strike-table", label: "Chain", tab: "strike-table" },
   { id: "alerts", label: "Alerts", tab: "alerts" },
   { id: "open-interest", label: "OI", tab: "open-interest" },

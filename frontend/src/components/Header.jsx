@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -131,6 +131,7 @@ export default function Header({
   onOpenMorningRefresh: _onOpenMorningRefresh, // kept for API compat; token refresh via Kite API
   onOpenTelegramPrefs,
   onOpenSettings,
+  onOpenJournal,
   onDownloadCsv,
   onOpenSounds,
   onOpenUpload,
@@ -829,6 +830,13 @@ export default function Header({
                 >
                   <Send className="w-4 h-4" />
                   Telegram
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-journal"
+                  onSelect={(e) => { e.preventDefault(); onOpenJournal?.(); }}
+                >
+                  <BookOpen className="w-4 h-4" />
+                  Trade journal
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-settings"

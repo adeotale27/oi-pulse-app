@@ -8,6 +8,7 @@ import {
   Activity,
   CalendarDays,
   Layers,
+  AlertTriangle,
   Settings2,
 } from "lucide-react";
 import { DOCK_CATALOG, loadMobileDock, saveMobileDock } from "@/lib/mobileDock";
@@ -16,8 +17,9 @@ const ICONS = {
   "oi-change": BarChart3,
   straddle: Activity,
   positions: Briefcase,
-  holidays: CalendarDays,
+  "index-events": AlertTriangle,
   "admin-tools": Settings2,
+  holidays: CalendarDays,
   "strike-table": Table2,
   alerts: Bell,
   "open-interest": Layers,
@@ -36,6 +38,7 @@ export default function MobileBottomNav({
   deskOpen = false,
   isAdmin = false,
   visiblePages = null,
+  adminPages = null,
 }) {
   const [edit, setEdit] = useState(false);
   const [ids, setIds] = useState(() => loadMobileDock(isAdmin).map((d) => d.id));
@@ -55,7 +58,10 @@ export default function MobileBottomNav({
   const pageAllowed = (d) => {
     if (!d) return false;
     if (!isAdmin && d.adminOnly) return false;
-    if (!isAdmin && d.tab && Array.isArray(visiblePages) && !visiblePages.includes(d.tab)) return false;
+    const pages = isAdmin
+      ? (Array.isArray(adminPages) && adminPages.length ? adminPages : null)
+      : visiblePages;
+    if (d.tab && Array.isArray(pages) && !pages.includes(d.tab)) return false;
     return true;
   };
 
@@ -65,7 +71,7 @@ export default function MobileBottomNav({
       .map((id) => byId.get(id))
       .filter(pageAllowed)
       .slice(0, 5);
-  }, [ids, isAdmin, visiblePages]);
+  }, [ids, isAdmin, visiblePages, adminPages]);
 
   const clearHold = () => {
     if (holdRef.current.timer) {

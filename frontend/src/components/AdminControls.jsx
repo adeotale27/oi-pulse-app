@@ -266,7 +266,6 @@ export default function AdminControls({
       const cur = new Set(Array.isArray(current.data?.visible_pages) ? current.data.visible_pages : guestPages);
       if (on) cur.add(id);
       else cur.delete(id);
-      cur.add("index-events");
       const { data } = await api.post("/settings", { visible_pages: Array.from(cur) });
       const pages = Array.isArray(data?.visible_pages) ? data.visible_pages : Array.from(cur);
       setGuestPages(pages);
@@ -307,6 +306,7 @@ export default function AdminControls({
           {[
             { id: "positions", label: "Positions · Connect Zerodha" },
             { id: "sell-candidates", label: "Sell Candidates" },
+            { id: "index-events", label: "Index Risk" },
           ].map((p) => (
             <label key={p.id} className="flex items-center justify-between gap-2 text-[12px] text-slate-800">
               <span>{p.label}</span>
@@ -318,7 +318,7 @@ export default function AdminControls({
               />
             </label>
           ))}
-          <div className="text-[10px] text-slate-500">Index Risk is always on. Upload stamps stay admin-only.</div>
+          <div className="text-[10px] text-slate-500">Full Guest / Admin ticks live in Alert settings. Upload stamps stay admin-only.</div>
         </PopoverContent>
       </Popover>
       <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
