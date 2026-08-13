@@ -1,6 +1,6 @@
 # OI Pulse versioning
 
-Product version lives in **`VERSION`** at the repo root (currently **V5.02**). Display it as `V` + that number (`V5.02`).
+Product version lives in **`VERSION`** at the repo root (currently **V5.03**). Display it as `V` + that number (`V5.03`).
 
 Keep these in lockstep on every ship:
 

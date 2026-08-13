@@ -6,6 +6,7 @@ import {
   uploadAgeDays,
   isUploadStale,
   formatUploadAge,
+  evaluateUploadFreshness,
 } from "@/lib/uploadFreshness";
 
 const DISMISS_LS_KEY = "oi_event_risk_dismissed";
@@ -195,6 +196,17 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
   }, [upcoming]);
 
   const label = INDEX_LABEL[activeIndex] || activeIndex;
+  const freshness = useMemo(
+    () => (isAdmin && uploadMeta ? evaluateUploadFreshness(uploadMeta) : []),
+    [isAdmin, uploadMeta],
+  );
+  const stampsNeedAttention = freshness.some((row) => row.stale);
+  const hasUpcoming = upcoming.length > 0;
+  const showWidget = Boolean(err) || hasUpcoming || stampsNeedAttention;
+
+  if (!showWidget) {
+    return null;
+  }
 
   if (dismissed) {
     return (
@@ -253,9 +265,9 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
         </div>
       </div>
 
-      {/* Per-file last upload stamps — admin only */}
-      {isAdmin && (
-      <div
+      {/* Last-upload stamps only when a file is stale / never uploaded */}
+      {isAdmin && stampsNeedAttention && (
+      <div>
         className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40"
         data-testid="upload-last-stamps"
       >
@@ -318,7 +330,9 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
       </div>
       )}
 
-      {/* Summary cards */}
+      {/* Summary + events only when there is upcoming risk */}
+      {hasUpcoming && (
+      <>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-3 border-b border-slate-100 dark:border-slate-800">
         <SummaryCard icon={TrendingUp} label="Upcoming Results" value={summary.results} tint="rose" />
         <SummaryCard icon={Users} label="Board Meetings" value={summary.board} tint="indigo" />
@@ -443,6 +457,8 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );

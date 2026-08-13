@@ -47,6 +47,17 @@ def month_bounds(year: int, month: int) -> tuple[str, str]:
     return start, end
 
 
+def charges_usable(charges: Optional[Dict[str, Any]]) -> bool:
+    """True when Kite returned real brokerage / charges (not an empty placeholder)."""
+    if not charges:
+        return False
+    if _num(charges.get("charges_total") if charges.get("charges_total") is not None else charges.get("total")) > 0:
+        return True
+    if _num(charges.get("brokerage")) > 0:
+        return True
+    return False
+
+
 def apply_charges(doc: Dict[str, Any], charges: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Attach Zerodha brokerage / total charges (our DB only — never sent to Kite)."""
     charges = charges or {}
@@ -113,7 +124,7 @@ def snapshot_from_positions(
         "booked_index_pnl": booked_index_pnl,
         "snapshot_at": datetime.now(timezone.utc).isoformat(),
     }
-    if charges:
+    if charges_usable(charges):
         apply_charges(doc, charges)
     return doc
 
@@ -139,18 +150,19 @@ def snapshot_is_empty(snap: Optional[Dict[str, Any]]) -> bool:
 
 
 def day_pnl(d: Optional[Dict[str, Any]]) -> float:
-    """Calendar / stats: booked (exited) P&L — never live open MTM when booked is stored."""
+    """Calendar / heatmap / stats: exited (booked) P&L only — never live open MTM."""
     if not d:
         return 0.0
-    if d.get("display_pnl") is not None:
-        return _num(d.get("display_pnl"))
-    if d.get("eod_locked") and d.get("frozen_pnl") is not None:
-        return _num(d.get("frozen_pnl"))
     if d.get("booked_pnl") is not None:
         return _num(d.get("booked_pnl"))
     if d.get("pnl_exited") is not None:
         return _num(d.get("pnl_exited"))
-    return _num(d.get("pnl_total"))
+    exited_legs = [x for x in (d.get("legs") or []) if isinstance(x, dict) and x.get("exited")]
+    if exited_legs:
+        return round(sum(_num(x.get("pnl")) for x in exited_legs), 2)
+    if d.get("eod_locked") and d.get("frozen_pnl") is not None:
+        return _num(d.get("frozen_pnl"))
+    return 0.0
 
 
 def apply_snapshot(
@@ -223,11 +235,7 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
         if _is_traded(d):
             month_nets[i] += pnl
             month_days[i] += 1
-        ip = d.get("booked_index_pnl")
-        if not isinstance(ip, dict) or not ip:
-            ip = d.get("index_pnl")
-        if not isinstance(ip, dict) or not ip:
-            ip = _index_pnl_from_legs([leg for leg in (d.get("legs") or []) if leg.get("exited")])
+        ip = _booked_index_pnl(d)
         for idx, v in ip.items():
             key = str(idx).upper()
             if key in by_index:
@@ -398,10 +406,24 @@ def decode_screenshot(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _booked_index_pnl(d: Dict[str, Any]) -> Dict[str, float]:
+    """Per-index booked P&L. Never use live index_pnl (includes open MTM)."""
+    ip = d.get("booked_index_pnl")
+    if isinstance(ip, dict) and ip:
+        return ip
+    legs = [leg for leg in (d.get("legs") or []) if isinstance(leg, dict) and leg.get("exited")]
+    if legs:
+        return _index_pnl_from_legs(legs)
+    return {}
+
+
 def _carry_charges(out: Dict[str, Any], existing: Dict[str, Any]) -> None:
-    for k in ("brokerage", "charges_total", "charges_source", "booked_after_charges"):
+    for k in ("brokerage", "charges_total", "charges_source"):
         if out.get(k) is None and existing.get(k) is not None:
             out[k] = existing[k]
+    if out.get("charges_total") is not None:
+        booked = _num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited"))
+        out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
 
 
 def _num(v) -> float:
@@ -421,12 +443,16 @@ def _index_pnl_from_legs(legs: List[Dict[str, Any]]) -> Dict[str, float]:
 
 
 def _is_traded(d: Dict[str, Any]) -> bool:
+    """A journal day counts only when something was exited (booked), not open-only MTM."""
     if not d:
         return False
-    if int(d.get("trade_count") or 0) > 0:
+    if int(d.get("exited_count") or 0) > 0:
         return True
-    if int(d.get("open_count") or 0) + int(d.get("exited_count") or 0) > 0:
+    if abs(_num(d.get("booked_pnl"))) > 0.009:
         return True
-    if abs(_num(d.get("frozen_pnl"))) > 0.009:
+    if abs(_num(d.get("pnl_exited"))) > 0.009:
         return True
-    return abs(_num(d.get("pnl_total"))) > 0.009
+    legs = d.get("legs") or []
+    if any(isinstance(x, dict) and x.get("exited") for x in legs):
+        return True
+    return False

@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.03 — 2026-08-13
+
+Index Risk, journal after-charges, and heatmaps now use booked (exited) data only.
+
+- Admin **Last successful upload** / Index Event Risk only appears when there are upcoming events or a stale/missing CSV
+- Journal **after charges** uses Kite contract-note totals when present; no longer treats missing charges as ₹0 (so booked equals after-charges)
+- Year heatmap, calendar, and position heatmap ignore open NIFTY MTM — only exited P&L is stored and shown
+
 ## V5.02 — 2026-08-13
 
 Backend crashed on import (nginx `connection refused` to :8001, k8s never Ready).

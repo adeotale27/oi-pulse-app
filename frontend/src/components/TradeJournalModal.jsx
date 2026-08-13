@@ -54,8 +54,11 @@ function cellPnl(doc) {
 
 function isTraded(doc) {
   if (!doc) return false;
-  const pnl = cellPnl(doc);
-  return (doc.trade_count || 0) > 0 || (doc.exited_count || 0) > 0 || Math.abs(pnl) > 0.009;
+  if ((doc.exited_count || 0) > 0) return true;
+  if (Math.abs(Number(doc.booked_pnl) || 0) > 0.009) return true;
+  if (Math.abs(Number(doc.pnl_exited) || 0) > 0.009) return true;
+  if ((doc.legs || []).some((l) => l && l.exited)) return true;
+  return false;
 }
 
 function monthMatrix(year, month) {
@@ -617,7 +620,9 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   <div className="text-[11px] text-slate-500 mt-0.5" data-testid="journal-after-charges">
                     {privacy
                       ? "after charges ••••"
-                      : `after charges ${fmtInr(dayDoc.booked_after_charges ?? ((Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) || 0) - (Number(dayDoc.charges_total) || 0)), 0)}`}
+                      : dayDoc.charges_total != null
+                        ? `after charges ${fmtInr(dayDoc.booked_after_charges ?? ((Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) || 0) - Number(dayDoc.charges_total)), 0)}`
+                        : "charges pending"}
                     {dayDoc.brokerage != null && !privacy ? (
                       <span className="ml-2 text-slate-400">· brokerage {fmtInr(dayDoc.brokerage, 0)}</span>
                     ) : null}

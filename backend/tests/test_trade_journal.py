@@ -11,6 +11,8 @@ from trade_journal import (
     snapshot_is_empty,
     year_heatmap,
     day_pnl,
+    charges_usable,
+    apply_charges,
 )
 
 
@@ -43,18 +45,25 @@ def test_snapshot_counts_exited_wins():
 
 def test_month_stats_win_rate_and_best_day():
     days = [
-        {"date": "2026-08-03", "pnl_total": 2000, "trade_count": 2, "open_count": 0, "exited_count": 2},
-        {"date": "2026-08-04", "pnl_total": -400, "trade_count": 1, "open_count": 0, "exited_count": 1},
-        {"date": "2026-08-05", "pnl_total": 800, "trade_count": 1, "open_count": 1, "exited_count": 0},
+        {"date": "2026-08-03", "booked_pnl": 2000, "pnl_exited": 2000, "exited_count": 2},
+        {"date": "2026-08-04", "booked_pnl": -400, "pnl_exited": -400, "exited_count": 1},
+        {
+            "date": "2026-08-05",
+            "pnl_total": 800,
+            "trade_count": 1,
+            "open_count": 1,
+            "exited_count": 0,
+            "index_pnl": {"NIFTY": 800},
+        },
     ]
     s = month_stats(days)
-    assert s["trading_days"] == 3
-    assert s["win_days"] == 2
+    assert s["trading_days"] == 2
+    assert s["win_days"] == 1
     assert s["lose_days"] == 1
-    assert s["net_pnl"] == 2400
+    assert s["net_pnl"] == 1600
     assert s["best_day"]["date"] == "2026-08-03"
     assert s["worst_day"]["date"] == "2026-08-04"
-    assert s["profit_factor"] == 7.0
+    assert s["profit_factor"] == 5.0
     assert 0 <= s["desk_score"] <= 100
 
 
@@ -163,18 +172,22 @@ def test_year_heatmap_by_index_and_month():
     days = [
         {
             "date": "2026-07-02",
-            "pnl_total": 1000,
-            "trade_count": 1,
+            "booked_pnl": 1000,
+            "pnl_exited": 1000,
+            "exited_count": 1,
             "eod_locked": True,
             "frozen_pnl": 1000,
+            "booked_index_pnl": {"NIFTY": 1000},
             "index_pnl": {"NIFTY": 1000},
         },
         {
             "date": "2026-08-13",
-            "pnl_total": -200,
-            "trade_count": 1,
+            "booked_pnl": -200,
+            "pnl_exited": -200,
+            "exited_count": 1,
             "eod_locked": True,
             "frozen_pnl": -200,
+            "booked_index_pnl": {"SENSEX": -200},
             "index_pnl": {"SENSEX": -200},
         },
     ]
@@ -184,3 +197,81 @@ def test_year_heatmap_by_index_and_month():
     assert h["by_index"]["NIFTY"][6] == 1000
     assert h["by_index"]["SENSEX"][7] == -200
     assert h["months"][7]["trading_days"] == 1
+
+
+def test_year_heatmap_ignores_open_nifty_mtm():
+    days = [
+        {
+            "date": "2026-08-13",
+            "pnl_total": 19074,
+            "pnl_open": -1600,
+            "booked_pnl": 20674,
+            "open_count": 9,
+            "exited_count": 11,
+            "index_pnl": {"NIFTY": -1600, "SENSEX": 20674},
+            "booked_index_pnl": {"SENSEX": 20674},
+            "legs": [
+                {"index": "NIFTY", "exited": False, "pnl": -1600},
+                {"index": "SENSEX", "exited": True, "pnl": 20674},
+            ],
+        },
+        {
+            "date": "2026-08-12",
+            "pnl_total": -400,
+            "open_count": 2,
+            "exited_count": 0,
+            "index_pnl": {"NIFTY": -400},
+            "booked_index_pnl": {},
+            "legs": [{"index": "NIFTY", "exited": False, "pnl": -400}],
+        },
+    ]
+    h = year_heatmap(days, 2026)
+    assert h["by_index"]["NIFTY"][7] == 0
+    assert h["by_index"]["SENSEX"][7] == 20674
+    assert h["month_nets"][7] == 20674
+    assert h["months"][7]["trading_days"] == 1
+
+
+def test_day_pnl_never_uses_open_total():
+    assert day_pnl({"pnl_total": 5000, "booked_pnl": 1200, "pnl_exited": 1200}) == 1200
+    assert day_pnl({"pnl_total": -400, "open_count": 2, "exited_count": 0}) == 0
+    assert day_pnl({
+        "pnl_total": 800,
+        "legs": [
+            {"exited": False, "pnl": 300},
+            {"exited": True, "pnl": 500},
+        ],
+    }) == 500
+
+
+def test_empty_charges_are_not_usable():
+    assert charges_usable(None) is False
+    assert charges_usable({}) is False
+    assert charges_usable({"brokerage": 0, "charges_total": 0, "note": "No priced fills today."}) is False
+    assert charges_usable({"brokerage": 40, "charges_total": 120}) is True
+    snap = snapshot_from_positions(_payload(), date="2026-08-13", charges={"brokerage": 0, "charges_total": 0})
+    assert "brokerage" not in snap
+    assert "booked_after_charges" not in snap
+
+
+def test_carry_charges_recomputes_after_charges_from_booked():
+    existing = {
+        "date": "2026-08-13",
+        "brokerage": 40.0,
+        "charges_total": 120.5,
+        "booked_after_charges": 380.0,
+        "booked_pnl": 500.5,
+        "exited_count": 1,
+        "eod_locked": False,
+    }
+    snap = snapshot_from_positions(_payload(), date="2026-08-13")
+    out = apply_snapshot(existing, snap)
+    assert out["charges_total"] == 120.5
+    assert out["booked_pnl"] == 500.5
+    assert out["booked_after_charges"] == 380.0
+    snap["booked_pnl"] = 800.0
+    snap["pnl_exited"] = 800.0
+    out2 = apply_snapshot(existing, snap)
+    assert out2["booked_after_charges"] == round(800.0 - 120.5, 2)
+    patched = apply_charges({"booked_pnl": 20674}, {"brokerage": 40, "charges_total": 185.25})
+    assert patched["booked_after_charges"] == round(20674 - 185.25, 2)
