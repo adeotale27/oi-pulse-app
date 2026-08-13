@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Header, { HeaderTodayPnl } from "@/components/Header";
+import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
 import TimeframePills from "@/components/TimeframePills";
@@ -39,6 +39,7 @@ import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
 import InfoTilesRow, { DEFAULT_TILE_IDS } from "@/components/InfoTilesRow";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import StrikeAroundChips from "@/components/StrikeAroundChips";
 import {
   loadTabOrder,
   saveTabOrder,
@@ -384,6 +385,9 @@ export default function Dashboard() {
     mq.addEventListener?.("change", onChange);
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
+  useEffect(() => {
+    if (isMobile) setCompact(true);
+  }, [isMobile]);
 
   // On phones, never keep the side panel open by default — it was leaving a narrow
   // Alerts/Suggestion strip and a blank chart area.
@@ -1782,23 +1786,16 @@ export default function Dashboard() {
               })()}
               tabs={dashboardTabs}
               activeTab={activeTab}
-              onChangeTab={setActiveTab}
+              onChangeTab={(id) => {
+                setActiveTab(id);
+                setCompact(true);
+              }}
               onReorder={handleReorderTabs}
               onFavorite={handleFavoriteTab}
               onMove={handleMoveTab}
               marketOpen={status?.market?.is_market_open === true}
               infoTilesOpen={infoTilesOpen}
               onToggleInfoTiles={setInfoTilesOpen}
-              pnlSlot={
-                authState.is_admin ? (
-                  <HeaderTodayPnl
-                    enabled={kiteLiveConnected}
-                    status={status}
-                    pollMs={positionsPollMs}
-                    className="flex flex-col items-end leading-tight"
-                  />
-                ) : null
-              }
               infoTiles={
                 <InfoTilesRow
                   order={tileOrder}
@@ -2042,6 +2039,25 @@ export default function Dashboard() {
                         <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 text-[10px] px-1.5 py-0 rounded-sm">New</Badge>
                       </div>
                     </div>
+                    {isMobile && (
+                      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                        <StrikeAroundChips
+                          strikesAround={strikesAround}
+                          onChange={applyStrikesAround}
+                        />
+                      </div>
+                    )}
+                    {current?.atm != null && (
+                      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono-data text-slate-600" data-testid="oi-change-atm-strip">
+                        <span>ATM <b className="text-slate-900">{Number(current.atm).toLocaleString("en-IN")}</b></span>
+                        {current?.pcr != null && (
+                          <span>PCR <b className={Number(current.pcr) >= 1 ? "text-emerald-700" : "text-rose-700"}>{Number(current.pcr).toFixed(2)}</b></span>
+                        )}
+                        {typeof strikesAround === "number" && (
+                          <span className="text-slate-400">showing ±{strikesAround} strikes</span>
+                        )}
+                      </div>
+                    )}
                     <div
                       className={`transition-opacity duration-300 ${oiLoading && current?.index && current.index !== activeIndex ? "opacity-40" : "opacity-100"}`}
                     >
@@ -2494,6 +2510,7 @@ export default function Dashboard() {
           isAdmin={!!authState.is_admin}
           deskOpen={!compact}
           onOpenDesk={() => setCompact((v) => !v)}
+          onOpenAdminTools={() => window.dispatchEvent(new Event("oi-open-admin-tools"))}
           onChangeTab={(id) => {
             setCompact(true);
             setActiveTab(id);

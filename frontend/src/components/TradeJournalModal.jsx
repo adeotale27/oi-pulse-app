@@ -326,7 +326,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0"
+        className="max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none"
         data-testid="trade-journal-modal"
       >
         <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-slate-100">

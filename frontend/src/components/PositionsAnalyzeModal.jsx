@@ -626,7 +626,7 @@ export default function PositionsAnalyzeModal({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-2 sm:p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-slate-950/55 p-0 sm:p-4 backdrop-blur-[2px]"
       data-testid="positions-analyze-modal"
       role="dialog"
       aria-modal="true"
@@ -634,7 +634,7 @@ export default function PositionsAnalyzeModal({
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[92vh] overflow-hidden flex flex-col border border-slate-200">
+      <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full max-w-6xl max-h-[100dvh] sm:max-h-[92vh] overflow-hidden flex flex-col border border-slate-200">
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ecfdf5_55%,#fff_100%)] shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">

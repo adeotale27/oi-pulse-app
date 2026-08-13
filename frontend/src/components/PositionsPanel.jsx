@@ -29,6 +29,7 @@ import {
   shortPremiumLeft,
   extrinsicPremium,
   dailyThetaRupees,
+  minutesToCloseIST,
 } from "@/lib/blackScholes";
 import { computeSellCandidates } from "@/lib/sellCandidates";
 import {
@@ -53,6 +54,7 @@ import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import OiRiskMeter from "@/components/OiRiskMeter";
 import PositionHeatmap from "@/components/PositionHeatmap";
 import TradeJournalModal from "@/components/TradeJournalModal";
+import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
@@ -72,6 +74,15 @@ function savePrivacyMode(on) {
     // Same-tab listeners (Header Today P&L) — `storage` only fires cross-tab.
     window.dispatchEvent(new CustomEvent("oi-positions-privacy", { detail: { on: !!on } }));
   } catch { /* noop */ }
+}
+
+function fmtSessionLeft(mins) {
+  const n = Number(mins);
+  if (!Number.isFinite(n) || n <= 0) return "Market closed";
+  const h = Math.floor(n / 60);
+  const m = Math.round(n % 60);
+  if (h <= 0) return `${m}m to close`;
+  return `${h}h ${m}m to close`;
 }
 
 function fmt(v, dp = 2) {
@@ -689,6 +700,7 @@ export default function PositionsPanel({
       minMinutes,
       premiumLeft: premiumLeftN ? premiumLeft : null,
       thetaToClose: thetaToCloseN ? thetaToClose : null,
+      minutesToClose: minutesToCloseIST(),
       shortCount,
       adjustCount,
       openCount,
@@ -970,7 +982,7 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-7 rounded-sm bg-white min-h-[28px] text-emerald-800 border-emerald-200 hover:bg-emerald-50 px-2"
+            className="h-8 rounded-sm bg-white shrink-0 text-emerald-800 border-emerald-200 hover:bg-emerald-50 px-2.5"
             onClick={() => setJournalOpen(true)}
             data-testid="btn-trade-journal"
             title="Monthly P&L calendar and session notes"
@@ -981,7 +993,7 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-7 rounded-sm bg-white min-h-[28px] text-orange-700 border-orange-200 hover:bg-orange-50 px-2"
+            className="h-8 rounded-sm bg-white shrink-0 text-orange-700 border-orange-200 hover:bg-orange-50 px-2.5"
             onClick={() => setAnalyzeOpen(true)}
             disabled={!rows.length}
             data-testid="btn-analyze-positions"
@@ -1092,7 +1104,9 @@ export default function PositionsPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-2">
+      <PositionsInsightTiles
+        nodes={{
+          todayPnl: (
         <StatBox
           label="Today P&L"
           value={priv(privacyMode, "₹ " + fmt(stats.netPnl))}
@@ -1127,6 +1141,8 @@ export default function PositionsPanel({
             </div>
           )}
         />
+          ),
+          funds: (
         <StatBox
           label="Funds available"
           value={(() => {
@@ -1173,6 +1189,8 @@ export default function PositionsPanel({
             </div>
           )}
         />
+          ),
+          dailyTheta: (
         <StatBox
           label="Daily time money"
           value={priv(privacyMode, "₹ " + fmt(stats.netTheta, 0))}
@@ -1186,6 +1204,8 @@ export default function PositionsPanel({
             </p>
           )}
         />
+          ),
+          tilt: (
         <StatBox
           label="Direction tilt"
           value={fmt(stats.netDelta, 1)}
@@ -1198,6 +1218,8 @@ export default function PositionsPanel({
             </p>
           )}
         />
+          ),
+          stillEarn: (
         <StatBox
           label="Still to earn"
           value={privacyMode ? PRIVACY_MASK : (stats.premiumLeft != null ? "₹ " + fmt(stats.premiumLeft, 0) : "—")}
@@ -1210,6 +1232,8 @@ export default function PositionsPanel({
             </p>
           )}
         />
+          ),
+          booked: (
         <StatBox
           label="Profit booked today"
           value={priv(privacyMode, "₹ " + fmt(stats.bookedToday))}
@@ -1229,22 +1253,45 @@ export default function PositionsPanel({
             </p>
           )}
         />
+          ),
+          untilClose: (
+        <StatBox
+          label="Until close"
+          value={priv(privacyMode, stats.thetaToClose != null ? "₹ " + fmt(stats.thetaToClose, 0) : "—")}
+          tone={privacyMode ? "slate" : (stats.thetaToClose || 0) >= 0 ? "emerald" : "rose"}
+          hint={privacyMode ? "Masked" : fmtSessionLeft(stats.minutesToClose)}
+          tip={(
+            <p>
+              Rough rupees time-decay can still add (or cost) from <b>now until 15:40 IST</b> if spot stays put.
+              This is the leftover slice of Daily time money for the rest of the session — not extra P&amp;L on top of it,
+              and not guaranteed.
+            </p>
+          )}
+        />
+          ),
+          overnight: (
         <OvernightRiskScore
           vix={vix}
           netDelta={stats.netDelta}
           positionsCount={stats.openCount}
           minutesToExpiry={stats.minMinutes}
         />
+          ),
+          oiRisk: (
         <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
-      </div>
-
-      <PositionHeatmap
-        rows={rows}
-        privacy={privacyMode}
-        onSelect={(sym) => {
-          setHighlightSymbol(sym);
-          const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
-          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          ),
+          heatmap: (
+        <PositionHeatmap
+          compact
+          rows={rows}
+          privacy={privacyMode}
+          onSelect={(sym) => {
+            setHighlightSymbol(sym);
+            const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
+            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        />
+          ),
         }}
       />
 
@@ -1258,11 +1305,6 @@ export default function PositionsPanel({
               <span className="text-emerald-700"> · all OK (market still away)</span>
             )}
           </span>
-          {stats.thetaToClose != null && (
-            <span title="Rough money time can still give you by today’s close">
-              By close today ≈ <b className="font-mono-data text-emerald-800">{priv(privacyMode, `₹ ${fmt(stats.thetaToClose, 0)}`)}</b>
-            </span>
-          )}
           {(() => {
             const b = fundsBreakdown(funds);
             if (!b || (b.cash == null && b.used == null)) return null;

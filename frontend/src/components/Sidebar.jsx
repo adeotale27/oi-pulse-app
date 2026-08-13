@@ -10,8 +10,7 @@ import {
   EXPIRY_LIST_MIN_PX,
   EXPIRY_LIST_MAX_PX,
 } from "@/lib/tabOrder";
-
-const STRIKE_COUNTS = [2, 5, 10, 15, 20, 25];
+import StrikeAroundChips from "@/components/StrikeAroundChips";
 
 const INDEX_THEME = {
   NIFTY: {
@@ -575,38 +574,7 @@ export default function Sidebar({
 
       {/* Strikes around ATM */}
       <div className="p-4">
-        <Label className="text-[10px] uppercase tracking-widest text-slate-500">
-          Strikes above and below ATM
-        </Label>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            data-testid="strikes-all"
-            onClick={() => onChangeStrikesAround("all")}
-            className={`text-xs px-2.5 py-1 rounded-md border font-mono-data transition-colors ${
-              strikesAround === "all"
-                ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white border-transparent shadow"
-                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-            }`}
-          >
-            Show All
-          </button>
-          {STRIKE_COUNTS.map((n) => (
-            <button
-              type="button"
-              key={n}
-              data-testid={`strikes-${n}`}
-              onClick={() => onChangeStrikesAround(n)}
-              className={`text-xs px-2.5 py-1 rounded-md border font-mono-data transition-colors ${
-                strikesAround === n
-                  ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white border-transparent shadow"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
+        <StrikeAroundChips strikesAround={strikesAround} onChange={onChangeStrikesAround} />
       </div>
 
       {/* Big IST clock tile */}

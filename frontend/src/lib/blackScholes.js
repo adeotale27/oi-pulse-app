@@ -1,7 +1,7 @@
 // Black-Scholes pricer + implied volatility solver + Greeks.
 // All inputs use continuous compounding. Time is in years. Sigma is decimal.
 
-import { getMarketCloseMinute, getMarketCloseHm } from "@/lib/marketTimes";
+import { getMarketCloseMinute, getMarketCloseHm, getMarketOpenMinute } from "@/lib/marketTimes";
 
 function cnd(x) {
   // Abramowitz & Stegun 7.1.26 rational approximation for the standard
@@ -205,6 +205,7 @@ export function shortPremiumLeft({
   const absQty = Math.abs(quantity);
   const extrinsicLeft = ext != null ? ext * absQty : null;
   const minsLeft = minutesToCloseIST(nowMs);
+  const sessionMins = Math.max(1, getMarketCloseMinute() - getMarketOpenMinute());
   let thetaToClose = null;
   if (thetaPerUnit != null && minsLeft > 0) {
     const dayTheta = dailyThetaRupees({
@@ -217,8 +218,9 @@ export function shortPremiumLeft({
       T: T != null ? T : minsLeft / (365 * 24 * 60),
     });
     if (dayTheta != null) {
-      thetaToClose = dayTheta * (minsLeft / (24 * 60));
-      // Never claim more by-close than extrinsic still in the short.
+      // Remaining share of today's session (09:15–15:40), not a 24h clock.
+      const frac = Math.min(1, minsLeft / sessionMins);
+      thetaToClose = dayTheta * frac;
       if (extrinsicLeft != null && Math.abs(thetaToClose) > extrinsicLeft) {
         thetaToClose = Math.sign(thetaToClose) * extrinsicLeft;
       }

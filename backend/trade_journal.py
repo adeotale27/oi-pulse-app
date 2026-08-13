@@ -7,6 +7,7 @@ from datetime import datetime, time as dtime, timezone
 from typing import Any, Dict, List, Optional
 
 from market_hours import is_trading_day, now_ist
+from datetime import datetime, time as dtime, timezone
 
 # Index F&O closes 15:40 IST; freeze the day's booked P&L one minute after.
 EOD_LOCK_IST = dtime(15, 41)
