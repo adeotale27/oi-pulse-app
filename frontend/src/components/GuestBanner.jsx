@@ -25,9 +25,9 @@ export default function GuestBanner({ guestName, adminName }) {
             {" — "}
             <b>Guest access via {adminName || "Adeotale"}</b>
             {" · "}
-            Read-only view. Configuration and alerts are managed by the admin.
+            Read-only OI. Connect your own Zerodha on Positions for your book.
           </span>
-          <span className="sm:hidden text-amber-800/90"> · Guest · read-only</span>
+          <span className="sm:hidden text-amber-800/90"> · Guest · connect Kite on Positions</span>
         </span>
       </div>
       <button

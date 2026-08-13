@@ -303,4 +303,12 @@ export const clearKiteVault = () =>
   api.delete("/kite/vault").then((r) => r.data);
 export const refreshKiteSession = (request_token) =>
   api.post("/kite/refresh", { request_token }).then((r) => r.data);
+export const userKiteStatus = () =>
+  api.get("/kite/user/status").then((r) => r.data);
+export const userKiteLoginUrl = () =>
+  api.get("/kite/user/login-url").then((r) => r.data);
+export const completeUserKiteSession = (request_token) =>
+  api.post("/kite/user/session", { request_token }).then((r) => r.data);
+export const disconnectUserKite = () =>
+  api.post("/kite/user/disconnect").then((r) => r.data);
 export const setMode = (mode) => api.post("/mode", { mode }).then((r) => r.data);

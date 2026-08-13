@@ -57,7 +57,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api } from "@/lib/api";
+import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
 import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
@@ -90,7 +90,7 @@ const DASHBOARD_PAGES = [
   { v: "strike-table", l: "Strike Table" },
   { v: "sell-candidates", l: "Sell Candidates", adminOnly: true },
   { v: "buildup", l: "Build-up" },
-  { v: "positions", l: "Positions", adminOnly: true },
+  { v: "positions", l: "Positions" },
   { v: "alerts", l: "Alerts" },
   { v: "activity", l: "Activity" },
   { v: "holidays", l: "Events" },
@@ -412,7 +412,40 @@ export default function Dashboard() {
     status?.mode === "kite"
     || !!status?.has_kite_credentials
     || !!status?.kite_ok;
-  const openKiteCreds = authState.is_admin ? () => setCredsOpen(true) : undefined;
+  const startUserKite = async () => {
+    try {
+      const data = await userKiteLoginUrl();
+      if (data?.login_url) window.location.assign(data.login_url);
+      else toast.error("Kite login URL unavailable");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not start Kite login");
+    }
+  };
+  const openKiteCreds = authState.is_admin ? () => setCredsOpen(true) : startUserKite;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const qs = new URLSearchParams(window.location.search);
+    const token = qs.get("request_token");
+    if (!token || authState.is_admin || !authState.is_guest) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await completeUserKiteSession(token);
+        if (cancelled) return;
+        toast.success(`Zerodha connected${data?.kite_user_id ? ` · ${data.kite_user_id}` : ""}`);
+        qs.delete("request_token");
+        qs.delete("status");
+        qs.delete("action");
+        const next = qs.toString();
+        window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+        setActiveTab("positions");
+      } catch (e) {
+        if (!cancelled) toast.error(e?.response?.data?.detail || "Could not complete Kite login");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authState.is_admin, authState.is_guest]);
 
   useEffect(() => {
     // Connect WebSocket (spot). The WS wrapper will itself defer connects
@@ -443,7 +476,11 @@ export default function Dashboard() {
   useEffect(() => {
     if (authState.is_admin) return;
     const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
-      .filter((page) => !page.adminOnly && visiblePages.includes(page.v))
+      .filter((page) => {
+        if (page.adminOnly) return false;
+        if (page.v === "positions") return true;
+        return visiblePages.includes(page.v);
+      })
       .map((page) => page.v);
     if (allowedTabs.length === 0) return;
     if (!allowedTabs.includes(activeTab)) {
@@ -454,7 +491,10 @@ export default function Dashboard() {
   const dashboardTabs = useMemo(
     () =>
       orderPages(DASHBOARD_PAGES, tabOrder).filter(
-        (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
+        (t) =>
+          authState.is_admin
+          || t.v === "positions"
+          || (!t.adminOnly && visiblePages.includes(t.v))
       ),
     [tabOrder, authState.is_admin, visiblePages],
   );
@@ -2314,7 +2354,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {authState.is_admin && (
+                  {(authState.is_admin || authState.is_guest) && (
                     <TabsContent
                       value="positions"
                       className="mt-0 data-[state=inactive]:hidden"
@@ -2322,7 +2362,8 @@ export default function Dashboard() {
                     >
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
-                      isKiteMode={kiteLiveConnected}
+                      isKiteMode={authState.is_admin ? kiteLiveConnected : true}
+                      isGuest={!!authState.is_guest}
                       hasKiteCredentials={status ? !!status.has_kite_credentials : null}
                       current={filteredCurrent || current}
                       previous={previous}

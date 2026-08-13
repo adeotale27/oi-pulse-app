@@ -241,6 +241,123 @@ async def require_desk_user(request: Request):
     raise HTTPException(401, "Sign in required")
 
 
+async def _publisher_api_key_secret():
+    """Publisher (desk) Kite Connect app — used for OI and to mint per-user sessions."""
+    doc = await db.credentials.find_one({"_id": "kite"}) if db is not None else None
+    if not doc:
+        return None, None
+    api_key = None
+    api_secret = None
+    try:
+        if doc.get("api_key_enc"):
+            api_key = _fernet().decrypt(doc["api_key_enc"].encode()).decode()
+        else:
+            api_key = doc.get("api_key")
+    except Exception:
+        api_key = None
+    try:
+        if doc.get("api_secret_enc"):
+            api_secret = _fernet().decrypt(doc["api_secret_enc"].encode()).decode()
+    except Exception:
+        api_secret = None
+    return (api_key or None), (api_secret or None)
+
+
+async def _load_user_kite_doc(guest_sess: Optional[dict]):
+    if not guest_sess:
+        return None
+    if guest_sess.get("kite_access_token_enc"):
+        return {
+            "access_token_enc": guest_sess.get("kite_access_token_enc"),
+            "kite_user_id": guest_sess.get("kite_user_id"),
+            "valid_until": guest_sess.get("kite_valid_until"),
+            "guest_token": guest_sess.get("_id"),
+        }
+    tok = guest_sess.get("_id")
+    if tok:
+        by_sess = await db.user_kite.find_one({"guest_token": tok})
+        if by_sess:
+            return by_sess
+    uid = guest_sess.get("kite_user_id")
+    if uid:
+        found = await db.user_kite.find_one({"_id": str(uid)})
+        if found:
+            return found
+    name = guest_sess.get("name")
+    ip = guest_sess.get("ip")
+    if name and ip:
+        return await db.user_kite.find_one(
+            {"guest_name": name, "ip": ip},
+            sort=[("updated_at", -1)],
+        )
+    return None
+
+
+async def _save_user_kite(guest_sess: dict, *, access_token: str, kite_user_id: Optional[str]):
+    from user_kite import kite_token_valid_until
+    until = kite_token_valid_until()
+    enc = _fernet().encrypt(access_token.encode()).decode()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    uid = str(kite_user_id or "").strip()
+    fields = {
+        "access_token_enc": enc,
+        "kite_user_id": uid or None,
+        "valid_until": until.isoformat(),
+        "guest_token": guest_sess["_id"],
+        "guest_name": guest_sess.get("name"),
+        "ip": guest_sess.get("ip"),
+        "updated_at": now_iso,
+    }
+    if uid:
+        await db.user_kite.update_one({"_id": uid}, {"$set": fields}, upsert=True)
+    else:
+        await db.user_kite.update_one(
+            {"guest_token": guest_sess["_id"]},
+            {"$set": {**fields, "_id": guest_sess["_id"]}},
+            upsert=True,
+        )
+    await db.guest_sessions.update_one(
+        {"_id": guest_sess["_id"]},
+        {"$set": {
+            "kite_access_token_enc": enc,
+            "kite_user_id": uid or None,
+            "kite_valid_until": until.isoformat(),
+        }},
+    )
+    return fields
+
+
+async def _user_kite_client(guest_sess: Optional[dict]):
+    from kiteconnect import KiteConnect
+    from user_kite import public_status
+    doc = await _load_user_kite_doc(guest_sess)
+    st = public_status(doc)
+    if not st["connected"]:
+        return None, st
+    key, _secret = await _publisher_api_key_secret()
+    if not key:
+        return None, {**st, "connected": False, "error": "Publisher Kite app is not configured."}
+    try:
+        token = _fernet().decrypt(doc["access_token_enc"].encode()).decode()
+    except Exception:
+        return None, {**st, "connected": False, "expired": True, "error": "Stored Kite token could not be read."}
+    kc = KiteConnect(api_key=key)
+    kc.set_access_token(token)
+    return kc, st
+
+
+async def _auth_user_kite_payload(is_admin: bool, guest_sess: Optional[dict]) -> dict:
+    from user_kite import public_status
+    if is_admin:
+        uid = getattr(tracker, "kite_user_id", None) if tracker else None
+        connected = bool(tracker and tracker.kite_service and getattr(tracker, "mode", None) == "kite")
+        return {"role": "admin", "connected": connected, "expired": False, "kite_user_id": uid, "publisher": True}
+    if not guest_sess:
+        return {"role": "guest", "connected": False, "expired": False, "kite_user_id": None, "publisher": False}
+    doc = await _load_user_kite_doc(guest_sess)
+    return {"role": "guest", "publisher": False, **public_status(doc)}
+
+
 def _sanitize_public_error(err: Optional[str]) -> Optional[str]:
     """Never echo raw Kite/API exceptions (may include key/token fragments) to guests."""
     if not err:
@@ -1149,7 +1266,7 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown straddle index: {i}")
     if "visible_pages" in patch:
-        admin_only = {"positions", "sell-candidates", "index-events"}
+        admin_only = {"sell-candidates", "index-events"}
         pages = [p for p in (patch["visible_pages"] or []) if p not in admin_only]
         if not pages:
             raise HTTPException(400, "At least one public dashboard page is required")
@@ -2704,6 +2821,7 @@ async def auth_state(request: Request):
         "can_remember_login": True,
         "pending_access_count": pending_access_count,
         "ip_blocked": await _is_ip_blocked(ip) if not is_admin else False,
+        "user_kite": await _auth_user_kite_payload(is_admin, guest_sess),
     }
 
 
@@ -3425,62 +3543,202 @@ async def admin_refresh_day(
 
 
 # ------------------- Zerodha positions -------------------
-@api_router.get("/positions")
-async def get_positions(_admin: bool = Depends(require_admin)):
-    """Fetch F&O positions from the user's Kite account (net + day).
+class UserKiteSessionIn(BaseModel):
+    request_token: str
 
-    Includes:
-      • Open legs (net quantity ≠ 0)
-      • Same-day exited / squared-off legs (net quantity = 0 but buy/sell qty > 0)
-        — Zerodha keeps these in `positions().net` until EOD with realised PnL
 
-    Admin-only — never expose the live broker book to guests.
-    Also returns equity funds (read-only margins) for the seller desk tile."""
-    # Prefer the live Kite client — do not drop Positions just because the OI
-    # poller mode flag briefly flipped offline.
-    if not tracker.kite_service:
+@api_router.get("/kite/user/status")
+async def kite_user_status(request: Request, role: str = Depends(require_desk_user)):
+    from user_kite import public_status
+    if role == "admin":
+        uid = getattr(tracker, "kite_user_id", None) if tracker else None
+        connected = bool(tracker and tracker.kite_service and tracker.mode == "kite")
         return {
-            "mode": tracker.mode,
-            "positions": [],
-            "funds": None,
-            "error": "Kite not connected. Add API key + access token in Credentials.",
-            "kite_connected": False,
-            "transient": False,
-            "token_issue": True,
+            "role": "admin",
+            "connected": connected,
+            "expired": False,
+            "kite_user_id": uid,
+            "publisher": True,
         }
-    # Respect intentional offline — do not auto-heal mode back to kite.
-    if tracker.mode != "kite":
-        if getattr(tracker, "offline_sticky", False):
+    guest = await _guest_from_request(request)
+    doc = await _load_user_kite_doc(guest)
+    st = public_status(doc)
+    key, secret = await _publisher_api_key_secret()
+    return {
+        "role": "guest",
+        "publisher": False,
+        "app_ready": bool(key and secret),
+        **st,
+    }
+
+
+@api_router.get("/kite/user/callback")
+async def kite_user_callback(
+    request: Request,
+    request_token: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """Kite Connect redirect helper — bounce to the SPA with the one-time token."""
+    from fastapi.responses import RedirectResponse
+    origin = (
+        os.environ.get("FRONTEND_URL")
+        or os.environ.get("APP_ORIGIN")
+        or os.environ.get("PUBLIC_APP_URL")
+        or ""
+    ).rstrip("/")
+    if not origin:
+        # Same host SPA (typical nginx: /api + /)
+        origin = str(request.base_url).rstrip("/")
+        if origin.endswith("/api"):
+            origin = origin[: -4]
+    qs = []
+    if request_token:
+        qs.append(f"request_token={request_token}")
+    if status:
+        qs.append(f"status={status}")
+    dest = f"{origin}/kite-callback"
+    if qs:
+        dest = dest + "?" + "&".join(qs)
+    return RedirectResponse(dest, status_code=302)
+
+
+@api_router.get("/kite/user/login-url")
+async def kite_user_login_url(_role: str = Depends(require_desk_user)):
+    key, secret = await _publisher_api_key_secret()
+    if not key or not secret:
+        raise HTTPException(400, "Publisher Kite app is not configured (API key + secret).")
+    return {
+        "login_url": f"https://kite.zerodha.com/connect/login?v=3&api_key={key}",
+        "hint": "Set the Kite Connect redirect URL to this site (e.g. https://your-host/kite-callback).",
+    }
+
+
+@api_router.post("/kite/user/session")
+async def kite_user_session(payload: UserKiteSessionIn, request: Request, role: str = Depends(require_desk_user)):
+    """Exchange request_token for a per-user access_token. Never writes the publisher OI vault."""
+    if role != "guest":
+        raise HTTPException(400, "Admin desk uses Credentials / daily refresh, not guest Kite login.")
+    guest = await _guest_from_request(request)
+    if not guest:
+        raise HTTPException(401, "Guest session required")
+    req = str(payload.request_token or "").strip()
+    if not req:
+        raise HTTPException(400, "request_token required")
+    key, secret = await _publisher_api_key_secret()
+    if not key or not secret:
+        raise HTTPException(400, "Publisher Kite app is not configured.")
+    try:
+        from kiteconnect import KiteConnect
+        kc = KiteConnect(api_key=key)
+        data = kc.generate_session(req, api_secret=secret)
+        access_token = data.get("access_token")
+        if not access_token:
+            raise RuntimeError("No access_token returned by Kite")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"{type(e).__name__}: {e}")
+    uid = data.get("user_id")
+    saved = await _save_user_kite(guest, access_token=access_token, kite_user_id=uid)
+    return {
+        "ok": True,
+        "kite_user_id": uid,
+        "valid_until": saved.get("valid_until"),
+        "connected": True,
+    }
+
+
+@api_router.post("/kite/user/disconnect")
+async def kite_user_disconnect(request: Request, role: str = Depends(require_desk_user)):
+    if role != "guest":
+        raise HTTPException(400, "Admin desk uses Credentials to sign out of Kite.")
+    guest = await _guest_from_request(request)
+    if not guest:
+        raise HTTPException(401, "Guest session required")
+    await db.guest_sessions.update_one(
+        {"_id": guest["_id"]},
+        {"$unset": {"kite_access_token_enc": "", "kite_user_id": "", "kite_valid_until": ""}},
+    )
+    tok = guest["_id"]
+    await db.user_kite.update_many(
+        {"guest_token": tok},
+        {"$unset": {"access_token_enc": "", "valid_until": ""}},
+    )
+    return {"ok": True, "connected": False}
+
+
+@api_router.get("/positions")
+async def get_positions(request: Request, role: str = Depends(require_desk_user)):
+    """Fetch F&O positions from the caller's Kite book (net + day).
+
+    Admin uses the publisher vault (same client as OI).
+    Guests use their own access_token — never the publisher desk token.
+    """
+    kite = None
+    if role == "guest":
+        guest = await _guest_from_request(request)
+        kite, st = await _user_kite_client(guest)
+        if not kite:
+            expired = bool(st.get("expired"))
+            return {
+                "mode": "user",
+                "positions": [],
+                "funds": None,
+                "error": (
+                    "Your Kite login expired around 06:00 IST. Reconnect to load today's book."
+                    if expired
+                    else "Connect your Zerodha account to load your positions."
+                ),
+                "kite_connected": False,
+                "connect_required": True,
+                "user_kite": st,
+                "transient": False,
+                "token_issue": True,
+            }
+    else:
+        # Prefer the live Kite client — do not drop Positions just because the OI
+        # poller mode flag briefly flipped offline.
+        if not tracker.kite_service:
             return {
                 "mode": tracker.mode,
                 "positions": [],
                 "funds": None,
-                "error": "Kite is offline. Switch to LIVE (or reconnect) to pull positions.",
+                "error": "Kite not connected. Add API key + access token in Credentials.",
                 "kite_connected": False,
                 "transient": False,
-                "token_issue": False,
+                "token_issue": True,
             }
-        # Brief mode flap with credentials still loaded — use client without flipping mode.
-        pass
+        # Respect intentional offline — do not auto-heal mode back to kite.
+        if tracker.mode != "kite":
+            if getattr(tracker, "offline_sticky", False):
+                return {
+                    "mode": tracker.mode,
+                    "positions": [],
+                    "funds": None,
+                    "error": "Kite is offline. Switch to LIVE (or reconnect) to pull positions.",
+                    "kite_connected": False,
+                    "transient": False,
+                    "token_issue": False,
+                }
+        kite = tracker.kite_service.kite
 
     try:
-        kite = tracker.kite_service.kite
         raw = await asyncio.to_thread(kite.positions)
         net = raw.get("net", []) if isinstance(raw, dict) else (raw or [])
         day = raw.get("day", []) if isinstance(raw, dict) else []
-        # Successful Kite call — drop sticky TokenException so the banner clears.
-        err_low = (tracker.last_error or "").lower()
-        if any(
-            k in err_low
-            for k in (
-                "tokenexception",
-                "invalid token",
-                "incorrect `api_key`",
-                "incorrect api_key",
-                "access_token",
-            )
-        ):
-            tracker.last_error = None
+        if role == "admin":
+            err_low = (tracker.last_error or "").lower()
+            if any(
+                k in err_low
+                for k in (
+                    "tokenexception",
+                    "invalid token",
+                    "incorrect `api_key`",
+                    "incorrect api_key",
+                    "access_token",
+                )
+            ):
+                tracker.last_error = None
     except Exception as e:
         msg = f"{type(e).__name__}: {e}"
         low = msg.lower()
@@ -3496,8 +3754,19 @@ async def get_positions(_admin: bool = Depends(require_admin)):
                 "forbidden",
             )
         )
-        if tokenish:
+        if tokenish and role == "admin":
             tracker.last_error = msg
+        if tokenish and role == "guest":
+            return {
+                "mode": "user",
+                "positions": [],
+                "funds": None,
+                "error": "Your Kite login expired or was rejected. Reconnect Zerodha for today's book.",
+                "kite_connected": False,
+                "connect_required": True,
+                "transient": False,
+                "token_issue": True,
+            }
         try:
             from kite_maintenance import notice_from_error, merge_maintenance
 
@@ -3775,7 +4044,7 @@ async def get_positions(_admin: bool = Depends(require_admin)):
         "token_issue": False,
     }
     try:
-        if not result.get("error"):
+        if role == "admin" and not result.get("error"):
             asyncio.create_task(_snapshot_trade_journal(result))
     except Exception:
         pass
@@ -3999,7 +4268,7 @@ async def journal_del_shot(day: str, shot_id: str, _admin: bool = Depends(requir
 
 
 @api_router.get("/positions/brokerage-day")
-async def get_brokerage_day(_admin: bool = Depends(require_admin)):
+async def get_brokerage_day(request: Request, role: str = Depends(require_desk_user)):
     """Day's brokerage via Kite virtual contract note (read-only).
 
     Prefers kite.trades() fills (reliable prices) then COMPLETE orders.
@@ -4011,7 +4280,21 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
         resolve_charge_params,
     )
 
-    if tracker.mode != "kite" or not tracker.kite_service:
+    kite = None
+    if role == "guest":
+        guest = await _guest_from_request(request)
+        kite, st = await _user_kite_client(guest)
+        if not kite:
+            return {
+                "ok": False,
+                "brokerage": None,
+                "charges_total": None,
+                "order_count": 0,
+                "error": "Connect Zerodha to load charges.",
+                "connect_required": True,
+                "user_kite": st,
+            }
+    elif tracker.mode != "kite" or not tracker.kite_service:
         if not tracker.kite_service or getattr(tracker, "offline_sticky", False):
             return {
                 "ok": False,
@@ -4020,10 +4303,12 @@ async def get_brokerage_day(_admin: bool = Depends(require_admin)):
                 "order_count": 0,
                 "error": "Kite not connected." if not tracker.kite_service else "Kite is offline.",
             }
-        # Credentials present + non-sticky offline flap — use client without flipping mode.
-        pass
-    try:
         kite = tracker.kite_service.kite
+    else:
+        kite = tracker.kite_service.kite
+    try:
+        if kite is None:
+            kite = tracker.kite_service.kite
     except Exception as e:
         err = f"Kite client: {type(e).__name__}: {e}"
         err = _sanitize_public_error(err) or "Data feed temporarily unavailable"
@@ -4465,6 +4750,7 @@ _RATE_LIMITED_PREFIXES = (
     "/api/kite/generate-session",
     "/api/kite/refresh",
     "/api/kite/vault",
+    "/api/kite/user/session",
     "/api/mode",
     "/api/telegram/huge-shift",
     "/api/auth/guest",
@@ -4562,6 +4848,8 @@ async def _startup():
         await db.access_requests.create_index([("status", 1), ("created_at", -1)])
         await db.access_requests.create_index([("ip", 1), ("status", 1)])
         await db.blocked_ips.create_index("blocked_at")
+        await db.user_kite.create_index("guest_token")
+        await db.user_kite.create_index([("guest_name", 1), ("ip", 1)])
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 
