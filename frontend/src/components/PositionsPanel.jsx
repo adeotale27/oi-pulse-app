@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   RefreshCw,
   PlugZap,
@@ -16,13 +17,13 @@ import {
   Eye,
   EyeOff,
   BookOpen,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent, getMarketCloseHm } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import {
   yearsToExpiry,
   greeks,
@@ -57,6 +58,7 @@ import PositionHeatmap from "@/components/PositionHeatmap";
 import TradeJournalModal from "@/components/TradeJournalModal";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
+import { publishTodayPnl } from "@/lib/todayPnl";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_MASK = "••••";
@@ -323,6 +325,7 @@ export default function PositionsPanel({
   }, []);
 
   const shownCols = useMemo(() => visibleColumnIds(colVis), [colVis]);
+  const closeRadar = useCallback(() => setOiRiskOpen(false), []);
   const colOn = useCallback((id) => shownCols.includes(id), [shownCols]);
 
   useEffect(() => {
@@ -391,6 +394,11 @@ export default function PositionsPanel({
         } else {
           if (data.funds) setFunds(data.funds);
           if (data.pnl_today) setPnlToday(data.pnl_today);
+        }
+        const total = data?.pnl_today?.total;
+        if (Number.isFinite(Number(total))) {
+          const open = next.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
+          publishTodayPnl({ total: Number(total), open });
         }
         if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
         if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
@@ -984,13 +992,18 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-sm bg-white shrink-0 text-rose-800 border-rose-200 hover:bg-rose-50 px-2.5"
-            onClick={() => setOiRiskOpen(true)}
+            className={`h-8 rounded-full bg-white shrink-0 px-2.5 ${
+              oiRiskOpen
+                ? "text-rose-900 border-rose-400 bg-rose-50"
+                : "text-rose-800 border-rose-200 hover:bg-rose-50"
+            }`}
+            onClick={() => setOiRiskOpen((v) => !v)}
             data-testid="btn-oi-risk-meter"
-            title="15-min OI vs nearest sold strike"
+            aria-pressed={oiRiskOpen}
+            title="Book radar: 15-min OI vs nearest sold strike, plus position heatmap"
           >
             <ShieldAlert className="w-3.5 h-3.5 mr-1" />
-            OI Risk
+            Radar
           </Button>
           <Button
             size="sm"
@@ -1061,6 +1074,7 @@ export default function PositionsPanel({
               </div>
             )}
           </div>
+          <span id="positions-tiles-anchor" className="inline-flex" data-testid="positions-tiles-anchor" />
           <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -1118,6 +1132,7 @@ export default function PositionsPanel({
       )}
 
       <PositionsInsightTiles
+        layoutAnchorId="positions-tiles-anchor"
         nodes={{
           todayPnl: (
         <StatBox
@@ -1922,19 +1937,37 @@ export default function PositionsPanel({
         <div className="text-[10px] text-slate-400 text-right">Last refresh {new Date(lastRefresh).toLocaleTimeString()}</div>
       )}
 
-      <Sheet open={oiRiskOpen} onOpenChange={setOiRiskOpen}>
-        <SheetContent side="right" className="w-[min(100vw,22rem)] sm:max-w-sm p-4" data-testid="oi-risk-sheet">
-          <SheetHeader>
-            <SheetTitle>OI Risk Meter</SheetTitle>
-            <SheetDescription>
-              15-minute OI vs your nearest sold strike. Hide this anytime — it is not on the main tile row.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-4">
-            <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
+      <BookRadarPanel open={oiRiskOpen} onClose={closeRadar}>
+        <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
+          <div>
+            <div className="text-[15px] font-semibold text-slate-900 tracking-tight">Book radar</div>
+            <p className="text-[11px] text-slate-600 leading-snug mt-0.5">
+              15-minute OI vs your nearest sold strike, plus the live position heatmap. The page stays usable — click anywhere else to close.
+            </p>
           </div>
-        </SheetContent>
-      </Sheet>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800 shrink-0"
+            onClick={closeRadar}
+            data-testid="btn-book-radar-close"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-4 pb-4 space-y-3 overflow-y-auto">
+          <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
+          <PositionHeatmap
+            rows={rows}
+            privacy={privacyMode}
+            onSelect={(sym) => {
+              setHighlightSymbol(sym);
+              const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
+              el?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+          />
+        </div>
+      </BookRadarPanel>
       <TradeJournalModal
         open={journalOpen}
         onOpenChange={setJournalOpen}
@@ -1975,24 +2008,57 @@ function GreeksHealthChip({ health }) {
   );
 }
 
+function BookRadarPanel({ open, onClose, children }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointer = (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-testid='oi-risk-sheet']")) return;
+      if (t.closest("[data-testid='btn-oi-risk-meter']")) return;
+      onClose?.();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+  return createPortal(
+    <aside
+      data-testid="oi-risk-sheet"
+      className="fixed z-[80] right-2 top-[4.75rem] bottom-2 w-[min(100vw-1rem,26rem)] rounded-3xl border border-slate-200/90 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.5)] overflow-hidden flex flex-col"
+    >
+      {children}
+    </aside>,
+    document.body,
+  );
+}
+
 function StatBox({ label, value, tone = "slate", hint, tip }) {
   const cls = tone === "emerald"
-    ? "border-emerald-200/80 bg-emerald-50/70 text-emerald-900"
+    ? "border-emerald-300 bg-emerald-50 text-emerald-950"
     : tone === "rose"
-      ? "border-rose-200/80 bg-rose-50/70 text-rose-900"
+      ? "border-rose-300 bg-rose-50 text-rose-950"
       : tone === "amber"
-        ? "border-amber-200/80 bg-amber-50/70 text-amber-900"
-        : "border-slate-200 bg-slate-50/80 text-slate-800";
+        ? "border-amber-300 bg-amber-50 text-amber-950"
+        : "border-slate-300 bg-white text-slate-900";
   return (
-    <div className={`rounded-md border px-3 py-2 ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
-      <div className="text-[10px] uppercase tracking-widest opacity-70 inline-flex items-center gap-1">
+    <div className={`rounded-xl border px-3 py-3 min-h-[7.25rem] flex flex-col justify-between shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+      <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1">
         {label}
         {tip && (
           <InfoTip title={label} size="xs">{tip}</InfoTip>
         )}
       </div>
       <div className="text-lg font-semibold font-mono-data leading-tight">{value}</div>
-      {hint && <div className="text-[10px] opacity-70 mt-0.5">{hint}</div>}
+      {hint && <div className="text-[10px] text-slate-600 mt-0.5">{hint}</div>}
     </div>
   );
 }

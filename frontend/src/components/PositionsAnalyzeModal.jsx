@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   computeIndexPayoff,
   groupPositionsByIndex,
@@ -484,15 +485,6 @@ export default function PositionsAnalyzeModal({
     setTargetSpot(v);
   };
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   const legs = byIndex.get(activeIndex) || [];
   const activeLegs = useMemo(
     () => legs.filter((l) => selected.has(l.tradingsymbol) && !l.exited && Number(l.quantity) !== 0),
@@ -625,16 +617,13 @@ export default function PositionsAnalyzeModal({
     : [];
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-slate-950/55 p-0 sm:p-4 backdrop-blur-[2px]"
-      data-testid="positions-analyze-modal"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
-    >
-      <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full max-w-6xl max-h-[100dvh] sm:max-h-[92vh] overflow-hidden flex flex-col border border-slate-200">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose?.(); }}>
+      <DialogContent
+        className="max-w-[min(96vw,72rem)] max-h-[94vh] p-0 gap-0 overflow-hidden flex flex-col sm:rounded-2xl max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none"
+        data-testid="positions-analyze-modal"
+      >
+      <DialogTitle className="sr-only">Book Analyze</DialogTitle>
+      <div className="bg-white w-full h-full min-h-0 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#ecfdf5_55%,#fff_100%)] shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -1004,7 +993,8 @@ export default function PositionsAnalyzeModal({
           </div>
         </div>
       </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

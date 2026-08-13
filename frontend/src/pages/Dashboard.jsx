@@ -117,6 +117,18 @@ function loadChangeAlertPct() {
   } catch { return CHANGE_ALERT_PCT_DEFAULT; }
 }
 
+const STRIKES_AROUND_KEY = "oiStrikesAround";
+const STRIKES_AROUND_ALLOWED = [2, 5, 10, 15, 20, 25];
+function loadStrikesAround() {
+  try {
+    const raw = localStorage.getItem(STRIKES_AROUND_KEY);
+    if (raw === "all") return "all";
+    const n = Number(raw);
+    if (STRIKES_AROUND_ALLOWED.includes(n)) return n;
+  } catch { /* noop */ }
+  return 10;
+}
+
 function formatDayLabel(iso) {
   const d = iso ? new Date(iso) : new Date();
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
@@ -188,7 +200,7 @@ export default function Dashboard() {
   const [authState, setAuthState] = useState({ is_admin: false, is_guest: false, guest_name: null, admin_display_name: null });
   const [alerts, setAlerts] = useState([]);
   const [dataStatus, setDataStatus] = useState(null);
-  const [strikesAround, setStrikesAround] = useState(10);
+  const [strikesAround, setStrikesAround] = useState(loadStrikesAround);
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
   const [credsOpen, setCredsOpen] = useState(false);
   const [morningRefreshOpen, setMorningRefreshOpen] = useState(false);
@@ -1086,6 +1098,9 @@ export default function Dashboard() {
 
   const applyStrikesAround = useCallback((n) => {
     setStrikesAround(n);
+    try {
+      localStorage.setItem(STRIKES_AROUND_KEY, String(n));
+    } catch { /* noop */ }
     if (!current?.strikes?.length) return;
     const sorted = [...current.strikes].sort((a, b) => a.strike - b.strike);
     if (n === "all") {
@@ -2048,13 +2063,13 @@ export default function Dashboard() {
                       </div>
                     )}
                     {current?.atm != null && (
-                      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono-data text-slate-600" data-testid="oi-change-atm-strip">
-                        <span>ATM <b className="text-slate-900">{Number(current.atm).toLocaleString("en-IN")}</b></span>
+                      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-mono-data text-slate-700" data-testid="oi-change-atm-strip">
+                        <span>ATM <b className="text-slate-950">{Number(current.atm).toLocaleString("en-IN")}</b></span>
                         {current?.pcr != null && (
-                          <span>PCR <b className={Number(current.pcr) >= 1 ? "text-emerald-700" : "text-rose-700"}>{Number(current.pcr).toFixed(2)}</b></span>
+                          <span>PCR <b className={Number(current.pcr) >= 1 ? "text-emerald-800" : "text-rose-800"}>{Number(current.pcr).toFixed(2)}</b></span>
                         )}
                         {typeof strikesAround === "number" && (
-                          <span className="text-slate-400">showing ±{strikesAround} strikes</span>
+                          <span className="text-slate-600">showing ±{strikesAround} strikes</span>
                         )}
                       </div>
                     )}
@@ -2510,7 +2525,7 @@ export default function Dashboard() {
           isAdmin={!!authState.is_admin}
           deskOpen={!compact}
           onOpenDesk={() => setCompact((v) => !v)}
-          onOpenAdminTools={() => window.dispatchEvent(new Event("oi-open-admin-tools"))}
+          onOpenAdminTools={() => window.dispatchEvent(new Event("oi-toggle-admin-tools"))}
           onChangeTab={(id) => {
             setCompact(true);
             setActiveTab(id);

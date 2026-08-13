@@ -54,9 +54,9 @@ export default function OiRiskMeter({
   const tone = ACTION_TONE[risk.action] || ACTION_TONE.Hold;
 
   return (
-    <div className={`rounded-md border-2 px-3 py-2 ${tone}`} data-testid="oi-risk-meter">
+    <div className={`rounded-2xl border-2 px-3 py-2.5 ${tone}`} data-testid="oi-risk-meter">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-widest opacity-70">OI Risk Meter</span>
+        <span className="text-[10px] uppercase tracking-widest font-semibold text-slate-800">OI Risk Meter</span>
         <InfoTip title="Intraday adjustment, not overnight" testId="oi-risk-meter-tip">
           <p>
             For a non-directional seller: <b>new OI writing</b> is a trend starting.
