@@ -24,6 +24,7 @@ import { isHoliday, isTradingDayIST } from "@/lib/holidays";
 import InfoTip from "@/components/InfoTip";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function fmtInr(v, dp = 0) {
@@ -45,10 +46,9 @@ function compactPnl(v) {
 
 function cellPnl(doc) {
   if (!doc) return 0;
-  if (doc.display_pnl != null) return Number(doc.display_pnl) || 0;
   if (doc.booked_pnl != null) return Number(doc.booked_pnl) || 0;
   if (doc.pnl_exited != null) return Number(doc.pnl_exited) || 0;
-  if (doc.eod_locked && doc.frozen_pnl != null) return Number(doc.frozen_pnl) || 0;
+  if (doc.display_pnl != null) return Number(doc.display_pnl) || 0;
   return 0;
 }
 
@@ -199,9 +199,15 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   }, [open, year, month, loadMonth]);
 
   useEffect(() => {
-    if (!open || tab !== "year") return;
-    loadYear(year);
-  }, [open, tab, year, loadYear]);
+    if (!dayDoc?.date) return undefined;
+    const id = window.setTimeout(() => {
+      const el = document.querySelector('[data-testid="journal-day-editor"]');
+      if (el && window.matchMedia("(max-width: 767px)").matches) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [dayDoc?.date]);
 
   const byDate = useMemo(() => {
     const m = new Map();
@@ -367,7 +373,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               Trade journal
             </DialogTitle>
             <DialogDescription className="text-slate-600">
-              Daily booked P&amp;L (exited only) is stored from the last Positions auto-refresh and frozen at 15:45 IST. Brokerage lives in our database — not on Kite.
+              <span className="hidden sm:inline">
+                Daily booked P&amp;L (exited only) is stored from the last Positions auto-refresh and frozen at 15:45 IST. Brokerage lives in our database — not on Kite.
+              </span>
+              <span className="sm:hidden text-[12px]">
+                Booked P&amp;L (exited trades) · tap a day to journal
+              </span>
             </DialogDescription>
           </DialogHeader>
           <div className="mt-3 flex gap-1 rounded-full bg-white border border-slate-200 p-0.5 w-fit shadow-sm">
@@ -389,10 +400,22 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
           </div>
         </div>
 
-        <div className="px-4 sm:px-5 py-4 space-y-3">
+        <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 max-md:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           {tab === "calendar" && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="md:hidden rounded-xl border border-emerald-200 bg-white px-3 py-2 flex items-center justify-between gap-2 shadow-sm">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Month booked</div>
+                  <div className={`text-lg font-bold font-mono-data leading-tight ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    {privacy ? "••••" : compactPnl(stats.net_pnl)}
+                  </div>
+                </div>
+                <div className="text-right text-[11px] text-slate-600 leading-snug">
+                  <div>{stats.trading_days || 0} days · {stats.trade_win_rate ?? 0}% trades</div>
+                  <div>{stats.win_rate ?? 0}% day wins · PF {stats.profit_factor ?? "—"}</div>
+                </div>
+              </div>
+              <div className="hidden md:grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
                   <Gauge pct={stats.trade_win_rate} />
                   <div>
@@ -440,7 +463,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   This month
                 </Button>
                 <div className="flex-1" />
-                <div className="flex items-center gap-2 text-sm">
+                <div className="hidden md:flex items-center gap-2 text-sm">
                   <span className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Monthly stats</span>
                   <span className={`font-semibold font-mono-data ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                     {privacy ? "••••" : compactPnl(stats.net_pnl)}
@@ -450,11 +473,16 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               </div>
 
               <div className="flex gap-2 min-w-0">
-                <div className="flex-1 min-w-0 overflow-x-auto">
-                  <div className="grid grid-cols-7 gap-2 text-[12px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">
-                    {WEEKDAYS.map((d) => <div key={d} className="text-center">{d}</div>)}
+              <div className="min-w-0 flex-1">
+                  <div className="grid grid-cols-7 gap-0.5 md:gap-2 text-[10px] md:text-[12px] uppercase tracking-wide text-slate-500 font-semibold mb-1">
+                    {WEEKDAYS.map((d, i) => (
+                      <div key={d} className="text-center">
+                        <span className="md:hidden">{WEEKDAYS_SHORT[i]}</span>
+                        <span className="hidden md:inline">{d}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="grid grid-cols-7 gap-2" data-testid="journal-calendar">
+                  <div className="grid grid-cols-7 gap-0.5 md:gap-2" data-testid="journal-calendar">
                     {cells.map((c, i) => {
                       if (!c) return <div key={`e-${i}`} />;
                       const doc = byDate.get(c.iso);
@@ -472,25 +500,42 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const decided = (doc?.win_trades || 0) + (doc?.loss_trades || 0);
                       const wr = decided > 0 ? `${Math.round((100 * (doc.win_trades || 0)) / decided)}%` : null;
                       const hasNote = !!(doc?.went_well || doc?.went_wrong || doc?.notes);
+                      const exits = Number(doc?.exited_count || 0);
                       return (
                         <button
                           key={c.iso}
                           type="button"
                           onClick={() => openDay(c.iso)}
                           data-testid={`journal-cell-${c.iso}`}
-                          className={`rounded-3xl border p-2.5 min-h-[118px] text-left transition-all hover:shadow-lg hover:-translate-y-0.5 ${tone.box} ${
-                            isSel ? "ring-2 ring-emerald-500 shadow-md" : "shadow-sm"
+                          className={`rounded-md md:rounded-3xl border p-1 md:p-2.5 min-h-[56px] md:min-h-[118px] text-left transition-all md:hover:shadow-lg md:hover:-translate-y-0.5 ${tone.box} ${
+                            isSel ? "ring-2 ring-emerald-500 shadow-md" : "md:shadow-sm"
                           }`}
                         >
-                          <div className={`flex justify-between items-start text-[13px] ${tone.invert ? "text-white/80" : "text-slate-600"}`}>
-                            <span className={`font-semibold text-[15px] ${tone.invert ? "text-white" : "text-slate-800"}`}>{c.day}</span>
+                          <div className={`flex justify-between items-start ${tone.invert ? "text-white/80" : "text-slate-600"}`}>
+                            <span className={`font-semibold text-[11px] md:text-[15px] leading-none ${tone.invert ? "text-white" : "text-slate-800"}`}>{c.day}</span>
                             <span className="flex items-center gap-0.5">
-                              {isToday ? <span className="h-2 w-2 rounded-full bg-sky-500" title="Today" /> : null}
-                              {hasNote ? <FileText className="w-3 h-3" /> : null}
-                              {doc?.screenshot_count > 0 ? <span title="Has screenshot">🖼</span> : null}
-                              {doc?.eod_locked ? <span title="Locked after last Positions refresh" className="text-[8px] font-bold">EOD</span> : null}
+                              {isToday ? <span className="h-1.5 w-1.5 md:h-2 md:w-2 rounded-full bg-sky-500" title="Today" /> : null}
+                              <span className="hidden md:flex items-center gap-0.5">
+                                {hasNote ? <FileText className="w-3 h-3" /> : null}
+                                {doc?.screenshot_count > 0 ? <span title="Has screenshot">🖼</span> : null}
+                                {doc?.eod_locked ? <span title="Locked after last Positions refresh" className="text-[8px] font-bold">EOD</span> : null}
+                              </span>
                             </span>
                           </div>
+                          <div className="md:hidden mt-1 min-w-0">
+                            {traded ? (
+                              <div className={`text-[11px] font-bold font-mono-data leading-tight truncate ${tone.amt}`}>
+                                {privacy ? "··" : compactPnl(pnl)}
+                              </div>
+                            ) : hol ? (
+                              <div className="text-[9px] leading-tight text-amber-800 truncate" title={hol.name}>Holi</div>
+                            ) : !session ? (
+                              <div className="text-[9px] text-slate-400">—</div>
+                            ) : (
+                              <div className="h-3" />
+                            )}
+                          </div>
+                          <div className="hidden md:block">
                           {traded ? (
                             <>
                               <div className={`mt-2 text-[17px] font-bold font-mono-data leading-tight ${tone.amt}`}>
@@ -505,7 +550,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                                 </div>
                               ) : null}
                               <div className={`text-[12px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
-                                {(doc.exited_count || 0)} booked{(doc.exited_count || 0) === 1 ? "" : "s"}
+                                {exits} exit{exits === 1 ? "" : "s"}
                               </div>
                               {wr ? (
                                 <div className={`text-[10px] font-semibold ${tone.invert ? "text-white/90" : "text-slate-600"}`}>{wr}</div>
@@ -521,12 +566,27 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           ) : (
                             <div className="mt-6" />
                           )}
+                          </div>
                         </button>
                       );
                     })}
                   </div>
+                  <div
+                    className="md:hidden mt-2 grid gap-1"
+                    style={{ gridTemplateColumns: `repeat(${Math.max(weeks.length, 1)}, minmax(0, 1fr))` }}
+                    data-testid="journal-weekly-recap-mobile"
+                  >
+                    {weeks.map((w, wi) => (
+                      <div key={w.label} className="rounded-lg border border-slate-200 bg-white px-1 py-1.5 text-center">
+                        <div className="text-[8px] uppercase tracking-wide text-slate-400 font-semibold">W{wi + 1}</div>
+                        <div className={`text-[10px] font-bold font-mono-data leading-tight truncate ${w.booked ? (w.pnl >= 0 ? "text-emerald-700" : "text-rose-700") : "text-slate-300"}`}>
+                          {privacy ? "··" : (w.booked ? compactPnl(w.pnl) : "—")}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="hidden sm:flex w-[9rem] shrink-0 flex-col gap-2" data-testid="journal-weekly-recap">
+                <div className="hidden md:flex w-[9rem] shrink-0 flex-col gap-2" data-testid="journal-weekly-recap">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold px-0.5">Weekly recap</div>
                   {weeks.map((w) => (
                     <div key={w.label} className="flex-1 min-h-[5rem] rounded-3xl border border-slate-200 bg-white px-2.5 py-2.5 shadow-sm flex flex-col">
@@ -568,7 +628,49 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </span>
                 <span className="text-[12px] text-slate-500">{yearData?.stats?.trading_days || 0} days</span>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <div className="md:hidden space-y-1.5" data-testid="journal-year-heatmap-mobile">
+                {MONTH_SHORT.map((m, i) => {
+                  const net = Number(heat?.month_nets?.[i] || 0);
+                  const days = heat?.months?.[i]?.trading_days || 0;
+                  const by = heat?.by_index || {};
+                  if (Math.abs(net) < 0.01 && !days) {
+                    return (
+                      <div key={m} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-[12px] text-slate-400">
+                        <span className="font-semibold text-slate-500">{m}</span>
+                        <span>—</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => { setMonth(i + 1); setTab("calendar"); }}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold text-slate-800">{m}</span>
+                        <span className={`font-mono-data font-bold text-[13px] ${net >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                          {privacy ? "••••" : compactPnl(net)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] font-mono-data text-slate-500">
+                        {["NIFTY", "SENSEX", "BANKNIFTY"].map((idx) => {
+                          const v = Number(by[idx]?.[i] || 0);
+                          if (Math.abs(v) < 0.01) return null;
+                          return (
+                            <span key={idx} className={v >= 0 ? "text-emerald-700" : "text-rose-700"}>
+                              {idx === "BANKNIFTY" ? "BNF" : idx} {compactPnl(v)}
+                            </span>
+                          );
+                        })}
+                        <span className="text-slate-400">{days}d</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 <table className="w-full text-[11px] min-w-[40rem]">
                   <thead>
                     <tr className="text-slate-600 bg-slate-50">
@@ -613,8 +715,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   <div className="text-sm font-semibold">
                     {new Date(`${dayDoc.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                   </div>
-                  <div className={`text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_total) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    Booked {privacy ? "••••" : fmtInr(dayDoc.booked_pnl ?? dayDoc.pnl_exited ?? dayDoc.pnl_total, 0)}
+                  <div className={`text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    Booked {privacy ? "••••" : fmtInr(dayDoc.booked_pnl ?? dayDoc.pnl_exited, 0)}
                     {dayDoc.eod_locked ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-violet-600">Locked 15:45</span> : <span className="ml-2 text-[10px] font-medium text-slate-400">Live until 15:45 IST</span>}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5" data-testid="journal-after-charges">

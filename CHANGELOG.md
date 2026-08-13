@@ -1,5 +1,14 @@
 # Changelog
 
+## V5.05 — 2026-08-13
+
+Trade journal calendar is readable on phone.
+
+- Compact 7-day grid (date + booked P&L only) instead of overflowing desktop cards
+- Month booked strip + weekly recap on phone; tap a day for full notes / charges
+- Year heatmap on phone is a month list (booked by index), not a squeezed table
+- Calendar figures stay booked/exited P&L (never open MTM)
+
 ## V5.04 — 2026-08-13
 
 Desk polish: About notes split by role, mobile dock/sidebar, carry brief, straddle.

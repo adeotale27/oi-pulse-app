@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.05",
+    date: "2026-08-13",
+    user: [
+      "Trade journal calendar on phone is a compact month grid — date and booked P&L, tap a day for the rest",
+    ],
+    admin: [
+      "Journal calendar/year views still use booked (exited) P&L only",
+    ],
+  },
+  {
     version: "5.04",
     date: "2026-08-13",
     user: [
