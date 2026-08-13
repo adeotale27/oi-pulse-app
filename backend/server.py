@@ -4852,6 +4852,14 @@ async def get_index_constituents(index: str):
 # ------------------- Lifecycle -------------------
 app.include_router(api_router)
 
+
+@app.get("/health")
+@app.get("/ready")
+@app.get("/api/health")
+async def k8s_health():
+    """K8s / Emergent readiness — must return 200 without waiting on Kite or Yahoo."""
+    return {"ok": True, "name": APP_NAME, "version": APP_VERSION, "version_label": APP_VERSION_LABEL}
+
 # --- Security: Trusted Host (prevent Host header attacks) ---
 _trusted_hosts_env = os.environ.get('TRUSTED_HOSTS', '').strip()
 if _trusted_hosts_env:
@@ -4949,8 +4957,13 @@ async def _startup():
     global client, db
     try:
         mongo_url = os.environ['MONGO_URL']
-        client = AsyncIOMotorClient(mongo_url)
+        client = AsyncIOMotorClient(
+            mongo_url,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+        )
         db = client[os.environ['DB_NAME']]
+        await asyncio.wait_for(client.admin.command("ping"), timeout=6)
     except Exception as e:
         logger.exception(f"Failed to initialize MongoDB client: {e}")
         raise
@@ -4988,8 +5001,14 @@ async def _startup():
     _notifier_boot.set_db(db)
     tracker = OITracker(db)
 
-    await tracker.load_credentials()
-    await tracker.load_settings()
+    try:
+        await asyncio.wait_for(tracker.load_credentials(), timeout=20)
+    except Exception as e:
+        logger.warning("load_credentials on startup: %s", e)
+    try:
+        await asyncio.wait_for(tracker.load_settings(), timeout=10)
+    except Exception as e:
+        logger.warning("load_settings on startup: %s", e)
     await tracker.start()
     # Seed in-memory last_snapshot from DB so weekend/holiday/cold-restart
     # serves Friday (or last session) immediately without waiting for a poll.
