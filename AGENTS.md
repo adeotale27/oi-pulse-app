@@ -11,6 +11,7 @@ Read first:
 3. [docs/ABOUT.md](docs/ABOUT.md) — APIs and auth
 4. [docs/DATA.md](docs/DATA.md) — Mongo collections and the poll pipeline
 5. [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) — run locally
+6. [docs/HOSTING.md](docs/HOSTING.md) — leaving Emergent, Oracle Cloud vs keeping Mongo, GoDaddy DNS
 
 Rules of the product:
 

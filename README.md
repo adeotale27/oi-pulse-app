@@ -95,7 +95,7 @@ echo 'REACT_APP_BACKEND_URL=http://localhost:8000' > .env.local
 yarn start
 ```
 
-Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md).
+Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). Leaving Emergent / Oracle Cloud / GoDaddy DNS: [docs/HOSTING.md](docs/HOSTING.md).
 
 In the app, click the **logo** or **V5.00** to open the same product story.
 
