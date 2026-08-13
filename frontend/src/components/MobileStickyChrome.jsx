@@ -39,6 +39,7 @@ export default function MobileStickyChrome({
   infoTilesOpen,
   onToggleInfoTiles,
   infoTiles,
+  pnlSlot,
 }) {
   const [open, setOpen] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
@@ -151,7 +152,7 @@ export default function MobileStickyChrome({
   return (
     <div
       data-testid="mobile-sticky-chrome"
-      className="sticky top-0 z-30 border-b border-emerald-900/10 bg-white/95 backdrop-blur-md dark:border-slate-700 dark:bg-slate-950/95"
+      className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-md dark:border-slate-700 dark:bg-slate-950/95"
     >
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         <div className="flex items-center gap-1.5 min-w-0 shrink-0">
@@ -228,27 +229,19 @@ export default function MobileStickyChrome({
             </div>
           )}
         </div>
+        {pnlSlot ? (
+          <div className="shrink-0 pl-1.5 border-l border-slate-200 dark:border-slate-700" data-testid="mobile-sticky-pnl">
+            {pnlSlot}
+          </div>
+        ) : null}
       </div>
 
       {tabs.length > 0 && (
         <div className="border-t border-slate-100 dark:border-slate-800">
-          {typeof onResetLayout === "function" && (
-            <div className="flex justify-end px-1 pt-0.5">
-              <button
-                type="button"
-                data-testid="btn-reset-layout-mobile"
-                onClick={onResetLayout}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                title="Reset tab order, tile order, and expiry list height"
-                aria-label="Reset layout"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1 px-1.5 py-1">
           <div
             data-testid="mobile-sticky-tabs"
-            className="tabs-scroll flex items-stretch gap-0.5 overflow-x-auto px-1"
+            className="tabs-scroll flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto"
             role="tablist"
             aria-label="Dashboard views — drag, double-click, or Alt+arrows to reorder"
           >
@@ -274,20 +267,33 @@ export default function MobileStickyChrome({
                   onDoubleClick={(e) => onTabDoubleClick(e, t.v)}
                   onKeyDown={(e) => onTabKeyDown(e, t.v)}
                   title={tabTitle}
-                  className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors min-h-[44px] ${
+                  className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors min-h-[32px] ${
                     canReorder ? "cursor-grab active:cursor-grabbing" : ""
                   } ${draggingId === t.v ? "opacity-40" : ""} ${
-                    isOver ? "border-emerald-400 bg-emerald-50/80" : ""
+                    isOver ? "ring-2 ring-emerald-400" : ""
                   } ${
                     active
-                      ? "border-emerald-500 text-emerald-800 dark:border-emerald-400 dark:text-emerald-300"
-                      : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                      ? "bg-emerald-600 text-white dark:bg-emerald-500"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                   }`}
                 >
                   {t.l}
                 </button>
               );
             })}
+          </div>
+          {typeof onResetLayout === "function" && (
+            <button
+              type="button"
+              data-testid="btn-reset-layout-mobile"
+              onClick={onResetLayout}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-50 hover:text-slate-600 dark:hover:bg-slate-800"
+              title="Reset tab order, tile order, and expiry list height"
+              aria-label="Reset layout"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
           </div>
         </div>
       )}
@@ -298,9 +304,9 @@ export default function MobileStickyChrome({
           data-testid="mobile-info-tiles-bar"
         >
           {infoTilesOpen ? (
-            <div className="flex items-stretch gap-1 px-1 py-1.5">
+            <div className="px-2 py-2">
               <div
-                className="min-w-0 flex-1 overflow-x-auto tabs-scroll relative z-30"
+                className="min-w-0 relative z-30"
                 data-testid="mobile-info-tiles-wrap"
               >
                 {infoTiles}
@@ -312,9 +318,10 @@ export default function MobileStickyChrome({
                 aria-label="Hide info tiles"
                 aria-expanded="true"
                 data-testid="btn-toggle-info-tiles-mobile"
-                className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
+                className="mt-1.5 w-full inline-flex items-center justify-center gap-1 h-8 rounded-md text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
               >
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                Hide events
               </button>
             </div>
           ) : (

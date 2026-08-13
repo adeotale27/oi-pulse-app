@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import Header from "@/components/Header";
+import Header, { HeaderTodayPnl } from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
 import TimeframePills from "@/components/TimeframePills";
@@ -39,7 +38,7 @@ import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
 import InfoTilesRow, { DEFAULT_TILE_IDS } from "@/components/InfoTilesRow";
-import OrderFlowPanel from "@/components/OrderFlowPanel";
+import MobileBottomNav from "@/components/MobileBottomNav";
 import {
   loadTabOrder,
   saveTabOrder,
@@ -97,7 +96,6 @@ const DASHBOARD_PAGES = [
   { v: "straddle", l: "Straddle" },
   { v: "index-events", l: "Index Risk", adminOnly: true },
   { v: "cas", l: "CAS" },
-  { v: "order-flow", l: "Order Flow" },
 ];
 const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
   .filter((page) => !page.adminOnly && page.v !== "cas")
@@ -243,10 +241,6 @@ export default function Dashboard() {
     // Align with Tailwind md (min-width: 768px) → phone is max-width: 767px.
     try { return !window.matchMedia("(max-width: 767px)").matches; } catch { return true; }
   });
-  // Mobile drawer state: whether sidebar is open (collapsed default on phone)
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Mobile bottom nav visibility
-  const [showBottomNav, setShowBottomNav] = useState(true);
   const [infoTilesOpen, setInfoTilesOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("oiInfoTilesOpen");
@@ -588,7 +582,6 @@ export default function Dashboard() {
   const [showWriterDefense, setShowWriterDefense] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showChartSignals, setShowChartSignals] = useState(false);
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
@@ -1722,7 +1715,7 @@ export default function Dashboard() {
               data-testid="sidebar-mobile-backdrop"
               onClick={() => setCompact(true)}
             />
-            <div className="fixed md:static inset-y-0 left-0 z-50 md:z-auto max-w-[90vw] shadow-xl md:shadow-none">
+            <div className="fixed md:static z-50 md:z-auto inset-y-0 left-0 max-w-[90vw] md:max-w-none shadow-xl md:shadow-none max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:max-h-[82vh] max-md:w-full max-md:max-w-none max-md:rounded-t-2xl max-md:overflow-y-auto">
               <Sidebar
                 indices={enabledIndices.length ? enabledIndices : INDICES}
                 activeIndex={activeIndex}
@@ -1763,7 +1756,7 @@ export default function Dashboard() {
         <main
           className={`flex-1 min-h-0 overflow-hidden p-0 sm:px-4 md:px-5 dark:text-slate-200 flex flex-col ${
             infoTilesOpen ? "sm:pt-4 md:pt-5 sm:pb-4 md:pb-5" : "sm:pt-1.5 md:pt-2 sm:pb-4 md:pb-5"
-          }`}
+          } max-md:pb-[4.75rem]`}
         >
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
@@ -1786,6 +1779,16 @@ export default function Dashboard() {
               marketOpen={status?.market?.is_market_open === true}
               infoTilesOpen={infoTilesOpen}
               onToggleInfoTiles={setInfoTilesOpen}
+              pnlSlot={
+                authState.is_admin ? (
+                  <HeaderTodayPnl
+                    enabled={kiteLiveConnected}
+                    status={status}
+                    pollMs={positionsPollMs}
+                    className="flex flex-col items-end leading-tight"
+                  />
+                ) : null
+              }
               infoTiles={
                 <InfoTilesRow
                   order={tileOrder}
@@ -1876,11 +1879,7 @@ export default function Dashboard() {
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2">
                 {isMobile && (
-                <MobileMarketStrip
-                  activeIndex={activeIndex}
-                  onSelectIndex={setActiveIndex}
-                  spotPrices={liveSpotPrices}
-                />
+                <MobileMarketStrip />
                 )}
                 {(dayBiasSummary || changeSummary) && (
                   <SentimentBar
@@ -2375,12 +2374,6 @@ export default function Dashboard() {
                       />
                     </TabsContent>
                   )}
-
-                  {(authState.is_admin || visiblePages.includes("order-flow")) && (
-                    <TabsContent value="order-flow" className="mt-0">
-                      <OrderFlowPanel activeIndex={activeIndex} isAdmin={authState.is_admin} />
-                    </TabsContent>
-                  )}
                 </div>
 
                 <div className="oi-panel p-3 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
@@ -2484,132 +2477,21 @@ export default function Dashboard() {
               </button>
             )}
             </div>
-            {isMobile && (
-              <button
-                type="button"
-                onClick={() => setSidebarOpen((v) => !v)}
-                data-testid="btn-mobile-sidebar"
-                className="fixed right-4 bottom-4 mb-[env(safe-area-inset-bottom)] rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 h-11 w-11 flex items-center justify-center z-50 md:hidden"
-                title="Sidebar"
-                aria-label="Open sidebar"
-              >
-                <PanelLeftOpen className="w-5 h-5" />
-              </button>
-            )}
-            {isMobile && sidebarOpen && (
-              <div
-                className="fixed inset-0 z-[60] md:hidden flex flex-col bg-slate-950/50"
-                data-testid="mobile-side-panel-overlay"
-              >
-                <button
-                  type="button"
-                  className="flex-1 min-h-[12vh]"
-                  aria-label="Close side panel backdrop"
-                  onClick={() => setMobilePanelOpen(false)}
-                />
-                <div className="h-[88vh] max-h-[88vh] oi-panel rounded-t-2xl shadow-2xl overflow-hidden p-2 pb-[env(safe-area-inset-bottom)]">
-                  <RightPanel
-                    view={rightPanelView}
-                    onChangeView={setRightPanelView}
-                    onClose={() => setMobilePanelOpen(false)}
-                    visiblePages={visiblePages}
-                    isAdmin={authState.is_admin}
-                    alerts={focusedAlerts}
-                    onClearAlerts={handleClearAlerts}
-                    canClearAlerts={authState.is_admin}
-                    activeIndex={activeIndex}
-                    filteredCurrent={filteredCurrent}
-                    current={current}
-                    previous={previous}
-                    atm={current?.atm}
-                    timeframeMin={resolveMinutes(timeframe)}
-                    timeframeLabel={timeframeLabel}
-                    oiSettings={oiSettings}
-                    lotSize={oiSettings.lotSize?.[activeIndex] || 1}
-                    selectedExpiry={selectedExpiry}
-                    vixNow={current?.vix || status?.vix}
-                    vixOpen={vixSessionOpen}
-                    vrp={vrp}
-                    indexStep={INDEX_STEP[activeIndex] || 50}
-                    expiriesMeta={expiriesMeta}
-                    onPinNearestWeekly={handleChangeExpiry}
-                    positionsPollMs={positionsPollMs}
-                    activity={activity}
-                    activityFilter={activityFilter}
-                    setActivityFilter={setActivityFilter}
-                    clearActivity={() => { setActivity([]); seenActivityRef.current.clear(); }}
-                    isKiteMode={kiteLiveConnected}
-                    status={status}
-                    showOI={showOI}
-                    straddlePollMs={straddlePollMs}
-                    uploadRefreshKey={uploadRefreshKey}
-                    onOpenKite={openKiteCreds}
-                    suggestion={
-                      showSuggestion ? (
-                        <SuggestionBox
-                          indexName={activeIndex}
-                          marketIntel={marketIntel}
-                          changeSummary={changeSummary}
-                          spot={current?.price || current?.atm}
-                          vixNow={current?.vix || status?.vix}
-                          vixOpen={vixSessionOpen}
-                          sessionDate={dataStatus?.data_date || current?.timestamp || lastPulledAt}
-                          isLiveSession={!!status?.market?.is_market_open}
-                        />
-                      ) : null
-                    }
-                  />
-</div>
-              </div>
-            ))}
           </Tabs>
         </main>
       </div>
 
-      {isMobile && !sidebarOpen && (
-        <nav
-          data-testid="mobile-bottom-nav-fixed"
-          className="border-t border-slate-200/80 dark:border-slate-700/80 bottom-0 left-0 right-0 bg-white dark:bg-slate-950 sticky z-40"
-        >
-          <div className="flex items-center justify-around px-2 py-1.5 text-xs font-semibold uppercase tracking-wider">
-            <Button
-              data-testid="nav-oi-change-mobile"
-              variant="outline" size="sm"
-              onClick={() => setActiveTab("oi-change")}
-              className={`flex-1 rounded-b-lg ${
-                activeTab === "oi-change"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
-              }`}
-            >
-              OI Change
-            </Button>
-            <Button
-              data-testid="nav-strike-table-mobile"
-              variant="outline" size="sm"
-              onClick={() => setActiveTab("strike-table")}
-              className={`flex-1 rounded-b-lg ${
-                activeTab === "strike-table"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
-              }`}
-            >
-              Strike Table
-            </Button>
-            <Button
-              data-testid="nav-alerts-mobile"
-              variant="outline" size="sm"
-              onClick={() => setActiveTab("alerts")}
-              className={`flex-1 rounded-b-lg ${
-                activeTab === "alerts"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
-              }`}
-            >
-              Alerts
-            </Button>
-          </div>
-        </nav>
+      {isMobile && (
+        <MobileBottomNav
+          activeTab={activeTab}
+          isAdmin={!!authState.is_admin}
+          deskOpen={!compact}
+          onOpenDesk={() => setCompact((v) => !v)}
+          onChangeTab={(id) => {
+            setCompact(true);
+            setActiveTab(id);
+          }}
+        />
       )}
 
       {authState.is_admin && (
