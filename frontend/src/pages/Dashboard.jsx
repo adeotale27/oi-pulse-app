@@ -1121,8 +1121,9 @@ export default function Dashboard() {
   useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers" });
   useQuiescentAwarePolling(
     async () => {
-      // During market hours always poll + toast — Positions / Straddle / any tab.
-      // Off-hours only refresh when the Alerts UI is open (avoid idle spam).
+      // Alerts are the product: always poll in session so OI-shift toasts fire
+      // on Positions / Straddle / any tab. Off-hours, refresh only when the
+      // Alerts UI is open.
       const marketClosed = status?.market?.is_market_open === false;
       if (!marketClosed) {
         await loadAlerts();
@@ -1133,13 +1134,8 @@ export default function Dashboard() {
         v.activeTab === "alerts" || (v.showRightPanel && v.rightPanelView === "alerts");
       if (viewingAlerts) await loadAlerts();
     },
-    (() => {
-      const viewing =
-        activeTab === "alerts" || (showRightPanel && rightPanelView === "alerts");
-      if (status?.market?.is_market_open === false) return viewing ? 20000 : 120000;
-      return viewing ? 8000 : 15000;
-    })(),
-    [loadAlerts, status?.market?.is_market_open, activeTab, showRightPanel, rightPanelView],
+    5000,
+    [loadAlerts, status?.market?.is_market_open],
     { status, dedupeKey: "dash-alerts" },
   );
 

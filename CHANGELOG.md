@@ -1,5 +1,15 @@
 # Changelog
 
+## V5.07 — 2026-08-13
+
+Alerts stay first-class; production security hardening.
+
+- OI-shift alerts poll every **5 seconds** in session on every tab (not slowed)
+- Tighter login rate limits; journal screenshots must be real JPEG/PNG/GIF/WebP
+- API responses `Cache-Control: no-store`; CSP, COOP; stronger PBKDF2 on new admin passwords
+- Desk error boundary so a UI throw does not blank the board
+- External links use `noopener` and only http(s) bulletin URLs
+
 ## V5.06 — 2026-08-13
 
 Production polish: mobile quotes, side drawer, journal focus, heatmap, load.
@@ -10,7 +20,7 @@ Production polish: mobile quotes, side drawer, journal focus, heatmap, load.
 - Position heatmap is the **open** book of the **active index**, with strike CE/PE labels — closed SENSEX legs no longer linger
 - Journal: tap a day and the calendar / weekly recap step aside; the date chip sits under the month title with notes on the right; tap the chip to restore the month
 - Year heatmap actually loads (and falls back to the current month if the year payload is empty)
-- Spot ticks merge instead of replacing other indices; alerts poll less often when you are not on Alerts
+- Spot ticks merge instead of replacing other indices
 
 ## V5.05 — 2026-08-13
 
