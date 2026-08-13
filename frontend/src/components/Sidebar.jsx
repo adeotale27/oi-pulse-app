@@ -15,19 +15,19 @@ import StrikeAroundChips from "@/components/StrikeAroundChips";
 const INDEX_THEME = {
   NIFTY: {
     label: "NIFTY",
-    activeCls:   "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-sky-300 shadow-md shadow-sky-500/20",
+    activeCls:   "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-sky-500 shadow-md shadow-sky-500/20",
     idleCls:     "bg-gradient-to-br from-sky-50 to-cyan-50 text-sky-900 border-sky-100 hover:from-sky-100 hover:to-cyan-100",
     dot:         "bg-sky-500",
   },
   SENSEX: {
     label: "SENSEX",
-    activeCls:   "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-amber-300 shadow-md shadow-orange-500/20",
+    activeCls:   "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-orange-500 shadow-md shadow-orange-500/20",
     idleCls:     "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-800 border-orange-100 hover:from-amber-100 hover:to-orange-100",
-    dot:         "bg-amber-500",
+    dot:         "bg-orange-500",
   },
   BANKNIFTY: {
     label: "BNF",
-    activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-300 shadow-md shadow-emerald-500/20",
+    activeCls:   "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-500 shadow-md shadow-emerald-500/20",
     idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-emerald-100",
     dot:         "bg-emerald-500",
   },
@@ -363,7 +363,7 @@ export default function Sidebar({
                 key={idx}
                 data-testid={`btn-index-${idx}`}
                 onClick={() => onChangeIndex(idx)}
-                className={`relative text-[10px] sm:text-[11px] font-semibold rounded-md py-2 px-0.5 border transition-all leading-tight min-w-0 ${
+                className={`relative text-[10px] sm:text-[11px] font-semibold rounded-md py-2 px-0.5 border-2 transition-all leading-tight min-w-0 ${
                   active ? theme.activeCls : theme.idleCls
                 } ${veryStale ? "index-chip-stale" : ""}`}
                 title={

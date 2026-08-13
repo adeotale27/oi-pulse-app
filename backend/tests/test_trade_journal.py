@@ -33,6 +33,8 @@ def test_snapshot_counts_exited_wins():
     assert snap["booked_pnl"] == 500.5
     assert snap["index_pnl"]["NIFTY"] == 800
     assert snap["index_pnl"]["SENSEX"] == 500.5
+    assert snap["booked_index_pnl"].get("NIFTY", 0) == 0
+    assert snap["booked_index_pnl"]["SENSEX"] == 500.5
     assert snap["exited_count"] == 1
     assert snap["win_trades"] == 1
     assert snap["loss_trades"] == 0
@@ -85,10 +87,10 @@ def test_month_bounds():
     assert month_bounds(2026, 12) == ("2026-12-01", "2027-01-01")
 
 
-def test_should_lock_eod_at_1541_on_weekday():
+def test_should_lock_eod_at_1545_on_weekday():
     ist = timezone(timedelta(hours=5, minutes=30))
-    before = datetime(2026, 8, 13, 15, 40, tzinfo=ist)
-    at = datetime(2026, 8, 13, 15, 41, tzinfo=ist)
+    before = datetime(2026, 8, 13, 15, 44, tzinfo=ist)
+    at = datetime(2026, 8, 13, 15, 45, tzinfo=ist)
     after = datetime(2026, 8, 13, 16, 5, tzinfo=ist)
     sunday = datetime(2026, 8, 16, 16, 0, tzinfo=ist)
     assert should_lock_eod(before) is False
@@ -124,18 +126,28 @@ def test_apply_snapshot_does_not_clobber_locked_or_empty():
     assert apply_snapshot(live, empty, now=morning) is None
     locked = apply_snapshot(live, empty, force_lock=True, now=morning)
     assert locked["eod_locked"] is True
-    assert locked["frozen_pnl"] == 1500.5
+    assert locked["frozen_pnl"] == 500.5
+    assert locked["booked_pnl"] == 500.5
 
 
 def test_apply_snapshot_locks_live_book_at_close():
     snap = snapshot_from_positions(_payload(), date="2026-08-13")
     ist = timezone(timedelta(hours=5, minutes=30))
-    close = datetime(2026, 8, 13, 15, 41, tzinfo=ist)
+    close = datetime(2026, 8, 13, 15, 45, tzinfo=ist)
     out = apply_snapshot({}, snap, now=close)
     assert out["eod_locked"] is True
-    assert out["frozen_pnl"] == 1500.5
+    assert out["frozen_pnl"] == 500.5
     assert out["booked_pnl"] == 500.5
-    assert day_pnl(out) == 1500.5
+    assert day_pnl(out) == 500.5
+
+
+def test_apply_charges_booked_after_charges():
+    from trade_journal import apply_charges
+    snap = snapshot_from_positions(_payload(), date="2026-08-13")
+    apply_charges(snap, {"brokerage": 40.0, "charges_total": 120.5, "source": "kite_virtual_contract"})
+    assert snap["brokerage"] == 40.0
+    assert snap["charges_total"] == 120.5
+    assert snap["booked_after_charges"] == 380.0
 
 
 def test_year_heatmap_by_index_and_month():

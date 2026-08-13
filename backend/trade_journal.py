@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 from market_hours import is_trading_day, now_ist
 from datetime import datetime, time as dtime, timezone
 
-# Index F&O closes 15:40 IST; freeze the day's booked P&L one minute after.
-EOD_LOCK_IST = dtime(15, 41)
+# Freeze after the last Positions auto-refresh (Index F&O 15:40 + 5 min catch-up).
+EOD_LOCK_IST = dtime(15, 45)
 HEATMAP_INDICES = ("NIFTY", "SENSEX", "BANKNIFTY")
 
 MAX_NOTE_CHARS = 8000
@@ -47,7 +47,27 @@ def month_bounds(year: int, month: int) -> tuple[str, str]:
     return start, end
 
 
-def snapshot_from_positions(payload: Dict[str, Any], *, date: Optional[str] = None) -> Dict[str, Any]:
+def apply_charges(doc: Dict[str, Any], charges: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Attach Zerodha brokerage / total charges (our DB only — never sent to Kite)."""
+    charges = charges or {}
+    brokerage = _num(charges.get("brokerage"))
+    total = _num(charges.get("charges_total") if charges.get("charges_total") is not None else charges.get("total"))
+    if total <= 0 and brokerage:
+        total = brokerage
+    booked = _num(doc.get("booked_pnl") if doc.get("booked_pnl") is not None else doc.get("pnl_exited"))
+    doc["brokerage"] = round(brokerage, 2)
+    doc["charges_total"] = round(total, 2)
+    doc["charges_source"] = charges.get("charges_source") or charges.get("source") or "none"
+    doc["booked_after_charges"] = round(booked - total, 2)
+    return doc
+
+
+def snapshot_from_positions(
+    payload: Dict[str, Any],
+    *,
+    date: Optional[str] = None,
+    charges: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Build a journal snapshot from /positions payload (does not include notes)."""
     rows = payload.get("positions") or []
     pnl = payload.get("pnl_today") or {}
@@ -74,8 +94,10 @@ def snapshot_from_positions(payload: Dict[str, Any], *, date: Optional[str] = No
     total = _num(pnl.get("total"))
     exited_pnl = _num(pnl.get("exited"))
     open_pnl = _num(pnl.get("open"))
+    booked_legs = [leg for leg in legs if leg.get("exited")]
     index_pnl = _index_pnl_from_legs(legs)
-    return {
+    booked_index_pnl = _index_pnl_from_legs(booked_legs)
+    doc = {
         "date": day,
         "pnl_total": round(total, 2),
         "pnl_open": round(open_pnl, 2),
@@ -88,12 +110,16 @@ def snapshot_from_positions(payload: Dict[str, Any], *, date: Optional[str] = No
         "loss_trades": losses,
         "legs": legs,
         "index_pnl": index_pnl,
+        "booked_index_pnl": booked_index_pnl,
         "snapshot_at": datetime.now(timezone.utc).isoformat(),
     }
+    if charges:
+        apply_charges(doc, charges)
+    return doc
 
 
 def should_lock_eod(dt=None) -> bool:
-    """True on an NSE trading day at/after 15:41 IST (post Index F&O close)."""
+    """True on an NSE trading day at/after 15:45 IST (last Positions auto-refresh)."""
     dt = dt or now_ist()
     if not is_trading_day(dt):
         return False
@@ -113,13 +139,17 @@ def snapshot_is_empty(snap: Optional[Dict[str, Any]]) -> bool:
 
 
 def day_pnl(d: Optional[Dict[str, Any]]) -> float:
-    """Calendar number: frozen close P&L after lock, else live total."""
+    """Calendar / stats: booked (exited) P&L — never live open MTM when booked is stored."""
     if not d:
         return 0.0
+    if d.get("display_pnl") is not None:
+        return _num(d.get("display_pnl"))
     if d.get("eod_locked") and d.get("frozen_pnl") is not None:
         return _num(d.get("frozen_pnl"))
-    if d.get("eod_locked") and d.get("pnl_total") is not None:
-        return _num(d.get("pnl_total"))
+    if d.get("booked_pnl") is not None:
+        return _num(d.get("booked_pnl"))
+    if d.get("pnl_exited") is not None:
+        return _num(d.get("pnl_exited"))
     return _num(d.get("pnl_total"))
 
 
@@ -138,25 +168,37 @@ def apply_snapshot(
     lock = bool(force_lock or should_lock_eod(now))
     if snapshot_is_empty(snap):
         if _is_traded(existing) and lock:
+            booked = existing.get("booked_pnl")
+            if booked is None:
+                booked = existing.get("pnl_exited")
+            if booked is None:
+                booked = existing.get("frozen_pnl")
+            if booked is None:
+                booked = existing.get("pnl_total")
             frozen = existing.get("frozen_pnl")
             if frozen is None:
-                frozen = existing.get("pnl_total")
-            return {
+                frozen = booked
+            out = {
                 "eod_locked": True,
                 "eod_locked_at": datetime.now(timezone.utc).isoformat(),
                 "frozen_pnl": round(_num(frozen), 2),
-                "booked_pnl": round(_num(existing.get("pnl_exited", frozen)), 2),
+                "booked_pnl": round(_num(booked), 2),
             }
+            _carry_charges(out, existing)
+            return out
         if _is_traded(existing):
             return None
         return dict(snap)
     out = dict(snap)
+    _carry_charges(out, existing)
+    booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
+    out["booked_pnl"] = booked
     if lock:
-        frozen = round(_num(snap.get("pnl_total")), 2)
         out["eod_locked"] = True
         out["eod_locked_at"] = datetime.now(timezone.utc).isoformat()
-        out["frozen_pnl"] = frozen
-        out["booked_pnl"] = round(_num(snap.get("pnl_exited")), 2)
+        out["frozen_pnl"] = booked
+    if out.get("charges_total") is not None:
+        out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
     return out
 
 
@@ -181,9 +223,11 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
         if _is_traded(d):
             month_nets[i] += pnl
             month_days[i] += 1
-        ip = d.get("index_pnl")
+        ip = d.get("booked_index_pnl")
         if not isinstance(ip, dict) or not ip:
-            ip = _index_pnl_from_legs(d.get("legs") or [])
+            ip = d.get("index_pnl")
+        if not isinstance(ip, dict) or not ip:
+            ip = _index_pnl_from_legs([leg for leg in (d.get("legs") or []) if leg.get("exited")])
         for idx, v in ip.items():
             key = str(idx).upper()
             if key in by_index:
@@ -266,7 +310,13 @@ def public_day(doc: Optional[Dict[str, Any]], *, include_images: bool = False) -
     if not doc:
         return None
     out = {k: v for k, v in doc.items() if k != "_id"}
-    out["display_pnl"] = day_pnl(out)
+    # Calendar / day hero: booked only (public_day must not feed display_pnl back into day_pnl).
+    view = {k: v for k, v in out.items() if k != "display_pnl"}
+    out["display_pnl"] = day_pnl(view)
+    booked = _num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited"))
+    charges = _num(out.get("charges_total"))
+    if out.get("booked_after_charges") is None and (out.get("charges_total") is not None or out.get("brokerage") is not None):
+        out["booked_after_charges"] = round(booked - charges, 2)
     shots = out.get("screenshots") or []
     if include_images:
         out["screenshots"] = [
@@ -346,6 +396,12 @@ def decode_screenshot(payload: Dict[str, Any]) -> Dict[str, Any]:
         "mime": mime,
         "data": data,
     }
+
+
+def _carry_charges(out: Dict[str, Any], existing: Dict[str, Any]) -> None:
+    for k in ("brokerage", "charges_total", "charges_source", "booked_after_charges"):
+        if out.get(k) is None and existing.get(k) is not None:
+            out[k] = existing[k]
 
 
 def _num(v) -> float:
