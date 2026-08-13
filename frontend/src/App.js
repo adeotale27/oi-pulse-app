@@ -4,6 +4,7 @@ import Dashboard from "@/pages/Dashboard";
 import AdminLogin from "@/pages/AdminLogin";
 import KiteCallback from "@/pages/KiteCallback";
 import AuthGate from "@/components/AuthGate";
+import AboutAppModal from "@/components/AboutAppModal";
 import { Toaster } from "@/components/ui/sonner";
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
           />
         </Routes>
       </BrowserRouter>
+      <AboutAppModal />
       <Toaster position="top-right" richColors closeButton />
     </div>
   );

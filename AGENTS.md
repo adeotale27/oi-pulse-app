@@ -1,0 +1,20 @@
+# OI Pulse — notes for humans and AI
+
+**Current version: V5.00** (`VERSION` at repo root).
+
+This is an Indian-market **open interest desk** (NIFTY, SENSEX, BANKNIFTY): FastAPI + MongoDB + React, live data from **Zerodha Kite Connect**.
+
+Read first:
+
+1. [README.md](README.md) — what the app is, how it works, user edge, how it is configured
+2. [docs/VERSIONING.md](docs/VERSIONING.md) — bump `5.00` → `5.01` on updates; `6.00` when a whole new feature ships
+3. [docs/ABOUT.md](docs/ABOUT.md) — APIs and auth
+4. [docs/DATA.md](docs/DATA.md) — Mongo collections and the poll pipeline
+5. [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) — run locally
+
+Rules of the product:
+
+- Publisher Kite token owns **OI / charts**. Guest books use **their own** Kite login.
+- Journal is **admin-only**.
+- Alert Settings → **Public / Admin dashboard pages**: two ticks per page (guests vs admin desk).
+- After a finished change: bump version per `docs/VERSIONING.md`, open a PR, **merge to main**.
