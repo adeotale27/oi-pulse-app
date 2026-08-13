@@ -1947,7 +1947,6 @@ export default function Dashboard() {
               onReorder={handleReorderTabs}
               onFavorite={handleFavoriteTab}
               onMove={handleMoveTab}
-              marketOpen={status?.market?.is_market_open === true}
               infoTilesOpen={infoTilesOpen}
               onToggleInfoTiles={setInfoTilesOpen}
               infoTiles={
