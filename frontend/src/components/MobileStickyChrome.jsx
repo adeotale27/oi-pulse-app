@@ -294,52 +294,39 @@ export default function MobileStickyChrome({
               <RotateCcw className="h-3.5 w-3.5" />
             </button>
           )}
+          {typeof onToggleInfoTiles === "function" && (
+            <button
+              type="button"
+              onClick={() => onToggleInfoTiles(!infoTilesOpen)}
+              title={infoTilesOpen ? "Hide holiday / FII / event tiles" : "Show holiday / FII / event tiles"}
+              aria-label={infoTilesOpen ? "Hide events" : "Show events"}
+              aria-expanded={!!infoTilesOpen}
+              data-testid="btn-toggle-info-tiles-mobile"
+              className={`inline-flex h-8 shrink-0 items-center gap-0.5 rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide ${
+                infoTilesOpen
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "text-slate-400 hover:bg-slate-50 hover:text-emerald-700 dark:hover:bg-slate-800"
+              }`}
+            >
+              {infoTilesOpen ? <ChevronRight className="h-3.5 w-3.5 rotate-90" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+              Events
+            </button>
+          )}
           </div>
         </div>
       )}
 
-      {typeof onToggleInfoTiles === "function" && (
+      {typeof onToggleInfoTiles === "function" && infoTilesOpen && (
         <div
-          className="border-t border-slate-100 dark:border-slate-800"
+          className="border-t border-slate-100 px-2 py-2 dark:border-slate-800"
           data-testid="mobile-info-tiles-bar"
         >
-          {infoTilesOpen ? (
-            <div className="px-2 py-2">
-              <div
-                className="min-w-0 relative z-30"
-                data-testid="mobile-info-tiles-wrap"
-              >
-                {infoTiles}
-              </div>
-              <button
-                type="button"
-                onClick={() => onToggleInfoTiles(false)}
-                title="Hide info tiles — more room for charts"
-                aria-label="Hide info tiles"
-                aria-expanded="true"
-                data-testid="btn-toggle-info-tiles-mobile"
-                className="mt-1.5 w-full inline-flex items-center justify-center gap-1 h-8 rounded-md text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
-              >
-                <ChevronRight className="w-3.5 h-3.5 rotate-90" />
-                Hide events
-              </button>
-            </div>
-          ) : (
-            <div className="flex justify-end px-2 py-1">
-              <button
-                type="button"
-                onClick={() => onToggleInfoTiles(true)}
-                title="Show holiday / FII / event tiles"
-                aria-label="Show info tiles"
-                aria-expanded="false"
-                data-testid="btn-toggle-info-tiles-mobile"
-                className="inline-flex items-center gap-1 h-8 px-2.5 rounded-sm text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Events
-              </button>
-            </div>
-          )}
+          <div
+            className="min-w-0 relative z-30"
+            data-testid="mobile-info-tiles-wrap"
+          >
+            {infoTiles}
+          </div>
         </div>
       )}
     </div>

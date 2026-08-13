@@ -25,6 +25,7 @@ export default function DeskStatusRail({
   status,
   isAdmin = false,
   onOpenCreds,
+  mobileTicker = null,
 }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -76,7 +77,7 @@ export default function DeskStatusRail({
       aria-live="polite"
       className={`w-full border-b ${tone.bar} px-3 sm:px-4 py-1`}
     >
-      <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap min-w-0">
+      <div className={`flex items-center gap-2 sm:gap-3 text-xs sm:text-sm min-w-0 ${mobileTicker ? "flex-nowrap" : "flex-wrap"}`}>
         <span
           className={`inline-flex items-center gap-1.5 font-bold tracking-wide uppercase px-1.5 py-0.5 rounded-sm shrink-0 ${tone.badge}`}
           data-testid="data-truth-badge"
@@ -86,14 +87,22 @@ export default function DeskStatusRail({
           )}
           {truth.badge}
         </span>
-        <span className="font-mono-data font-semibold truncate tracking-tight" data-testid="data-truth-asof">
+        <span
+          className={`font-mono-data font-semibold truncate tracking-tight ${mobileTicker ? "hidden md:inline" : ""}`}
+          data-testid="data-truth-asof"
+        >
           {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
         </span>
+        {mobileTicker ? (
+          <div className="md:hidden min-w-0 flex-1 overflow-hidden">
+            {mobileTicker}
+          </div>
+        ) : null}
 
         {marketBits && (
           <>
-            <span className="opacity-50">·</span>
-            <span className="inline-flex items-center gap-1 opacity-95" data-testid="market-status-banner">
+            <span className="opacity-50 hidden md:inline">·</span>
+            <span className="hidden md:inline-flex items-center gap-1 opacity-95" data-testid="market-status-banner">
               {(() => {
                 const Icon = marketBits.Icon;
                 return <Icon className="w-3 h-3 shrink-0" strokeWidth={2} />;

@@ -416,14 +416,6 @@ export default function Header({
           >
             {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
           </Button>
-          <Button
-            data-testid="btn-toggle-dark-mobile"
-            variant="outline" size="sm" className={toolBtn}
-            onClick={onToggleDark}
-            title={darkMode ? "Light mode" : "Dark mode"}
-          >
-            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -441,6 +433,13 @@ export default function Header({
                 View
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                data-testid="mobile-menu-toggle-dark"
+                onSelect={(e) => { e.preventDefault(); onToggleDark?.(); }}
+              >
+                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {darkMode ? "Light mode" : "Dark mode"}
+              </DropdownMenuItem>
               {typeof onToggleSlimStatusRail === "function" && (
                 <DropdownMenuItem
                   data-testid="mobile-menu-slim-status"

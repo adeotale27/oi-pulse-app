@@ -33,7 +33,7 @@ import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
 import CasPanel from "@/components/CasPanel";
 import MobileStickyChrome from "@/components/MobileStickyChrome";
-import MobileMarketStrip from "@/components/MobileMarketStrip";
+import MobileIndexTicker from "@/components/MobileIndexTicker";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
@@ -1616,6 +1616,14 @@ export default function Dashboard() {
     return (alerts || []).filter((a) => indexInAlertFocus(a.index));
   }, [alerts, alertEnabledIndices, indexInAlertFocus]);
 
+  const mobileIndexTicker = isMobile ? (
+    <MobileIndexTicker
+      activeIndex={activeIndex}
+      onSelectIndex={setActiveIndex}
+      spotPrices={liveSpotPrices}
+    />
+  ) : null;
+
   return (
     <div className="oi-shell relative h-screen flex flex-col overflow-hidden">
       {authState.is_guest && (
@@ -1635,6 +1643,7 @@ export default function Dashboard() {
           status={status}
           isAdmin={!!authState.is_admin}
           onOpenCreds={() => setCredsOpen(true)}
+          mobileTicker={mobileIndexTicker}
         />
       ) : (
         <>
@@ -1644,6 +1653,7 @@ export default function Dashboard() {
             mode={status?.mode}
             snapshotTs={current?.timestamp || dataStatus?.as_of}
             emphasize={!!authState.is_guest}
+            mobileTicker={mobileIndexTicker}
           />
           <MarketStatusBanner
             market={status?.market}
@@ -1878,9 +1888,6 @@ export default function Dashboard() {
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2">
-                {isMobile && (
-                <MobileMarketStrip />
-                )}
                 {(dayBiasSummary || changeSummary) && (
                   <SentimentBar
                     ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}
