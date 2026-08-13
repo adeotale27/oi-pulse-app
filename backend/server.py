@@ -20,6 +20,7 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 # Delay motor client creation until startup to avoid heavy connection objects during import.
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 from oi_tracker import OITracker, INDICES, JsonLogFormatter
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
@@ -770,7 +771,13 @@ class VaultIn(BaseModel):
 
 @api_router.get("/")
 async def root():
-    return {"message": "NSE OI Tracker API", "indices": list(INDEX_CONFIG.keys())}
+    return {
+        "message": "NSE OI Tracker API",
+        "name": APP_NAME,
+        "version": APP_VERSION,
+        "version_label": APP_VERSION_LABEL,
+        "indices": list(INDEX_CONFIG.keys()),
+    }
 
 
 @api_router.get("/status")
@@ -800,7 +807,21 @@ async def get_status(request: Request):
         status.pop("metrics", None)
         # Kite user id is admin-only (shows on Kite API button).
         status.pop("kite_user_id", None)
+    status = dict(status)
+    status["app_version"] = APP_VERSION
+    status["app_version_label"] = APP_VERSION_LABEL
+    status["app_name"] = APP_NAME
     return status
+
+
+@api_router.get("/version")
+async def get_version():
+    """Public product version so any host / new AI session can pin the tree."""
+    return {
+        "name": APP_NAME,
+        "version": APP_VERSION,
+        "version_label": APP_VERSION_LABEL,
+    }
 
 
 @api_router.post("/credentials")
@@ -2285,6 +2306,8 @@ async def get_config():
         "show_suggestion": bool(tracker.settings.get("show_suggestion", True)),
         "show_chart_signals": bool(tracker.settings.get("show_chart_signals", False)),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
+        "app_version": APP_VERSION,
+        "app_version_label": APP_VERSION_LABEL,
     }
 
 

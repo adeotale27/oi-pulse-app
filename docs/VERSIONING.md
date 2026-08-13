@@ -1,0 +1,23 @@
+# OI Pulse versioning
+
+Product version lives in **`VERSION`** at the repo root (currently **V5.00**). Display it as `V` + that number (`V5.00`).
+
+Keep these in lockstep on every ship:
+
+| File | Role |
+|------|------|
+| `VERSION` | Canonical product version (source of truth) |
+| `CHANGELOG.md` | What changed in this version |
+| `frontend/src/lib/appVersion.js` | UI label + About modal |
+| `backend/app_version.py` | API `/api/version` and `/api/status` |
+| `frontend/package.json` `version` | npm-style `major.minor.patch` (`5.0.0` ≡ `V5.00`) |
+| `AGENTS.md` | So a new AI/session starts from the current version |
+
+## When to bump
+
+| Kind of change | Bump | Example |
+|----------------|------|---------|
+| Bugfix, polish, copy, publish/hotfix | **hundredths** | `5.00` → `5.01` → `5.02` |
+| A complete new feature area (new desk surface, new data product) | **major** | `5.xx` → **`6.00`** |
+
+Do not skip `VERSION` + `CHANGELOG.md`. Clicking the logo / **V5.xx** in the app must always match the shipped tree.

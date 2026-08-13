@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Activity, BellRing, Globe2, Landmark, Lock, Radio } from "lucide-react";
 import OiPulseLogo from "@/components/OiPulseLogo";
+import { APP_NAME, APP_VERSION_LABEL, openAboutApp } from "@/lib/appVersion";
 
 /**
  * Shared full-bleed atmosphere for admin + guest entry screens.
@@ -69,17 +70,24 @@ export default function AuthShell({
             Live market pulse
           </div>
 
-          <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={openAboutApp}
+            className="flex items-center gap-4 text-left rounded-xl hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+            data-testid="brand-about-trigger"
+            title={`About ${APP_NAME} ${APP_VERSION_LABEL}`}
+          >
             <OiPulseLogo className="h-14 w-14 shrink-0 shadow-lg shadow-emerald-900/40" />
             <div>
-              <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">OI Pulse</h1>
+              <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{APP_NAME}</h1>
               <p className="mt-1 text-base text-slate-300 sm:text-lg">
                 {isGuest
                   ? "Spot the OI surge — read bias before the crowd."
                   : "Command the desk. Spot bias. Act on OI."}
               </p>
+              <p className="mt-1 text-xs font-semibold tracking-wider text-emerald-300">{APP_VERSION_LABEL} · click for how the desk works</p>
             </div>
-          </div>
+          </button>
 
           <div className="mt-8 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm">
             <div className="mb-3 flex items-center justify-between text-xs text-slate-300">

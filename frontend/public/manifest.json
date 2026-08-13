@@ -1,6 +1,7 @@
 {
   "name": "OI Pulse",
-  "short_name": "OI Pulse",
+  "short_name": "OI Pulse V5",
+  "version": "5.00",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#11b08b",

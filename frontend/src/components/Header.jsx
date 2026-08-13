@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
-import OiPulseLogo from "@/components/OiPulseLogo";
+import BrandMark from "@/components/BrandMark";
 import BrandLiveClock from "@/components/BrandLiveClock";
 import { api, fetchExtras, subscribeExtras, unsubscribeExtras, logoutGuest, clearAdminAuth } from "@/lib/api";
 import { toast } from "sonner";
@@ -572,14 +572,7 @@ export default function Header({
       <div className="hidden md:block">
       {/* Row 1: brand + status + essential actions */}
       <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <OiPulseLogo className={headerRail ? "w-6 h-6" : "w-8 h-8"} />
-          <div className="leading-tight">
-            <div className={`${headerRail ? "text-sm" : "text-base"} font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent`}>
-              OI Pulse
-            </div>
-          </div>
-        </div>
+        <BrandMark compact={headerRail} className="shrink-0" />
 
         {/* VIX / GIFT — always visible; slim = chips, normal = stacked metrics */}
         <div className={`flex items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
