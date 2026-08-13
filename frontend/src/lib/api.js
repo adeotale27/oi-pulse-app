@@ -267,12 +267,6 @@ export const fetchOIChange = (idx, minutes, opts = {}) => {
   return api.get(`/oi/${idx}/change`, { params }).then((r) => r.data);
 };
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
-export const fetchFlowSignals = (idx, params = {}) =>
-  api.get(`/flow/${idx}`, { params }).then((r) => r.data);
-export const fetchFlowSummary = (idx, minutes = 60) =>
-  api.get(`/flow/${idx}/summary`, { params: { minutes } }).then((r) => r.data);
-export const fetchFlowHeatmap = (idx, minutes = 60) =>
-  api.get(`/flow/${idx}/heatmap`, { params: { minutes } }).then((r) => r.data);
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);
 export const fetchStraddle = (idx, opts = {}) =>

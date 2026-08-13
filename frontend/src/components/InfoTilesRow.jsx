@@ -144,14 +144,18 @@ export default function InfoTilesRow({
   const tileTitle = tipParts.length ? tipParts.join(" · ") : undefined;
 
   const widthCls = compact
-    ? "w-[9.25rem] shrink-0"
+    ? "min-w-0 w-full"
     : wide
       ? "w-44 2xl:w-48 shrink-0"
       : "w-44 shrink-0";
 
   return (
     <div
-      className="flex items-stretch gap-2 relative z-30 overflow-visible"
+      className={
+        compact
+          ? "grid grid-cols-2 gap-1.5 relative z-30 overflow-visible"
+          : "flex items-stretch gap-2 relative z-30 overflow-visible"
+      }
       data-testid={testId}
       onClickCapture={onCaptureClick}
     >

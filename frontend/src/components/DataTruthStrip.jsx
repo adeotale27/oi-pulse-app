@@ -35,6 +35,7 @@ export default function DataTruthStrip({
   mode,
   snapshotTs,
   emphasize = false,
+  mobileTicker = null,
 }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -66,9 +67,9 @@ export default function DataTruthStrip({
       aria-live="polite"
       className={`w-full border-b ${tone.bar} ${emphasize ? "py-2" : "py-1.5"} px-3 sm:px-4`}
     >
-      <div className="flex items-center gap-2 sm:gap-3 text-sm flex-wrap">
+      <div className={`flex items-center gap-2 sm:gap-3 text-sm min-w-0 ${mobileTicker ? "flex-nowrap" : "flex-wrap"}`}>
         <span
-          className={`inline-flex items-center gap-1.5 font-bold tracking-wide text-xs uppercase px-2 py-0.5 rounded-sm ${tone.badge}`}
+          className={`inline-flex items-center gap-1.5 font-bold tracking-wide text-xs uppercase px-2 py-0.5 rounded-sm shrink-0 ${tone.badge}`}
           data-testid="data-truth-badge"
         >
           {(truth.mode === "LIVE" || truth.mode === "STALE") && (
@@ -76,9 +77,17 @@ export default function DataTruthStrip({
           )}
           {truth.badge}
         </span>
-        <span className="font-mono-data font-semibold tracking-tight" data-testid="data-truth-asof">
+        <span
+          className={`font-mono-data font-semibold tracking-tight ${mobileTicker ? "hidden md:inline" : ""}`}
+          data-testid="data-truth-asof"
+        >
           {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
         </span>
+        {mobileTicker ? (
+          <div className="md:hidden min-w-0 flex-1 overflow-hidden">
+            {mobileTicker}
+          </div>
+        ) : null}
         <span className="opacity-80 hidden sm:inline">·</span>
         <span className="opacity-90 text-xs sm:text-sm hidden sm:inline" data-testid="data-truth-detail">
           {truth.detail}

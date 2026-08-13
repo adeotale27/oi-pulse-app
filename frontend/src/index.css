@@ -196,3 +196,24 @@ input[type="number"] {
     border-bottom-color: #34d399 !important;
   }
 }
+
+@keyframes oi-ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.oi-mobile-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: oi-ticker-scroll 28s linear infinite;
+}
+
+.oi-mobile-ticker-track:active {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oi-mobile-ticker-track {
+    animation: none;
+  }
+}

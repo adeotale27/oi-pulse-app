@@ -32,7 +32,6 @@ const PRIVACY_MASK = "••••";
 function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
   const [pnl, setPnl] = useState(null);
   const [openCount, setOpenCount] = useState(0);
-  const [hasRows, setHasRows] = useState(false);
   const [privacy, setPrivacy] = useState(() => {
     try { return localStorage.getItem(PRIVACY_LS_KEY) === "1"; } catch { return false; }
   });
@@ -60,8 +59,7 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
       const open = rows.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
       const total = data?.pnl_today?.total;
       setOpenCount(open);
-      setHasRows(rows.length > 0);
-      setPnl(total != null && Number.isFinite(Number(total)) ? Number(total) : null);
+      setPnl(total != null && Number.isFinite(Number(total)) ? Number(total) : 0);
     } catch {
       /* keep last good value */
     }
@@ -75,19 +73,21 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
     dedupeKey: "header-today-pnl",
   });
 
-  if (!enabled || !hasRows) return null;
-  if (pnl == null) return null;
+  if (!enabled) return null;
 
-  const positive = pnl >= 0;
+  const waiting = pnl == null;
+  const positive = (pnl || 0) >= 0;
   const label = privacy
     ? PRIVACY_MASK
-    : `${positive ? "+" : ""}${pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    : waiting
+      ? "—"
+      : `${positive ? "+" : ""}${pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div
       className={
         className ||
-        "hidden md:flex flex-col items-end leading-tight px-1.5 shrink-0"
+        "flex flex-col items-end leading-tight px-1.5 shrink-0"
       }
       data-testid="header-today-pnl"
       title={openCount > 0 ? `Today P&L · ${openCount} open` : "Today P&L (includes exited today)"}
@@ -95,14 +95,16 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
       <span className="text-[9px] uppercase tracking-wider text-slate-400">Today P&L</span>
       <span
         className={`font-mono-data text-sm font-bold tabular-nums ${
-          privacy ? "text-slate-500" : positive ? "text-emerald-600" : "text-rose-600"
+          privacy || waiting ? "text-slate-500" : positive ? "text-emerald-600" : "text-rose-600"
         }`}
       >
-        {privacy ? label : `₹${label}`}
+        {privacy || waiting ? label : `₹${label}`}
       </span>
     </div>
   );
 }
+
+export { HeaderTodayPnl };
 
 export default function Header({
   status,
@@ -364,12 +366,6 @@ export default function Header({
               </span>
             )}
           </div>
-          <HeaderTodayPnl
-            enabled={!!kiteLive}
-            status={status}
-            pollMs={positionsPollMs}
-            className="flex md:hidden flex-col items-start leading-tight shrink-0"
-          />
           {isGuestUser && (() => {
             const guestName = authState.guest_name || (typeof window !== "undefined" ? sessionStorage.getItem("oi_guest_name") : null) || "Guest";
             const exitGuest = async () => {
@@ -420,14 +416,6 @@ export default function Header({
           >
             {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
           </Button>
-          <Button
-            data-testid="btn-toggle-dark-mobile"
-            variant="outline" size="sm" className={toolBtn}
-            onClick={onToggleDark}
-            title={darkMode ? "Light mode" : "Dark mode"}
-          >
-            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -445,6 +433,13 @@ export default function Header({
                 View
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                data-testid="mobile-menu-toggle-dark"
+                onSelect={(e) => { e.preventDefault(); onToggleDark?.(); }}
+              >
+                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {darkMode ? "Light mode" : "Dark mode"}
+              </DropdownMenuItem>
               {typeof onToggleSlimStatusRail === "function" && (
                 <DropdownMenuItem
                   data-testid="mobile-menu-slim-status"
@@ -541,7 +536,7 @@ export default function Header({
       {/* Desktop header — compact single row for laptop/zoom; tools in a dropdown */}
       <div className="hidden md:block">
       {/* Row 1: brand + status + essential actions */}
-      <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1 overflow-x-auto" : "py-2 gap-2 lg:gap-3 overflow-hidden"}`}>
+      <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
         <div className="flex items-center gap-1.5 shrink-0">
           <OiPulseLogo className={headerRail ? "w-6 h-6" : "w-8 h-8"} />
           <div className="leading-tight">
@@ -566,6 +561,13 @@ export default function Header({
           />
         </div>
 
+        <HeaderTodayPnl
+          enabled={!!kiteLive}
+          status={status}
+          pollMs={positionsPollMs}
+          className="hidden md:flex flex-col items-end leading-tight px-2 shrink-0 border-l border-slate-200 dark:border-slate-700"
+        />
+
         {/* Index tiles — always allow horizontal scroll so BANKNIFTY is not clipped */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 justify-start overflow-x-auto items-stretch">
           <TickerStrip
@@ -577,7 +579,6 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-auto">
-          <HeaderTodayPnl enabled={!!kiteLive} status={status} pollMs={positionsPollMs} />
           <div className={headerRail ? "hidden md:block origin-right" : "hidden xl:block"}>
             <BigClock compact />
           </div>
@@ -878,7 +879,6 @@ export default function Header({
         data-testid="header-secondary-row"
       >
         <div className="xl:hidden flex items-center gap-2">
-          <HeaderTodayPnl enabled={!!kiteLive} status={status} pollMs={positionsPollMs} />
           <BigClock compact />
         </div>
         <div className="flex items-center gap-4 min-w-0 overflow-hidden flex-wrap">
