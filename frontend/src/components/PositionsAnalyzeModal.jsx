@@ -7,6 +7,8 @@ import {
   Target,
   Clock3,
   RotateCcw,
+  Minus,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -55,7 +57,7 @@ function PayoffSvg({
   onPickSpot = null,
 }) {
   const svgRef = useRef(null);
-  const [hover, setHover] = useState(null); // { spot, expiry, scenario, x, y }
+  const [inspect, setInspect] = useState(null);
 
   const pad = { l: 52, r: 18, t: 20, b: 30 };
   const w = width - pad.l - pad.r;
@@ -122,25 +124,13 @@ function PayoffSvg({
     };
   };
 
-  const pinnedRead =
-    targetSpot != null && Number.isFinite(targetSpot)
-      ? {
-          spot: targetSpot,
-          expiry: interpAt(spots, expiryPnl, targetSpot),
-          scenario: interpAt(spots, targetPnl, targetSpot),
-          x: xScale(targetSpot),
-          y: yScale(interpAt(spots, targetPnl, targetSpot) ?? 0),
-        }
-      : null;
-  const active = hover || pinnedRead;
+  const active = inspect;
 
   const onPointer = (clientX, { pin = false } = {}) => {
     const next = readAt(clientX);
     if (!next) return;
     if (pin) {
-      if (typeof onPickSpot === "function") onPickSpot(Math.round(next.spot));
-    } else {
-      setHover(next);
+      setInspect(next);
     }
   };
 
@@ -151,21 +141,10 @@ function PayoffSvg({
         viewBox={`0 0 ${width} ${height}`}
         className="w-full h-auto cursor-crosshair select-none touch-none"
         data-testid="payoff-svg"
-        onMouseMove={(e) => onPointer(e.clientX)}
-        onMouseLeave={() => setHover(null)}
         onClick={(e) => onPointer(e.clientX, { pin: true })}
-        onTouchStart={(e) => {
-          const t = e.touches?.[0];
-          if (t) onPointer(t.clientX);
-        }}
-        onTouchMove={(e) => {
-          const t = e.touches?.[0];
-          if (t) onPointer(t.clientX);
-        }}
         onTouchEnd={(e) => {
           const t = e.changedTouches?.[0];
           if (t) onPointer(t.clientX, { pin: true });
-          setHover(null);
         }}
       >
         <defs>
@@ -297,36 +276,59 @@ function PayoffSvg({
 
       {active ? (
         <div
-          className="pointer-events-none absolute z-10 min-w-[148px] rounded-md border border-slate-200 bg-white/95 px-2.5 py-2 shadow-md backdrop-blur-sm"
+          className="pointer-events-auto absolute z-10 min-w-[168px] rounded-md border border-white/40 bg-slate-900/45 px-2.5 py-2 shadow-lg backdrop-blur-[6px] text-white"
           style={{
-            left: `min(max(${(active.x / width) * 100}% - 74px, 8px), calc(100% - 156px))`,
+            left: `min(max(${(active.x / width) * 100}% - 84px, 8px), calc(100% - 176px))`,
             top: 8,
           }}
           data-testid="payoff-tooltip"
         >
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-            Spot {Math.round(active.spot)}
-            {!hover && pinnedRead ? " · pinned" : ""}
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-white/80">
+              At {Math.round(active.spot).toLocaleString("en-IN")}
+            </div>
+            <button
+              type="button"
+              className="text-white/70 hover:text-white text-[11px] leading-none"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInspect(null);
+              }}
+              aria-label="Close readout"
+            >
+              ×
+            </button>
           </div>
           <div className="mt-1 space-y-0.5 font-mono-data text-[11px]">
             <div className="flex justify-between gap-3">
-              <span className="text-rose-700">Expiry P&L</span>
-              <span className={`font-semibold ${active.expiry >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+              <span className="text-rose-200">Expiry P&L</span>
+              <span className={`font-semibold ${active.expiry >= 0 ? "text-emerald-200" : "text-rose-200"}`}>
                 {fmt(active.expiry, 0)}
               </span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-teal-800">Scenario P&L</span>
-              <span className={`font-semibold ${active.scenario >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+              <span className="text-teal-100">On date P&L</span>
+              <span className={`font-semibold ${active.scenario >= 0 ? "text-emerald-200" : "text-rose-200"}`}>
                 {fmt(active.scenario, 0)}
               </span>
             </div>
           </div>
-          <div className="mt-1 text-[9px] text-slate-400">Tap / click to set target</div>
+          {typeof onPickSpot === "function" ? (
+            <button
+              type="button"
+              className="mt-1.5 text-[10px] font-semibold text-emerald-100 hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPickSpot(Math.round(active.spot));
+              }}
+            >
+              Use as target
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="px-1 pt-1 text-[10px] text-slate-400" data-testid="payoff-hover-hint">
-          Hover or drag for P&amp;L at any spot · tap/click to pin as target
+          Click the chart to read P&amp;L at a price. Set the target with the slider below.
         </div>
       )}
     </div>
@@ -346,7 +348,10 @@ function ScenarioSlider({
   presets = [],
   testId,
   disabled = false,
+  numeric = false,
+  onReset = null,
 }) {
+  const clamp = (n) => Math.min(max, Math.max(min, n));
   return (
     <div
       className="rounded-lg border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/40 to-emerald-50/30 px-3 py-3 shadow-sm"
@@ -357,6 +362,16 @@ function ScenarioSlider({
           <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
             {Icon ? <Icon className="w-3.5 h-3.5 text-emerald-700" /> : null}
             {label}
+            {typeof onReset === "function" ? (
+              <button
+                type="button"
+                className="text-[10px] font-medium text-sky-700 hover:underline"
+                onClick={onReset}
+                disabled={disabled}
+              >
+                Reset
+              </button>
+            ) : null}
           </div>
           {hint ? <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">{hint}</div> : null}
         </div>
@@ -364,6 +379,45 @@ function ScenarioSlider({
           {valueLabel}
         </div>
       </div>
+
+      {numeric ? (
+        <div className="flex items-center gap-1.5 mb-2">
+          <button
+            type="button"
+            disabled={disabled}
+            className="h-8 w-8 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center"
+            onClick={() => onChange(clamp(value - step))}
+            data-testid={testId ? `${testId}-minus` : undefined}
+            aria-label="Decrease target"
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+          <input
+            type="number"
+            disabled={disabled}
+            value={Number.isFinite(value) ? Math.round(value) : ""}
+            min={min}
+            max={max}
+            step={step}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) onChange(clamp(n));
+            }}
+            className="h-8 w-[7.5rem] rounded-md border border-slate-200 bg-white px-2 font-mono-data text-[13px] font-semibold text-slate-900 tabular-nums"
+            data-testid={testId ? `${testId}-input` : undefined}
+          />
+          <button
+            type="button"
+            disabled={disabled}
+            className="h-8 w-8 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center"
+            onClick={() => onChange(clamp(value + step))}
+            data-testid={testId ? `${testId}-plus` : undefined}
+            aria-label="Increase target"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : null}
 
       <Slider
         value={[value]}
@@ -905,14 +959,16 @@ export default function PositionsAnalyzeModal({
               <ScenarioSlider
                 icon={Target}
                 label={`${activeIndex} target`}
-                hint="Where do you think spot settles for this scenario?"
-                valueLabel={`${Math.round(tgt)} · ${tgtPct >= 0 ? "+" : ""}${tgtPct.toFixed(1)}%`}
+                hint="Type a price, tap ±, or drag — same idea as Zerodha’s target slider."
+                valueLabel={`${tgtPct >= 0 ? "+" : ""}${tgtPct.toFixed(1)}%`}
                 value={tgt}
                 min={spotLo}
                 max={spotHi}
                 step={spotStep}
                 disabled={spot == null}
                 onChange={setTargetFromUser}
+                numeric
+                onReset={spot == null ? null : () => setTargetFromUser(Math.round(spot))}
                 testId="analyze-spot-slider"
                 presets={
                   spot == null

@@ -1060,6 +1060,19 @@ export default function PositionsPanel({
             Journal
           </Button>
           )}
+          {isGuest && typeof onOpenKite === "function" && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-sm bg-white shrink-0 text-emerald-800 border-emerald-300 hover:bg-emerald-50 px-2.5"
+            onClick={onOpenKite}
+            data-testid="btn-positions-connect-zerodha-toolbar"
+            title="Your book uses your Zerodha login. OI charts still use the publisher feed."
+          >
+            <PlugZap className="w-3.5 h-3.5 mr-1" />
+            {guestKiteId ? "Reconnect Zerodha" : "Connect Zerodha"}
+          </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -2094,15 +2107,15 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
         ? "border-amber-300 bg-amber-50 text-amber-950"
         : "border-slate-300 bg-white text-slate-900";
   return (
-    <div className={`rounded-xl border px-2.5 py-2.5 min-h-[6.5rem] h-full flex flex-col justify-between shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
-      <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1">
+    <div className={`rounded-xl border px-3 py-3 h-full min-h-[8.75rem] flex flex-col justify-between shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+      <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1 pr-4">
         {label}
         {tip && (
           <InfoTip title={label} size="xs">{tip}</InfoTip>
         )}
       </div>
-      <div className="text-lg font-semibold font-mono-data leading-tight">{value}</div>
-      {hint && <div className="text-[10px] text-slate-600 mt-0.5">{hint}</div>}
+      <div className="text-xl font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
+      {hint && <div className="text-[10px] text-slate-600 mt-0.5 leading-snug">{hint}</div>}
     </div>
   );
 }

@@ -6,7 +6,7 @@ export const DOCK_CATALOG = [
   { id: "oi-change", label: "Chart", tab: "oi-change" },
   { id: "straddle", label: "Straddle", tab: "straddle" },
   { id: "positions", label: "Positions", tab: "positions" },
-  { id: "admin-tools", label: "Tools", action: "admin-tools", adminOnly: true },
+  { id: "admin-tools", label: "Settings", action: "admin-tools", adminOnly: true },
   { id: "holidays", label: "Events", tab: "holidays" },
   { id: "strike-table", label: "Chain", tab: "strike-table" },
   { id: "alerts", label: "Alerts", tab: "alerts" },

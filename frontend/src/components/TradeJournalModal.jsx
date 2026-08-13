@@ -22,7 +22,7 @@ import {
 import { toast } from "sonner";
 import { isHoliday, isTradingDayIST } from "@/lib/holidays";
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function fmtInr(v, dp = 0) {
@@ -57,7 +57,7 @@ function isTraded(doc) {
 
 function monthMatrix(year, month) {
   const first = new Date(Date.UTC(year, month - 1, 1));
-  const startDow = (first.getUTCDay() + 6) % 7;
+  const startDow = first.getUTCDay();
   const daysIn = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const cells = [];
   for (let i = 0; i < startDow; i++) cells.push(null);
@@ -435,10 +435,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
 
               <div className="flex gap-2 min-w-0">
                 <div className="flex-1 min-w-0 overflow-x-auto">
-                  <div className="grid grid-cols-7 gap-1 text-[10px] uppercase tracking-wide text-slate-600 font-semibold mb-1">
+                  <div className="grid grid-cols-7 gap-2 text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">
                     {WEEKDAYS.map((d) => <div key={d} className="text-center">{d}</div>)}
                   </div>
-                  <div className="grid grid-cols-7 gap-1" data-testid="journal-calendar">
+                  <div className="grid grid-cols-7 gap-2" data-testid="journal-calendar">
                     {cells.map((c, i) => {
                       if (!c) return <div key={`e-${i}`} />;
                       const doc = byDate.get(c.iso);
@@ -462,7 +462,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           type="button"
                           onClick={() => openDay(c.iso)}
                           data-testid={`journal-cell-${c.iso}`}
-                          className={`rounded-2xl border p-2 min-h-[92px] text-left transition-shadow hover:shadow-md ${tone.box} ${
+                          className={`rounded-3xl border p-2.5 min-h-[104px] text-left transition-shadow hover:shadow-md ${tone.box} ${
                             isSel ? "ring-2 ring-sky-500" : ""
                           }`}
                         >
@@ -501,10 +501,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     })}
                   </div>
                 </div>
-                <div className="hidden sm:flex w-[8.5rem] shrink-0 flex-col gap-1.5" data-testid="journal-weekly-recap">
-                  <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold px-0.5">Weekly recap</div>
+                <div className="hidden sm:flex w-[9rem] shrink-0 flex-col gap-2" data-testid="journal-weekly-recap">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold px-0.5">Weekly recap</div>
                   {weeks.map((w) => (
-                    <div key={w.label} className="flex-1 min-h-[4.5rem] rounded-2xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm flex flex-col">
+                    <div key={w.label} className="flex-1 min-h-[5rem] rounded-3xl border border-slate-200 bg-white px-2.5 py-2.5 shadow-sm flex flex-col">
                       <div className="text-[10px] font-semibold text-slate-700">{w.label}</div>
                       <div className={`text-[15px] font-bold font-mono-data leading-tight ${w.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                         {privacy ? "••••" : compactPnl(w.pnl)}

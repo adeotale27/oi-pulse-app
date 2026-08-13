@@ -88,7 +88,7 @@ export default function DeskStatusRail({
           {truth.badge}
         </span>
         <span
-          className={`font-mono-data font-semibold truncate tracking-tight ${mobileTicker ? "hidden md:inline" : ""}`}
+          className="hidden font-mono-data font-semibold truncate tracking-tight"
           data-testid="data-truth-asof"
         >
           {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
