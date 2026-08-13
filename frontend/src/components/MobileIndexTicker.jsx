@@ -23,17 +23,20 @@ export default function MobileIndexTicker({
   activeIndex,
   onSelectIndex,
   spotPrices = {},
+  tickers: tickersProp = null,
 }) {
-  const [tickers, setTickers] = useState([]);
+  const [tickersLocal, setTickersLocal] = useState([]);
   const [extras, setExtras] = useState({ vix: null, gift_nifty: null, windows: {} });
   const [giftOpen, setGiftOpen] = useState(false);
+  const tickers = Array.isArray(tickersProp) && tickersProp.length ? tickersProp : tickersLocal;
 
   useEffect(() => {
+    if (Array.isArray(tickersProp) && tickersProp.length) return undefined;
     let cancelled = false;
     const load = async () => {
       try {
         const { data } = await api.get("/tickers");
-        if (!cancelled) setTickers(data.tickers || []);
+        if (!cancelled) setTickersLocal(data.tickers || []);
       } catch {
         /* keep last */
       }
@@ -44,7 +47,7 @@ export default function MobileIndexTicker({
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [tickersProp]);
 
   useEffect(() => {
     let alive = true;

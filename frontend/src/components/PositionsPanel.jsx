@@ -289,6 +289,12 @@ export default function PositionsPanel({
   const [journalOpen, setJournalOpen] = useState(false);
   const [oiRiskOpen, setOiRiskOpen] = useState(false);
   const [highlightSymbol, setHighlightSymbol] = useState(null);
+  const jumpToPosition = (sym) => {
+    setHighlightSymbol(sym);
+    const nodes = document.querySelectorAll(`[data-position-symbol="${CSS.escape(sym)}"]`);
+    const el = [...nodes].find((n) => n.getClientRects().length > 0) || nodes[0];
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   const [guestNeedsConnect, setGuestNeedsConnect] = useState(() => !!isGuest);
   const [guestKiteId, setGuestKiteId] = useState(null);
   const [exitedOpen, setExitedOpen] = useState(false);
@@ -1464,9 +1470,12 @@ export default function PositionsPanel({
             <div
               key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}
               data-testid="position-card"
+              data-position-symbol={r.tradingsymbol}
               data-exited={r.exited ? "1" : "0"}
               className={`rounded-lg border px-3 py-2.5 transition-colors ${
-                r.exited
+                highlightSymbol && r.tradingsymbol === highlightSymbol
+                  ? "ring-2 ring-emerald-400 bg-emerald-50/80"
+                  : r.exited
                   ? "border-slate-200/70 bg-slate-100/80 text-slate-400 shadow-none opacity-[0.58]"
                   : r.breachedAdjust
                     ? "border-rose-300 bg-rose-50/80 shadow-sm"
@@ -1833,11 +1842,7 @@ export default function PositionsPanel({
             rows={rows}
             activeIndex={activeIndex}
             privacy={privacyMode}
-            onSelect={(sym) => {
-              setHighlightSymbol(sym);
-              const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
-              el?.scrollIntoView({ behavior: "smooth", block: "center" });
-            }}
+            onSelect={jumpToPosition}
           />
           <div
             className="rounded-md border border-slate-200 bg-white px-3 py-2 space-y-1.5"
@@ -2157,11 +2162,7 @@ export default function PositionsPanel({
             rows={rows}
             activeIndex={activeIndex}
             privacy={privacyMode}
-            onSelect={(sym) => {
-              setHighlightSymbol(sym);
-              const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
-              el?.scrollIntoView({ behavior: "smooth", block: "center" });
-            }}
+            onSelect={jumpToPosition}
           />
         </div>
       </BookRadarPanel>

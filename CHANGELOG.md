@@ -2,13 +2,13 @@
 
 ## V5.07 — 2026-08-13
 
-Alerts stay first-class; production security hardening.
+Production hardening and leftover desk polish. Alerts are unchanged.
 
-- OI-shift alerts poll every **5 seconds** in session on every tab (not slowed)
-- Tighter login rate limits; journal screenshots must be real JPEG/PNG/GIF/WebP
-- API responses `Cache-Control: no-store`; CSP, COOP; stronger PBKDF2 on new admin passwords
+- Phone quotes stay fresh (ticker LTP, not a one-shot seed); one `/tickers` poll shared with the marquee
+- Heatmap tap jumps to the visible position card on phone
+- Sidebar dimmer sits above the dock; Kite login URLs must be http(s)
+- Journal screenshots require real image bytes; login rate limits; CSP / no-store API
 - Desk error boundary so a UI throw does not blank the board
-- External links use `noopener` and only http(s) bulletin URLs
 
 ## V5.06 — 2026-08-13
 

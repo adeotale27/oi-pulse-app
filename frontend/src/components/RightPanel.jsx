@@ -161,7 +161,7 @@ export default function RightPanel({
               onSetFilter={setActivityFilter}
             />
           )}
-          {selectedView === "positions" && isAdmin && (
+          {selectedView === "positions" && (
             <PositionsPanel
               isKiteMode={isKiteMode}
               hasKiteCredentials={status?.has_kite_credentials != null

@@ -60,6 +60,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
+import { safeHttpUrl } from "@/lib/safeUrl";
 import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
@@ -429,7 +430,8 @@ export default function Dashboard() {
   const startUserKite = async () => {
     try {
       const data = await userKiteLoginUrl();
-      if (data?.login_url) window.location.assign(data.login_url);
+      const href = safeHttpUrl(data?.login_url);
+      if (href) window.location.assign(href);
       else toast.error("Kite login URL unavailable");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not start Kite login");
@@ -814,19 +816,6 @@ export default function Dashboard() {
       const results = await Promise.all(fetches);
       if (gen !== oiReqGenRef.current) return;
 
-      setLiveSpotPrices((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        for (const r of results) {
-          const p = r?.ok ? r.data?.current?.price : null;
-          if (r?.idx && p != null && next[r.idx] == null) {
-            next[r.idx] = p;
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-
       const activeRow = results.find((r) => r.ok && r.idx === activeIndexRef.current);
       if (activeRow?.data) {
         applyOiPayload(activeRow.data, { pulse: true });
@@ -948,18 +937,6 @@ export default function Dashboard() {
         if (t?.index) map[t.index] = t;
       }
       setTickerQuotes(map);
-      setLiveSpotPrices((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        for (const t of data?.tickers || []) {
-          if (!t?.index || t.ltp == null) continue;
-          if (next[t.index] == null) {
-            next[t.index] = t.ltp;
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
     } catch (e) {
       console.error("loadTickers failed", e);
     }
@@ -1121,9 +1098,8 @@ export default function Dashboard() {
   useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers" });
   useQuiescentAwarePolling(
     async () => {
-      // Alerts are the product: always poll in session so OI-shift toasts fire
-      // on Positions / Straddle / any tab. Off-hours, refresh only when the
-      // Alerts UI is open.
+      // During market hours always poll + toast — Positions / Straddle / any tab.
+      // Off-hours only refresh when the Alerts UI is open (avoid idle spam).
       const marketClosed = status?.market?.is_market_open === false;
       if (!marketClosed) {
         await loadAlerts();
@@ -1776,6 +1752,7 @@ export default function Dashboard() {
       activeIndex={activeIndex}
       onSelectIndex={setActiveIndex}
       spotPrices={liveSpotPrices}
+      tickers={Object.values(tickerQuotes)}
     />
   ) : null;
 
@@ -1879,7 +1856,7 @@ export default function Dashboard() {
           <>
             <button
               type="button"
-              className="md:hidden fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px]"
+              className="md:hidden fixed inset-0 z-[45] bg-slate-950/50 backdrop-blur-[2px]"
               aria-label="Close sidebar"
               data-testid="sidebar-mobile-backdrop"
               onClick={() => setCompact(true)}

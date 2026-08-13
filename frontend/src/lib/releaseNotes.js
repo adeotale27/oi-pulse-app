@@ -7,12 +7,12 @@ export const RELEASE_NOTES = [
     version: "5.07",
     date: "2026-08-13",
     user: [
-      "OI-shift alerts stay on a 5-second pulse in session — every tab, not only Alerts",
+      "Phone index prices keep updating; heatmap tap jumps to the position on phone",
       "If a screen errors, Reload desk brings the board back instead of a blank page",
     ],
     admin: [
       "Login / remember-me capped at 8 POSTs per minute per IP; change-password is rate-limited",
-      "Journal screenshots require matching image magic bytes; API auth routes are no-store",
+      "Journal screenshots require matching image magic bytes; API routes are no-store",
       "New admin passwords use PBKDF2 600k iterations (existing hashes still verify at 120k)",
       "Security headers: CSP, COOP, X-Permitted-Cross-Domain-Policies",
     ],

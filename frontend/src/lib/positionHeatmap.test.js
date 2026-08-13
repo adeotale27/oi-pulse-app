@@ -20,7 +20,7 @@ assert.deepEqual(
   openHeatmapRows(rows, "NIFTY").map((r) => r.tradingsymbol),
   ["B"],
 );
-assert.equal(openHeatmapRows(rows, "SENSEX").length, 1);
-assert.equal(openHeatmapRows(rows, "SENSEX")[0].tradingsymbol, "C");
+assert.equal(openHeatmapRows([{ tradingsymbol: "SENSEX24800PE", index: "", exited: false, quantity: -10 }], "NIFTY").length, 0);
+assert.equal(openHeatmapRows([{ tradingsymbol: "SENSEX24800PE", index: "", exited: false, quantity: -10 }], "SENSEX").length, 1);
 
 console.log("positionHeatmap.test.js: ok");

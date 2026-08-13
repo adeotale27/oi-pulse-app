@@ -17,6 +17,10 @@ export function openHeatmapRows(rows = [], activeIndex = null) {
   const want = String(activeIndex).toUpperCase();
   return open.filter((r) => {
     const idx = String(r?.index || "").toUpperCase();
-    return !idx || idx === want;
+    if (idx === want) return true;
+    if (idx) return false;
+    const name = String(r.display_name || r.tradingsymbol || "").toUpperCase();
+    if (want === "BANKNIFTY") return name.includes("BANKNIFTY") || name.includes("BANK NIFTY");
+    return name.includes(want);
   });
 }
