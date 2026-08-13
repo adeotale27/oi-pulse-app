@@ -106,7 +106,7 @@ export default function PositionsInsightTiles({ nodes = {}, layoutAnchorId = nul
                   setOrder((prev) => reorderInsights(prev, from, id));
                 }
               }}
-              className={`relative h-[8.75rem] min-w-[9.25rem] ${dragging === id ? "opacity-40" : ""} ${
+              className={`relative min-h-[6.35rem] min-w-[9.25rem] ${dragging === id ? "opacity-40" : ""} ${
                 overId === id && dragging && dragging !== id ? "ring-2 ring-emerald-400 rounded-xl" : ""
               }`}
             >

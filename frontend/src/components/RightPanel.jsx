@@ -66,9 +66,7 @@ export default function RightPanel({
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
       if (item.pageId == null) return true;
-      if (item.pageId === "sell-candidates" || item.pageId === "index-events") {
-        return isAdmin;
-      }
+      if (item.pageId === "index-events") return true;
       return isAdmin || visiblePages.includes(item.pageId);
     }),
     [visiblePages, isAdmin]
@@ -202,7 +200,7 @@ export default function RightPanel({
               />
             </div>
           )}
-          {selectedView === "index-events" && isAdmin && (
+          {selectedView === "index-events" && (
             <EventRiskWidget
               activeIndex={activeIndex}
               refreshKey={uploadRefreshKey}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { completeUserKiteSession } from "@/lib/api";
+import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { toast } from "sonner";
 import OiPulseLogo from "@/components/OiPulseLogo";
 
@@ -35,7 +36,7 @@ export default function KiteCallback() {
         navigate("/?kite=connected", { replace: true });
       } catch (e) {
         if (cancelled) return;
-        const detail = e?.response?.data?.detail || e.message || "Could not complete Kite login";
+        const detail = friendlyKiteConnectError(e?.response?.data?.detail || e.message || "Could not complete Kite login");
         setMsg(String(detail));
         toast.error(String(detail));
       }

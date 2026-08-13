@@ -97,6 +97,38 @@ export function hmFromMinutes(mins) {
   return minutesToHm(mins);
 }
 
+export function istMinutesOfDay(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(now);
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+  return Number(get("hour") || 0) * 60 + Number(get("minute") || 0);
+}
+
+/** One extra Positions pull after Index F&O close (default 15:40 → 15:45). */
+export function getPositionsCatchupMinute() {
+  return _closeMinute + 5;
+}
+
+/** Auto-refresh Positions until the 15:45 catch-up, then stop. */
+export function isPositionsAutoRefreshOn(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+    weekday: "short",
+  }).formatToParts(now);
+  const w = parts.find((p) => p.type === "weekday")?.value;
+  const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const wk = map[w] ?? new Date(now).getUTCDay();
+  if (wk === 0 || wk === 6) return false;
+  const mins = istMinutesOfDay(now);
+  if (mins < _openMinute) return false;
+  return mins < getPositionsCatchupMinute();
+}
+
 // Returns true if the market is quiescent (no live polling needed) due to
 // weekend OR a server-declared holiday/market-closed flag. The function accepts
 // either a Date-like value (uses local IST weekend calculation) OR a server

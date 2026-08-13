@@ -153,14 +153,15 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
     return () => { cancelled = true; };
   }, [activeIndex, refreshKey]);
 
-  // Always refresh the four independent upload stamps (even if events call is cached).
+  // Admin-only: independent upload stamps (stale file warnings).
   useEffect(() => {
+    if (!isAdmin) return undefined;
     let cancelled = false;
     api.get("/upload/meta")
       .then((r) => { if (!cancelled) setUploadMeta(r.data || null); })
       .catch(() => { /* keep events payload meta if any */ });
     return () => { cancelled = true; };
-  }, [refreshKey, activeIndex]);
+  }, [refreshKey, activeIndex, isAdmin]);
 
   // ---- Derived data ----
   const upcoming = useMemo(() => events.filter((e) => e.days_remaining >= 0), [events]);
@@ -194,9 +195,6 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
   }, [upcoming]);
 
   const label = INDEX_LABEL[activeIndex] || activeIndex;
-
-  // Guests / public users never see Index Event Risk.
-  if (!isAdmin) return null;
 
   if (dismissed) {
     return (
@@ -255,7 +253,8 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
         </div>
       </div>
 
-      {/* Per-file last upload stamps (independent — files may be refreshed on different days) */}
+      {/* Per-file last upload stamps — admin only */}
+      {isAdmin && (
       <div
         className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40"
         data-testid="upload-last-stamps"
@@ -317,6 +316,7 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
           })}
         </div>
       </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-3 border-b border-slate-100 dark:border-slate-800">
