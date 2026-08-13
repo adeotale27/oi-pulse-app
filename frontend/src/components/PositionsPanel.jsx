@@ -22,6 +22,7 @@ import { isMarketQuiescent, getMarketCloseHm } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import {
   yearsToExpiry,
   greeks,
@@ -281,6 +282,7 @@ export default function PositionsPanel({
   const [privacyMode, setPrivacyMode] = useState(() => loadPrivacyMode());
   const [colsOpen, setColsOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [oiRiskOpen, setOiRiskOpen] = useState(false);
   const [highlightSymbol, setHighlightSymbol] = useState(null);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
@@ -982,6 +984,17 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
+            className="h-8 rounded-sm bg-white shrink-0 text-rose-800 border-rose-200 hover:bg-rose-50 px-2.5"
+            onClick={() => setOiRiskOpen(true)}
+            data-testid="btn-oi-risk-meter"
+            title="15-min OI vs nearest sold strike"
+          >
+            <ShieldAlert className="w-3.5 h-3.5 mr-1" />
+            OI Risk
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             className="h-8 rounded-sm bg-white shrink-0 text-emerald-800 border-emerald-200 hover:bg-emerald-50 px-2.5"
             onClick={() => setJournalOpen(true)}
             data-testid="btn-trade-journal"
@@ -1275,21 +1288,6 @@ export default function PositionsPanel({
           netDelta={stats.netDelta}
           positionsCount={stats.openCount}
           minutesToExpiry={stats.minMinutes}
-        />
-          ),
-          oiRisk: (
-        <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
-          ),
-          heatmap: (
-        <PositionHeatmap
-          compact
-          rows={rows}
-          privacy={privacyMode}
-          onSelect={(sym) => {
-            setHighlightSymbol(sym);
-            const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
-            el?.scrollIntoView({ behavior: "smooth", block: "center" });
-          }}
         />
           ),
         }}
@@ -1620,6 +1618,16 @@ export default function PositionsPanel({
 
       {insightsOpen && (
         <div className="space-y-3 border-t border-slate-100 pt-3" data-testid="positions-insights-drawer">
+          <PositionHeatmap
+            compact
+            rows={rows}
+            privacy={privacyMode}
+            onSelect={(sym) => {
+              setHighlightSymbol(sym);
+              const el = document.querySelector(`[data-position-symbol="${CSS.escape(sym)}"]`);
+              el?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+          />
           <div
             className="rounded-md border border-slate-200 bg-white px-3 py-2 space-y-1.5"
             data-testid="positions-suggestion-toggles"
@@ -1914,6 +1922,19 @@ export default function PositionsPanel({
         <div className="text-[10px] text-slate-400 text-right">Last refresh {new Date(lastRefresh).toLocaleTimeString()}</div>
       )}
 
+      <Sheet open={oiRiskOpen} onOpenChange={setOiRiskOpen}>
+        <SheetContent side="right" className="w-[min(100vw,22rem)] sm:max-w-sm p-4" data-testid="oi-risk-sheet">
+          <SheetHeader>
+            <SheetTitle>OI Risk Meter</SheetTitle>
+            <SheetDescription>
+              15-minute OI vs your nearest sold strike. Hide this anytime — it is not on the main tile row.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
+          </div>
+        </SheetContent>
+      </Sheet>
       <TradeJournalModal
         open={journalOpen}
         onOpenChange={setJournalOpen}

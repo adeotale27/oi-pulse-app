@@ -364,7 +364,7 @@ export default function Header({
             </Badge>
             {lastPulledAt && (
               <span
-                className="text-[9px] font-mono-data tabular-nums text-slate-500 dark:text-slate-400"
+                className="hidden sm:inline text-[9px] font-mono-data tabular-nums text-slate-500 dark:text-slate-400"
                 data-testid="mobile-live-as-of"
                 title="Live data as of"
               >
@@ -398,18 +398,20 @@ export default function Header({
             );
           })()}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-          <div className="shrink-0">
-            <BigClock compact />
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="shrink-0">
+              <BigClock compact />
+            </div>
+            {isAdmin && (
+              <HeaderTodayPnl
+                enabled
+                status={status}
+                pollMs={positionsPollMs}
+                className="flex flex-col items-end leading-tight px-1 shrink-0"
+              />
+            )}
           </div>
-          {isAdmin && (
-            <HeaderTodayPnl
-              enabled
-              status={status}
-              pollMs={positionsPollMs}
-              className="flex flex-col items-end leading-tight px-1.5 shrink-0"
-            />
-          )}
           {isAdmin && (
             <Button
               data-testid="btn-mobile-tools"

@@ -1,7 +1,7 @@
 import { loadIdOrder, saveIdOrder, moveIdBefore, orderByIds } from "@/lib/tabOrder";
 
-export const INSIGHT_LAYOUT_KEY = "oiPositionsInsightLayout";
-export const INSIGHT_HIDDEN_KEY = "oiPositionsInsightHidden";
+export const INSIGHT_LAYOUT_KEY = "oiPositionsInsightLayout.v2";
+export const INSIGHT_HIDDEN_KEY = "oiPositionsInsightHidden.v2";
 
 export const INSIGHT_TILE_DEFS = [
   { id: "todayPnl", label: "Today P&L", defaultOn: true },
@@ -12,8 +12,6 @@ export const INSIGHT_TILE_DEFS = [
   { id: "booked", label: "Profit booked today", defaultOn: true },
   { id: "untilClose", label: "Until close", defaultOn: true },
   { id: "overnight", label: "Overnight risk", defaultOn: true },
-  { id: "oiRisk", label: "OI risk meter", defaultOn: true },
-  { id: "heatmap", label: "Position heatmap", defaultOn: true, span: 2 },
 ];
 
 export const DEFAULT_INSIGHT_ORDER = INSIGHT_TILE_DEFS.map((t) => t.id);

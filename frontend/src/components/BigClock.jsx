@@ -307,21 +307,27 @@ export default function BigClock({ compact = false, secondSessionIst = null }) {
         : "Market clock (IST)";
 
   if (compact) {
+    const clockLabel = new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(now);
     return (
       <div
-        className={`px-2 py-1 rounded-sm flex items-center gap-2 ${
+        className={`px-2 py-1 rounded-md flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
           inAlertWindow
             ? "bg-rose-600 text-white"
             : closedTone
-              ? "bg-emerald-100 text-emerald-900"
+              ? "bg-amber-100 text-amber-950"
               : "bg-slate-100 text-slate-900"
         }`}
-        title={statusLine}
+        title={`${statusLine} · ${clockLabel} IST`}
         data-testid="big-clock-compact"
       >
-        <div className="font-mono-data font-semibold tabular-nums text-sm">{hour12}:{pad(m)}</div>
-        <div className="text-xs opacity-80">{ampm}</div>
-        <div className={`w-2 h-2 rounded-full ml-1 ${inAlertWindow ? "bg-white" : "bg-emerald-500"}`} />
+        <div className="font-mono-data font-semibold tabular-nums text-sm leading-none">{clockLabel}</div>
+        <span className="text-[9px] font-semibold uppercase tracking-wider opacity-60">IST</span>
+        <div className={`w-2 h-2 rounded-full ${inAlertWindow ? "bg-white" : isTradingDay && minutesOfDay >= openMin && minutesOfDay < FNO_CLOSE_MINUTE ? "bg-emerald-500" : "bg-slate-400"}`} />
       </div>
     );
   }

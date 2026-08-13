@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   Table2,
@@ -26,6 +26,7 @@ const ICONS = {
 
 /**
  * Phone-only dock. Desktop is unaffected (md:hidden).
+ * Long-press (~450ms) or tap the Dock chip to edit which pages sit here.
  */
 export default function MobileBottomNav({
   activeTab,
@@ -37,6 +38,11 @@ export default function MobileBottomNav({
 }) {
   const [edit, setEdit] = useState(false);
   const [ids, setIds] = useState(() => loadMobileDock(isAdmin).map((d) => d.id));
+  const holdRef = useRef({ timer: null, suppressClick: false });
+
+  useEffect(() => {
+    setIds(loadMobileDock(isAdmin).map((d) => d.id));
+  }, [isAdmin]);
 
   const items = useMemo(() => {
     const byId = new Map(DOCK_CATALOG.map((d) => [d.id, d]));
@@ -45,6 +51,23 @@ export default function MobileBottomNav({
       .filter((d) => d && (isAdmin || !d.adminOnly))
       .slice(0, 5);
   }, [ids, isAdmin]);
+
+  const clearHold = () => {
+    if (holdRef.current.timer) {
+      clearTimeout(holdRef.current.timer);
+      holdRef.current.timer = null;
+    }
+  };
+
+  const startHold = () => {
+    holdRef.current.suppressClick = false;
+    clearHold();
+    holdRef.current.timer = setTimeout(() => {
+      holdRef.current.timer = null;
+      holdRef.current.suppressClick = true;
+      setEdit(true);
+    }, 450);
+  };
 
   const toggleId = (id) => {
     setIds((prev) => {
@@ -68,7 +91,7 @@ export default function MobileBottomNav({
       {edit && (
         <div className="px-3 pt-2 pb-1 border-b border-slate-100" data-testid="mobile-dock-edit">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] uppercase tracking-widest text-slate-400">Dock (max 5)</span>
+            <span className="text-[10px] uppercase tracking-widest text-slate-400">Dock (max 5) · long-press a tab</span>
             <button type="button" className="text-[11px] text-emerald-700 font-semibold" onClick={() => setEdit(false)}>
               Done
             </button>
@@ -94,7 +117,7 @@ export default function MobileBottomNav({
       )}
       <div
         className="grid px-1 pt-1"
-        style={{ gridTemplateColumns: `repeat(${Math.max(items.length, 1)}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${Math.max(items.length + 1, 1)}, minmax(0, 1fr))` }}
       >
         {items.map((item) => {
           const Icon = ICONS[item.id] || BarChart3;
@@ -109,6 +132,10 @@ export default function MobileBottomNav({
               type="button"
               data-testid={`nav-${item.id}-mobile`}
               onClick={() => {
+                if (holdRef.current.suppressClick) {
+                  holdRef.current.suppressClick = false;
+                  return;
+                }
                 if (item.action === "desk") onOpenDesk?.();
                 else if (item.action === "admin-tools") onOpenAdminTools?.();
                 else onChangeTab?.(item.tab);
@@ -117,7 +144,11 @@ export default function MobileBottomNav({
                 e.preventDefault();
                 setEdit(true);
               }}
-              className={`flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-semibold tracking-wide ${
+              onPointerDown={startHold}
+              onPointerUp={clearHold}
+              onPointerCancel={clearHold}
+              onPointerMove={() => { /* keep hold unless we want cancel on scroll */ }}
+              className={`flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-semibold tracking-wide select-none ${
                 active
                   ? "text-emerald-700 dark:text-emerald-300"
                   : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
@@ -128,6 +159,16 @@ export default function MobileBottomNav({
             </button>
           );
         })}
+        <button
+          type="button"
+          data-testid="nav-dock-edit-mobile"
+          onClick={() => setEdit((v) => !v)}
+          className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-semibold tracking-wide text-slate-400"
+          title="Edit dock"
+        >
+          <SlidersHorizontal className="h-[18px] w-[18px]" />
+          Dock
+        </button>
       </div>
     </nav>
   );
