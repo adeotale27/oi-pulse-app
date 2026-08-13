@@ -482,7 +482,10 @@ class OITracker:
                 # Refresh profile identity when missing (admin UI shows user id).
                 if not self.kite_user_id:
                     try:
-                        profile = self.kite_service.kite.profile()
+                        profile = await asyncio.wait_for(
+                            asyncio.to_thread(self.kite_service.kite.profile),
+                            timeout=8,
+                        )
                         uid = profile.get("user_id") if isinstance(profile, dict) else None
                         if uid:
                             self.kite_user_id = str(uid)
@@ -619,7 +622,10 @@ class OITracker:
             if not need:
                 continue
             try:
-                dates = await asyncio.to_thread(self.kite_service.list_expiries, idx)
+                dates = await asyncio.wait_for(
+                    asyncio.to_thread(self.kite_service.list_expiries, idx),
+                    timeout=15,
+                )
                 if dates:
                     self.selected_expiry[idx] = dates[0]
                     logger.info("Seeded default expiry for %s → %s", idx, dates[0])
@@ -656,13 +662,17 @@ class OITracker:
     async def start(self):
         if self.running and self._task is not None and not self._task.done():
             return
-        try:
-            await self.seed_default_expiries()
-        except Exception as e:
-            logger.warning("seed_default_expiries on start failed: %s", e)
         self.running = True
         self._task = asyncio.create_task(self._loop())
+        # Expiry seed hits kite.instruments() (huge) — never block API bind / k8s ready.
+        asyncio.create_task(self._seed_expiries_safe())
         logger.info("OI tracker started (browser-independent DB writer)")
+
+    async def _seed_expiries_safe(self):
+        try:
+            await asyncio.wait_for(self.seed_default_expiries(), timeout=20)
+        except Exception as e:
+            logger.warning("seed_default_expiries on start failed: %s", e)
 
     async def stop(self):
         self.running = False

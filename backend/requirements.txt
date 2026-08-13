@@ -1,76 +1,31 @@
-# requirements.txt — runtime + dev/test (only packages actually required by the backend)
-# This file intentionally includes the dependencies necessary to run the backend
-# and the test/dev tools you requested (pytest, pytest-xdist). Unused/AI/cloud
-# packages were removed.
-
-# Private package (retain as provided by your environment)
-emergentintegrations==0.2.0
+# Runtime-only. Tests live in backend/tests (install pytest locally, not in the image).
+# Keep this list small — extra wheels (pandas-at-import, twisted, stripe, …)
+# inflate RAM and delay k8s readiness.
 
 # Web / ASGI
 fastapi==0.110.1
 uvicorn==0.25.0
 starlette==0.37.2
-websockets==16.0
-
-# Serialization / validation
-pydantic==2.13.4
-pydantic_core==2.46.4
-typing_extensions==4.16.0
-
-# Environment / forms
-python-dotenv==1.2.2
 python-multipart==0.0.32
+python-dotenv==1.2.2
 
-# Database
+# DB
 motor==3.3.1
 pymongo==4.6.3
 
-# Auth / password
-passlib==1.7.4
-bcrypt==4.1.3
-PyJWT==2.13.0
-python-jose==3.5.0
-
-# HTTP clients
+# HTTP
 httpx==0.28.1
 requests==2.34.2
 
-# Async / networking
-aiohttp==3.14.1
-anyio==4.14.1
+# Vault
+cryptography>=42.0.0
 
-# Finance / data
-pandas==3.0.3
-numpy==2.4.6
-openpyxl==3.1.5
-yfinance>=0.2.40
+# Market data
 kiteconnect==5.2.0
-stripe==14.4.1
-
-# Scheduling / timezone
-APScheduler==3.11.3
-python-dateutil==2.9.0.post0
-tzdata==2026.2
-tzlocal==5.4.4
-
-# Templating / markup
-Jinja2==3.1.6
-MarkupSafe==3.0.3
-
-# Validation / email
-email-validator==2.3.0
-
-# Dev / test
-pytest==9.1.1
-pytest-xdist==3.8.0
-watchfiles==1.2.0
-
-# Misc utilities
-requests-oauthlib==2.0.0
-
-# End of file
-twisted
-pyOpenSSL
+yfinance>=0.2.40
+pandas>=2.2.0,<3
+numpy>=1.26.0
+openpyxl==3.1.5
+python-dateutil>=2.9.0
 pytz
-autobahn[twisted]==19.11.2
-service_identity
+tzdata>=2024.1

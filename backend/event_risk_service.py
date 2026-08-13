@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime, timezone, timedelta, date
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
+# pandas is heavy — import only when parsing uploads, not on every API boot.
 
 # ---------- Canonical index codes used inside the app ----------
 INDEX_CODES = {
@@ -160,6 +160,7 @@ _DATE_FMTS = [
 def parse_event_date(raw: Any) -> Optional[date]:
     if raw is None:
         return None
+    import pandas as pd
     # If pandas already parsed it as Timestamp
     if isinstance(raw, pd.Timestamp):
         return raw.date()
@@ -231,8 +232,9 @@ def parse_weightage(raw: Any) -> Optional[float]:
 # =====================================================================
 # File readers
 # =====================================================================
-def read_upload_bytes(file_bytes: bytes, filename: str) -> pd.DataFrame:
+def read_upload_bytes(file_bytes: bytes, filename: str):
     """Read a CSV or XLSX file bytes into a DataFrame."""
+    import pandas as pd
     fname = (filename or "").lower()
     bio = io.BytesIO(file_bytes)
     try:
@@ -271,6 +273,7 @@ def parse_constituents(
     Returns (rows, errors). rows is empty if errors non-empty.
     index_code ∈ {'NIFTY','BANKNIFTY','SENSEX'}
     """
+    import pandas as pd
     errors: List[str] = []
 
     if df is None or df.empty:
@@ -368,6 +371,7 @@ def parse_constituents(
 # Events validator + parser
 # =====================================================================
 def parse_events(df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], List[str]]:
+    import pandas as pd
     errors: List[str] = []
     if df is None or df.empty:
         return [], ["File contains no data rows."]

@@ -78,7 +78,15 @@ def is_vix_session_open(dt: datetime = None) -> bool:
 
 
 def _yf_last_price(symbol: str) -> Optional[Dict[str, Any]]:
-    import yfinance as yf
+    """Yahoo last price. Must never hang the API process — short timeouts only."""
+    import socket
+    try:
+        import yfinance as yf
+    except Exception as e:
+        logger.warning("yfinance not available: %s", e)
+        return None
+    prev_to = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(6)
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.fast_info
@@ -106,6 +114,8 @@ def _yf_last_price(symbol: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"yfinance fetch failed for {symbol}: {type(e).__name__}: {e}")
         return None
+    finally:
+        socket.setdefaulttimeout(prev_to)
 
 
 def _kite_quote_price(kite, quote_key: str) -> Optional[Dict[str, Any]]:
@@ -221,9 +231,21 @@ class ExtraTickers:
         kite = self._get_kite()
         result = None
         if kite is not None:
-            result = await asyncio.to_thread(_kite_quote_price, kite, KITE_VIX_SYMBOL)
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(_kite_quote_price, kite, KITE_VIX_SYMBOL),
+                    timeout=8,
+                )
+            except Exception as e:
+                logger.warning("kite VIX quote timed out/failed: %s", e)
         if not result:
-            result = await asyncio.to_thread(_yf_last_price, SYM_VIX_YF)
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(_yf_last_price, SYM_VIX_YF),
+                    timeout=8,
+                )
+            except Exception as e:
+                logger.warning("yahoo VIX timed out/failed: %s", e)
         if result:
             self.vix = result
             await self._persist("vix", result)
@@ -234,14 +256,27 @@ class ExtraTickers:
         kite = self._get_kite()
         result = None
         if kite is not None:
-            result = await asyncio.to_thread(_kite_quote_price, kite, KITE_GIFT_SYMBOL)
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(_kite_quote_price, kite, KITE_GIFT_SYMBOL),
+                    timeout=8,
+                )
+            except Exception as e:
+                logger.warning("kite GIFT quote timed out/failed: %s", e)
             if result:
                 result["label"] = "GIFT NIFTY"
                 result["note"] = None
         if not result:
             # Yahoo has no first-class GIFT symbol — fall back to Nifty 50 proxy and mark it.
             for sym in SYM_GIFT_YF_CANDIDATES:
-                result = await asyncio.to_thread(_yf_last_price, sym)
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(_yf_last_price, sym),
+                        timeout=8,
+                    )
+                except Exception as e:
+                    logger.warning("yahoo GIFT proxy %s timed out/failed: %s", sym, e)
+                    result = None
                 if result:
                     result["label"] = "GIFT NIFTY"
                     result["note"] = (
@@ -265,14 +300,7 @@ class ExtraTickers:
             return
         self._running = True
         await self._load_persisted()
-        try:
-            await self._fetch_vix_and_persist()
-        except Exception as e:
-            logger.warning(f"boot VIX fetch failed: {e}")
-        try:
-            await self._fetch_gift_and_persist()
-        except Exception as e:
-            logger.warning(f"boot GIFT fetch failed: {e}")
+        # Do NOT await Yahoo/Kite here — that hung k8s readiness for 10 minutes.
         self._task = asyncio.create_task(self._loop())
         logger.info(
             "ExtraTickers started — GIFT via Kite %s (Yahoo fallback), VIX via Kite/Yahoo",

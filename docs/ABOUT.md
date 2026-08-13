@@ -1,8 +1,8 @@
 # OI Pulse — About the Project
 
-OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V5.00**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
+OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V5.01**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
 
-Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Click the logo or **V5.00** in the app for the same About panel.
+Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Click the logo or **V5.01** in the app for the same About panel.
 
 Stack: **React (CRA/craco) + FastAPI + Motor/MongoDB + Kite Connect**.
 
@@ -29,7 +29,8 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false }` (admin). Gu
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/` | API hello + **product version** |
-| GET | `/version` | Public `{ name, version, version_label }` (V5.00 …) |
+| GET | `/health` `/ready` `/api/health` | K8s readiness — 200 without Kite/Yahoo |
+| GET | `/version` | Public `{ name, version, version_label }` (V5.01 …) |
 | GET | `/status` | Mode (`kite`/`offline`), market hours, tracker health, `app_version` |
 | GET | `/config` | Enabled indices, lot sizes, thresholds |
 | GET | `/settings` / POST `/settings` | Admin settings (enabled indices, alert windows, market close, etc.) |
