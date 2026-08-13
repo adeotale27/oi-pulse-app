@@ -12,19 +12,19 @@ import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSet
 import InfoTip from "@/components/InfoTip";
 
 const ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
-const ADMIN_ONLY_PAGES = new Set(["positions", "sell-candidates", "index-events"]);
+const HARD_ADMIN_PAGES = new Set(["sell-candidates", "index-events"]);
 const DASHBOARD_PAGES = [
   { id: "oi-change", label: "OI Change" },
   { id: "open-interest", label: "Open Interest" },
   { id: "strike-table", label: "Strike Table" },
-  { id: "sell-candidates", label: "Sell Candidates", adminOnly: true },
+  { id: "sell-candidates", label: "Sell Candidates", hardAdmin: true },
   { id: "buildup", label: "Build-up" },
-  { id: "positions", label: "Positions", adminOnly: true },
+  { id: "positions", label: "Positions" },
   { id: "alerts", label: "Alerts" },
   { id: "activity", label: "Activity" },
   { id: "holidays", label: "Events" },
   { id: "straddle", label: "Straddle" },
-  { id: "index-events", label: "Index Risk", adminOnly: true },
+  { id: "index-events", label: "Index Risk", hardAdmin: true },
   { id: "cas", label: "CAS Expiry" },
 ];
 
@@ -65,7 +65,7 @@ export default function SettingsModal({
           admin_session_ttl_minutes: 480,
           alert_enabled_indices: ["NIFTY"],
           show_strike_range: false,
-          visible_pages: DASHBOARD_PAGES.filter((p) => p.id !== "sell-candidates" && p.id !== "positions" && p.id !== "cas").map((p) => p.id),
+          visible_pages: DASHBOARD_PAGES.filter((p) => !p.hardAdmin && p.id !== "cas").map((p) => p.id),
           show_writer_defense: true,
           show_suggestion: true,
           show_chart_signals: false,
@@ -107,10 +107,9 @@ export default function SettingsModal({
   };
 
   const toggleVisiblePage = (pageId) => {
-    if (ADMIN_ONLY_PAGES.has(pageId)) return;
+    if (HARD_ADMIN_PAGES.has(pageId)) return;
     const cur = new Set(Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id));
-    // Never persist admin-only pages as public.
-    for (const id of ADMIN_ONLY_PAGES) cur.delete(id);
+    for (const id of HARD_ADMIN_PAGES) cur.delete(id);
     if (cur.has(pageId)) {
       if (cur.size <= 1) {
         toast.error("Keep at least one public page visible");
@@ -138,7 +137,7 @@ export default function SettingsModal({
           ...settings,
           positions_poll_interval_seconds: positionsPoll,
           visible_pages: (Array.isArray(settings.visible_pages) ? settings.visible_pages : [])
-            .filter((id) => !ADMIN_ONLY_PAGES.has(id)),
+            .filter((id) => !HARD_ADMIN_PAGES.has(id)),
         };
         const { data } = await api.post("/settings", payload);
         const saved = data || payload;
@@ -504,32 +503,32 @@ export default function SettingsModal({
                   Public dashboard pages
                 </div>
                 <div className="text-xs text-slate-500">
-                  Choose which dashboard pages should be visible to public visitors. Admin users still see all pages.
+                  Tick a page to show it to guests. Leave it off to keep it admin-only. Sell Candidates and Index Risk stay
+                  admin-only. Positions, when ticked, lets guests Connect Zerodha for their own book (publisher token still drives OI charts).
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {DASHBOARD_PAGES.map((page) => {
-                    const adminOnly = !!page.adminOnly || ADMIN_ONLY_PAGES.has(page.id);
+                    const hardAdmin = !!page.hardAdmin || HARD_ADMIN_PAGES.has(page.id);
+                    const on = (Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id)).includes(page.id);
                     return (
                     <label
                       key={page.id}
                       className={`flex items-center gap-2 py-2 px-3 rounded-sm border border-slate-200 ${
-                        adminOnly ? "opacity-60 cursor-not-allowed bg-slate-50" : "hover:bg-slate-50 cursor-pointer"
+                        hardAdmin ? "opacity-60 cursor-not-allowed bg-slate-50" : "hover:bg-slate-50 cursor-pointer"
                       }`}
                     >
                       <Checkbox
                         data-testid={`visible-page-${page.id}`}
-                        disabled={adminOnly}
-                        checked={
-                          adminOnly
-                            ? false
-                            : (Array.isArray(settings.visible_pages) ? settings.visible_pages : DASHBOARD_PAGES.map((p) => p.id)).includes(page.id)
-                        }
+                        disabled={hardAdmin}
+                        checked={hardAdmin ? false : on}
                         onCheckedChange={() => toggleVisiblePage(page.id)}
                       />
                       <div>
                         <div className="text-sm font-medium">{page.label}</div>
-                        {adminOnly ? (
+                        {hardAdmin ? (
                           <div className="text-[10px] text-slate-500">Admin-only — never shown to guests</div>
+                        ) : page.id === "positions" ? (
+                          <div className="text-[10px] text-slate-500">Guests see Connect Zerodha for their own book. Charts stay on your publisher token.</div>
                         ) : page.id === "cas" ? (
                           <div className="text-[10px] text-slate-500">Guests can view; only admin can Activate / Live</div>
                         ) : null}

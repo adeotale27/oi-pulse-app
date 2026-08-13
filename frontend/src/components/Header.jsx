@@ -159,6 +159,8 @@ export default function Header({
   slimStatusRail = false,
   /** Positions book poll interval (ms) — keeps header Today P&L fresh in background. */
   positionsPollMs = 15_000,
+  /** Guests only see header P&L when Positions is a public page. */
+  positionsPublic = true,
   onToggleSlimStatusRail,
 }) {
   const price = current?.price ?? 0;
@@ -403,7 +405,7 @@ export default function Header({
         </div>
         <div className="flex items-center gap-1.5 shrink-0 ml-auto min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            {(isAdmin || isGuestUser) && (
+            {(isAdmin || (isGuestUser && positionsPublic)) && (
               <HeaderTodayPnl
                 enabled
                 status={status}
@@ -418,14 +420,15 @@ export default function Header({
               size="sm"
               aria-pressed={mobileToolsOpen}
               onClick={() => setMobileToolsOpen((v) => !v)}
-              className={`rounded-sm h-8 text-[11px] font-semibold px-2.5 min-w-[3.75rem] ${
+              className={`rounded-sm h-8 w-8 p-0 ${
                 mobileToolsOpen
                   ? "bg-slate-900 text-white hover:bg-slate-800"
                   : "bg-emerald-600 text-white hover:bg-emerald-700"
               }`}
-              title={mobileToolsOpen ? "Tools open — tap again to close" : "Admin tools"}
+              title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings"}
             >
-              Tools
+              <Settings2 className="w-4 h-4" />
+              <span className="sr-only">Settings</span>
             </Button>
           )}
           <Button
@@ -616,11 +619,7 @@ export default function Header({
           )}
           {lastPulledAt && (
             <div
-              className={
-                headerRail
-                  ? "hidden md:flex items-center gap-1.5 px-1.5 font-mono-data text-[11px] text-slate-600 dark:text-slate-300"
-                  : "hidden 2xl:flex flex-col items-start gap-0 px-2 py-1 min-w-[120px] font-mono-data text-slate-600 dark:text-slate-300"
-              }
+              className="hidden"
               data-testid="oi-and-time"
               title={nowLabel ? `Now ${nowLabel}` : undefined}
             >
@@ -926,7 +925,7 @@ export default function Header({
           />
         </div>
         {lastPulledAt && (
-          <div className="ml-auto text-[11px] font-mono-data text-slate-500 dark:text-slate-400 shrink-0" data-testid="oi-pulled-secondary">
+          <div className="hidden ml-auto text-[11px] font-mono-data text-slate-500 dark:text-slate-400 shrink-0" data-testid="oi-pulled-secondary">
             Live data as of {new Date(lastPulledAt).toLocaleTimeString()}
           </div>
         )}
@@ -941,14 +940,15 @@ export default function Header({
             size="sm"
             aria-pressed={mobileToolsOpen}
             onClick={() => setMobileToolsOpen((v) => !v)}
-            className={`rounded-sm h-9 text-xs font-semibold px-4 ${
+            className={`rounded-sm h-9 w-9 p-0 ${
               mobileToolsOpen
                 ? "bg-slate-900 text-white hover:bg-slate-800"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
-            title={mobileToolsOpen ? "Tools open — tap again to close" : "Admin tools: Public access, Settings, Kite API, Fresh Pull"}
+            title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings: Public access, Alert settings, Kite API, Fresh Pull"}
           >
-            Tools
+            <Settings2 className="w-4 h-4" />
+            <span className="sr-only">Settings</span>
           </Button>
         </div>
       )}

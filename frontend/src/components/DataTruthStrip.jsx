@@ -78,7 +78,7 @@ export default function DataTruthStrip({
           {truth.badge}
         </span>
         <span
-          className={`font-mono-data font-semibold tracking-tight ${mobileTicker ? "hidden md:inline" : ""}`}
+          className="hidden font-mono-data font-semibold tracking-tight"
           data-testid="data-truth-asof"
         >
           {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}

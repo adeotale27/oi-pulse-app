@@ -478,7 +478,6 @@ export default function Dashboard() {
     const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
       .filter((page) => {
         if (page.adminOnly) return false;
-        if (page.v === "positions") return true;
         return visiblePages.includes(page.v);
       })
       .map((page) => page.v);
@@ -491,10 +490,7 @@ export default function Dashboard() {
   const dashboardTabs = useMemo(
     () =>
       orderPages(DASHBOARD_PAGES, tabOrder).filter(
-        (t) =>
-          authState.is_admin
-          || t.v === "positions"
-          || (!t.adminOnly && visiblePages.includes(t.v))
+        (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
       ),
     [tabOrder, authState.is_admin, visiblePages],
   );
@@ -1689,6 +1685,8 @@ export default function Dashboard() {
         <GuestBanner
           guestName={authState.guest_name}
           adminName={authState.admin_display_name}
+          showKiteConnect={visiblePages.includes("positions")}
+          onConnectKite={startUserKite}
         />
       )}
       {slimStatusRail ? (
@@ -1765,6 +1763,7 @@ export default function Dashboard() {
         slimStatusRail={slimStatusRail}
         onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
         positionsPollMs={positionsPollMs}
+        positionsPublic={authState.is_admin || visiblePages.includes("positions")}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {
           // Clear warm caches then re-hydrate every enabled index after Fresh Pull.
@@ -1974,7 +1973,7 @@ export default function Dashboard() {
                           Collecting snapshots for {timeframeLabel} · {liveAvailMin.toFixed(1)} min so far · unlocks in {clock}
                         </span>
                       )}
-                      <span className="ml-auto flex items-center gap-1.5 text-[11px]" data-testid="change-alert-threshold-wrapper">
+                      <span className="ml-auto hidden md:flex items-center gap-1.5 text-[11px]" data-testid="change-alert-threshold-wrapper">
                         <span className="opacity-80">Alert on ≥</span>
                         <input
                           data-testid="change-alert-threshold"
@@ -1994,7 +1993,7 @@ export default function Dashboard() {
                   );
                 })()}
                 {activeTab === "oi-change" && historyReady && (
-                  <div className="flex justify-end -mb-1" data-testid="change-alert-threshold-wrapper">
+                  <div className="hidden md:flex justify-end -mb-1" data-testid="change-alert-threshold-wrapper">
                     <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
                       <span>Alert on ≥</span>
                       <input
@@ -2354,7 +2353,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || authState.is_guest) && (
+                  {(authState.is_admin || visiblePages.includes("positions")) && (
                     <TabsContent
                       value="positions"
                       className="mt-0 data-[state=inactive]:hidden"
@@ -2564,6 +2563,7 @@ export default function Dashboard() {
         <MobileBottomNav
           activeTab={activeTab}
           isAdmin={!!authState.is_admin}
+          visiblePages={visiblePages}
           deskOpen={!compact}
           onOpenDesk={() => setCompact((v) => !v)}
           onOpenAdminTools={() => window.dispatchEvent(new Event("oi-toggle-admin-tools"))}

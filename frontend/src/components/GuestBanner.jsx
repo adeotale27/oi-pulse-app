@@ -1,4 +1,4 @@
-import { LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, PlugZap, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { logoutGuest } from "@/lib/api";
 
@@ -6,7 +6,12 @@ import { logoutGuest } from "@/lib/api";
  * Small amber banner shown when a guest is browsing the app.
  * "Guest access via <admin name>" + read-only note + Exit button.
  */
-export default function GuestBanner({ guestName, adminName }) {
+export default function GuestBanner({
+  guestName,
+  adminName,
+  showKiteConnect = false,
+  onConnectKite,
+}) {
   const exit = async () => {
     await logoutGuest();
     toast.success("Exited guest session");
@@ -25,18 +30,31 @@ export default function GuestBanner({ guestName, adminName }) {
             {" — "}
             <b>Guest access via {adminName || "Adeotale"}</b>
             {" · "}
-            Read-only OI. Connect your own Zerodha on Positions for your book.
+            OI charts use the publisher feed. Your positions need your own Zerodha login.
           </span>
-          <span className="sm:hidden text-amber-800/90"> · Guest · connect Kite on Positions</span>
+          <span className="sm:hidden text-amber-800/90"> · Guest · your Kite for Positions</span>
         </span>
       </div>
-      <button
-        onClick={exit}
-        className="flex items-center gap-1 text-amber-800 hover:text-rose-700 shrink-0"
-        data-testid="guest-exit"
-      >
-        <LogOut className="w-3 h-3" /> Exit
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        {showKiteConnect && typeof onConnectKite === "function" && (
+          <button
+            type="button"
+            onClick={onConnectKite}
+            className="inline-flex items-center gap-1 h-7 px-2 rounded-sm bg-emerald-600 text-white hover:bg-emerald-700 font-semibold"
+            data-testid="guest-banner-connect-kite"
+          >
+            <PlugZap className="w-3 h-3" />
+            Connect Zerodha
+          </button>
+        )}
+        <button
+          onClick={exit}
+          className="flex items-center gap-1 text-amber-800 hover:text-rose-700"
+          data-testid="guest-exit"
+        >
+          <LogOut className="w-3 h-3" /> Exit
+        </button>
+      </div>
     </div>
   );
 }

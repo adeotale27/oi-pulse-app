@@ -8,7 +8,7 @@ import {
   Activity,
   CalendarDays,
   Layers,
-  Wrench,
+  Settings2,
 } from "lucide-react";
 import { DOCK_CATALOG, loadMobileDock, saveMobileDock } from "@/lib/mobileDock";
 
@@ -17,7 +17,7 @@ const ICONS = {
   straddle: Activity,
   positions: Briefcase,
   holidays: CalendarDays,
-  "admin-tools": Wrench,
+  "admin-tools": Settings2,
   "strike-table": Table2,
   alerts: Bell,
   "open-interest": Layers,
@@ -35,6 +35,7 @@ export default function MobileBottomNav({
   onOpenAdminTools,
   deskOpen = false,
   isAdmin = false,
+  visiblePages = null,
 }) {
   const [edit, setEdit] = useState(false);
   const [ids, setIds] = useState(() => loadMobileDock(isAdmin).map((d) => d.id));
@@ -51,13 +52,20 @@ export default function MobileBottomNav({
     setIds(loadMobileDock(isAdmin).map((d) => d.id));
   }, [isAdmin]);
 
+  const pageAllowed = (d) => {
+    if (!d) return false;
+    if (!isAdmin && d.adminOnly) return false;
+    if (!isAdmin && d.tab && Array.isArray(visiblePages) && !visiblePages.includes(d.tab)) return false;
+    return true;
+  };
+
   const items = useMemo(() => {
     const byId = new Map(DOCK_CATALOG.map((d) => [d.id, d]));
     return ids
       .map((id) => byId.get(id))
-      .filter((d) => d && (isAdmin || !d.adminOnly))
+      .filter(pageAllowed)
       .slice(0, 5);
-  }, [ids, isAdmin]);
+  }, [ids, isAdmin, visiblePages]);
 
   const clearHold = () => {
     if (holdRef.current.timer) {
@@ -104,7 +112,7 @@ export default function MobileBottomNav({
             </button>
           </div>
           <div className="flex flex-wrap gap-1">
-            {DOCK_CATALOG.filter((d) => isAdmin || !d.adminOnly).map((d) => {
+            {DOCK_CATALOG.filter(pageAllowed).map((d) => {
               const on = ids.includes(d.id);
               return (
                 <button

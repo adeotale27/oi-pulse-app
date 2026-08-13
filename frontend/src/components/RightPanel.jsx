@@ -66,12 +66,7 @@ export default function RightPanel({
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
       if (item.pageId == null) return true;
-      // Positions / Index Event Risk are admin-only — never expose to guests.
-      if (
-        item.pageId === "positions"
-        || item.pageId === "sell-candidates"
-        || item.pageId === "index-events"
-      ) {
+      if (item.pageId === "sell-candidates" || item.pageId === "index-events") {
         return isAdmin;
       }
       return isAdmin || visiblePages.includes(item.pageId);
