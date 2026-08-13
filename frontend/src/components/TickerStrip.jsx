@@ -27,8 +27,9 @@ const INDEX_STYLE = {
     label: "NIFTY 50",
     short: "NIFTY",
     dot: "bg-sky-500",
+    selectedBorder: "border-sky-500",
     idleShell: "bg-gradient-to-br from-sky-50 to-cyan-50 text-sky-900 border-sky-100 hover:from-sky-100 hover:to-cyan-100",
-    activeShell: "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-sky-300 shadow-md shadow-sky-500/20",
+    activeShell: "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-sky-500 shadow-md shadow-sky-500/20",
     idleChgUp: "text-emerald-700",
     idleChgDn: "text-rose-700",
     activeChg: "text-white/90",
@@ -36,9 +37,10 @@ const INDEX_STYLE = {
   SENSEX: {
     label: "SENSEX",
     short: "SENSEX",
-    dot: "bg-amber-500",
+    dot: "bg-orange-500",
+    selectedBorder: "border-orange-500",
     idleShell: "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-800 border-orange-100 hover:from-amber-100 hover:to-orange-100",
-    activeShell: "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-amber-300 shadow-md shadow-orange-500/20",
+    activeShell: "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-orange-500 shadow-md shadow-orange-500/20",
     idleChgUp: "text-emerald-700",
     idleChgDn: "text-rose-700",
     activeChg: "text-white/90",
@@ -47,8 +49,9 @@ const INDEX_STYLE = {
     label: "BANK NIFTY",
     short: "BNF",
     dot: "bg-emerald-500",
+    selectedBorder: "border-emerald-500",
     idleShell: "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-teal-100",
-    activeShell: "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-300 shadow-md shadow-emerald-500/20",
+    activeShell: "bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-500 shadow-md shadow-emerald-500/20",
     idleChgUp: "text-emerald-800",
     idleChgDn: "text-rose-700",
     activeChg: "text-white/90",
@@ -143,7 +146,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
               className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${
                 isActive
-                  ? "border-sky-400 bg-white shadow-sm dark:bg-slate-900"
+                  ? `${s.selectedBorder} border-2 bg-white shadow-sm dark:bg-slate-900`
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
               }`}
             >
@@ -210,15 +213,13 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             type="button"
             onClick={() => onSelectIndex?.(t.index)}
             data-testid={`ticker-${t.index}`}
-            className={`text-left rounded-md border ${tones.shell} ${
+            className={`text-left rounded-md border-2 ${tones.shell} ${
               isHeader
                 ? "px-2 py-1.5 shrink-0 min-w-[7.25rem] max-w-[11rem]"
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
-            } hover:brightness-[0.99] transition-all ${
-              isActive && !isHeader ? "ring-2 ring-sky-400/80 shadow-md" : ""
-            }`}
+            } hover:brightness-[0.99] transition-all ${isActive ? "shadow-md" : ""}`}
             title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
           >
             <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label || ""} ${

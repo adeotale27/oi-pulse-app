@@ -3683,13 +3683,15 @@ async def kite_user_disconnect(request: Request, role: str = Depends(require_des
 
 
 @api_router.get("/positions")
-async def get_positions(request: Request, role: str = Depends(require_desk_user)):
+async def get_positions(request: Optional[Request] = None, role: str = Depends(require_desk_user)):
     """Fetch F&O positions from the caller's Kite book (net + day).
 
     Admin uses the publisher vault (same client as OI).
     Guests use their own access_token — never the publisher desk token.
     """
     kite = None
+    if request is None:
+        role = "admin"
     if role == "guest":
         guest = await _guest_from_request(request)
         kite, st = await _user_kite_client(guest)
@@ -4072,14 +4074,76 @@ def _ist_today_ymd() -> str:
     return datetime.now(ist).strftime("%Y-%m-%d")
 
 
+_last_journal_charges_mono = 0.0
+
+
+async def _kite_day_charges(kite) -> Dict[str, Any]:
+    """Virtual contract-note totals for today — stored on the journal doc only."""
+    from kite_charges import (
+        aggregate_contract_notes,
+        empty_charges_payload,
+        resolve_charge_params,
+    )
+
+    orders: list = []
+    trades: list = []
+    try:
+        orders = await asyncio.to_thread(kite.orders) or []
+    except Exception:
+        orders = []
+    try:
+        trades = await asyncio.to_thread(kite.trades) or []
+    except Exception:
+        trades = []
+    today = _ist_today_ymd()
+    params, book_stats = resolve_charge_params(orders, trades, today_ymd=today)
+    if not params:
+        return empty_charges_payload(order_count=0, note="No priced fills today.")
+    params = params[:500]
+    notes: list = []
+    chunk_size = 50
+    for i in range(0, len(params), chunk_size):
+        chunk = params[i : i + chunk_size]
+        try:
+            part = await asyncio.to_thread(kite.get_virtual_contract_note, chunk)
+            if isinstance(part, list):
+                notes.extend(part)
+            elif isinstance(part, dict) and isinstance(part.get("data"), list):
+                notes.extend(part["data"])
+            elif part:
+                notes.append(part)
+        except Exception:
+            continue
+    payload = aggregate_contract_notes(notes)
+    payload["source"] = f"kite_virtual_contract:{book_stats.get('source') or 'trades'}"
+    return payload
+
+
+async def _maybe_journal_charges(*, force: bool = False) -> Optional[Dict[str, Any]]:
+    global _last_journal_charges_mono
+    now = time.monotonic()
+    if not force and (now - _last_journal_charges_mono) < 90:
+        return None
+    try:
+        kite = tracker.kite_service.kite if tracker and tracker.kite_service else None
+        if not kite:
+            return None
+        payload = await _kite_day_charges(kite)
+        _last_journal_charges_mono = now
+        return payload
+    except Exception:
+        return None
+
+
 async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool = False) -> None:
-    """Upsert today's P&L snapshot; never clobber an EOD-locked day with an empty Kite book."""
+    """Upsert today's booked P&L + brokerage; never clobber an EOD-locked day."""
     if db is None:
         return
     if payload.get("error") and not (payload.get("positions") or payload.get("pnl_today")):
         return
     try:
-        snap = journal.snapshot_from_positions(payload)
+        charges = await _maybe_journal_charges(force=force_lock)
+        snap = journal.snapshot_from_positions(payload, charges=charges)
         day = snap["date"]
         existing = await db.trade_journal.find_one({"date": day})
         fields = journal.apply_snapshot(existing, snap, force_lock=force_lock)
@@ -4105,7 +4169,7 @@ async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool =
 
 
 async def _journal_eod_lock_loop() -> None:
-    """After 15:41 IST on trading days, freeze today's booked P&L even if nobody opens Positions."""
+    """After 15:45 IST on trading days, freeze booked P&L from the last Positions catch-up."""
     locked_for: Optional[str] = None
     log = logging.getLogger("server")
     while True:
@@ -4123,7 +4187,7 @@ async def _journal_eod_lock_loop() -> None:
                     locked_for = day
                     continue
             try:
-                result = await get_positions(_admin=True)
+                result = await get_positions(None, "admin")
             except Exception as e:
                 log.warning("journal EOD lock: positions fetch failed: %s", e)
                 continue
@@ -4865,6 +4929,7 @@ async def _startup():
         await db.blocked_ips.create_index("blocked_at")
         await db.user_kite.create_index("guest_token")
         await db.user_kite.create_index([("guest_name", 1), ("ip", 1)])
+        await db.trade_journal.create_index("date", unique=True, name="uniq_journal_date")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 

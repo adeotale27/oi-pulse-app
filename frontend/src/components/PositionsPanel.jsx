@@ -292,6 +292,7 @@ export default function PositionsPanel({
   const [guestNeedsConnect, setGuestNeedsConnect] = useState(() => !!isGuest);
   const [guestKiteId, setGuestKiteId] = useState(null);
   const [exitedOpen, setExitedOpen] = useState(false);
+  const [liveOpen, setLiveOpen] = useState(true);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
       return localStorage.getItem("oiPositionsInsightsOpen") === "1";
@@ -1433,7 +1434,18 @@ export default function PositionsPanel({
           <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No F&amp;O positions today.</div>
         ) : (
           <>
-        {(exitedOpen ? rows : openRows).map((r) => {
+        {openRows.length > 0 && (
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-sky-200 bg-sky-50/70 py-2 text-[12px] font-semibold text-sky-800"
+            onClick={() => setLiveOpen((v) => !v)}
+            data-testid="btn-toggle-live-positions-mobile"
+          >
+            {liveOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            Live · {openRows.length}
+          </button>
+        )}
+        {(liveOpen ? openRows : []).map((r) => {
           const thetaInr = !r.exited && Number.isFinite(r.thetaInr) ? r.thetaInr : null;
           return (
             <div
@@ -1603,11 +1615,31 @@ export default function PositionsPanel({
                   No F&amp;O positions today.
                 </td>
               </tr>
-            ) : [...openRows, ...(exitedOpen ? exitedRows : [])].map((r, idx) => {
+            ) : [...(liveOpen ? openRows : []), ...(exitedOpen ? exitedRows : [])].map((r, idx) => {
               const thetaInr = !r.exited && Number.isFinite(r.thetaInr) ? r.thetaInr : null;
-              const showExitedDivider = idx === openRows.length && exitedRows.length > 0;
+              const shownOpen = liveOpen ? openRows : [];
+              const showLiveDivider = idx === 0 && openRows.length > 0;
+              const showExitedDivider = idx === shownOpen.length && exitedRows.length > 0;
               return (
               <Fragment key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}>
+              {showLiveDivider && (
+                <tr data-testid="live-section-divider">
+                  <td
+                    colSpan={Math.max(shownCols.length, 1)}
+                    className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-800 bg-sky-50/80 border-y border-sky-100"
+                  >
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 hover:text-sky-950"
+                      onClick={() => setLiveOpen((v) => !v)}
+                      data-testid="btn-toggle-live-positions"
+                    >
+                      {liveOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      Live · {openRows.length}
+                    </button>
+                  </td>
+                </tr>
+              )}
               {showExitedDivider && (
                 <tr data-testid="exited-section-divider">
                   <td
@@ -1725,6 +1757,24 @@ export default function PositionsPanel({
               </Fragment>
               );
             })}
+            {openRows.length > 0 && !liveOpen && (
+              <tr data-testid="live-section-divider">
+                <td
+                  colSpan={Math.max(shownCols.length, 1)}
+                  className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-800 bg-sky-50/80 border-y border-sky-100"
+                >
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:text-sky-950"
+                    onClick={() => setLiveOpen(true)}
+                    data-testid="btn-toggle-live-positions"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                    Live · {openRows.length}
+                  </button>
+                </td>
+              </tr>
+            )}
             {exitedRows.length > 0 && !exitedOpen && (
               <tr data-testid="exited-section-divider">
                 <td

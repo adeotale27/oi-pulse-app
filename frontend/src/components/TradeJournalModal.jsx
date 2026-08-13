@@ -46,8 +46,10 @@ function compactPnl(v) {
 function cellPnl(doc) {
   if (!doc) return 0;
   if (doc.display_pnl != null) return Number(doc.display_pnl) || 0;
+  if (doc.booked_pnl != null) return Number(doc.booked_pnl) || 0;
+  if (doc.pnl_exited != null) return Number(doc.pnl_exited) || 0;
   if (doc.eod_locked && doc.frozen_pnl != null) return Number(doc.frozen_pnl) || 0;
-  return Number(doc.pnl_total) || 0;
+  return 0;
 }
 
 function isTraded(doc) {
@@ -252,13 +254,17 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
         tags: d.tags || [],
         rating: d.rating || null,
         followed_plan: d.followed_plan ?? null,
-        pnl_total: d.display_pnl ?? d.frozen_pnl ?? d.pnl_total,
+        pnl_total: d.display_pnl ?? d.booked_pnl ?? d.pnl_exited ?? d.frozen_pnl,
         pnl_exited: d.pnl_exited,
         pnl_open: d.pnl_open,
-        booked_pnl: d.booked_pnl,
+        booked_pnl: d.booked_pnl ?? d.pnl_exited,
+        booked_after_charges: d.booked_after_charges,
+        brokerage: d.brokerage,
+        charges_total: d.charges_total,
         frozen_pnl: d.frozen_pnl,
         eod_locked: !!d.eod_locked,
         trade_count: d.trade_count || 0,
+        exited_count: d.exited_count || 0,
         win_trades: d.win_trades || 0,
         loss_trades: d.loss_trades || 0,
         winrate: wrn ? (100 * (d.win_trades || 0) / wrn) : null,
@@ -358,7 +364,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               Trade journal
             </DialogTitle>
             <DialogDescription className="text-slate-600">
-              Daily booked P&amp;L is frozen at 15:41 IST after Index F&amp;O close. Flip months for past books; year view consolidates NIFTY / SENSEX / BANKNIFTY.
+              Daily booked P&amp;L (exited only) is stored from the last Positions auto-refresh and frozen at 15:45 IST. Brokerage lives in our database — not on Kite.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-3 flex gap-1 rounded-full bg-white border border-slate-200 p-0.5 w-fit shadow-sm">
@@ -469,8 +475,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           type="button"
                           onClick={() => openDay(c.iso)}
                           data-testid={`journal-cell-${c.iso}`}
-                          className={`rounded-3xl border p-2.5 min-h-[112px] text-left transition-shadow hover:shadow-md ${tone.box} ${
-                            isSel ? "ring-2 ring-sky-500" : ""
+                          className={`rounded-3xl border p-2.5 min-h-[118px] text-left transition-all hover:shadow-lg hover:-translate-y-0.5 ${tone.box} ${
+                            isSel ? "ring-2 ring-emerald-500 shadow-md" : "shadow-sm"
                           }`}
                         >
                           <div className={`flex justify-between items-start text-[13px] ${tone.invert ? "text-white/80" : "text-slate-600"}`}>
@@ -479,7 +485,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               {isToday ? <span className="h-2 w-2 rounded-full bg-sky-500" title="Today" /> : null}
                               {hasNote ? <FileText className="w-3 h-3" /> : null}
                               {doc?.screenshot_count > 0 ? <span title="Has screenshot">🖼</span> : null}
-                              {doc?.eod_locked ? <span title="Locked at 15:41 IST" className="text-[8px] font-bold">EOD</span> : null}
+                              {doc?.eod_locked ? <span title="Locked after last Positions refresh" className="text-[8px] font-bold">EOD</span> : null}
                             </span>
                           </div>
                           {traded ? (
@@ -487,8 +493,16 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               <div className={`mt-2 text-[17px] font-bold font-mono-data leading-tight ${tone.amt}`}>
                                 {privacy ? "••••" : compactPnl(pnl)}
                               </div>
+                              <div className={`text-[10px] font-semibold uppercase tracking-wide mt-0.5 ${tone.invert ? "text-white/75" : "text-slate-500"}`}>
+                                Booked
+                              </div>
+                              {doc.charges_total > 0 && !privacy ? (
+                                <div className={`text-[10px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
+                                  after charges {compactPnl(doc.booked_after_charges ?? (pnl - Number(doc.charges_total || 0)))}
+                                </div>
+                              ) : null}
                               <div className={`text-[12px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
-                                {(doc.trade_count || doc.exited_count || 0)} trade{(doc.trade_count || doc.exited_count || 0) === 1 ? "" : "s"}
+                                {(doc.exited_count || 0)} booked{(doc.exited_count || 0) === 1 ? "" : "s"}
                               </div>
                               {wr ? (
                                 <div className={`text-[10px] font-semibold ${tone.invert ? "text-white/90" : "text-slate-600"}`}>{wr}</div>
@@ -584,21 +598,29 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </table>
               </div>
               <p className="text-[11px] text-slate-600">
-                Month totals are the frozen close P&amp;L for each stored day. Open a month on Calendar to journal that book.
+                Month totals are booked P&amp;L (exited) for each stored day. Open a month on Calendar to journal that book.
               </p>
             </div>
           )}
 
           {dayDoc && tab === "calendar" && (
-            <div className="rounded-xl border border-slate-200 p-3 space-y-3 bg-white" data-testid="journal-day-editor">
+            <div className="rounded-2xl border border-emerald-100 p-4 space-y-3 bg-gradient-to-br from-white via-white to-emerald-50/40 shadow-sm" data-testid="journal-day-editor">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold">
                     {new Date(`${dayDoc.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                   </div>
-                  <div className={`text-[15px] font-bold font-mono-data ${Number(dayDoc.pnl_total) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    Net P&amp;L {privacy ? "••••" : fmtInr(dayDoc.pnl_total, 0)}
-                    {dayDoc.eod_locked ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-violet-600">Locked 15:41</span> : <span className="ml-2 text-[10px] font-medium text-slate-400">Live until 15:41 IST</span>}
+                  <div className={`text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_total) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    Booked {privacy ? "••••" : fmtInr(dayDoc.booked_pnl ?? dayDoc.pnl_exited ?? dayDoc.pnl_total, 0)}
+                    {dayDoc.eod_locked ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-violet-600">Locked 15:45</span> : <span className="ml-2 text-[10px] font-medium text-slate-400">Live until 15:45 IST</span>}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5" data-testid="journal-after-charges">
+                    {privacy
+                      ? "after charges ••••"
+                      : `after charges ${fmtInr(dayDoc.booked_after_charges ?? ((Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) || 0) - (Number(dayDoc.charges_total) || 0)), 0)}`}
+                    {dayDoc.brokerage != null && !privacy ? (
+                      <span className="ml-2 text-slate-400">· brokerage {fmtInr(dayDoc.brokerage, 0)}</span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -629,19 +651,19 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[12px]">
-                <Stat label="Total trades" value={dayDoc.trade_count} />
+                <Stat label="Booked trades" value={(dayDoc.win_trades + dayDoc.loss_trades) || dayDoc.exited_count || 0} />
                 <Stat label="Winners" value={dayDoc.win_trades} />
                 <Stat label="Losers" value={dayDoc.loss_trades} />
                 <Stat label="Winrate" value={dayDoc.winrate != null ? `${dayDoc.winrate.toFixed(1)}%` : "—"} />
-                <Stat label="Booked" value={privacy ? "••••" : fmtInr(dayDoc.booked_pnl ?? dayDoc.pnl_exited, 0)} />
-                <Stat label="Open MTM" value={privacy ? "••••" : fmtInr(dayDoc.pnl_open, 0)} />
+                <Stat label="Brokerage" value={privacy ? "••••" : fmtInr(dayDoc.brokerage, 0)} />
+                <Stat label="All charges" value={privacy ? "••••" : fmtInr(dayDoc.charges_total, 0)} />
               </div>
 
-              {(dayDoc.legs || []).length > 0 && (
+              {(dayDoc.legs || []).filter((leg) => leg.exited).length > 0 && (
                 <div className="max-h-28 overflow-auto rounded-md border border-slate-100 text-[11px]">
-                  {dayDoc.legs.map((leg, i) => (
+                  {dayDoc.legs.filter((leg) => leg.exited).map((leg, i) => (
                     <div key={i} className="flex justify-between gap-2 px-2 py-1 border-b border-slate-50">
-                      <span className="truncate">{leg.tradingsymbol} {leg.exited ? "· booked" : "· open"}</span>
+                      <span className="truncate">{leg.tradingsymbol}</span>
                       <span className={`font-mono-data ${leg.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                         {privacy ? "••••" : compactPnl(leg.pnl)}
                       </span>

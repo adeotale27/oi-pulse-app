@@ -129,8 +129,9 @@ function PayoffSvg({
   const onPointer = (clientX, { pin = false } = {}) => {
     const next = readAt(clientX);
     if (!next) return;
-    if (pin) {
-      setInspect(next);
+    setInspect(next);
+    if (pin && typeof onPickSpot === "function") {
+      /* click still allowed to set target via tooltip */
     }
   };
 
@@ -141,6 +142,8 @@ function PayoffSvg({
         viewBox={`0 0 ${width} ${height}`}
         className="w-full h-auto cursor-crosshair select-none touch-none"
         data-testid="payoff-svg"
+        onMouseMove={(e) => onPointer(e.clientX)}
+        onMouseLeave={() => setInspect(null)}
         onClick={(e) => onPointer(e.clientX, { pin: true })}
         onTouchEnd={(e) => {
           const t = e.changedTouches?.[0];
@@ -276,38 +279,26 @@ function PayoffSvg({
 
       {active ? (
         <div
-          className="pointer-events-auto absolute z-10 min-w-[168px] rounded-md border border-white/40 bg-slate-900/45 px-2.5 py-2 shadow-lg backdrop-blur-[6px] text-white"
+          className="pointer-events-none absolute z-10 w-[148px] rounded-md border border-slate-700/50 bg-slate-900/80 px-2 py-1.5 shadow-md text-white"
           style={{
-            left: `min(max(${(active.x / width) * 100}% - 84px, 8px), calc(100% - 176px))`,
-            top: 8,
+            left: `clamp(6px, calc(${(active.x / width) * 100}% + 10px), calc(100% - 156px))`,
+            top: `clamp(6px, calc(${(active.y / height) * 100}% - 10px), calc(100% - 78px))`,
+            transform: "translateY(-100%)",
           }}
           data-testid="payoff-tooltip"
         >
-          <div className="flex items-start justify-between gap-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-white/80">
-              At {Math.round(active.spot).toLocaleString("en-IN")}
-            </div>
-            <button
-              type="button"
-              className="text-white/70 hover:text-white text-[11px] leading-none"
-              onClick={(e) => {
-                e.stopPropagation();
-                setInspect(null);
-              }}
-              aria-label="Close readout"
-            >
-              ×
-            </button>
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-white/75">
+            At {Math.round(active.spot).toLocaleString("en-IN")}
           </div>
-          <div className="mt-1 space-y-0.5 font-mono-data text-[11px]">
-            <div className="flex justify-between gap-3">
-              <span className="text-rose-200">Expiry P&L</span>
+          <div className="mt-0.5 space-y-0.5 font-mono-data text-[11px]">
+            <div className="flex justify-between gap-2">
+              <span className="text-rose-200">Expiry</span>
               <span className={`font-semibold ${active.expiry >= 0 ? "text-emerald-200" : "text-rose-200"}`}>
                 {fmt(active.expiry, 0)}
               </span>
             </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-teal-100">On date P&L</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-teal-100">On date</span>
               <span className={`font-semibold ${active.scenario >= 0 ? "text-emerald-200" : "text-rose-200"}`}>
                 {fmt(active.scenario, 0)}
               </span>
@@ -316,7 +307,7 @@ function PayoffSvg({
           {typeof onPickSpot === "function" ? (
             <button
               type="button"
-              className="mt-1.5 text-[10px] font-semibold text-emerald-100 hover:underline"
+              className="pointer-events-auto mt-1 text-[10px] font-semibold text-emerald-100 hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
                 onPickSpot(Math.round(active.spot));
@@ -328,7 +319,7 @@ function PayoffSvg({
         </div>
       ) : (
         <div className="px-1 pt-1 text-[10px] text-slate-400" data-testid="payoff-hover-hint">
-          Click the chart to read P&amp;L at a price. Set the target with the slider below.
+          Hover the chart to read P&amp;L at the cursor. Click Use as target to set the slider.
         </div>
       )}
     </div>
@@ -921,8 +912,8 @@ export default function PositionsAnalyzeModal({
               </div>
             )}
 
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/70">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.35)] overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
                 <div className="text-[11px] font-semibold text-slate-700">Payoff vs spot</div>
                 <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
                   <span className="inline-flex items-center gap-1.5">
