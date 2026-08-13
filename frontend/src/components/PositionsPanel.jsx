@@ -965,13 +965,13 @@ export default function PositionsPanel({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[11px] text-slate-600 hover:border-emerald-300 hover:bg-emerald-50/50 hover:text-emerald-900 transition-colors"
+                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-slate-300 bg-white text-[13px] font-semibold text-slate-900 hover:border-slate-500 hover:bg-slate-50 transition-colors"
                 data-testid="positions-brokerage-day"
                 title="Today’s trading charges — click for breakdown"
               >
-                <Receipt className="w-3 h-3 text-slate-400" />
-                <span className="text-slate-400">Charges</span>
-                <span className="font-mono-data font-semibold text-slate-800">
+                <Receipt className="w-3.5 h-3.5 text-slate-800" />
+                <span className="text-slate-900">Charges</span>
+                <span className="font-mono-data font-bold text-slate-950">
                   {privacyMode
                     ? PRIVACY_MASK
                     : brokerage?.charges_total != null
@@ -985,7 +985,7 @@ export default function PositionsPanel({
                     · {brokerage.book.open_today} open
                   </span>
                 ) : null}
-                <ChevronDown className="w-3 h-3 text-slate-400" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-700" />
               </button>
             </PopoverTrigger>
             <PopoverContent
@@ -1070,19 +1070,19 @@ export default function PositionsPanel({
             </PopoverContent>
           </Popover>
           <label
-            className="inline-flex items-center gap-1.5 h-7 px-2 rounded-sm border border-slate-200 bg-white text-[11px] text-slate-600 cursor-pointer select-none hover:border-emerald-300"
+            className="inline-flex items-center gap-2 h-8 px-2.5 rounded-sm border border-slate-300 bg-white text-[13px] font-semibold text-slate-900 cursor-pointer select-none hover:border-slate-500 hover:bg-slate-50"
             title="Mask Qty, Avg, P&L and ₹ amounts on Positions and Today P&L in the header"
             data-testid="positions-privacy-toggle"
           >
-            {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
-            <span>Privacy</span>
+            {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-slate-800" /> : <Eye className="w-3.5 h-3.5 text-slate-800" />}
+            <span className="text-slate-900">Privacy</span>
             <Switch
               checked={privacyMode}
               onCheckedChange={(on) => {
                 setPrivacyMode(!!on);
                 savePrivacyMode(!!on);
               }}
-              className="scale-75 origin-center"
+              className="scale-90 origin-center"
               data-testid="positions-privacy-switch"
             />
           </label>

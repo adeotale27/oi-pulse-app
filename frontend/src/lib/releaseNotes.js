@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.11",
+    date: "2026-08-13",
+    user: [
+      "Positions Charges and Privacy tiles are larger, with dark text so they read like Radar / Journal / Analyze",
+    ],
+    admin: [
+      "OvernightGapBrief dock classes are declared once (frontend parse error)",
+    ],
+  },
+  {
     version: "5.10",
     date: "2026-08-13",
     user: [

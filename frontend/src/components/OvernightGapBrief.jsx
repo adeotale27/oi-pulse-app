@@ -349,6 +349,13 @@ export default function OvernightGapBrief({
     return [...biases].sort((a, b) => (a.index === activeIndex ? -1 : b.index === activeIndex ? 1 : 0));
   }, [biases, activeIndex]);
 
+  const dockEdge = dock === "left"
+    ? (iconOnly ? "left-1" : "left-3")
+    : (iconOnly ? "right-1" : "right-3");
+  const expandedDock = dock === "left"
+    ? "left-3 right-3 sm:right-auto sm:w-[26rem]"
+    : "left-3 right-3 sm:left-auto sm:w-[26rem]";
+
   if (!active) return null;
 
   const bandCls =
@@ -366,20 +373,6 @@ export default function OvernightGapBrief({
         : "Carry shorts (sized)";
 
   const title = "Carry shorts overnight?";
-
-  const dockEdge = dock === "left"
-    ? (iconOnly ? "left-1" : "left-3")
-    : (iconOnly ? "right-1" : "right-3");
-  const expandedDock = dock === "left"
-    ? "left-3 right-3 sm:right-auto sm:w-[26rem]"
-    : "left-3 right-3 sm:left-auto sm:w-[26rem]";
-
-  const dockEdge = dock === "left"
-    ? (iconOnly ? "left-1" : "left-3")
-    : (iconOnly ? "right-1" : "right-3");
-  const expandedDock = dock === "left"
-    ? "left-3 right-3 sm:right-auto sm:w-[26rem]"
-    : "left-3 right-3 sm:left-auto sm:w-[26rem]";
 
   if (minimized) {
     return (

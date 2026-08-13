@@ -1,6 +1,14 @@
 # Changelog
 
+## V5.11 — 2026-08-13
+
+Positions Charges / Privacy tiles match Radar and Journal; carry brief parse error gone.
+
+- Charges and Privacy are the same height as Radar / Journal, with near-black labels (no more washed-out grey)
+- OvernightGapBrief declares dock classes once so the frontend builds
+
 ## V5.10 — 2026-08-13
+
 
 Carry brief stays usable on phone and talks like an options seller.
 
