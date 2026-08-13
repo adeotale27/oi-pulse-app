@@ -206,8 +206,14 @@ def test_admin_settings_update_and_effect(monkeypatch):
     ft = FakeTrackerForSettings()
     monkeypatch.setattr(server, "tracker", ft)
     client = TestClient(server.app)
-    r = client.post("/api/settings", json={"oi_poll_interval_seconds": 30, "straddle_poll_interval_seconds": 60})
-    assert r.status_code == 200
+    r = client.post("/api/settings", json={
+        "_id": "alerts",
+        "alert_indices_override_date": "2099-01-01",
+        "oi_poll_interval_seconds": 30,
+        "straddle_poll_interval_seconds": 60,
+        "positions_poll_interval_seconds": "",
+    })
+    assert r.status_code == 200, r.text
     data = r.json()
     assert data["oi_poll_interval_seconds"] == 30
     # GET /api/config should reflect the new poll interval

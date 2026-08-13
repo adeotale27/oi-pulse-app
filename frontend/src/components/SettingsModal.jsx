@@ -71,7 +71,6 @@ export default function SettingsModal({
           show_writer_defense: true,
           show_suggestion: true,
           show_chart_signals: false,
-          show_strike_range: false,
         });
       });
     setLocal(loadOISettings());
@@ -152,8 +151,24 @@ export default function SettingsModal({
         if (!Number.isFinite(positionsPoll)) positionsPoll = 30;
         positionsPoll = Math.min(3600, Math.max(5, positionsPoll));
         const payload = {
-          ...settings,
+          threshold_pct: settings.threshold_pct,
+          cooldown_seconds: settings.cooldown_seconds,
+          compare_minutes: settings.compare_minutes,
+          enabled_indices: settings.enabled_indices,
+          oi_poll_interval_seconds: settings.oi_poll_interval_seconds,
+          straddle_poll_interval_seconds: settings.straddle_poll_interval_seconds,
           positions_poll_interval_seconds: positionsPoll,
+          straddle_enabled_indices: settings.straddle_enabled_indices,
+          market_open_ist: settings.market_open_ist,
+          market_close_ist: settings.market_close_ist,
+          second_session_ist: settings.second_session_ist,
+          expire_admin_on_market_close: settings.expire_admin_on_market_close,
+          admin_session_ttl_minutes: settings.admin_session_ttl_minutes,
+          alert_enabled_indices: settings.alert_enabled_indices,
+          show_strike_range: settings.show_strike_range,
+          show_writer_defense: settings.show_writer_defense,
+          show_suggestion: settings.show_suggestion,
+          show_chart_signals: settings.show_chart_signals,
           visible_pages: Array.from(new Set(
             (Array.isArray(settings.visible_pages) ? settings.visible_pages : []).filter((id) => !HARD_ADMIN_PAGES.has(id)),
           )),
@@ -164,6 +179,16 @@ export default function SettingsModal({
             ).filter((id) => !HARD_ADMIN_PAGES.has(id)),
           )),
         };
+        if (!payload.visible_pages.length) {
+          toast.error("Keep at least one public page visible");
+          setSaving(false);
+          return;
+        }
+        if (!payload.admin_visible_pages.length) {
+          toast.error("Keep at least one page on your dashboard");
+          setSaving(false);
+          return;
+        }
         const { data } = await api.post("/settings", payload);
         const saved = data || payload;
         setSettings(saved);
@@ -187,7 +212,7 @@ export default function SettingsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="settings-modal" className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent data-testid="settings-modal" className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="w-4 h-4" />
@@ -524,19 +549,15 @@ export default function SettingsModal({
               </section>
 
               <section className="space-y-4 pt-2 border-t border-slate-200">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
-                  Dashboard pages
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-800">
+                  Public / Admin dashboard pages
                 </div>
                 <div className="text-xs text-slate-500">
-                  Two ticks per page: <b>Guest</b> (public users) and <b>Admin</b> (your own desk). Turning Guest off hides it only for guests. Turning Admin off hides it on your dashboard too.
-                  Index Risk can be shown to guests. Upload stamps stay admin-only. Tick Positions so guests can Connect Zerodha.
+                  Tick <b>Public</b> to show a page to guests. Tick <b>Admin</b> to keep it on your own desk.
+                  They are independent — you can hide a page from yourself without hiding it from guests, and the other way around.
+                  Tick Positions (Public) so guests can Connect Zerodha. Last-upload stamps stay admin-only.
                 </div>
-                <div className="grid grid-cols-[minmax(0,1fr)_3.25rem_3.25rem] gap-x-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  <div>Page</div>
-                  <div className="text-center">Guest</div>
-                  <div className="text-center">Admin</div>
-                </div>
-                <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {DASHBOARD_PAGES.map((page) => {
                     const hardAdmin = !!page.hardAdmin || HARD_ADMIN_PAGES.has(page.id);
                     const guestOn = hardAdmin
@@ -546,37 +567,48 @@ export default function SettingsModal({
                       ? settings.admin_visible_pages
                       : ALL_PAGE_IDS;
                     const adminOn = adminList.includes(page.id);
+                    const hint = page.id === "index-events"
+                      ? "Public tick shows Index Risk to guests. Last-upload stamps stay admin-only."
+                      : page.id === "positions"
+                        ? "Guests see Connect Zerodha for their own book. Charts stay on your publisher token."
+                        : page.id === "sell-candidates"
+                          ? "Optional for guests — also on the Public icon menu."
+                          : page.id === "cas"
+                            ? "Guests can view; only admin can Activate / Live."
+                            : null;
+                    const tickClass = "rounded-full h-[18px] w-[18px] border-slate-300 shadow-none data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 data-[state=checked]:text-white";
                     return (
                     <div
                       key={page.id}
-                      className="grid grid-cols-[minmax(0,1fr)_3.25rem_3.25rem] gap-x-2 items-center py-2 px-2 rounded-sm border border-slate-200"
+                      className="rounded-md border border-slate-200 bg-white px-3 py-2.5 space-y-2"
+                      data-testid={`dashboard-page-tile-${page.id}`}
                     >
                       <div>
-                        <div className="text-sm font-medium">{page.label}</div>
-                        {page.id === "index-events" ? (
-                          <div className="text-[10px] text-slate-500">Shown to guests when Guest is ticked. Last-upload stamps stay admin-only.</div>
-                        ) : page.id === "positions" ? (
-                          <div className="text-[10px] text-slate-500">Guests see Connect Zerodha for their own book.</div>
-                        ) : page.id === "cas" ? (
-                          <div className="text-[10px] text-slate-500">Guests can view; only admin can Activate / Live.</div>
-                        ) : null}
+                        <div className="text-sm font-medium text-slate-900">{page.label}</div>
+                        {hint ? <div className="text-[10px] text-slate-500 leading-snug mt-0.5">{hint}</div> : null}
                       </div>
-                      <div className="flex justify-center">
-                        <Checkbox
-                          data-testid={`visible-page-${page.id}`}
-                          disabled={hardAdmin}
-                          checked={guestOn}
-                          onCheckedChange={() => toggleVisiblePage(page.id)}
-                          aria-label={`${page.label} for guests`}
-                        />
-                      </div>
-                      <div className="flex justify-center">
-                        <Checkbox
-                          data-testid={`admin-page-${page.id}`}
-                          checked={adminOn}
-                          onCheckedChange={() => toggleAdminPage(page.id)}
-                          aria-label={`${page.label} for admin`}
-                        />
+                      <div className="flex items-center gap-5">
+                        <label className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${hardAdmin ? "opacity-40" : "text-slate-700 cursor-pointer"}`}>
+                          <Checkbox
+                            data-testid={`visible-page-${page.id}`}
+                            disabled={hardAdmin}
+                            checked={guestOn}
+                            onCheckedChange={() => toggleVisiblePage(page.id)}
+                            aria-label={`${page.label} public`}
+                            className={tickClass}
+                          />
+                          Public
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                          <Checkbox
+                            data-testid={`admin-page-${page.id}`}
+                            checked={adminOn}
+                            onCheckedChange={() => toggleAdminPage(page.id)}
+                            aria-label={`${page.label} admin`}
+                            className={tickClass}
+                          />
+                          Admin
+                        </label>
                       </div>
                     </div>
                     );

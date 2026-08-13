@@ -13,7 +13,7 @@ import re
 import time
 from collections import defaultdict, deque
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta, date, time as dtime
 
@@ -701,6 +701,7 @@ DASHBOARD_PAGE_KEYS = {
 }
 
 class SettingsIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     threshold_pct: Optional[float] = None
     cooldown_seconds: Optional[int] = None
     compare_minutes: Optional[int] = None
@@ -721,6 +722,21 @@ class SettingsIn(BaseModel):
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
+
+    @field_validator(
+        "cooldown_seconds",
+        "compare_minutes",
+        "oi_poll_interval_seconds",
+        "straddle_poll_interval_seconds",
+        "positions_poll_interval_seconds",
+        "admin_session_ttl_minutes",
+        mode="before",
+    )
+    @classmethod
+    def _blank_int_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 
 class LoginIn(BaseModel):
@@ -1244,7 +1260,9 @@ async def get_settings():
         tracker._refresh_alert_indices_for_today()
     except Exception:
         pass
-    return tracker.settings
+    data = dict(tracker.settings or {})
+    data.pop("_id", None)
+    return data
 
 
 @api_router.post("/settings")
