@@ -3870,17 +3870,38 @@ class JournalShotIn(BaseModel):
     data: str
 
 
+async def _journal_year_payload(y: int) -> Dict[str, Any]:
+    start, end = f"{y:04d}-01-01", f"{y + 1:04d}-01-01"
+    docs = await db.trade_journal.find(
+        {"date": {"$gte": start, "$lt": end}},
+        {"_id": 0, "screenshots": 0},
+    ).to_list(length=400)
+    days = [journal.public_day(d, include_images=False) for d in docs]
+    days = [d for d in days if d]
+    return {
+        "year": y,
+        "today": journal.ist_ymd(),
+        "heatmap": journal.year_heatmap(days, y),
+        "stats": journal.month_stats(days),
+    }
+
+
 @api_router.get("/journal")
 async def journal_month(
     year: Optional[int] = None,
     month: Optional[int] = None,
+    view: Optional[str] = None,
     _admin: bool = Depends(require_admin),
 ):
-    """Month calendar of booked / marked-to-market P&L plus journal flags."""
+    """Month calendar, or year heatmap when view=year."""
     now = now_ist()
     y = int(year or now.year)
+    if y < 2020 or y > 2100:
+        raise HTTPException(400, "Invalid year/month")
+    if (view or "").lower() == "year":
+        return await _journal_year_payload(y)
     m = int(month or now.month)
-    if m < 1 or m > 12 or y < 2020 or y > 2100:
+    if m < 1 or m > 12:
         raise HTTPException(400, "Invalid year/month")
     start, end = journal.month_bounds(y, m)
     docs = await db.trade_journal.find(
@@ -3906,19 +3927,7 @@ async def journal_year(year: int, _admin: bool = Depends(require_admin)):
     y = int(year)
     if y < 2020 or y > 2100:
         raise HTTPException(400, "Invalid year")
-    start, end = f"{y:04d}-01-01", f"{y + 1:04d}-01-01"
-    docs = await db.trade_journal.find(
-        {"date": {"$gte": start, "$lt": end}},
-        {"_id": 0, "screenshots.data": 0, "screenshots": 0},
-    ).to_list(length=400)
-    days = [journal.public_day(d, include_images=False) for d in docs]
-    days = [d for d in days if d]
-    return {
-        "year": y,
-        "today": journal.ist_ymd(),
-        "heatmap": journal.year_heatmap(days, y),
-        "stats": journal.month_stats(days),
-    }
+    return await _journal_year_payload(y)
 
 
 @api_router.get("/journal/{day}")

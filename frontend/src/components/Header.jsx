@@ -274,6 +274,11 @@ export default function Header({
   // Refresh DB action (admin only)
   const [refreshing, setRefreshing] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setMobileToolsOpen(true);
+    window.addEventListener("oi-open-admin-tools", open);
+    return () => window.removeEventListener("oi-open-admin-tools", open);
+  }, []);
   const onRefreshDay = async () => {
     if (!isAdmin) return;
     if (!window.confirm(
@@ -348,6 +353,7 @@ export default function Header({
         data-testid="mobile-header-tools"
       >
         <div className="flex items-center gap-2 min-w-0 shrink">
+          <OiPulseLogo className="h-7 w-7 rounded-md shrink-0" />
           <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack-mobile">
             <Badge
               data-testid="mode-badge-mobile"
@@ -393,6 +399,17 @@ export default function Header({
           })()}
         </div>
         <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          <div className="shrink-0">
+            <BigClock compact />
+          </div>
+          {isAdmin && (
+            <HeaderTodayPnl
+              enabled
+              status={status}
+              pollMs={positionsPollMs}
+              className="flex flex-col items-end leading-tight px-1.5 shrink-0"
+            />
+          )}
           {isAdmin && (
             <Button
               data-testid="btn-mobile-tools"
@@ -561,13 +578,6 @@ export default function Header({
           />
         </div>
 
-        <HeaderTodayPnl
-          enabled={!!kiteLive}
-          status={status}
-          pollMs={positionsPollMs}
-          className="hidden md:flex flex-col items-end leading-tight px-2 shrink-0 border-l border-slate-200 dark:border-slate-700"
-        />
-
         {/* Index tiles — always allow horizontal scroll so BANKNIFTY is not clipped */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 justify-start overflow-x-auto items-stretch">
           <TickerStrip
@@ -579,9 +589,15 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-auto">
-          <div className={headerRail ? "hidden md:block origin-right" : "hidden xl:block"}>
+          <div className="origin-right">
             <BigClock compact />
           </div>
+          <HeaderTodayPnl
+            enabled={!!kiteLive}
+            status={status}
+            pollMs={positionsPollMs}
+            className="hidden md:flex flex-col items-end leading-tight px-2 shrink-0 border-l border-slate-200 dark:border-slate-700"
+          />
           {lastPulledAt && (
             <div
               className={

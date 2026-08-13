@@ -1,6 +1,5 @@
 import { useMemo, useState, useRef, useCallback } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
-import OiPulseLogo from "@/components/OiPulseLogo";
 import useClickOutside from "@/hooks/useClickOutside";
 
 const INDEX_LABEL = {
@@ -155,23 +154,6 @@ export default function MobileStickyChrome({
       className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-md dark:border-slate-700 dark:bg-slate-950/95"
     >
       <div className="flex items-center gap-2 px-2.5 py-1.5">
-        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-          <OiPulseLogo className="h-6 w-6 rounded-md" />
-          <div className="leading-none">
-            <div className="text-[12px] font-semibold tracking-tight bg-gradient-to-r from-emerald-600 to-sky-600 bg-clip-text text-transparent">
-              OI Pulse
-            </div>
-            <div className="mt-0.5 flex items-center gap-1 text-[8px] uppercase tracking-wider text-slate-400">
-              <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  marketOpen ? "bg-emerald-500 live-dot" : "bg-slate-300"
-                }`}
-              />
-              {marketOpen ? "Live" : "Closed"}
-            </div>
-          </div>
-        </div>
-
         <div className="relative min-w-0 flex-1" ref={wrapRef}>
           <button
             type="button"
