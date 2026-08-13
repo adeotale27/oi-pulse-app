@@ -247,6 +247,7 @@ function AtmDistanceCell({ row }) {
 
 export default function PositionsPanel({
   isKiteMode,
+  isGuest = false,
   current,
   previous = null,
   vix,
@@ -286,6 +287,8 @@ export default function PositionsPanel({
   const [journalOpen, setJournalOpen] = useState(false);
   const [oiRiskOpen, setOiRiskOpen] = useState(false);
   const [highlightSymbol, setHighlightSymbol] = useState(null);
+  const [guestNeedsConnect, setGuestNeedsConnect] = useState(() => !!isGuest);
+  const [guestKiteId, setGuestKiteId] = useState(null);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
       return localStorage.getItem("oiPositionsInsightsOpen") === "1";
@@ -375,6 +378,20 @@ export default function PositionsPanel({
     try {
       const { data } = await api.get("/positions");
       if (gen !== loadGen.current) return;
+      if (data.connect_required) {
+        setGuestNeedsConnect(true);
+        setGuestKiteId(data?.user_kite?.kite_user_id || null);
+        setPositions([]);
+        setError(data.error || "Connect your Zerodha account");
+        setErrorHard(false);
+        setLastRefresh(new Date().toISOString());
+        setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
+        return;
+      }
+      if (isGuest) {
+        setGuestNeedsConnect(false);
+        setGuestKiteId(data?.user_kite?.kite_user_id || null);
+      }
       const next = data.positions || [];
       const hard =
         data.token_issue === true
@@ -422,7 +439,7 @@ export default function PositionsPanel({
     } finally {
       if (gen === loadGen.current) setLoading(false);
     }
-  }, [pollMs]);
+  }, [pollMs, isGuest]);
 
   useEffect(() => {
     if (isKiteMode) {
@@ -436,7 +453,7 @@ export default function PositionsPanel({
     }
   }, [isKiteMode, hasKiteCredentials]);
 
-  const kiteReady = isKiteMode || stickyKite;
+  const kiteReady = isGuest ? true : (isKiteMode || stickyKite);
 
   useEffect(() => {
     if (!kiteReady) return undefined;
@@ -803,7 +820,7 @@ export default function PositionsPanel({
     { key: "assignmentWatch", label: "Exercise risk" },
   ];
 
-  if (!kiteReady) {
+  if (!isGuest && !kiteReady) {
     return (
       <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center" data-testid="positions-kite-required">
         <PlugZap className="w-8 h-8 mx-auto text-slate-400 mb-2" />
@@ -820,6 +837,31 @@ export default function PositionsPanel({
           >
             <PlugZap className="w-3.5 h-3.5 mr-1.5" />
             Connect Kite
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (isGuest && guestNeedsConnect) {
+    return (
+      <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-6 text-center" data-testid="positions-user-kite-required">
+        <PlugZap className="w-8 h-8 mx-auto text-emerald-700 mb-2" />
+        <div className="text-sm font-semibold text-slate-800">Connect your Zerodha</div>
+        <div className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
+          Log in with your Kite account to load <b>your</b> positions. Charts still use the publisher OI feed.
+          Tokens expire around 06:00 IST — reconnect each morning.
+          {guestKiteId ? ` Last login: ${guestKiteId}.` : ""}
+        </div>
+        {typeof onOpenKite === "function" && (
+          <Button
+            size="sm"
+            className="mt-3 h-8 rounded-sm bg-emerald-600 hover:bg-emerald-700"
+            onClick={onOpenKite}
+            data-testid="btn-positions-connect-zerodha"
+          >
+            <PlugZap className="w-3.5 h-3.5 mr-1.5" />
+            Connect Zerodha
           </Button>
         )}
       </div>
@@ -1005,6 +1047,7 @@ export default function PositionsPanel({
             <ShieldAlert className="w-3.5 h-3.5 mr-1" />
             Radar
           </Button>
+          {!isGuest && (
           <Button
             size="sm"
             variant="outline"
@@ -1016,6 +1059,7 @@ export default function PositionsPanel({
             <BookOpen className="w-3.5 h-3.5 mr-1" />
             Journal
           </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -2050,7 +2094,7 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
         ? "border-amber-300 bg-amber-50 text-amber-950"
         : "border-slate-300 bg-white text-slate-900";
   return (
-    <div className={`rounded-xl border px-3 py-3 min-h-[7.25rem] flex flex-col justify-between shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+    <div className={`rounded-xl border px-2.5 py-2.5 min-h-[6.5rem] h-full flex flex-col justify-between shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
       <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1">
         {label}
         {tip && (

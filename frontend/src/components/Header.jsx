@@ -16,6 +16,7 @@ import {
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import OiPulseLogo from "@/components/OiPulseLogo";
+import BrandLiveClock from "@/components/BrandLiveClock";
 import { api, fetchExtras, subscribeExtras, unsubscribeExtras, logoutGuest, clearAdminAuth } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -373,25 +374,7 @@ export default function Header({
         data-testid="mobile-header-tools"
       >
         <div className="flex items-center gap-2 min-w-0 shrink">
-          <OiPulseLogo className="h-7 w-7 rounded-md shrink-0" />
-          <div className="flex flex-col items-stretch gap-0.5 shrink-0" data-testid="kite-status-stack-mobile">
-            <Badge
-              data-testid="mode-badge-mobile"
-              className={`rounded-sm text-[10px] px-1.5 py-0 h-5 ${modeBadgeCls}`}
-              title={modeBadge.title}
-            >
-              {modeBadge.short}
-            </Badge>
-            {lastPulledAt && (
-              <span
-                className="hidden sm:inline text-[9px] font-mono-data tabular-nums text-slate-500 dark:text-slate-400"
-                data-testid="mobile-live-as-of"
-                title="Live data as of"
-              >
-                {new Date(lastPulledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-              </span>
-            )}
-          </div>
+          <BrandLiveClock />
           {isGuestUser && (() => {
             const guestName = authState.guest_name || (typeof window !== "undefined" ? sessionStorage.getItem("oi_guest_name") : null) || "Guest";
             const exitGuest = async () => {
@@ -420,10 +403,7 @@ export default function Header({
         </div>
         <div className="flex items-center gap-1.5 shrink-0 ml-auto min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            <div className="shrink-0">
-              <BigClock compact />
-            </div>
-            {isAdmin && (
+            {(isAdmin || isGuestUser) && (
               <HeaderTodayPnl
                 enabled
                 status={status}

@@ -619,6 +619,7 @@ export default function PositionsAnalyzeModal({
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose?.(); }}>
       <DialogContent
+        hideClose
         className="max-w-[min(96vw,72rem)] max-h-[94vh] p-0 gap-0 overflow-hidden flex flex-col sm:rounded-2xl max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none"
         data-testid="positions-analyze-modal"
       >

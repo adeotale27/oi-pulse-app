@@ -101,19 +101,19 @@ function weekBuckets(cells, byDate) {
 }
 
 function cellClasses(pnl, traded, maxAbs) {
-  if (!traded) return { box: "bg-slate-50/80 border-slate-100 text-slate-400", amt: "text-slate-300", invert: false };
+  if (!traded) return { box: "bg-slate-50 border-slate-200 text-slate-500", amt: "text-slate-400", invert: false };
   const mag = Math.min(1, Math.abs(pnl) / Math.max(maxAbs, 1));
   if (pnl > 0) {
     if (mag > 0.62) return { box: "bg-emerald-600 border-emerald-700 text-white", amt: "text-white", invert: true };
-    if (mag > 0.28) return { box: "bg-emerald-200/90 border-emerald-300", amt: "text-emerald-900", invert: false };
-    return { box: "bg-emerald-50 border-emerald-200", amt: "text-emerald-800", invert: false };
+    if (mag > 0.28) return { box: "bg-emerald-100 border-emerald-400", amt: "text-emerald-800", invert: false };
+    return { box: "bg-emerald-50 border-emerald-300", amt: "text-emerald-700", invert: false };
   }
   if (pnl < 0) {
     if (mag > 0.62) return { box: "bg-rose-500 border-rose-600 text-white", amt: "text-white", invert: true };
-    if (mag > 0.28) return { box: "bg-rose-200/90 border-rose-300", amt: "text-rose-900", invert: false };
-    return { box: "bg-rose-50 border-rose-200", amt: "text-rose-800", invert: false };
+    if (mag > 0.28) return { box: "bg-rose-100 border-rose-400", amt: "text-rose-800", invert: false };
+    return { box: "bg-rose-50 border-rose-300", amt: "text-rose-700", invert: false };
   }
-  return { box: "bg-sky-50 border-sky-100", amt: "text-sky-800", invert: false };
+  return { box: "bg-sky-50 border-sky-200", amt: "text-sky-800", invert: false };
 }
 
 function heatCell(v, maxAbs) {
@@ -451,8 +451,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const tone = traded ? cellClasses(pnl, traded, maxAbs) : hol
                         ? { box: "bg-amber-50 border-amber-300 text-amber-900", amt: "text-amber-900", invert: false }
                         : !session
-                          ? { box: "bg-rose-50 border-2 border-rose-500 text-black", amt: "text-black", invert: false, weekend: true }
-                          : { box: "bg-white border-slate-200 text-slate-700", amt: "text-slate-500", invert: false };
+                          ? { box: "bg-slate-50 border-slate-200 text-slate-400", amt: "text-slate-400", invert: false, weekend: true }
+                          : { box: "bg-white border-slate-200 text-slate-600", amt: "text-slate-400", invert: false };
                       const decided = (doc?.win_trades || 0) + (doc?.loss_trades || 0);
                       const wr = decided > 0 ? `${Math.round((100 * (doc.win_trades || 0)) / decided)}%` : null;
                       const hasNote = !!(doc?.went_well || doc?.went_wrong || doc?.notes);
@@ -462,13 +462,14 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           type="button"
                           onClick={() => openDay(c.iso)}
                           data-testid={`journal-cell-${c.iso}`}
-                          className={`rounded-lg border p-1.5 min-h-[86px] text-left transition-shadow hover:shadow-sm ${tone.box} ${
-                            isSel ? "ring-2 ring-violet-500" : ""
-                          } ${isToday ? "outline outline-2 outline-violet-400 outline-offset-0" : ""}`}
+                          className={`rounded-2xl border p-2 min-h-[92px] text-left transition-shadow hover:shadow-md ${tone.box} ${
+                            isSel ? "ring-2 ring-sky-500" : ""
+                          }`}
                         >
-                          <div className={`flex justify-between items-start text-[10px] ${tone.invert ? "text-white/80" : tone.weekend ? "text-black" : "text-slate-600"}`}>
-                            <span className={`font-semibold ${tone.invert ? "text-white" : tone.weekend ? "text-black" : "text-slate-800"}`}>{c.day}</span>
+                          <div className={`flex justify-between items-start text-[11px] ${tone.invert ? "text-white/80" : "text-slate-600"}`}>
+                            <span className={`font-semibold ${tone.invert ? "text-white" : "text-slate-800"}`}>{c.day}</span>
                             <span className="flex items-center gap-0.5">
+                              {isToday ? <span className="h-2 w-2 rounded-full bg-sky-500" title="Today" /> : null}
                               {hasNote ? <FileText className="w-3 h-3" /> : null}
                               {doc?.screenshot_count > 0 ? <span title="Has screenshot">🖼</span> : null}
                               {doc?.eod_locked ? <span title="Locked at 15:41 IST" className="text-[8px] font-bold">EOD</span> : null}
@@ -476,27 +477,24 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           </div>
                           {traded ? (
                             <>
-                              <div className={`mt-1 text-[13px] font-bold font-mono-data leading-tight ${tone.amt}`}>
+                              <div className={`mt-2 text-[15px] font-bold font-mono-data leading-tight ${tone.amt}`}>
                                 {privacy ? "••••" : compactPnl(pnl)}
                               </div>
-                              <div className={`text-[9px] ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
-                                {doc.exited_count || 0} booked
-                                {(doc.trade_count || 0) ? ` · ${doc.trade_count} trades` : ""}
+                              <div className={`text-[10px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
+                                {(doc.trade_count || doc.exited_count || 0)} trade{(doc.trade_count || doc.exited_count || 0) === 1 ? "" : "s"}
                               </div>
                               {wr ? (
-                                <div className={`text-[9px] font-semibold ${tone.invert ? "text-white/90" : "text-slate-600"}`}>{wr}</div>
+                                <div className={`text-[10px] font-semibold ${tone.invert ? "text-white/90" : "text-slate-600"}`}>{wr}</div>
                               ) : null}
                             </>
                           ) : hol ? (
-                            <div className="text-[9px] text-amber-700 mt-2 leading-tight font-medium" title={hol.name}>
+                            <div className="text-[9px] text-amber-700 mt-3 leading-tight font-medium" title={hol.name}>
                               {hol.name.replace(/\s*\(.*$/, "").split(" ").slice(0, 2).join(" ")}
                             </div>
                           ) : !session ? (
-                            <div className="text-[9px] font-semibold text-black mt-2 leading-tight">
-                              Weekend<br />Market closed
-                            </div>
+                            <div className="mt-6" />
                           ) : (
-                            <div className="text-[10px] text-slate-500 mt-4">—</div>
+                            <div className="mt-6" />
                           )}
                         </button>
                       );
@@ -506,14 +504,15 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <div className="hidden sm:flex w-[8.5rem] shrink-0 flex-col gap-1.5" data-testid="journal-weekly-recap">
                   <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold px-0.5">Weekly recap</div>
                   {weeks.map((w) => (
-                    <div key={w.label} className="flex-1 min-h-[4.5rem] rounded-2xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+                    <div key={w.label} className="flex-1 min-h-[4.5rem] rounded-2xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm flex flex-col">
                       <div className="text-[10px] font-semibold text-slate-700">{w.label}</div>
                       <div className={`text-[15px] font-bold font-mono-data leading-tight ${w.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                         {privacy ? "••••" : compactPnl(w.pnl)}
                       </div>
-                      <div className="text-[10px] text-slate-600">
-                        {w.tradingDays} session{w.tradingDays === 1 ? "" : "s"}
-                        {w.booked ? ` · ${w.booked} booked` : ""}
+                      <div className="mt-auto">
+                        <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium px-1.5 py-0.5">
+                          {w.tradingDays} day{w.tradingDays === 1 ? "" : "s"}
+                        </span>
                       </div>
                       {w.holidays?.length ? (
                         <div className="text-[9px] text-amber-700 leading-tight mt-0.5" title={w.holidays.map((h) => h.name).join(", ")}>

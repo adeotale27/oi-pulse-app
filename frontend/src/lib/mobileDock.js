@@ -5,7 +5,7 @@ export const MOBILE_DOCK_KEY = "oiMobileDock.v2";
 export const DOCK_CATALOG = [
   { id: "oi-change", label: "Chart", tab: "oi-change" },
   { id: "straddle", label: "Straddle", tab: "straddle" },
-  { id: "positions", label: "Positions", tab: "positions", adminOnly: true },
+  { id: "positions", label: "Positions", tab: "positions" },
   { id: "admin-tools", label: "Tools", action: "admin-tools", adminOnly: true },
   { id: "holidays", label: "Events", tab: "holidays" },
   { id: "strike-table", label: "Chain", tab: "strike-table" },
@@ -15,7 +15,7 @@ export const DOCK_CATALOG = [
 ];
 
 export const DEFAULT_DOCK_ADMIN = ["oi-change", "straddle", "positions", "admin-tools"];
-export const DEFAULT_DOCK_GUEST = ["oi-change", "straddle", "holidays", "strike-table"];
+export const DEFAULT_DOCK_GUEST = ["oi-change", "straddle", "positions", "holidays"];
 
 export function loadMobileDock(isAdmin) {
   const fallback = isAdmin ? DEFAULT_DOCK_ADMIN : DEFAULT_DOCK_GUEST;
