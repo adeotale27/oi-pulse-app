@@ -6,7 +6,7 @@
 }
 
 .App {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--oi-shell, #f3f8fb);
   color: #0b1c24;
   font-family: var(--font-ui);

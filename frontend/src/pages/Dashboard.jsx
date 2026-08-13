@@ -58,6 +58,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
+import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
@@ -88,14 +89,14 @@ const DASHBOARD_PAGES = [
   { v: "oi-change", l: "OI Change" },
   { v: "open-interest", l: "Open Interest" },
   { v: "strike-table", l: "Strike Table" },
-  { v: "sell-candidates", l: "Sell Candidates", adminOnly: true },
+  { v: "sell-candidates", l: "Sell Candidates" },
   { v: "buildup", l: "Build-up" },
   { v: "positions", l: "Positions" },
   { v: "alerts", l: "Alerts" },
   { v: "activity", l: "Activity" },
   { v: "holidays", l: "Events" },
   { v: "straddle", l: "Straddle" },
-  { v: "index-events", l: "Index Risk", adminOnly: true },
+  { v: "index-events", l: "Index Risk", alwaysOn: true },
   { v: "cas", l: "CAS" },
 ];
 const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
@@ -441,11 +442,20 @@ export default function Dashboard() {
         window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
         setActiveTab("positions");
       } catch (e) {
-        if (!cancelled) toast.error(e?.response?.data?.detail || "Could not complete Kite login");
+        if (!cancelled) toast.error(friendlyKiteConnectError(e?.response?.data?.detail || e.message || "Could not complete Kite login"));
       }
     })();
     return () => { cancelled = true; };
   }, [authState.is_admin, authState.is_guest]);
+
+  useEffect(() => {
+    const onSaved = (e) => {
+      const settings = e?.detail;
+      if (Array.isArray(settings?.visible_pages)) setVisiblePages(settings.visible_pages);
+    };
+    window.addEventListener("oi-settings-saved", onSaved);
+    return () => window.removeEventListener("oi-settings-saved", onSaved);
+  }, []);
 
   useEffect(() => {
     // Connect WebSocket (spot). The WS wrapper will itself defer connects
@@ -478,6 +488,7 @@ export default function Dashboard() {
     const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
       .filter((page) => {
         if (page.adminOnly) return false;
+        if (page.alwaysOn) return true;
         return visiblePages.includes(page.v);
       })
       .map((page) => page.v);
@@ -490,7 +501,7 @@ export default function Dashboard() {
   const dashboardTabs = useMemo(
     () =>
       orderPages(DASHBOARD_PAGES, tabOrder).filter(
-        (t) => authState.is_admin || (!t.adminOnly && visiblePages.includes(t.v))
+        (t) => authState.is_admin || t.alwaysOn || (!t.adminOnly && visiblePages.includes(t.v))
       ),
     [tabOrder, authState.is_admin, visiblePages],
   );
@@ -1680,7 +1691,7 @@ export default function Dashboard() {
   ) : null;
 
   return (
-    <div className="oi-shell relative h-screen flex flex-col overflow-hidden">
+    <div className="oi-shell relative h-[100dvh] max-h-[100dvh] flex flex-col overflow-hidden overscroll-none">
       {authState.is_guest && (
         <GuestBanner
           guestName={authState.guest_name}
@@ -1824,7 +1835,7 @@ export default function Dashboard() {
         <main
           className={`flex-1 min-h-0 overflow-hidden p-0 sm:px-4 md:px-5 dark:text-slate-200 flex flex-col ${
             infoTilesOpen ? "sm:pt-4 md:pt-5 sm:pb-4 md:pb-5" : "sm:pt-1.5 md:pt-2 sm:pb-4 md:pb-5"
-          } max-md:pb-[4.75rem]`}
+          } max-md:pb-[5.5rem]`}
         >
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
@@ -2314,7 +2325,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {authState.is_admin && (
+                  {(authState.is_admin || visiblePages.includes("sell-candidates")) && (
                     <TabsContent value="sell-candidates" className="mt-0">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm font-semibold">{activeIndex} Sell Candidates — safest strikes to short</div>
@@ -2433,15 +2444,13 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {authState.is_admin && (
-                    <TabsContent value="index-events" className="mt-0">
+                  <TabsContent value="index-events" className="mt-0">
                       <EventRiskWidget
                         activeIndex={activeIndex}
                         refreshKey={uploadRefreshKey}
-                        isAdmin
+                        isAdmin={!!authState.is_admin}
                       />
                     </TabsContent>
-                  )}
 
                   {(authState.is_admin || visiblePages.includes("cas")) && (
                     <TabsContent value="cas" className="mt-0">

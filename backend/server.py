@@ -1266,8 +1266,7 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             if i not in INDEX_CONFIG:
                 raise HTTPException(400, f"Unknown straddle index: {i}")
     if "visible_pages" in patch:
-        admin_only = {"sell-candidates", "index-events"}
-        pages = [p for p in (patch["visible_pages"] or []) if p not in admin_only]
+        pages = list(patch["visible_pages"] or [])
         if not pages:
             raise HTTPException(400, "At least one public dashboard page is required")
         for p in pages:
@@ -3542,6 +3541,22 @@ async def admin_refresh_day(
     }
 
 
+def _friendly_kite_connect_error(exc: Exception) -> str:
+    raw = str(exc or "")
+    low = raw.lower()
+    if "not enabled for the app" in low:
+        return (
+            "This Zerodha user is not enabled on the Kite Connect app. "
+            "In developers.kite.tech open the app, add this user_id (or publish the app). "
+            "Until then only the app owner can Connect."
+        )
+    if "token" in low and ("expired" in low or "invalid" in low):
+        return "Kite login expired or was reused. Tap Connect Zerodha and try once more."
+    if "checksum" in low:
+        return "Kite login token was invalid. Tap Connect Zerodha again."
+    return raw or "Kite login failed"
+
+
 # ------------------- Zerodha positions -------------------
 class UserKiteSessionIn(BaseModel):
     request_token: str
@@ -3637,7 +3652,7 @@ async def kite_user_session(payload: UserKiteSessionIn, request: Request, role: 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(400, f"{type(e).__name__}: {e}")
+        raise HTTPException(400, _friendly_kite_connect_error(e))
     uid = data.get("user_id")
     saved = await _save_user_kite(guest, access_token=access_token, kite_user_id=uid)
     return {

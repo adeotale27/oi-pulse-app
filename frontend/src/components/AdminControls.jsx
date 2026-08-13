@@ -3,10 +3,11 @@ import { api, clearAdminAuth } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Users, LogOut, KeyRound, UserCheck } from "lucide-react";
+import { Users, LogOut, KeyRound, UserCheck, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import AccessControlModal from "@/components/AccessControlModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Shared across inline + panel instances so we don't double-toast / double-open.
 let sharedPrevPending = null;
@@ -53,6 +54,7 @@ export default function AdminControls({
   const [busy, setBusy] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [guestPages, setGuestPages] = useState([]);
   const prevPendingRef = useRef(null);
   const publicAccessOpenRef = useRef(publicAccessOpen);
   useEffect(() => {
@@ -251,6 +253,30 @@ export default function AdminControls({
   const isPanel = variant === "panel";
   const openAccess = () => openAccessControlEverywhere();
 
+  const loadGuestPages = async () => {
+    try {
+      const { data } = await api.get("/settings");
+      setGuestPages(Array.isArray(data?.visible_pages) ? data.visible_pages : []);
+    } catch (_) { /* ignore */ }
+  };
+
+  const toggleGuestPage = async (id, on) => {
+    try {
+      const current = await api.get("/settings");
+      const cur = new Set(Array.isArray(current.data?.visible_pages) ? current.data.visible_pages : guestPages);
+      if (on) cur.add(id);
+      else cur.delete(id);
+      cur.add("index-events");
+      const { data } = await api.post("/settings", { visible_pages: Array.from(cur) });
+      const pages = Array.isArray(data?.visible_pages) ? data.visible_pages : Array.from(cur);
+      setGuestPages(pages);
+      window.dispatchEvent(new CustomEvent("oi-settings-saved", { detail: data || { visible_pages: pages } }));
+      toast.success(on ? "Shown to guests" : "Admin-only for now");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not update guest pages");
+    }
+  };
+
   const publicToggle = (
     <div
       className={
@@ -260,10 +286,41 @@ export default function AdminControls({
       }
       data-testid="admin-public-row"
     >
-      <span className="inline-flex flex-row flex-nowrap items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
-        <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-        Public
-      </span>
+      <Popover onOpenChange={(open) => { if (open) loadGuestPages(); }}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex flex-row flex-nowrap items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-emerald-800"
+            data-testid="admin-public-pages-trigger"
+            title="Guest pages: Positions connect, Sell Candidates"
+          >
+            <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            Public
+            <ChevronDown className="w-3 h-3 text-slate-400" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-64 p-3 space-y-2" data-testid="admin-public-pages-menu">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Show to guests</div>
+          <p className="text-[11px] text-slate-600 leading-snug">
+            Public access ON/OFF stays on this row. These switches only choose extra pages.
+          </p>
+          {[
+            { id: "positions", label: "Positions · Connect Zerodha" },
+            { id: "sell-candidates", label: "Sell Candidates" },
+          ].map((p) => (
+            <label key={p.id} className="flex items-center justify-between gap-2 text-[12px] text-slate-800">
+              <span>{p.label}</span>
+              <Switch
+                checked={guestPages.includes(p.id)}
+                onCheckedChange={(on) => toggleGuestPage(p.id, on)}
+                data-testid={`guest-page-${p.id}`}
+                className="scale-90"
+              />
+            </label>
+          ))}
+          <div className="text-[10px] text-slate-500">Index Risk is always on. Upload stamps stay admin-only.</div>
+        </PopoverContent>
+      </Popover>
       <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>
         {publicOn ? "ON" : "OFF"}
       </span>

@@ -21,6 +21,7 @@ import {
 } from "@/lib/api";
 import { toast } from "sonner";
 import { isHoliday, isTradingDayIST } from "@/lib/holidays";
+import InfoTip from "@/components/InfoTip";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -235,6 +236,11 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   };
 
   const openDay = async (iso) => {
+    if (selected === iso && dayDoc) {
+      setSelected(null);
+      setDayDoc(null);
+      return;
+    }
     setSelected(iso);
     try {
       const d = await fetchJournalDay(iso);
@@ -266,17 +272,18 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     }
   };
 
-  const save = async () => {
-    if (!dayDoc?.date) return;
+  const save = async (override = null) => {
+    const doc = override || dayDoc;
+    if (!doc?.date) return;
     setSaving(true);
     try {
-      await saveJournalDay(dayDoc.date, {
-        went_well: dayDoc.went_well,
-        went_wrong: dayDoc.went_wrong,
-        notes: dayDoc.notes,
-        tags: dayDoc.tags,
-        rating: dayDoc.rating,
-        followed_plan: dayDoc.followed_plan,
+      await saveJournalDay(doc.date, {
+        went_well: doc.went_well,
+        went_wrong: doc.went_wrong,
+        notes: doc.notes,
+        tags: doc.tags,
+        rating: doc.rating,
+        followed_plan: doc.followed_plan,
       });
       toast.success("Journal saved");
       loadMonth(year, month);
@@ -435,7 +442,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
 
               <div className="flex gap-2 min-w-0">
                 <div className="flex-1 min-w-0 overflow-x-auto">
-                  <div className="grid grid-cols-7 gap-2 text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">
+                  <div className="grid grid-cols-7 gap-2 text-[12px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">
                     {WEEKDAYS.map((d) => <div key={d} className="text-center">{d}</div>)}
                   </div>
                   <div className="grid grid-cols-7 gap-2" data-testid="journal-calendar">
@@ -462,12 +469,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           type="button"
                           onClick={() => openDay(c.iso)}
                           data-testid={`journal-cell-${c.iso}`}
-                          className={`rounded-3xl border p-2.5 min-h-[104px] text-left transition-shadow hover:shadow-md ${tone.box} ${
+                          className={`rounded-3xl border p-2.5 min-h-[112px] text-left transition-shadow hover:shadow-md ${tone.box} ${
                             isSel ? "ring-2 ring-sky-500" : ""
                           }`}
                         >
-                          <div className={`flex justify-between items-start text-[11px] ${tone.invert ? "text-white/80" : "text-slate-600"}`}>
-                            <span className={`font-semibold ${tone.invert ? "text-white" : "text-slate-800"}`}>{c.day}</span>
+                          <div className={`flex justify-between items-start text-[13px] ${tone.invert ? "text-white/80" : "text-slate-600"}`}>
+                            <span className={`font-semibold text-[15px] ${tone.invert ? "text-white" : "text-slate-800"}`}>{c.day}</span>
                             <span className="flex items-center gap-0.5">
                               {isToday ? <span className="h-2 w-2 rounded-full bg-sky-500" title="Today" /> : null}
                               {hasNote ? <FileText className="w-3 h-3" /> : null}
@@ -477,10 +484,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           </div>
                           {traded ? (
                             <>
-                              <div className={`mt-2 text-[15px] font-bold font-mono-data leading-tight ${tone.amt}`}>
+                              <div className={`mt-2 text-[17px] font-bold font-mono-data leading-tight ${tone.amt}`}>
                                 {privacy ? "••••" : compactPnl(pnl)}
                               </div>
-                              <div className={`text-[10px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
+                              <div className={`text-[12px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
                                 {(doc.trade_count || doc.exited_count || 0)} trade{(doc.trade_count || doc.exited_count || 0) === 1 ? "" : "s"}
                               </div>
                               {wr ? (
@@ -488,11 +495,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               ) : null}
                             </>
                           ) : hol ? (
-                            <div className="text-[9px] text-amber-700 mt-3 leading-tight font-medium" title={hol.name}>
-                              {hol.name.replace(/\s*\(.*$/, "").split(" ").slice(0, 2).join(" ")}
+                            <div className="text-[12px] text-amber-800 mt-3 leading-tight font-medium" title={hol.name}>
+                              Holiday
+                              <div className="text-[11px] font-normal mt-0.5">{hol.name.replace(/\s*\(.*$/, "")}</div>
                             </div>
                           ) : !session ? (
-                            <div className="mt-6" />
+                            <div className="text-[12px] text-slate-500 mt-3 font-medium">Market closed</div>
                           ) : (
                             <div className="mt-6" />
                           )}
@@ -594,14 +602,25 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-slate-500 mr-0.5">Day score</span>
+                  <InfoTip title="Day score 1–5" testId="journal-rating-tip">
+                    <p>How the session felt as a seller — saved on this date in the journal.</p>
+                    <p className="mt-1"><b>1</b> poor process / chased · <b>3</b> okay · <b>5</b> followed the plan cleanly.</p>
+                    <p className="mt-1">Tap a number to set it. Save stores notes, tags, and this score in the database.</p>
+                  </InfoTip>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button
                       key={n}
                       type="button"
-                      className={`h-7 w-7 rounded-md text-xs font-bold border ${
+                      className={`h-8 w-8 rounded-md text-sm font-bold border ${
                         dayDoc.rating === n ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-500"
                       }`}
-                      onClick={() => setDayDoc((p) => ({ ...p, rating: n }))}
+                      onClick={() => {
+                        const next = { ...dayDoc, rating: n };
+                        setDayDoc(next);
+                        save(next);
+                      }}
+                      data-testid={`journal-rating-${n}`}
                     >
                       {n}
                     </button>

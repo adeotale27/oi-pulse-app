@@ -211,7 +211,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         type="button"
         data-testid="overnight-gap-brief-chip"
         onClick={expand}
-        className={`fixed z-50 bottom-3 right-3 flex items-center gap-2 rounded-full border-2 px-3 py-2 shadow-lg text-xs font-semibold ${bandCls}`}
+        className={`fixed z-50 bottom-[5.25rem] md:bottom-3 right-3 flex items-center gap-2 rounded-full border-2 px-3 py-2 shadow-lg text-xs font-semibold ${bandCls}`}
         title="Open overnight gap brief"
       >
         <Moon className="w-3.5 h-3.5" />
@@ -225,7 +225,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   return (
     <div
       data-testid="overnight-gap-brief"
-      className={`fixed z-50 bottom-3 right-3 left-3 sm:left-auto sm:w-[26rem] rounded-md border-2 shadow-lg ${bandCls}`}
+      className={`fixed z-50 bottom-[5.25rem] md:bottom-3 right-3 left-3 sm:left-auto sm:w-[26rem] rounded-md border-2 shadow-lg ${bandCls}`}
       role="dialog"
       aria-label={title}
     >

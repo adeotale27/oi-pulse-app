@@ -72,7 +72,7 @@ export default function OvernightRiskScore({ vix, netDelta, positionsCount, minu
         : "Safe to hold overnight if delta is neutral.";
 
   return (
-    <div className={`rounded-xl border px-3 py-3 h-full min-h-[8.75rem] flex flex-col justify-between shadow-sm ${toneCls}`} data-testid="overnight-risk">
+    <div className={`rounded-xl border px-2.5 py-2 h-full flex flex-col gap-0.5 shadow-sm ${toneCls}`} data-testid="overnight-risk">
       <div className="flex items-center gap-2">
         {band.icon}
         <span className="text-[10px] uppercase tracking-widest opacity-70">Overnight Risk</span>

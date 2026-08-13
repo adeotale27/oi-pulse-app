@@ -12,6 +12,7 @@ import {
   LineChart,
   Columns3,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Receipt,
   Eye,
@@ -20,7 +21,8 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { isMarketQuiescent, getMarketCloseHm } from "@/lib/marketTimes";
+import { isPositionsAutoRefreshOn, istMinutesOfDay, getPositionsCatchupMinute, getMarketCloseHm } from "@/lib/marketTimes";
+import { isTradingDayIST, todayIST } from "@/lib/holidays";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -289,6 +291,7 @@ export default function PositionsPanel({
   const [highlightSymbol, setHighlightSymbol] = useState(null);
   const [guestNeedsConnect, setGuestNeedsConnect] = useState(() => !!isGuest);
   const [guestKiteId, setGuestKiteId] = useState(null);
+  const [exitedOpen, setExitedOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
       return localStorage.getItem("oiPositionsInsightsOpen") === "1";
@@ -454,28 +457,53 @@ export default function PositionsPanel({
   }, [isKiteMode, hasKiteCredentials]);
 
   const kiteReady = isGuest ? true : (isKiteMode || stickyKite);
+  const catchupDoneRef = useRef(false);
 
   useEffect(() => {
     if (!kiteReady) return undefined;
-    const closed = isMarketQuiescent();
     load();
     loadBrokerage();
-    if (closed) return undefined;
-    const id = setInterval(() => {
-      load();
-    }, pollMs);
-    // Charges change with fills — refresh less often than the live book.
+    const mins0 = istMinutesOfDay();
+    if (isTradingDayIST(todayIST()) && mins0 >= getPositionsCatchupMinute()) {
+      catchupDoneRef.current = true;
+    }
+    const poll = () => {
+      const trading = isTradingDayIST(todayIST());
+      const mins = istMinutesOfDay();
+      const catchupAt = getPositionsCatchupMinute();
+      if (trading && mins < catchupAt) {
+        catchupDoneRef.current = false;
+        load();
+        return;
+      }
+      if (trading && mins >= catchupAt && !catchupDoneRef.current) {
+        catchupDoneRef.current = true;
+        load();
+        loadBrokerage();
+      }
+    };
+    const id = setInterval(poll, pollMs);
+    const catchId = setInterval(() => {
+      const trading = isTradingDayIST(todayIST());
+      const mins = istMinutesOfDay();
+      if (trading && mins >= getPositionsCatchupMinute() && !catchupDoneRef.current) {
+        catchupDoneRef.current = true;
+        load();
+        loadBrokerage();
+      }
+    }, 5000);
     const chargesId = setInterval(() => {
-      loadBrokerage();
+      if (isPositionsAutoRefreshOn()) loadBrokerage();
     }, Math.max(pollMs * 4, 120_000));
     return () => {
       clearInterval(id);
+      clearInterval(catchId);
       clearInterval(chargesId);
     };
   }, [kiteReady, load, loadBrokerage, pollMs]);
 
   useEffect(() => {
-    if (!kiteReady || isMarketQuiescent()) return;
+    if (!kiteReady || !isPositionsAutoRefreshOn()) return undefined;
     setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     const id = setInterval(() => {
       setSecsLeft((s) => Math.max(0, s - 1));
@@ -735,6 +763,12 @@ export default function PositionsPanel({
     };
   }, [rows, pnlToday]);
 
+  const openRows = useMemo(() => rows.filter((r) => !r.exited), [rows]);
+  const exitedRows = useMemo(() => rows.filter((r) => r.exited), [rows]);
+  useEffect(() => {
+    setExitedOpen(exitedRows.length <= 1);
+  }, [exitedRows.length]);
+
   const sellIdeas = useMemo(() => {
     if (!current?.strikes?.length) return null;
     return computeSellCandidates({
@@ -851,6 +885,7 @@ export default function PositionsPanel({
         <div className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
           Log in with your Kite account to load <b>your</b> positions. Charts still use the publisher OI feed.
           Tokens expire around 06:00 IST — reconnect each morning.
+          If Kite says the user is not enabled for the app, the desk owner must add your user_id in developers.kite.tech (or publish the app).
           {guestKiteId ? ` Last login: ${guestKiteId}.` : ""}
         </div>
         {typeof onOpenKite === "function" && (
@@ -1135,7 +1170,7 @@ export default function PositionsPanel({
           <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
-            {!isMarketQuiescent() && (
+            {isPositionsAutoRefreshOn() && (
               <span className="ml-1 font-mono-data text-[10px] text-slate-500" data-testid="positions-refresh-countdown">
                 {secsLeft}s
               </span>
@@ -1396,7 +1431,9 @@ export default function PositionsPanel({
       <div className="md:hidden space-y-2" data-testid="positions-mobile-cards">
         {rows.length === 0 ? (
           <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No F&amp;O positions today.</div>
-        ) : rows.map((r) => {
+        ) : (
+          <>
+        {(exitedOpen ? rows : openRows).map((r) => {
           const thetaInr = !r.exited && Number.isFinite(r.thetaInr) ? r.thetaInr : null;
           return (
             <div
@@ -1466,6 +1503,19 @@ export default function PositionsPanel({
             </div>
           );
         })}
+        {exitedRows.length > 0 && (
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-slate-50 py-2 text-[12px] font-semibold text-slate-600"
+            onClick={() => setExitedOpen((v) => !v)}
+            data-testid="btn-toggle-exited-positions-mobile"
+          >
+            {exitedOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            Exited today · {exitedRows.length}
+          </button>
+        )}
+        </>
+        )}
       </div>
 
       {/* Desktop table */}
@@ -1473,14 +1523,14 @@ export default function PositionsPanel({
         <table className="w-full text-sm font-mono-data">
           <thead className="bg-slate-50/90 text-slate-500 uppercase tracking-wider text-xs sticky top-0 z-10">
             <tr className="border-b border-slate-200/80">
-              {colOn("product") && <th className="text-left px-2.5 py-3 font-semibold">Product</th>}
-              {colOn("instrument") && <th className="text-left px-2.5 py-3 font-semibold">Instrument</th>}
-              {colOn("qty") && <th className="text-right px-2.5 py-3 font-semibold">Qty</th>}
-              {colOn("avg") && <th className="text-right px-2.5 py-3 font-semibold">Avg</th>}
-              {colOn("ltp") && <th className="text-right px-2.5 py-3 font-semibold">LTP</th>}
-              {colOn("pnl") && <th className="text-right px-2.5 py-3 font-semibold">P&amp;L</th>}
+              {colOn("product") && <th className="text-left px-2.5 py-1.5 font-semibold">Product</th>}
+              {colOn("instrument") && <th className="text-left px-2.5 py-1.5 font-semibold">Instrument</th>}
+              {colOn("qty") && <th className="text-right px-2.5 py-1.5 font-semibold">Qty</th>}
+              {colOn("avg") && <th className="text-right px-2.5 py-1.5 font-semibold">Avg</th>}
+              {colOn("ltp") && <th className="text-right px-2.5 py-1.5 font-semibold">LTP</th>}
+              {colOn("pnl") && <th className="text-right px-2.5 py-1.5 font-semibold">P&amp;L</th>}
               {colOn("tilt") && (
-                <th className="text-right px-2.5 py-3 font-semibold">
+                <th className="text-right px-2.5 py-1.5 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Tilt
                     <InfoTip title="Direction tilt" size="xs" testId="delta-col-tip">
@@ -1490,7 +1540,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("theta") && (
-                <th className="text-right px-2.5 py-3 font-semibold">
+                <th className="text-right px-2.5 py-1.5 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     ₹/day
                     <InfoTip title="Daily time money (not P&L)" size="xs" testId="theta-col-tip">
@@ -1502,7 +1552,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("stillEarn") && (
-                <th className="text-right px-2.5 py-3 font-semibold">
+                <th className="text-right px-2.5 py-1.5 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Still earn
                     <InfoTip title="Still to earn" size="xs" testId="prem-left-col-tip">
@@ -1511,9 +1561,9 @@ export default function PositionsPanel({
                   </span>
                 </th>
               )}
-              {colOn("iv") && <th className="text-right px-2.5 py-3 font-semibold">IV</th>}
+              {colOn("iv") && <th className="text-right px-2.5 py-1.5 font-semibold">IV</th>}
               {colOn("dte") && (
-                <th className="text-right px-2.5 py-3 font-semibold">
+                <th className="text-right px-2.5 py-1.5 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Days left
                     <InfoTip title="Days left" size="xs" testId="dte-col-tip">
@@ -1523,7 +1573,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("status") && (
-                <th className="text-left px-2.5 py-3 font-semibold">
+                <th className="text-left px-2.5 py-1.5 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     Status
                     <InfoTip title="OK vs Too close" size="xs" testId="signal-col-tip">
@@ -1534,7 +1584,7 @@ export default function PositionsPanel({
                 </th>
               )}
               {colOn("atmDist") && (
-                <th className="text-right px-2.5 py-3 font-semibold">
+                <th className="text-right px-2.5 py-1.5 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     ATM Dist
                     <InfoTip title="ATM Distance" size="xs" testId="atm-dist-col-tip">
@@ -1553,19 +1603,26 @@ export default function PositionsPanel({
                   No F&amp;O positions today.
                 </td>
               </tr>
-            ) : rows.map((r, idx) => {
+            ) : [...openRows, ...(exitedOpen ? exitedRows : [])].map((r, idx) => {
               const thetaInr = !r.exited && Number.isFinite(r.thetaInr) ? r.thetaInr : null;
-              const prev = rows[idx - 1];
-              const showExitedDivider = r.exited && prev && !prev.exited;
+              const showExitedDivider = idx === openRows.length && exitedRows.length > 0;
               return (
               <Fragment key={`${r.exchange}-${r.product}-${r.tradingsymbol}`}>
               {showExitedDivider && (
                 <tr data-testid="exited-section-divider">
                   <td
                     colSpan={Math.max(shownCols.length, 1)}
-                    className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-y border-slate-100"
+                    className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-y border-slate-100"
                   >
-                    Exited today · Kite-style shadowed (qty 0)
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 hover:text-slate-800"
+                      onClick={() => setExitedOpen((v) => !v)}
+                      data-testid="btn-toggle-exited-positions"
+                    >
+                      {exitedOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      Exited today · {exitedRows.length}
+                    </button>
                   </td>
                 </tr>
               )}
@@ -1586,12 +1643,12 @@ export default function PositionsPanel({
                 }`}
               >
                 {colOn("product") && (
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-1">
                     <ProductBadge product={r.product} exited={r.exited} />
                   </td>
                 )}
                 {colOn("instrument") && (
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-1">
                     <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
                       {positionLabel(r)}
                     </div>
@@ -1602,35 +1659,35 @@ export default function PositionsPanel({
                   </td>
                 )}
                 {colOn("qty") && (
-                  <td className={`text-right px-2 py-2 font-semibold ${r.exited ? "text-slate-400" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
+                  <td className={`text-right px-2 py-1 font-semibold ${r.exited ? "text-slate-400" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
                     {privacyMode ? PRIVACY_MASK : (r.exited ? 0 : r.quantity)}
                   </td>
                 )}
                 {colOn("avg") && (
-                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>
+                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-400" : ""}`}>
                     <AvgCell row={r} privacy={privacyMode} />
                   </td>
                 )}
                 {colOn("ltp") && (
-                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
+                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
                 )}
                 {colOn("pnl") && (
-                  <td className={`text-right px-2 py-2 font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
+                  <td className={`text-right px-2 py-1 font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
                     {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
                   </td>
                 )}
                 {colOn("tilt") && (
-                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
                     {Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}
                   </td>
                 )}
                 {colOn("theta") && (
-                  <td className={`text-right px-2 py-2 font-semibold ${privacyMode || thetaInr == null ? (r.exited ? "text-slate-300" : "") : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-50" : ""}`}>
+                  <td className={`text-right px-2 py-1 font-semibold ${privacyMode || thetaInr == null ? (r.exited ? "text-slate-300" : "") : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-50" : ""}`}>
                     {privacyMode ? PRIVACY_MASK : (thetaInr != null ? fmt(thetaInr, 0) : "—")}
                   </td>
                 )}
                 {colOn("stillEarn") && (
-                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : "text-slate-700"}`}>
+                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : "text-slate-700"}`}>
                     {privacyMode
                       ? PRIVACY_MASK
                       : (!r.exited && r.isShort && r.extrinsicLeft != null ? (
@@ -1641,17 +1698,17 @@ export default function PositionsPanel({
                   </td>
                 )}
                 {colOn("iv") && (
-                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
                     {Number.isFinite(r.iv) ? `${r.iv.toFixed(1)}%` : "—"}
                   </td>
                 )}
                 {colOn("dte") && (
-                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
                     {r.dte != null ? `${r.dte.toFixed(1)}d` : "—"}
                   </td>
                 )}
                 {colOn("status") && (
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-1">
                     <div className="flex flex-wrap items-center gap-1">
                       <GreeksHealthChip health={r.greeksHealth} />
                       <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
@@ -1660,7 +1717,7 @@ export default function PositionsPanel({
                   </td>
                 )}
                 {colOn("atmDist") && (
-                  <td className={`text-right px-2 py-2 ${r.exited ? "text-slate-300" : ""}`}>
+                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
                     {r.exited ? "—" : <AtmDistanceCell row={r} />}
                   </td>
                 )}
@@ -1668,6 +1725,24 @@ export default function PositionsPanel({
               </Fragment>
               );
             })}
+            {exitedRows.length > 0 && !exitedOpen && (
+              <tr data-testid="exited-section-divider">
+                <td
+                  colSpan={Math.max(shownCols.length, 1)}
+                  className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-50 border-y border-slate-100"
+                >
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:text-slate-800"
+                    onClick={() => setExitedOpen(true)}
+                    data-testid="btn-toggle-exited-positions"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                    Exited today · {exitedRows.length}
+                  </button>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -2107,15 +2182,15 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
         ? "border-amber-300 bg-amber-50 text-amber-950"
         : "border-slate-300 bg-white text-slate-900";
   return (
-    <div className={`rounded-xl border px-3 py-3 h-full min-h-[8.75rem] flex flex-col justify-between shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
-      <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1 pr-4">
+    <div className={`rounded-xl border px-2.5 py-2 h-full flex flex-col gap-0.5 shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+      <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1 pr-4 leading-none">
         {label}
         {tip && (
           <InfoTip title={label} size="xs">{tip}</InfoTip>
         )}
       </div>
-      <div className="text-xl font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
-      {hint && <div className="text-[10px] text-slate-600 mt-0.5 leading-snug">{hint}</div>}
+      <div className="text-[17px] font-semibold font-mono-data leading-none tabular-nums">{value}</div>
+      {hint && <div className="text-[10px] text-slate-600 leading-tight">{hint}</div>}
     </div>
   );
 }
