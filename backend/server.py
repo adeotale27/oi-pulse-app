@@ -3775,7 +3775,8 @@ async def get_positions(_admin: bool = Depends(require_admin)):
         "token_issue": False,
     }
     try:
-        asyncio.create_task(_snapshot_trade_journal(result))
+        if not result.get("error"):
+            asyncio.create_task(_snapshot_trade_journal(result))
     except Exception:
         pass
     return result
@@ -3787,16 +3788,22 @@ def _ist_today_ymd() -> str:
     return datetime.now(ist).strftime("%Y-%m-%d")
 
 
-async def _snapshot_trade_journal(payload: Dict[str, Any]) -> None:
-    """Upsert today's P&L snapshot; keep user journal fields."""
+async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool = False) -> None:
+    """Upsert today's P&L snapshot; never clobber an EOD-locked day with an empty Kite book."""
     if db is None:
+        return
+    if payload.get("error") and not (payload.get("positions") or payload.get("pnl_today")):
         return
     try:
         snap = journal.snapshot_from_positions(payload)
         day = snap["date"]
+        existing = await db.trade_journal.find_one({"date": day})
+        fields = journal.apply_snapshot(existing, snap, force_lock=force_lock)
+        if not fields:
+            return
         await db.trade_journal.update_one(
             {"date": day},
-            {"$set": snap, "$setOnInsert": {
+            {"$set": fields, "$setOnInsert": {
                 "went_well": "",
                 "went_wrong": "",
                 "notes": "",
@@ -3804,12 +3811,48 @@ async def _snapshot_trade_journal(payload: Dict[str, Any]) -> None:
                 "rating": None,
                 "followed_plan": None,
                 "screenshots": [],
+                "eod_locked": False,
             }},
             upsert=True,
         )
     except Exception:
         logger = logging.getLogger("server")
         logger.debug("trade journal snapshot skipped", exc_info=True)
+
+
+async def _journal_eod_lock_loop() -> None:
+    """After 15:41 IST on trading days, freeze today's booked P&L even if nobody opens Positions."""
+    locked_for: Optional[str] = None
+    log = logging.getLogger("server")
+    while True:
+        try:
+            await asyncio.sleep(20)
+            now = now_ist()
+            if not journal.should_lock_eod(now):
+                continue
+            day = journal.ist_ymd(now)
+            if locked_for == day:
+                continue
+            if db is not None:
+                existing = await db.trade_journal.find_one({"date": day}, {"eod_locked": 1})
+                if existing and existing.get("eod_locked"):
+                    locked_for = day
+                    continue
+            try:
+                result = await get_positions(_admin=True)
+            except Exception as e:
+                log.warning("journal EOD lock: positions fetch failed: %s", e)
+                continue
+            await _snapshot_trade_journal(result, force_lock=True)
+            if db is not None:
+                doc = await db.trade_journal.find_one({"date": day}, {"eod_locked": 1})
+                if doc and doc.get("eod_locked"):
+                    locked_for = day
+                    log.info("Trade journal EOD locked for %s", day)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.debug("journal EOD lock loop tick failed", exc_info=True)
 
 
 class JournalIn(BaseModel):
@@ -3854,6 +3897,27 @@ async def journal_month(
         "days": days,
         "stats": journal.month_stats(days),
         "tags": journal.DEFAULT_TAGS,
+    }
+
+
+@api_router.get("/journal/year/{year}")
+async def journal_year(year: int, _admin: bool = Depends(require_admin)):
+    """Year consolidation: month nets + NIFTY / SENSEX / BANKNIFTY heatmap."""
+    y = int(year)
+    if y < 2020 or y > 2100:
+        raise HTTPException(400, "Invalid year")
+    start, end = f"{y:04d}-01-01", f"{y + 1:04d}-01-01"
+    docs = await db.trade_journal.find(
+        {"date": {"$gte": start, "$lt": end}},
+        {"_id": 0, "screenshots.data": 0, "screenshots": 0},
+    ).to_list(length=400)
+    days = [journal.public_day(d, include_images=False) for d in docs]
+    days = [d for d in days if d]
+    return {
+        "year": y,
+        "today": journal.ist_ymd(),
+        "heatmap": journal.year_heatmap(days, y),
+        "stats": journal.month_stats(days),
     }
 
 
@@ -4452,6 +4516,7 @@ logger.propagate = False
 
 straddle_sampler_task = None
 poll_watchdog_task = None
+journal_eod_task = None
 
 @app.on_event("startup")
 async def _startup():
@@ -4527,9 +4592,10 @@ async def _startup():
     await extra_tickers.start()
     fii_dii.attach_db(db)
     await fii_dii.start()
-    global straddle_sampler_task, poll_watchdog_task
+    global straddle_sampler_task, poll_watchdog_task, journal_eod_task
     straddle_sampler_task = asyncio.create_task(_straddle_sampler())
     poll_watchdog_task = asyncio.create_task(_market_day_poll_watchdog())
+    journal_eod_task = asyncio.create_task(_journal_eod_lock_loop())
     logger.info(
         "Started browser-independent OI/straddle writers + market-day poll watchdog"
     )
@@ -4557,7 +4623,7 @@ async def _shutdown():
     await tracker.stop()
     await extra_tickers.stop()
     await fii_dii.stop()
-    for task_name in ("straddle_sampler_task", "poll_watchdog_task"):
+    for task_name in ("straddle_sampler_task", "poll_watchdog_task", "journal_eod_task"):
         task = globals().get(task_name)
         if task:
             task.cancel()
