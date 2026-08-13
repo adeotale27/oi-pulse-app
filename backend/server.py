@@ -4191,10 +4191,13 @@ async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool =
     if payload.get("error") and not (payload.get("positions") or payload.get("pnl_today")):
         return
     try:
-        charges = await _maybe_journal_charges(force=force_lock)
-        snap = journal.snapshot_from_positions(payload, charges=charges)
+        snap = journal.snapshot_from_positions(payload)
         day = snap["date"]
         existing = await db.trade_journal.find_one({"date": day})
+        need_charges = existing is None or existing.get("charges_total") is None
+        charges = await _maybe_journal_charges(force=force_lock or need_charges)
+        if journal.charges_usable(charges):
+            journal.apply_charges(snap, charges)
         fields = journal.apply_snapshot(existing, snap, force_lock=force_lock)
         if not fields:
             return
@@ -4334,6 +4337,19 @@ async def journal_day(day: str, _admin: bool = Depends(require_admin)):
     doc = await db.trade_journal.find_one({"date": day}, {"_id": 0})
     if not doc:
         return {"date": day, "empty": True, "tags": journal.DEFAULT_TAGS}
+    if day == journal.ist_ymd() and doc.get("charges_total") is None:
+        charges = await _maybe_journal_charges(force=True)
+        if journal.charges_usable(charges):
+            journal.apply_charges(doc, charges)
+            await db.trade_journal.update_one(
+                {"date": day},
+                {"$set": {
+                    "brokerage": doc.get("brokerage"),
+                    "charges_total": doc.get("charges_total"),
+                    "charges_source": doc.get("charges_source"),
+                    "booked_after_charges": doc.get("booked_after_charges"),
+                }},
+            )
     out = journal.public_day(doc, include_images=True)
     out["empty"] = False
     out["tags_catalog"] = journal.DEFAULT_TAGS

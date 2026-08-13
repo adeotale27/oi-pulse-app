@@ -1,34 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3,
-  Table2,
+  ArrowDownUp,
+  ListOrdered,
   Briefcase,
   Bell,
-  SlidersHorizontal,
+  LayoutDashboard,
   Activity,
   CalendarDays,
-  Layers,
-  AlertTriangle,
+  BarChart3,
+  Shield,
   Settings2,
+  LayoutGrid,
 } from "lucide-react";
 import { DOCK_CATALOG, loadMobileDock, saveMobileDock } from "@/lib/mobileDock";
 
 const ICONS = {
-  "oi-change": BarChart3,
+  "oi-change": ArrowDownUp,
   straddle: Activity,
   positions: Briefcase,
-  "index-events": AlertTriangle,
+  "index-events": Shield,
   "admin-tools": Settings2,
   holidays: CalendarDays,
-  "strike-table": Table2,
+  "strike-table": ListOrdered,
   alerts: Bell,
-  "open-interest": Layers,
-  desk: SlidersHorizontal,
+  "open-interest": BarChart3,
+  desk: LayoutDashboard,
 };
 
 /**
  * Phone-only dock. Desktop is unaffected (md:hidden).
- * Long-press (~450ms) or tap the Dock chip to edit which pages sit here.
+ * Long-press (~450ms) or tap Pages to edit which views sit here.
  */
 export default function MobileBottomNav({
   activeTab,
@@ -112,7 +113,7 @@ export default function MobileBottomNav({
       {edit && (
         <div className="px-3 pt-2 pb-1 border-b border-slate-100" data-testid="mobile-dock-edit">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] uppercase tracking-widest text-slate-400">Dock (max 5) · long-press a tab</span>
+            <span className="text-[10px] uppercase tracking-widest text-slate-400">Pages (max 5) · long-press a tab</span>
             <button type="button" className="text-[11px] text-emerald-700 font-semibold" onClick={() => setEdit(false)}>
               Done
             </button>
@@ -141,7 +142,7 @@ export default function MobileBottomNav({
         style={{ gridTemplateColumns: `repeat(${Math.max(items.length + 1, 1)}, minmax(0, 1fr))` }}
       >
         {items.map((item) => {
-          const Icon = ICONS[item.id] || BarChart3;
+          const Icon = ICONS[item.id] || ArrowDownUp;
           const active = item.action === "desk"
             ? deskOpen
             : item.action === "admin-tools"
@@ -168,15 +169,14 @@ export default function MobileBottomNav({
               onPointerDown={startHold}
               onPointerUp={clearHold}
               onPointerCancel={clearHold}
-              onPointerMove={() => { /* keep hold unless we want cancel on scroll */ }}
-              className={`flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-semibold tracking-wide select-none ${
+              className={`flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg text-[9px] leading-tight font-semibold tracking-wide select-none px-0.5 text-center ${
                 active
                   ? "text-emerald-700 dark:text-emerald-300"
                   : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
-              <Icon className="h-[18px] w-[18px]" />
-              {item.label}
+              <Icon className="h-[18px] w-[18px] shrink-0" />
+              <span className="line-clamp-2">{item.label}</span>
             </button>
           );
         })}
@@ -184,11 +184,11 @@ export default function MobileBottomNav({
           type="button"
           data-testid="nav-dock-edit-mobile"
           onClick={() => setEdit((v) => !v)}
-          className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-semibold tracking-wide text-slate-400"
-          title="Edit dock"
+          className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg text-[9px] font-semibold tracking-wide text-slate-400"
+          title="Choose dock pages"
         >
-          <SlidersHorizontal className="h-[18px] w-[18px]" />
-          Dock
+          <LayoutGrid className="h-[18px] w-[18px]" />
+          Pages
         </button>
       </div>
     </nav>

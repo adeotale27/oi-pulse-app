@@ -1,16 +1,18 @@
 import { loadIdOrder, saveIdOrder, orderByIds } from "@/lib/tabOrder";
 
-export const MOBILE_DOCK_KEY = "oiMobileDock.v2";
+export const MOBILE_DOCK_KEY = "oiMobileDock.v3";
 
+/** Labels match dashboard tab names — never generic “Chart” / “Chain”. */
 export const DOCK_CATALOG = [
-  { id: "oi-change", label: "Chart", tab: "oi-change" },
+  { id: "oi-change", label: "OI Change", tab: "oi-change" },
   { id: "straddle", label: "Straddle", tab: "straddle" },
   { id: "positions", label: "Positions", tab: "positions" },
   { id: "admin-tools", label: "Settings", action: "admin-tools", adminOnly: true },
-  { id: "index-events", label: "Risk", tab: "index-events" },
-  { id: "strike-table", label: "Chain", tab: "strike-table" },
+  { id: "index-events", label: "Index Risk", tab: "index-events" },
+  { id: "strike-table", label: "Strike Table", tab: "strike-table" },
   { id: "alerts", label: "Alerts", tab: "alerts" },
-  { id: "open-interest", label: "OI", tab: "open-interest" },
+  { id: "open-interest", label: "Open Interest", tab: "open-interest" },
+  { id: "holidays", label: "Events", tab: "holidays" },
   { id: "desk", label: "Desk", action: "desk" },
 ];
 

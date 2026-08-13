@@ -11,6 +11,9 @@ export const SUNDAY_BRIEF_MINUTE = 20 * 60; // 20:00 IST
 /** Midday — start of 2nd cash/FO session focus window (IST). */
 export const SECOND_SESSION_MINUTE = 12 * 60; // 12:00 IST
 
+/** Carry brief surfaces from 2:00 PM IST on a session through next open. */
+export const CARRY_SHOW_FROM_MINUTE = 14 * 60;
+
 export { EVENT_WARNING_MINUTE };
 
 const INDEX_IMPACT_TYPES = new Set(["Quarterly Results", "Board Meeting"]);
@@ -357,24 +360,22 @@ export function carryVerdict({ biases = [], events = [], giftPct = null, weekday
 }
 
 /**
- * When should the sticky overnight brief auto-appear?
- * - Weekdays from 15:15 IST onward (until next calendar day)
- * - Sunday from 20:00 IST onward
+ * Carry brief: from 14:00 IST on a trading day, overnight, weekends/holidays,
+ * until the next cash/F&O open. Hidden during a live session before 14:00.
  */
-export function shouldAutoShowBrief(weekday, minutesOfDay) {
-  if (weekday >= 1 && weekday <= 5 && minutesOfDay >= EVENT_WARNING_MINUTE) return true;
-  if (weekday === 0 && minutesOfDay >= SUNDAY_BRIEF_MINUTE) return true;
-  return false;
+export function shouldAutoShowBrief(weekday, minutesOfDay, dateISO = todayIST()) {
+  const openMinute = getMarketOpenMinute();
+  if (isTradingDayIST(dateISO)) {
+    if (minutesOfDay >= CARRY_SHOW_FROM_MINUTE) return true;
+    if (minutesOfDay < openMinute) return true;
+    return false;
+  }
+  return true;
 }
 
 export function briefTriggerKey(istDateISO, weekday, minutesOfDay) {
-  if (weekday === 0 && minutesOfDay >= SUNDAY_BRIEF_MINUTE) {
-    return `${istDateISO}|sunday-night`;
-  }
-  if (weekday >= 1 && weekday <= 5 && minutesOfDay >= EVENT_WARNING_MINUTE) {
-    return `${istDateISO}|eod-315`;
-  }
-  return null;
+  if (!shouldAutoShowBrief(weekday, minutesOfDay, istDateISO)) return null;
+  return `carry|${istDateISO}`;
 }
 
 export function dismissStorageKey(triggerKey) {

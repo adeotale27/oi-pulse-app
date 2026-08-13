@@ -1,18 +1,18 @@
 export default function PositionHeatmap({ rows = [], privacy = false, onSelect, compact = false }) {
-  const open = (rows || []).filter((r) => !r.exited);
-  if (!open.length) return null;
+  const closed = (rows || []).filter((r) => r.exited);
+  if (!closed.length) return null;
 
-  const mag = Math.max(1, ...open.map((r) => Math.abs(Number(r.pnl) || 0)));
+  const mag = Math.max(1, ...closed.map((r) => Math.abs(Number(r.booked_pnl ?? r.pnl) || 0)));
 
   return (
     <div data-testid="position-heatmap" className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${compact ? "p-1.5 h-full" : "p-2.5"}`}>
       <div className="flex items-center justify-between mb-1 px-0.5">
         <span className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold">Position heatmap</span>
-        {!compact && <span className="text-[10px] text-slate-600">Color = P&amp;L · tap to jump</span>}
+        {!compact && <span className="text-[10px] text-slate-600">Exited P&amp;L only · tap to jump</span>}
       </div>
       <div className={`grid gap-1 ${compact ? "grid-cols-3 sm:grid-cols-4 max-h-[7.5rem] overflow-y-auto" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-1.5"}`}>
-        {open.map((r) => {
-          const pnl = Number(r.pnl) || 0;
+        {closed.map((r) => {
+          const pnl = Number(r.booked_pnl ?? r.pnl) || 0;
           const t = Math.min(1, Math.abs(pnl) / mag);
           const bg = pnl >= 0
             ? `rgba(16, 185, 129, ${0.12 + t * 0.55})`

@@ -1,5 +1,34 @@
 # Changelog
 
+## V5.05 — 2026-08-13
+
+Trade journal calendar is readable on phone.
+
+- Compact 7-day grid (date + booked P&L only) instead of overflowing desktop cards
+- Month booked strip + weekly recap on phone; tap a day for full notes / charges
+- Year heatmap on phone is a month list (booked by index), not a squeezed table
+- Calendar figures stay booked/exited P&L (never open MTM)
+
+## V5.04 — 2026-08-13
+
+Desk polish: About notes split by role, mobile dock/sidebar, carry brief, straddle.
+
+- Logo / version About: guests see UI and desk behaviour only; admin also sees APIs, k8s, Mongo
+- Phone dock labels match dashboard tabs (OI Change, Index Risk, Strike Table); clearer icons; Pages picker
+- Mobile sidebar is a curved sheet — tap the dimmed area to close
+- Open Interest on phone includes strikes above & below ATM
+- Index bar uses three tiles plus ATM / expiry instead of one empty dropdown
+- Straddle chart on phone is shorter, no overlapping legend
+- Carry brief from 14:00 IST through next open; slide to the right edge for moon-only
+
+## V5.03 — 2026-08-13
+
+Index Risk, journal after-charges, and heatmaps now use booked (exited) data only.
+
+- Admin **Last successful upload** / Index Event Risk only appears when there are upcoming events or a stale/missing CSV
+- Journal **after charges** uses Kite contract-note totals when present; no longer treats missing charges as ₹0 (so booked equals after-charges)
+- Year heatmap, calendar, and position heatmap ignore open NIFTY MTM — only exited P&L is stored and shown
+
 ## V5.02 — 2026-08-13
 
 Backend crashed on import (nginx `connection refused` to :8001, k8s never Ready).

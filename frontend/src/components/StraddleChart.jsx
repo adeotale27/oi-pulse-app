@@ -503,13 +503,13 @@ export default function StraddleChart({
   return (
     <div className="w-full" data-testid="straddle-chart">
       <div className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-white">
+        <div className="px-3 py-2 md:px-5 md:py-3 border-b border-slate-100 flex items-center justify-between bg-white">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{index}</div>
-            <h2 className="text-lg font-bold text-slate-900 leading-tight">Straddle Premium</h2>
+            <div className="text-[10px] md:text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{index}</div>
+            <h2 className="text-sm md:text-lg font-bold text-slate-900 leading-tight">Straddle Premium</h2>
           </div>
           <div className="text-right">
-            <div className="text-xs font-mono text-slate-500">
+            <div className="text-[11px] md:text-xs font-mono text-slate-500">
               {meta
                 ? new Date(meta.ts || Date.now()).toLocaleTimeString([], {
                     timeZone: "Asia/Kolkata",
@@ -519,15 +519,15 @@ export default function StraddleChart({
                   })
                 : "Loading…"}
             </div>
-            <div className="text-[10px] text-slate-400 mt-0.5">
+            <div className="hidden md:block text-[10px] text-slate-400 mt-0.5">
               {Math.round(bucketMs / 1000)}s chart · live {Math.round(livePollMs / 1000)}s
             </div>
           </div>
         </div>
 
-        <div className="px-4 py-3 h-[360px] bg-white relative">
+        <div className="px-1 py-2 md:px-4 md:py-3 h-[230px] md:h-[360px] bg-white relative">
           <ResponsiveContainer>
-            <LineChart data={chartPoints} margin={{ top: 12, right: 36, left: 8, bottom: 8 }}>
+            <LineChart data={chartPoints} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical={false} />
               <XAxis
                 dataKey="ts"
@@ -544,21 +544,13 @@ export default function StraddleChart({
               />
               <YAxis
                 yAxisId="premium"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tick={{ fontSize: 10, fill: "#94a3b8" }}
                 stroke="#e2e8f0"
                 axisLine={false}
                 tickLine={false}
                 domain={yDomain}
-                width={56}
-                tickFormatter={(v) => Number(v).toFixed(2)}
-                label={{
-                  value: "Straddle Price",
-                  angle: -90,
-                  position: "insideLeft",
-                  fill: "#94a3b8",
-                  fontSize: 10,
-                  offset: 4,
-                }}
+                width={44}
+                tickFormatter={(v) => Number(v).toFixed(0)}
               />
               <Tooltip content={<StraddleTooltip />} cursor={{ stroke: "rgba(15, 23, 42, 0.08)", strokeWidth: 1 }} />
               <Line
@@ -592,11 +584,10 @@ export default function StraddleChart({
               )}
             </LineChart>
           </ResponsiveContainer>
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-4 text-[11px] text-slate-600 bg-white/90 px-3 py-1 rounded-full border border-slate-100">
+          <div className="hidden md:flex absolute bottom-3 left-1/2 -translate-x-1/2 items-center gap-4 text-[11px] text-slate-600 bg-white/90 px-3 py-1 rounded-full border border-slate-100">
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-500" />Straddle Price</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-300" />Index Spot</span>
           </div>
-          <div className="pointer-events-none absolute bottom-10 right-6 text-[10px] text-slate-400">
+          <div className="pointer-events-none hidden md:block absolute bottom-10 right-6 text-[10px] text-slate-400">
             {chartWindow.label}
           </div>
         </div>

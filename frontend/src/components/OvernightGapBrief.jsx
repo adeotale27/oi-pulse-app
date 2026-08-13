@@ -27,6 +27,14 @@ function writeCarryBottom(px) {
   try { localStorage.setItem("oiCarryBriefBottomPx", String(Math.round(px))); } catch { /* noop */ }
 }
 
+function readCarryIconOnly() {
+  try { return localStorage.getItem("oiCarryBriefIconOnly") === "1"; } catch { return false; }
+}
+
+function writeCarryIconOnly(on) {
+  try { localStorage.setItem("oiCarryBriefIconOnly", on ? "1" : "0"); } catch { /* noop */ }
+}
+
 function dockClearance() {
   if (typeof window === "undefined") return 12;
   const mobile = window.matchMedia("(max-width: 767px)").matches;
@@ -71,9 +79,8 @@ function fmtDelta(v) {
 
 /**
  * Sticky “Should I carry?” overnight gap brief.
- * Auto-opens at 15:15 IST on weekdays and Sunday 20:00 IST.
- * Minimize collapses to a chip until next market open (09:15 trading day);
- * you can reopen and read until then.
+ * Auto-opens from 14:00 IST on a trading day through next market open.
+ * Slide the chip to the right edge to dock as a moon icon.
  */
 export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKNIFTY"] }) {
   const [now, setNow] = useState(() => new Date());
@@ -85,6 +92,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   const [gift, setGift] = useState(null);
   const [indexImpacts, setIndexImpacts] = useState([]);
   const [bottomPx, setBottomPx] = useState(() => readCarryBottom());
+  const [iconOnly, setIconOnly] = useState(() => readCarryIconOnly());
   const dragRef = useRef(null);
   const skipClickRef = useRef(false);
 
@@ -99,13 +107,15 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const startBottom = bottomPx != null ? bottomPx : dockClearance();
-    dragRef.current = { startY: e.clientY, startBottom, moved: false };
+    dragRef.current = { startY: e.clientY, startX: e.clientX, startBottom, moved: false };
   };
 
   const onCarryPointerMove = (e) => {
     if (!dragRef.current) return;
     const dy = dragRef.current.startY - e.clientY;
-    if (Math.abs(e.clientY - dragRef.current.startY) > 6) dragRef.current.moved = true;
+    if (Math.abs(e.clientY - dragRef.current.startY) > 6 || Math.abs(e.clientX - dragRef.current.startX) > 6) {
+      dragRef.current.moved = true;
+    }
     setBottomPx(clampBottom(dragRef.current.startBottom + dy));
   };
 
@@ -113,6 +123,17 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     if (!dragRef.current) return;
     skipClickRef.current = !!dragRef.current?.moved;
     const shouldExpand = minimized && !dragRef.current.moved;
+    const endX = e.clientX;
+    const w = typeof window !== "undefined" ? window.innerWidth : 400;
+    const dockRight = endX >= w - 72;
+    if (dockRight) {
+      setIconOnly(true);
+      setMinimized(true);
+      writeCarryIconOnly(true);
+    } else if (endX < w - 120) {
+      setIconOnly(false);
+      writeCarryIconOnly(false);
+    }
     dragRef.current = null;
     try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
     setBottomPx((prev) => {
@@ -120,7 +141,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       writeCarryBottom(next);
       return next;
     });
-    if (shouldExpand) setMinimized(false);
+    if (shouldExpand && !dockRight) setMinimized(false);
   };
 
   const carryPosStyle = {
@@ -149,7 +170,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   // Auto-show when trigger fires; respect minimize-until-next-open.
   useEffect(() => {
     const key = briefTriggerKey(ist.dateISO, ist.weekday, ist.minutesOfDay);
-    if (!key || !shouldAutoShowBrief(ist.weekday, ist.minutesOfDay)) {
+    if (!key || !shouldAutoShowBrief(ist.weekday, ist.minutesOfDay, ist.dateISO)) {
       // Past the carry window / next session started → hide completely.
       setActive(false);
       setMinimized(false);
@@ -237,7 +258,8 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   };
 
   const expand = () => {
-    // Keep minimize record so next refresh still knows window; just expand UI.
+    setIconOnly(false);
+    writeCarryIconOnly(false);
     setMinimized(false);
   };
 
@@ -271,6 +293,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       <button
         type="button"
         data-testid="overnight-gap-brief-chip"
+        data-icon-only={iconOnly ? "1" : "0"}
         onClick={() => {
           if (skipClickRef.current) {
             skipClickRef.current = false;
@@ -278,18 +301,25 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           }
           expand();
         }}
-        className={`fixed z-50 md:bottom-3 right-3 flex items-center gap-2 rounded-full border-2 px-3 py-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
+        className={`fixed z-50 md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
+          iconOnly ? "right-1 p-2.5" : "right-3 gap-2 px-3 py-2"
+        } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
         style={carryPosStyle}
         onPointerDown={onCarryPointerDown}
         onPointerMove={onCarryPointerMove}
         onPointerUp={onCarryPointerUp}
         onPointerCancel={onCarryPointerUp}
-        title="Open overnight gap brief"
+        title="Open overnight gap brief · slide right to moon only"
+        aria-label="Carry brief"
       >
-        <Moon className="w-3.5 h-3.5" />
-        <span>Carry brief</span>
-        <span className="opacity-70 font-mono-data">{verdict.score}/100</span>
-        <Maximize2 className="w-3.5 h-3.5 opacity-70" />
+        <Moon className={iconOnly ? "w-5 h-5" : "w-3.5 h-3.5"} />
+        {!iconOnly && (
+          <>
+            <span>Carry brief</span>
+            <span className="opacity-70 font-mono-data">{verdict.score}/100</span>
+            <Maximize2 className="w-3.5 h-3.5 opacity-70" />
+          </>
+        )}
       </button>
     );
   }
