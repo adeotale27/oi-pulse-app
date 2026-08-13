@@ -9,19 +9,24 @@ function assert(cond, msg) {
 
 // ---- Inline mirrors of pure logic (no JSX / path aliases) ----
 
-const EVENT_WARNING_MINUTE = 15 * 60 + 15;
-const SUNDAY_BRIEF_MINUTE = 20 * 60;
+const CARRY_FROM = 14 * 60;
+const MARKET_OPEN_MINUTE = 9 * 60 + 15;
 
 function shouldAutoShowBrief(weekday, minutesOfDay) {
-  if (weekday >= 1 && weekday <= 5 && minutesOfDay >= EVENT_WARNING_MINUTE) return true;
-  if (weekday === 0 && minutesOfDay >= SUNDAY_BRIEF_MINUTE) return true;
+  // Weekends: overnight gap until Monday open.
+  if (weekday === 0 || weekday === 6) return true;
+  // Trading weekdays: from 14:00, and before the next open.
+  if (weekday >= 1 && weekday <= 5) {
+    if (minutesOfDay >= CARRY_FROM) return true;
+    if (minutesOfDay < MARKET_OPEN_MINUTE) return true;
+    return false;
+  }
   return false;
 }
 
 function briefTriggerKey(istDateISO, weekday, minutesOfDay) {
-  if (weekday === 0 && minutesOfDay >= SUNDAY_BRIEF_MINUTE) return `${istDateISO}|sunday-night`;
-  if (weekday >= 1 && weekday <= 5 && minutesOfDay >= EVENT_WARNING_MINUTE) return `${istDateISO}|eod-315`;
-  return null;
+  if (!shouldAutoShowBrief(weekday, minutesOfDay)) return null;
+  return `carry|${istDateISO}`;
 }
 
 function sessionBiasFromSnapshots(current, sessionPrevious) {
@@ -118,14 +123,15 @@ function buildDataTruth({ dataStatus, marketOpen, mode, snapshotTs }) {
 
 // ---- Tests ----
 
-assert(shouldAutoShowBrief(1, EVENT_WARNING_MINUTE) === true, "Mon 15:15 shows");
-assert(shouldAutoShowBrief(1, EVENT_WARNING_MINUTE - 1) === false, "Mon 15:14 hidden");
-assert(shouldAutoShowBrief(0, SUNDAY_BRIEF_MINUTE) === true, "Sun 20:00 shows");
-assert(shouldAutoShowBrief(0, SUNDAY_BRIEF_MINUTE - 1) === false, "Sun 19:59 hidden");
-assert(shouldAutoShowBrief(6, 22 * 60) === false, "Sat never auto");
+assert(shouldAutoShowBrief(1, CARRY_FROM) === true, "Mon 14:00 shows");
+assert(shouldAutoShowBrief(1, CARRY_FROM - 1) === false, "Mon 13:59 hidden (session)");
+assert(shouldAutoShowBrief(1, 8 * 60) === true, "Mon 08:00 still carry until open");
+assert(shouldAutoShowBrief(0, 10 * 60) === true, "Sunday morning shows");
+assert(shouldAutoShowBrief(6, 22 * 60) === true, "Saturday night shows");
+assert(shouldAutoShowBrief(2, 10 * 60) === false, "Tue 10:00 session hidden");
 
-assert(briefTriggerKey("2026-08-07", 5, EVENT_WARNING_MINUTE) === "2026-08-07|eod-315", "fri key");
-assert(briefTriggerKey("2026-08-09", 0, SUNDAY_BRIEF_MINUTE) === "2026-08-09|sunday-night", "sun key");
+assert(briefTriggerKey("2026-08-07", 5, CARRY_FROM) === "carry|2026-08-07", "fri 14:00 key");
+assert(briefTriggerKey("2026-08-09", 0, 20 * 60) === "carry|2026-08-09", "sun key");
 assert(briefTriggerKey("2026-08-07", 3, 10 * 60) === null, "midday no key");
 
 const bias = sessionBiasFromSnapshots(

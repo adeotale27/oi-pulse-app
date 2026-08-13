@@ -85,7 +85,7 @@ export default function AuthShell({
                   ? "Spot the OI surge — read bias before the crowd."
                   : "Command the desk. Spot bias. Act on OI."}
               </p>
-              <p className="mt-1 text-xs font-semibold tracking-wider text-emerald-300">{APP_VERSION_LABEL} · click for how the desk works</p>
+              <p className="mt-1 text-xs font-semibold tracking-wider text-emerald-300">{APP_VERSION_LABEL} · click for what’s new</p>
             </div>
           </button>
 

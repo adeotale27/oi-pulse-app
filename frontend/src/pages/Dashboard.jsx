@@ -1815,12 +1815,12 @@ export default function Dashboard() {
           <>
             <button
               type="button"
-              className="md:hidden fixed inset-0 z-40 bg-slate-950/40"
+              className="md:hidden fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px]"
               aria-label="Close sidebar"
               data-testid="sidebar-mobile-backdrop"
               onClick={() => setCompact(true)}
             />
-            <div className="fixed md:static z-50 md:z-auto inset-y-0 left-0 max-w-[90vw] md:max-w-none shadow-xl md:shadow-none max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:max-h-[82vh] max-md:w-full max-md:max-w-none max-md:rounded-t-2xl max-md:overflow-y-auto">
+            <div className="fixed md:static z-50 md:z-auto inset-y-0 left-0 max-w-[90vw] md:max-w-none shadow-2xl md:shadow-none max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:max-h-[78vh] max-md:w-full max-md:max-w-none max-md:rounded-t-[1.75rem] max-md:overflow-y-auto max-md:ring-1 max-md:ring-white/40">
               <Sidebar
                 indices={enabledIndices.length ? enabledIndices : INDICES}
                 activeIndex={activeIndex}
@@ -1868,7 +1868,12 @@ export default function Dashboard() {
               activeIndex={activeIndex}
               indices={enabledIndices.length ? enabledIndices : INDICES}
               onSelectIndex={setActiveIndex}
-              spotPrice={liveSpotPrices?.[activeIndex] ?? current?.price}
+              spotPrices={{
+                ...(liveSpotPrices || {}),
+                [activeIndex]: liveSpotPrices?.[activeIndex] ?? current?.price,
+              }}
+              atm={current?.atm}
+              expiry={selectedExpiry}
               changePct={(() => {
                 const spot = liveSpotPrices?.[activeIndex] ?? current?.price;
                 const prev = current?.day_open ?? current?.prev_close;
@@ -2322,6 +2327,14 @@ export default function Dashboard() {
                   {(tabOn("open-interest")) && (
                     <TabsContent value="open-interest" className="mt-0">
                       <div className="text-sm font-semibold mb-2">{activeIndex} Absolute Open Interest</div>
+                    {isMobile && (
+                      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" data-testid="oi-tab-strike-around">
+                        <StrikeAroundChips
+                          strikesAround={strikesAround}
+                          onChange={applyStrikesAround}
+                        />
+                      </div>
+                    )}
                     <OIChart
                       current={filteredCurrent}
                       previous={null}
@@ -2456,7 +2469,7 @@ export default function Dashboard() {
 
                   {(tabOn("straddle")) && (
                     <TabsContent value="straddle" className="mt-0">
-                    <div className="text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
+                    <div className="hidden md:block text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
                     <StraddleChart
                       key={`tab-${activeIndex}-${selectedExpiry || "auto"}`}
                       index={activeIndex}

@@ -1,5 +1,17 @@
 # Changelog
 
+## V5.04 — 2026-08-13
+
+Desk polish: About notes split by role, mobile dock/sidebar, carry brief, straddle.
+
+- Logo / version About: guests see UI and desk behaviour only; admin also sees APIs, k8s, Mongo
+- Phone dock labels match dashboard tabs (OI Change, Index Risk, Strike Table); clearer icons; Pages picker
+- Mobile sidebar is a curved sheet — tap the dimmed area to close
+- Open Interest on phone includes strikes above & below ATM
+- Index bar uses three tiles plus ATM / expiry instead of one empty dropdown
+- Straddle chart on phone is shorter, no overlapping legend
+- Carry brief from 14:00 IST through next open; slide to the right edge for moon-only
+
 ## V5.03 — 2026-08-13
 
 Index Risk, journal after-charges, and heatmaps now use booked (exited) data only.

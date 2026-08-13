@@ -1,11 +1,10 @@
-import { useMemo, useState, useRef, useCallback } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
-import useClickOutside from "@/hooks/useClickOutside";
+import { useMemo, useState, useRef } from "react";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 
-const INDEX_LABEL = {
+const INDEX_SHORT = {
   NIFTY: "NIFTY",
   SENSEX: "SENSEX",
-  BANKNIFTY: "BANKNIFTY",
+  BANKNIFTY: "BNF",
 };
 
 const INDEX_DOT = {
@@ -26,6 +25,9 @@ export default function MobileStickyChrome({
   indices = ["NIFTY", "SENSEX", "BANKNIFTY"],
   onSelectIndex,
   spotPrice,
+  spotPrices = {},
+  atm,
+  expiry,
   changePct,
   tabs = [],
   activeTab,
@@ -40,22 +42,13 @@ export default function MobileStickyChrome({
   infoTiles,
   pnlSlot,
 }) {
-  const [open, setOpen] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [overId, setOverId] = useState(null);
   const skipClickRef = useRef(false);
-  const wrapRef = useRef(null);
-  const close = useCallback(() => setOpen(false), []);
-  useClickOutside(wrapRef, close, open);
 
   const canReorder = typeof onReorder === "function";
   const canFavorite = typeof onFavorite === "function";
   const canMove = typeof onMove === "function";
-  const label = INDEX_LABEL[activeIndex] || activeIndex;
-  const spot =
-    spotPrice != null && Number.isFinite(Number(spotPrice))
-      ? Number(spotPrice).toLocaleString("en-IN", { maximumFractionDigits: 2 })
-      : null;
   const pct =
     changePct != null && Number.isFinite(Number(changePct))
       ? Number(changePct)
@@ -68,6 +61,20 @@ export default function MobileStickyChrome({
         : pct < 0
           ? "text-rose-600"
           : "text-slate-500";
+  const expiryShort = useMemo(() => {
+    if (!expiry) return null;
+    try {
+      const [y, m, d] = String(expiry).split("-").map(Number);
+      if (!y || !m || !d) return expiry;
+      return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      });
+    } catch {
+      return expiry;
+    }
+  }, [expiry]);
 
   const list = useMemo(() => indices.filter(Boolean), [indices]);
 
@@ -153,69 +160,64 @@ export default function MobileStickyChrome({
       data-testid="mobile-sticky-chrome"
       className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-md dark:border-slate-700 dark:bg-slate-950/95"
     >
-      <div className="flex items-center gap-2 px-2.5 py-1.5">
-        <div className="relative min-w-0 flex-1" ref={wrapRef}>
-          <button
-            type="button"
-            data-testid="mobile-index-switcher"
-            onClick={() => setOpen((v) => !v)}
-            className="flex w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-left dark:border-slate-700 dark:bg-slate-900"
-          >
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${INDEX_DOT[activeIndex] || "bg-slate-400"}`}
-            />
-            <span className="min-w-0 flex-1 truncate">
-              <span className="block text-[11px] font-semibold text-slate-900 dark:text-slate-100">
-                {label}
-              </span>
-              <span className="block font-mono-data text-[10px] tabular-nums text-slate-500">
-                {spot || "—"}
-                {pct != null && (
-                  <span className={`ml-1 ${pctCls}`}>
-                    {pct > 0 ? "+" : ""}
-                    {pct.toFixed(2)}%
+      <div className="px-2 py-1.5 space-y-1">
+        <div className="flex items-center gap-2">
+        <div
+          className="min-w-0 flex-1 grid gap-1"
+          style={{ gridTemplateColumns: `repeat(${Math.max(list.length, 1)}, minmax(0, 1fr))` }}
+          data-testid="mobile-index-switcher"
+        >
+          {list.map((idx) => {
+            const active = idx === activeIndex;
+            const raw = active
+              ? (spotPrices?.[idx] ?? spotPrice)
+              : spotPrices?.[idx];
+            const spotN = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
+            const spotTxt = spotN != null
+              ? spotN.toLocaleString("en-IN", { maximumFractionDigits: 2 })
+              : null;
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSelectIndex?.(idx)}
+                data-testid={`mobile-index-${idx}`}
+                className={`min-w-0 rounded-xl border px-1.5 py-1.5 text-left transition-colors ${
+                  active
+                    ? "border-emerald-400 bg-emerald-50 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40"
+                    : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
+                }`}
+              >
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${INDEX_DOT[idx] || "bg-slate-400"}`} />
+                  <span className={`truncate text-[10px] font-bold ${active ? "text-emerald-900 dark:text-emerald-100" : "text-slate-700 dark:text-slate-200"}`}>
+                    {INDEX_SHORT[idx] || idx}
                   </span>
-                )}
-              </span>
-            </span>
-            <ChevronDown
-              className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${
-                open ? "rotate-180" : ""
-              }`}
-            />
-          </button>
-
-          {open && (
-            <div
-              data-testid="mobile-index-menu"
-              className="absolute left-0 right-0 top-full z-40 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
-            >
-              {list.map((idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    onSelectIndex?.(idx);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm ${
-                    idx === activeIndex
-                      ? "bg-emerald-50 font-semibold text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-                      : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  <span className={`h-2 w-2 rounded-full ${INDEX_DOT[idx] || "bg-slate-400"}`} />
-                  {INDEX_LABEL[idx] || idx}
-                </button>
-              ))}
-            </div>
-          )}
+                </div>
+                <div className={`mt-0.5 font-mono-data text-[10px] tabular-nums truncate ${active ? "text-slate-700 dark:text-slate-200" : "text-slate-400"}`}>
+                  {spotTxt || (active ? "—" : "tap")}
+                </div>
+              </button>
+            );
+          })}
         </div>
         {pnlSlot ? (
           <div className="shrink-0 pl-1.5 border-l border-slate-200 dark:border-slate-700" data-testid="mobile-sticky-pnl">
             {pnlSlot}
           </div>
         ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-0.5 font-mono-data text-[10px] text-slate-500" data-testid="mobile-index-meta">
+          {pct != null && (
+            <span className={pctCls}>
+              {pct > 0 ? "+" : ""}
+              {pct.toFixed(2)}%
+            </span>
+          )}
+          {atm != null && <span>ATM {Number(atm).toLocaleString("en-IN")}</span>}
+          {expiryShort && <span>Exp {expiryShort}</span>}
+          {marketOpen ? <span className="text-emerald-600">Live</span> : <span>Last session</span>}
+        </div>
       </div>
 
       {tabs.length > 0 && (
