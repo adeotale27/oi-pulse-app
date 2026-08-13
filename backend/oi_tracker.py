@@ -36,6 +36,7 @@ from market_hours import (
     session_window_utc, IST,
 )
 import notifier
+from order_flow_analyzer import OrderFlowAnalyzer, create_default_analyzer, FlowSignal, FlowSignalType, TickData
 
 
 class JsonLogFormatter(logging.Formatter):
@@ -201,6 +202,12 @@ class OITracker:
         self._last_straddle_sample_at: Dict[str, datetime] = {}
         self.last_straddle_quote: Dict[str, Dict[str, Any]] = {}
         self._last_successful_poll_at: Optional[datetime] = None
+        
+        # Order Flow Analyzer
+        self.lot_sizes = {"NIFTY": 75, "SENSEX": 20, "BANKNIFTY": 35}
+        self.flow_analyzer = create_default_analyzer(self.lot_sizes)
+        self._last_tick_data: Dict[str, Dict[int, Dict[str, TickData]]] = {}  # index -> strike -> side -> TickData
+        
         self.metrics = Counter({
             "poll_cycles": 0,
             "poll_timeouts": 0,
@@ -959,6 +966,17 @@ class OITracker:
                     extra={"metrics": dict(self.metrics)},
                 )
 
+            # run order flow analysis
+            try:
+                await self._run_flow_analysis(idx, snap)
+            except Exception as e:
+                logger.debug(
+                    "[_poll_once] _run_flow_analysis failed: %s",
+                    e,
+                    exc_info=True,
+                    extra={"metrics": dict(self.metrics)},
+                )
+
             # evaluate alerts
             try:
                 await self._evaluate_alerts(idx, snap)
@@ -1108,6 +1126,219 @@ class OITracker:
                 exc_info=True,
                 extra={"metrics": dict(self.metrics)},
             )
+
+    async def _fetch_and_store_1min_bars(self, index_name: str, snap: Dict[str, Any]):
+        """
+        Fetch 1-minute historical data for all strikes in current snapshot
+        and store as tick data for flow analysis.
+        """
+        if self.mode != "kite" or not self.kite_service:
+            return
+        
+        try:
+            svc = self.kite_service
+            svc._load_instruments()
+            
+            expiry = snap.get("expiry")
+            if not expiry:
+                return
+            
+            # Get all option symbols from current snapshot
+            strikes_data = snap.get("strikes", [])
+            if not strikes_data:
+                return
+            
+            # Build token list for all strikes (CE + PE)
+            tokens = []
+            strike_token_map = {}  # (strike, side) -> token
+            
+            for s in strikes_data:
+                strike = s["strike"]
+                for side in ["CE", "PE"]:
+                    sym_key = f"{strike}{side}"
+                    # Find symbol in instrument token map
+                    for sym, tok in svc.instrument_token_map.items():
+                        if sym.endswith(f"{strike}{side}") and expiry in sym:
+                            tokens.append(tok)
+                            strike_token_map[(strike, side)] = tok
+                            break
+            
+            if not tokens:
+                return
+            
+            # Fetch 1-minute historical data for last 2 minutes (current + previous)
+            to_dt = datetime.now()
+            from_dt = to_dt - timedelta(minutes=5)  # 5 min buffer
+            
+            try:
+                import asyncio
+                hist_data = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        svc.kite.historical_data,
+                        tokens[0],  # We'll fetch one by one to avoid rate limits
+                        from_dt, to_dt, "minute",
+                    ),
+                    timeout=10.0,
+                )
+            except Exception as e:
+                logger.debug(f"[_fetch_1min_bars] historical_data failed for {index_name}: {e}")
+                return
+            
+            # For now, use the current snapshot as "current tick" and find previous from DB
+            # This is a simplified approach - in production you'd fetch all tokens
+            await self._process_tick_data_from_snapshot(index_name, snap)
+            
+        except Exception as e:
+            logger.debug(f"[_fetch_and_store_1min_bars] failed for {index_name}: {e}")
+
+    async def _process_tick_data_from_snapshot(self, index_name: str, snap: Dict[str, Any]):
+        """
+        Convert snapshot to tick data and run flow analyzer.
+        Uses DB to get previous tick for comparison.
+        """
+        try:
+            strikes_data = snap.get("strikes", [])
+            spot_price = snap.get("price", 0)
+            ts = datetime.fromisoformat(snap.get("timestamp", datetime.now(timezone.utc).isoformat()))
+            
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            
+            # Get previous ticks from DB (1 minute ago)
+            target_ts = ts - timedelta(minutes=1)
+            prev_ticks = {}
+            for s in strikes_data:
+                strike = s["strike"]
+                for side in ["CE", "PE"]:
+                    prev_doc = await self.db.oi_ticks_1m.find_one(
+                        {"index": index_name, "strike": strike, "side": side, "ts": {"$lte": target_ts.isoformat()}},
+                        sort=[("ts", -1)]
+                    )
+                    if prev_doc:
+                        prev_ticks[(strike, side)] = prev_doc
+            
+            # Initialize index in last_tick_data if needed
+            if index_name not in self._last_tick_data:
+                self._last_tick_data[index_name] = {}
+            
+            all_signals = []
+            
+            # Process each strike
+            for s in strikes_data:
+                strike = s["strike"]
+                ce_oi = s.get("ce_oi", 0)
+                pe_oi = s.get("pe_oi", 0)
+                ce_ltp = s.get("ce_ltp", 0)
+                pe_ltp = s.get("pe_ltp", 0)
+                ce_vol = s.get("ce_volume", 0)
+                pe_vol = s.get("pe_volume", 0)
+                
+                for side, oi, ltp, vol in [
+                    ("CE", ce_oi, ce_ltp, ce_vol),
+                    ("PE", pe_oi, pe_ltp, pe_vol)
+                ]:
+                    if oi == 0 and ltp == 0:
+                        continue
+                    
+                    # Get previous values
+                    prev = prev_ticks.get((strike, side))
+                    prev_oi = prev.get("oi", 0) if prev else 0
+                    prev_vol = prev.get("volume", 0) if prev else 0
+                    prev_ltp = prev.get("ltp", 0) if prev else 0
+                    
+                    # Create tick data
+                    tick = TickData(
+                        index=index_name,
+                        strike=strike,
+                        side=side,
+                        ts=ts,
+                        oi=oi,
+                        volume=vol,
+                        ltp=ltp,
+                        prev_oi=prev_oi,
+                        prev_volume=prev_vol,
+                        prev_ltp=prev_ltp,
+                    )
+                    
+                    # Store in memory for delta-neutral analysis
+                    if strike not in self._last_tick_data[index_name]:
+                        self._last_tick_data[index_name][strike] = {}
+                    self._last_tick_data[index_name][strike][side] = tick
+                    
+                    # Persist tick to DB
+                    try:
+                        await self.db.oi_ticks_1m.update_one(
+                            {"index": index_name, "strike": strike, "side": side, "ts": ts.isoformat()},
+                            {"$set": {
+                                "index": index_name,
+                                "strike": strike,
+                                "side": side,
+                                "ts": ts.isoformat(),
+                                "oi": oi,
+                                "volume": vol,
+                                "ltp": ltp,
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                            }},
+                            upsert=True,
+                        )
+                    except Exception as e:
+                        logger.debug(f"[persist_tick] failed: {e}")
+                    
+                    # Run flow analyzer on this tick
+                    signals = self.flow_analyzer.analyze_tick(tick, spot_price)
+                    all_signals.extend(signals)
+            
+            # Check for delta-neutral at each strike
+            for strike, sides in self._last_tick_data[index_name].items():
+                if "CE" in sides and "PE" in sides:
+                    ce_tick = sides["CE"]
+                    pe_tick = sides["PE"]
+                    dn_signals = self.flow_analyzer.analyze_strike_pair(ce_tick, pe_tick, spot_price)
+                    all_signals.extend(dn_signals)
+            
+            # Store signals in DB
+            if all_signals:
+                await self._store_flow_signals(all_signals)
+                
+        except Exception as e:
+            logger.warning(f"[_process_tick_data_from_snapshot] failed for {index_name}: {e}")
+
+    async def _store_flow_signals(self, signals: List[FlowSignal]):
+        """Store flow signals in MongoDB."""
+        if not signals:
+            return
+        try:
+            docs = []
+            for sig in signals:
+                docs.append({
+                    "index": sig.index,
+                    "strike": sig.strike,
+                    "side": sig.side,
+                    "signal_type": sig.signal_type.value,
+                    "severity": sig.severity.value,
+                    "message": sig.message,
+                    "details": sig.details,
+                    "notional_cr": sig.notional_cr,
+                    "oi_change": sig.oi_change,
+                    "volume": sig.volume,
+                    "oi_to_volume_ratio": sig.oi_to_volume_ratio,
+                    "related_strikes": sig.related_strikes,
+                    "confidence": sig.confidence,
+                    "ts": sig.timestamp.isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            if docs:
+                await self.db.flow_signals.insert_many(docs, ordered=False)
+                logger.info(f"Stored {len(docs)} flow signals")
+        except Exception as e:
+            logger.warning(f"[_store_flow_signals] failed: {e}")
+
+    async def _run_flow_analysis(self, index_name: str, snap: Dict[str, Any]):
+        """Main entry point for flow analysis on each poll."""
+        try:
+            await self._process_tick_data_from_snapshot(index_name, snap)
+        except Exception as e:
+            logger.warning(f"[_run_flow_analysis] failed for {index_name}: {e}")
 
     async def _prune_straddle_history(self, index_name: str):
         try:

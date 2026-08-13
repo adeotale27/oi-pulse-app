@@ -2110,6 +2110,129 @@ async def clear_alerts(_admin: bool = Depends(require_admin)):
     return {"deleted": r.deleted_count}
 
 
+# --- Order Flow Signals ---
+@api_router.get("/flow/{index_name}")
+async def get_flow_signals(
+    index_name: str,
+    limit: int = 100,
+    signal_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    strike: Optional[int] = None,
+    side: Optional[str] = None,
+    minutes: int = 60,
+):
+    """Get order flow signals for an index.
+    
+    Query params:
+    - limit: max signals to return (default 100)
+    - signal_type: filter by type (iceberg, sweep, block_trade, delta_neutral, aggressive_build, trapped_writers)
+    - severity: filter by severity (info, warning, critical)
+    - strike: filter by specific strike
+    - side: filter by side (CE, PE, BOTH)
+    - minutes: lookback window in minutes (default 60)
+    """
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(status_code=404, detail="Invalid index")
+    
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    query = {"index": idx, "ts": {"$gte": cutoff.isoformat()}}
+    
+    if signal_type:
+        query["signal_type"] = signal_type
+    if severity:
+        query["severity"] = severity
+    if strike:
+        query["strike"] = strike
+    if side:
+        query["side"] = side.upper()
+    
+    docs = await db.flow_signals.find(
+        query, {"_id": 0}
+    ).sort("ts", -1).to_list(length=limit)
+    
+    return {"index": idx, "signals": docs, "count": len(docs)}
+
+
+@api_router.get("/flow/{index_name}/summary")
+async def get_flow_summary(index_name: str, minutes: int = 60):
+    """Get aggregated flow summary for an index."""
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(status_code=404, detail="Invalid index")
+    
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    
+    pipeline = [
+        {"$match": {"index": idx, "ts": {"$gte": cutoff.isoformat()}}},
+        {"$group": {
+            "_id": {"signal_type": "$signal_type", "severity": "$severity"},
+            "count": {"$sum": 1},
+            "total_notional_cr": {"$sum": "$notional_cr"},
+            "max_confidence": {"$max": "$confidence"},
+        }},
+        {"$sort": {"total_notional_cr": -1}},
+    ]
+    
+    agg = await db.flow_signals.aggregate(pipeline).to_list(length=50)
+    
+    # Also get top signals by notional
+    top_signals = await db.flow_signals.find(
+        {"index": idx, "ts": {"$gte": cutoff.isoformat()}},
+        {"_id": 0}
+    ).sort("notional_cr", -1).limit(10).to_list(length=10)
+    
+    return {
+        "index": idx,
+        "window_minutes": minutes,
+        "by_type_severity": agg,
+        "top_signals": top_signals,
+    }
+
+
+@api_router.get("/flow/{index_name}/heatmap")
+async def get_flow_heatmap(index_name: str, minutes: int = 60):
+    """Get flow heatmap data for visualization (strike x side matrix)."""
+    idx = index_name.upper()
+    if idx not in INDEX_CONFIG:
+        raise HTTPException(status_code=404, detail="Invalid index")
+    
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    
+    docs = await db.flow_signals.find(
+        {"index": idx, "ts": {"$gte": cutoff.isoformat()}},
+        {"_id": 0, "strike": 1, "side": 1, "signal_type": 1, "severity": 1, "notional_cr": 1, "oi_change": 1, "confidence": 1}
+    ).to_list(length=500)
+    
+    # Aggregate by strike and side
+    heatmap = {}
+    for d in docs:
+        strike = d.get("strike")
+        side = d.get("side", "CE")
+        if strike is None:
+            continue
+        key = f"{strike}_{side}"
+        if key not in heatmap:
+            heatmap[key] = {"strike": strike, "side": side, "total_notional": 0, "signal_count": 0, "max_severity": "info", "signals": []}
+        heatmap[key]["total_notional"] += d.get("notional_cr", 0)
+        heatmap[key]["signal_count"] += 1
+        sev = d.get("severity", "info")
+        if sev == "critical" or (sev == "warning" and heatmap[key]["max_severity"] != "critical"):
+            heatmap[key]["max_severity"] = sev
+        heatmap[key]["signals"].append({
+            "type": d.get("signal_type"),
+            "notional_cr": d.get("notional_cr", 0),
+            "oi_change": d.get("oi_change", 0),
+            "confidence": d.get("confidence", 0),
+        })
+    
+    # Convert to list sorted by strike
+    heatmap_list = list(heatmap.values())
+    heatmap_list.sort(key=lambda x: (x["strike"], x["side"]))
+    
+    return {"index": idx, "heatmap": heatmap_list, "window_minutes": minutes}
+
+
 @api_router.get("/config")
 async def get_config():
     if tracker:

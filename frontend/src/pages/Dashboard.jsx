@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
@@ -38,6 +39,7 @@ import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
 import InfoTilesRow, { DEFAULT_TILE_IDS } from "@/components/InfoTilesRow";
+import OrderFlowPanel from "@/components/OrderFlowPanel";
 import {
   loadTabOrder,
   saveTabOrder,
@@ -95,6 +97,7 @@ const DASHBOARD_PAGES = [
   { v: "straddle", l: "Straddle" },
   { v: "index-events", l: "Index Risk", adminOnly: true },
   { v: "cas", l: "CAS" },
+  { v: "order-flow", l: "Order Flow" },
 ];
 const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
   .filter((page) => !page.adminOnly && page.v !== "cas")
@@ -240,6 +243,10 @@ export default function Dashboard() {
     // Align with Tailwind md (min-width: 768px) → phone is max-width: 767px.
     try { return !window.matchMedia("(max-width: 767px)").matches; } catch { return true; }
   });
+  // Mobile drawer state: whether sidebar is open (collapsed default on phone)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Mobile bottom nav visibility
+  const [showBottomNav, setShowBottomNav] = useState(true);
   const [infoTilesOpen, setInfoTilesOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("oiInfoTilesOpen");
@@ -384,9 +391,12 @@ export default function Dashboard() {
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
 
-  // On phones, never keep the side panel open — it was leaving a narrow
+  // On phones, never keep the side panel open by default — it was leaving a narrow
   // Alerts/Suggestion strip and a blank chart area.
-  const showRightPanel = rightPanelOpen && !isMobile;
+  // On desktop, respect the saved preference.
+  const showRightPanel = isMobile
+    ? false
+    : rightPanelOpen;
   // Credentials / kite_ok beat brief mode=offline flaps (Positions + CAS + side panel).
   const kiteLiveConnected =
     status?.mode === "kite"
@@ -2365,6 +2375,12 @@ export default function Dashboard() {
                       />
                     </TabsContent>
                   )}
+
+                  {(authState.is_admin || visiblePages.includes("order-flow")) && (
+                    <TabsContent value="order-flow" className="mt-0">
+                      <OrderFlowPanel activeIndex={activeIndex} isAdmin={authState.is_admin} />
+                    </TabsContent>
+                  )}
                 </div>
 
                 <div className="oi-panel p-3 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
@@ -2471,16 +2487,16 @@ export default function Dashboard() {
             {isMobile && (
               <button
                 type="button"
-                onClick={() => setMobilePanelOpen(true)}
-                data-testid="btn-mobile-side-panel"
+                onClick={() => setSidebarOpen((v) => !v)}
+                data-testid="btn-mobile-sidebar"
                 className="fixed right-4 bottom-4 mb-[env(safe-area-inset-bottom)] rounded-full bg-slate-900 text-white shadow-lg hover:bg-slate-800 h-11 w-11 flex items-center justify-center z-50 md:hidden"
-                title="Side panel"
-                aria-label="Open side panel"
+                title="Sidebar"
+                aria-label="Open sidebar"
               >
-                <PanelRightOpen className="w-5 h-5" />
+                <PanelLeftOpen className="w-5 h-5" />
               </button>
             )}
-            {isMobile && mobilePanelOpen && (
+            {isMobile && sidebarOpen && (
               <div
                 className="fixed inset-0 z-[60] md:hidden flex flex-col bg-slate-950/50"
                 data-testid="mobile-side-panel-overlay"
@@ -2543,12 +2559,58 @@ export default function Dashboard() {
                       ) : null
                     }
                   />
-                </div>
+</div>
               </div>
-            )}
+            ))}
           </Tabs>
         </main>
       </div>
+
+      {isMobile && !sidebarOpen && (
+        <nav
+          data-testid="mobile-bottom-nav-fixed"
+          className="border-t border-slate-200/80 dark:border-slate-700/80 bottom-0 left-0 right-0 bg-white dark:bg-slate-950 sticky z-40"
+        >
+          <div className="flex items-center justify-around px-2 py-1.5 text-xs font-semibold uppercase tracking-wider">
+            <Button
+              data-testid="nav-oi-change-mobile"
+              variant="outline" size="sm"
+              onClick={() => setActiveTab("oi-change")}
+              className={`flex-1 rounded-b-lg ${
+                activeTab === "oi-change"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+            >
+              OI Change
+            </Button>
+            <Button
+              data-testid="nav-strike-table-mobile"
+              variant="outline" size="sm"
+              onClick={() => setActiveTab("strike-table")}
+              className={`flex-1 rounded-b-lg ${
+                activeTab === "strike-table"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+            >
+              Strike Table
+            </Button>
+            <Button
+              data-testid="nav-alerts-mobile"
+              variant="outline" size="sm"
+              onClick={() => setActiveTab("alerts")}
+              className={`flex-1 rounded-b-lg ${
+                activeTab === "alerts"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+            >
+              Alerts
+            </Button>
+          </div>
+        </nav>
+      )}
 
       {authState.is_admin && (
         <CredentialsModal
