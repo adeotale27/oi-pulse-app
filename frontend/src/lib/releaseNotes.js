@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.08",
+    date: "2026-08-13",
+    user: [
+      "Year heatmap shows the same booked month you see on Calendar (including today)",
+    ],
+    admin: [
+      "Year recap reloads after a journal save; Straddle WS connect logs are dev-only",
+    ],
+  },
+  {
     version: "5.07",
     date: "2026-08-13",
     user: [
