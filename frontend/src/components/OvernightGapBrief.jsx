@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, Moon, AlertTriangle, TrendingUp, TrendingDown, Minimize2, Maximize2, GripHorizontal, PanelLeft, PanelRight } from "lucide-react";
+import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, PanelLeft, PanelRight } from "lucide-react";
 import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
 import { readCarryDockSide, snapDockFromClientX, writeCarryDockSide } from "@/lib/carryDock";
+import { carryFocusEvents, sellerCarryAdvice, writerBiasLine } from "@/lib/carryFocus";
 import {
   briefTriggerKey,
   carryHorizonLabel,
@@ -16,10 +17,17 @@ import {
   shouldAutoShowBrief,
 } from "@/lib/overnightBrief";
 
+function isPhone() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
+
 function readCarryBottom() {
   try {
     const n = Number(localStorage.getItem("oiCarryBriefBottomPx"));
-    if (Number.isFinite(n) && n >= 8 && n <= 2400) return n;
+    if (!Number.isFinite(n) || n < 8 || n > 2400) return null;
+    // Old builds let the sheet be dragged to the top of the phone and cover the desk.
+    if (isPhone() && n > 140) return null;
+    return n;
   } catch { /* noop */ }
   return null;
 }
@@ -82,9 +90,13 @@ function fmtDelta(v) {
  * Sticky “Should I carry?” overnight gap brief.
  * Auto-opens from 14:00 IST on a trading day through next market open.
  * Desktop: left by default; drag the header or use the dock button to move it.
- * Phone: panel is height-capped with a sticky close bar so it cannot trap the screen.
+ * Phone: chip by default; expanded sheet stays on the dock (not dragged over the chart).
  */
-export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKNIFTY"] }) {
+export default function OvernightGapBrief({
+  indices = ["NIFTY", "SENSEX", "BANKNIFTY"],
+  vix = null,
+  activeIndex = null,
+}) {
   const [now, setNow] = useState(() => new Date());
   const [active, setActive] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -96,8 +108,10 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   const [bottomPx, setBottomPx] = useState(() => readCarryBottom());
   const [iconOnly, setIconOnly] = useState(() => readCarryIconOnly());
   const [dock, setDock] = useState(() => readCarryDockSide());
+  const [vixLive, setVixLive] = useState(null);
   const dragRef = useRef(null);
   const skipClickRef = useRef(false);
+  const userPinnedRef = useRef(null);
 
   const setDockSide = (side) => {
     const next = side === "right" ? "right" : "left";
@@ -105,14 +119,37 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     writeCarryDockSide(next);
   };
 
+  const minimize = () => {
+    const until = nextSessionOpenMs(new Date());
+    if (triggerKey) writeBriefMinimize(triggerKey, until);
+    userPinnedRef.current = "min";
+    setMinimized(true);
+    setIconOnly(false);
+    writeCarryIconOnly(false);
+  };
+
+  const expand = () => {
+    userPinnedRef.current = "open";
+    setIconOnly(false);
+    writeCarryIconOnly(false);
+    setMinimized(false);
+  };
+
+  const dismissUntilOpen = () => {
+    minimize();
+  };
+
   const clampBottom = useCallback((raw) => {
     const min = dockClearance();
-    const max = Math.max(min, (typeof window !== "undefined" ? window.innerHeight : 800) - 72);
+    const phone = isPhone();
+    const max = phone
+      ? Math.max(min, 120)
+      : Math.max(min, (typeof window !== "undefined" ? window.innerHeight : 800) - 72);
     return Math.min(max, Math.max(min, raw));
   }, []);
 
   const onCarryPointerDown = (e, kind = "mobile") => {
-    const desktop = typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches;
+    const desktop = !isPhone();
     if (kind === "mobile" && desktop) return;
     if (kind === "dock" && !desktop) return;
     e.preventDefault();
@@ -127,6 +164,8 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       dragRef.current.moved = true;
     }
     if (dragRef.current.kind === "dock") return;
+    // Expanded phone sheet stays docked; only the moon chip can slide a little.
+    if (!minimized && isPhone()) return;
     const dy = dragRef.current.startY - e.clientY;
     setBottomPx(clampBottom(dragRef.current.startBottom + dy));
   };
@@ -136,6 +175,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
     skipClickRef.current = !!dragRef.current?.moved;
     const kind = dragRef.current.kind;
     const moved = dragRef.current.moved;
+    const startY = dragRef.current.startY;
     const shouldExpand = minimized && !moved;
     const endX = e.clientX;
     const w = typeof window !== "undefined" ? window.innerWidth : 400;
@@ -145,10 +185,18 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
       return;
     }
+    if (!minimized && isPhone()) {
+      const swipeDown = e.clientY - startY;
+      dragRef.current = null;
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+      if (swipeDown > 36) minimize();
+      return;
+    }
     const edgeDock = dock === "left" ? endX <= 72 : endX >= w - 72;
     if (edgeDock) {
       setIconOnly(true);
       setMinimized(true);
+      userPinnedRef.current = "min";
       writeCarryIconOnly(true);
     } else if (Math.abs(endX - (dock === "left" ? 0 : w)) > 120) {
       setIconOnly(false);
@@ -161,12 +209,15 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       writeCarryBottom(next);
       return next;
     });
-    if (shouldExpand && !edgeDock) setMinimized(false);
+    if (shouldExpand && !edgeDock) {
+      userPinnedRef.current = "open";
+      setMinimized(false);
+    }
   };
 
-  const carryPosStyle = {
-    bottom: bottomPx != null ? `${bottomPx}px` : undefined,
-  };
+  const carryPosStyle = isPhone() && !minimized
+    ? { bottom: `${dockClearance()}px` }
+    : { bottom: bottomPx != null ? `${bottomPx}px` : undefined };
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 15_000);
@@ -176,6 +227,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   useEffect(() => {
     const onExtras = (data) => {
       setGift(data?.gift_nifty || null);
+      if (data?.vix != null) setVixLive(data.vix);
     };
     return subscribeExtras(onExtras);
   }, []);
@@ -187,24 +239,29 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   );
   const holidayNote = useMemo(() => holidayCarryAdvice(ist.weekday), [ist.weekday]);
 
-  // Auto-show when trigger fires; respect minimize-until-next-open.
+  // Auto-show when trigger fires; phone stays a chip unless the user opened it.
   useEffect(() => {
     const key = briefTriggerKey(ist.dateISO, ist.weekday, ist.minutesOfDay);
     if (!key || !shouldAutoShowBrief(ist.weekday, ist.minutesOfDay, ist.dateISO)) {
-      // Past the carry window / next session started → hide completely.
       setActive(false);
       setMinimized(false);
       setTriggerKey(null);
+      userPinnedRef.current = null;
       return;
     }
     setTriggerKey(key);
     const min = readBriefMinimize(key);
-    if (min) {
+    if (userPinnedRef.current === "open") {
+      setMinimized(false);
+      setActive(true);
+      return;
+    }
+    if (userPinnedRef.current === "min" || min) {
       setMinimized(true);
       setActive(true);
       return;
     }
-    setMinimized(false);
+    setMinimized(isPhone());
     setActive(true);
   }, [ist.dateISO, ist.weekday, ist.minutesOfDay]);
 
@@ -223,6 +280,9 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
               bias,
               minutes: data?.also_windows?.session?.minutes ?? null,
               price: data?.current?.price ?? null,
+              atm: data?.current?.atm ?? null,
+              pcr: data?.current?.pcr ?? null,
+              expiry: data?.current?.expiry ?? null,
             };
           } catch {
             return { index: idx, bias: null, minutes: null, price: null };
@@ -259,6 +319,13 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   }, [loadIndexImpacts]);
 
   const giftPct = gift?.change_pct != null ? Number(gift.change_pct) : null;
+  const vixNow = (() => {
+    const fromLive = vixLive?.last ?? vixLive?.ltp ?? vixLive;
+    const raw = vix != null ? vix : fromLive;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
+  const focusEvents = useMemo(() => carryFocusEvents(events), [events]);
   const verdict = useMemo(
     () =>
       carryVerdict({
@@ -266,27 +333,21 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         events,
         giftPct,
         weekday: ist.weekday,
+        vix: vixNow,
       }),
-    [biases, events, giftPct, ist.weekday],
+    [biases, events, giftPct, ist.weekday, vixNow],
   );
-
-  const minimize = () => {
-    const until = nextSessionOpenMs(new Date());
-    if (triggerKey) writeBriefMinimize(triggerKey, until);
-    setMinimized(true);
-    setIconOnly(false);
-    writeCarryIconOnly(false);
-  };
-
-  const expand = () => {
-    setIconOnly(false);
-    writeCarryIconOnly(false);
-    setMinimized(false);
-  };
-
-  const dismissUntilOpen = () => {
-    minimize();
-  };
+  const advice = sellerCarryAdvice({
+    band: verdict.band,
+    holidayAdvice: holidayNote,
+    vix: vixNow,
+    giftPct,
+    focusCount: focusEvents.length,
+  });
+  const orderedBiases = useMemo(() => {
+    if (!activeIndex) return biases;
+    return [...biases].sort((a, b) => (a.index === activeIndex ? -1 : b.index === activeIndex ? 1 : 0));
+  }, [biases, activeIndex]);
 
   if (!active) return null;
 
@@ -299,15 +360,19 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
 
   const bandLabel =
     verdict.band === "DO_NOT_CARRY"
-      ? "Do not carry"
+      ? "Do not carry shorts"
       : verdict.band === "REDUCE"
-        ? "Reduce / hedge"
-        : "Carry OK (sized)";
+        ? "Reduce / hedge shorts"
+        : "Carry shorts (sized)";
 
-  const title =
-    ist.weekday === 0
-      ? "Overnight gap brief · Sunday night"
-      : "Overnight gap brief · Should I carry?";
+  const title = "Carry shorts overnight?";
+
+  const dockEdge = dock === "left"
+    ? (iconOnly ? "left-1" : "left-3")
+    : (iconOnly ? "right-1" : "right-3");
+  const expandedDock = dock === "left"
+    ? "left-3 right-3 sm:right-auto sm:w-[26rem]"
+    : "left-3 right-3 sm:left-auto sm:w-[26rem]";
 
   const dockEdge = dock === "left"
     ? (iconOnly ? "left-1" : "left-3")
@@ -338,13 +403,13 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         onPointerMove={onCarryPointerMove}
         onPointerUp={onCarryPointerUp}
         onPointerCancel={onCarryPointerUp}
-        title="Open overnight gap brief · drag to the edge for moon only"
+        title="Open carry brief · shorts overnight"
         aria-label="Carry brief"
       >
         <Moon className={iconOnly ? "w-5 h-5" : "w-3.5 h-3.5"} />
         {!iconOnly && (
           <>
-            <span>Carry brief</span>
+            <span>Carry shorts</span>
             <span className="opacity-70 font-mono-data">{verdict.score}/100</span>
             <Maximize2 className="w-3.5 h-3.5 opacity-70" />
           </>
@@ -354,24 +419,36 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   }
 
   return (
+    <>
+    <button
+      type="button"
+      className="md:hidden fixed z-[60] top-[max(0.5rem,env(safe-area-inset-top))] right-3 h-11 w-11 rounded-full bg-slate-900 text-white shadow-lg inline-flex items-center justify-center"
+      onClick={minimize}
+      aria-label="Close carry brief"
+      data-testid="overnight-gap-brief-close-fab"
+    >
+      <X className="w-5 h-5" />
+    </button>
     <div
       data-testid="overnight-gap-brief"
       data-dock={dock}
       className={`fixed z-40 md:bottom-3 ${expandedDock} flex flex-col rounded-md border-2 shadow-lg overflow-hidden ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
         ...carryPosStyle,
-        maxHeight: `min(72dvh, calc(100dvh - ${(bottomPx != null ? bottomPx : 56) + 16}px))`,
+        maxHeight: isPhone()
+          ? "min(42dvh, 22rem)"
+          : `min(64dvh, calc(100dvh - ${(bottomPx != null ? bottomPx : 16) + 16}px))`,
       }}
       role="dialog"
       aria-label={title}
     >
       <div
-        className="sticky top-0 z-10 flex items-start gap-2 px-3 pt-2 pb-2 shrink-0 border-b border-black/10 dark:border-white/10 bg-inherit rounded-t-md"
+        className="flex items-center gap-2 px-2 pt-2 pb-2 shrink-0 bg-slate-900 text-white"
       >
         <button
           type="button"
-          className="md:hidden mt-0.5 min-h-11 min-w-11 inline-flex items-center justify-center opacity-80 touch-none"
-          aria-label="Drag carry brief"
+          className="md:hidden min-h-11 min-w-11 inline-flex items-center justify-center opacity-90 touch-none"
+          aria-label="Swipe down to close carry brief"
           data-testid="overnight-gap-brief-drag"
           onPointerDown={(e) => onCarryPointerDown(e, "mobile")}
           onPointerMove={onCarryPointerMove}
@@ -391,18 +468,18 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         >
           <Moon className="w-4 h-4 shrink-0 opacity-80" />
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-widest opacity-70">Should I carry?</div>
+            <div className="text-[10px] uppercase tracking-widest opacity-70">Short options · next open</div>
             <div className="text-sm font-semibold leading-tight">{title}</div>
           </div>
         </div>
         <div className="md:hidden min-w-0 flex-1">
-          <div className="text-[10px] uppercase tracking-widest opacity-70">Should I carry?</div>
+          <div className="text-[10px] uppercase tracking-widest opacity-70">Short options · next open</div>
           <div className="text-sm font-semibold leading-tight">{title}</div>
         </div>
         <button
           type="button"
           onClick={() => setDockSide(dock === "left" ? "right" : "left")}
-          className="hidden md:inline-flex opacity-70 hover:opacity-100 p-1.5 rounded"
+          className="hidden md:inline-flex opacity-80 hover:opacity-100 p-1.5 rounded"
           aria-label={dock === "left" ? "Move carry brief to the right" : "Move carry brief to the left"}
           title={dock === "left" ? "Move to right" : "Move to left"}
           data-testid="overnight-gap-brief-dock-toggle"
@@ -412,7 +489,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         <button
           type="button"
           onClick={minimize}
-          className="opacity-80 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
+          className="opacity-90 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
           aria-label="Minimize overnight brief until next session"
           title="Minimize until next market open"
           data-testid="overnight-gap-brief-minimize"
@@ -422,7 +499,7 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         <button
           type="button"
           onClick={dismissUntilOpen}
-          className="opacity-80 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
+          className="opacity-90 hover:opacity-100 min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center md:p-1.5 rounded"
           aria-label="Close overnight brief"
           data-testid="overnight-gap-brief-dismiss"
         >
@@ -430,19 +507,16 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         </button>
       </div>
 
-      <div className="px-3 pb-2 pt-2 space-y-2.5 text-xs overflow-y-auto min-h-0 flex-1">
+      <div className="px-3 pb-2 pt-2 space-y-2 text-xs overflow-y-auto min-h-0 flex-1">
         <div
           className="flex items-center justify-between gap-2 rounded border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 px-2 py-1.5"
           data-testid="overnight-gap-verdict"
         >
           <span className="font-semibold text-sm">{bandLabel}</span>
-          <span className="font-mono-data opacity-70">{verdict.score}/100 risk</span>
+          <span className="font-mono-data opacity-70">{verdict.score}/100</span>
         </div>
         <p className="leading-snug opacity-90" data-testid="overnight-gap-advice">
-          {verdict.advice}
-        </p>
-        <p className="text-[10px] opacity-60">
-          Minimize keeps a chip until next session open (admin market hours). Tap the chip anytime to re-read.
+          {advice}
         </p>
         {holidayNote && (
           <div
@@ -453,41 +527,58 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           </div>
         )}
 
+        <div className="flex flex-wrap gap-x-3 gap-y-1 rounded bg-white/60 dark:bg-black/25 px-2 py-1.5">
+          <span data-testid="overnight-gap-gift">
+            <span className="opacity-60 mr-1">GIFT</span>
+            {giftPct != null && Number.isFinite(giftPct) ? (
+              <span className={`font-mono-data font-semibold ${
+                giftPct > 0.05 ? "text-emerald-700" : giftPct < -0.05 ? "text-rose-700" : ""
+              }`}>
+                {giftPct >= 0 ? "+" : ""}{giftPct.toFixed(2)}%
+              </span>
+            ) : (
+              <span className="opacity-50">—</span>
+            )}
+          </span>
+          <span>
+            <span className="opacity-60 mr-1">VIX</span>
+            <span className="font-mono-data font-semibold">{vixNow != null ? vixNow.toFixed(1) : "—"}</span>
+          </span>
+          <span className="opacity-60">{carryHorizonLabel(ist.weekday)}</span>
+        </div>
+
         <div>
           <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1">
-            Whole-day bias · 9:15 → close
+            Session OI · which shorts are supported
           </div>
           {loading && biases.length === 0 ? (
-            <div className="opacity-60">Loading session bias…</div>
+            <div className="opacity-60">Loading session OI…</div>
           ) : (
             <div className="space-y-1" data-testid="overnight-gap-biases">
-              {biases.map((row) => {
-                const b = row.bias;
-                const bull = b?.bullish;
+              {orderedBiases.map((row) => {
+                const line = writerBiasLine(row);
+                const on = row.index === activeIndex;
                 return (
                   <div
                     key={row.index}
-                    className="flex items-center gap-2 rounded bg-white/60 dark:bg-black/25 px-2 py-1"
+                    className={`rounded px-2 py-1 ${on ? "bg-white dark:bg-black/40 ring-1 ring-black/10" : "bg-white/60 dark:bg-black/25"}`}
                     data-testid={`overnight-bias-${row.index}`}
                   >
-                    <span className="font-semibold w-20 shrink-0">{row.index}</span>
-                    {b ? (
-                      <>
-                        {bull ? (
-                          <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        ) : (
-                          <TrendingDown className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                        )}
-                        <span className={bull ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>
-                          {b.label} {b.pct}%
-                        </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold shrink-0">{row.index}</span>
+                      {row.atm != null && (
+                        <span className="font-mono-data opacity-60 text-[10px]">ATM {row.atm}</span>
+                      )}
+                      {row.pcr != null && Number.isFinite(Number(row.pcr)) && (
+                        <span className="font-mono-data opacity-60 text-[10px]">PCR {Number(row.pcr).toFixed(2)}</span>
+                      )}
+                      {row.bias ? (
                         <span className="ml-auto font-mono-data opacity-60 text-[10px]">
-                          PE {fmtDelta(b.pe)} · CE {fmtDelta(b.ce)}
+                          PE {fmtDelta(row.bias.pe)} · CE {fmtDelta(row.bias.ce)}
                         </span>
-                      </>
-                    ) : (
-                      <span className="opacity-50">No session data</span>
-                    )}
+                      ) : null}
+                    </div>
+                    <div className="opacity-80 leading-snug">{line.text}</div>
                   </div>
                 );
               })}
@@ -495,38 +586,16 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
           )}
         </div>
 
-        <div
-          className="flex items-center gap-2 rounded bg-white/60 dark:bg-black/25 px-2 py-1.5"
-          data-testid="overnight-gap-gift"
-        >
-          <span className="font-semibold shrink-0">GIFT Nifty</span>
-          {giftPct != null && Number.isFinite(giftPct) ? (
-            <span
-              className={`font-mono-data font-semibold ${
-                giftPct > 0.05 ? "text-emerald-700" : giftPct < -0.05 ? "text-rose-700" : "opacity-80"
-              }`}
-            >
-              {giftPct >= 0 ? "+" : ""}
-              {giftPct.toFixed(2)}%
-              {gift?.last != null ? (
-                <span className="opacity-60 font-normal ml-1">· {Number(gift.last).toFixed(0)}</span>
-              ) : null}
-            </span>
-          ) : (
-            <span className="opacity-50">No overnight print yet</span>
-          )}
-        </div>
-
         <div>
           <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
-            Events & index impact · {carryHorizonLabel(ist.weekday)}
+            Into the next open
           </div>
-          {events.length === 0 ? (
-            <div className="opacity-60 px-1">No major scheduled events or index impacts in carry window.</div>
+          {focusEvents.length === 0 ? (
+            <div className="opacity-60 px-1">No holiday or heavy index-impact in the carry window.</div>
           ) : (
-            <ul className="space-y-0.5 max-h-36 overflow-y-auto" data-testid="overnight-gap-events">
-              {events.slice(0, 10).map((e) => (
+            <ul className="space-y-0.5" data-testid="overnight-gap-events">
+              {focusEvents.map((e) => (
                 <li key={`${e.date}|${e.name}`} className="leading-snug px-1">
                   <span className="font-medium">{dayLabel(e.daysAway, ist.weekday)}</span>
                   {" · "}
@@ -549,5 +618,6 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
         )}
       </div>
     </div>
+    </>
   );
 }

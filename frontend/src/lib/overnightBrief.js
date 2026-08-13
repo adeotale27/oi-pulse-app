@@ -278,11 +278,12 @@ export function sessionBiasFromSnapshots(current, sessionPrevious) {
  * Compact carry verdict from per-index bias + events + GIFT move.
  * Not a trade recommendation — a packaging of signals for "should I carry?".
  */
-export function carryVerdict({ biases = [], events = [], giftPct = null, weekday }) {
+export function carryVerdict({ biases = [], events = [], giftPct = null, weekday, vix = null }) {
   const criticalEvents = events.filter((e) => e.impact === "critical" || e.type === "holiday");
   const highEvents = events.filter((e) => e.impact === "high");
   const indexImpacts = events.filter((e) => e.source === "index-impact");
   const giftAbs = giftPct != null && Number.isFinite(Number(giftPct)) ? Math.abs(Number(giftPct)) : null;
+  const vixN = vix != null && Number.isFinite(Number(vix)) ? Number(vix) : null;
 
   let score = 0; // higher = more caution
   const notes = [];
@@ -330,7 +331,17 @@ export function carryVerdict({ biases = [], events = [], giftPct = null, weekday
 
   if (weekday === 5 || weekday === 0) {
     score += 10;
-    notes.push(weekday === 5 ? "Friday → weekend gap" : "Sunday → Monday open");
+    notes.push(weekday === 5 ? "Friday → weekend gap on short premium" : "Sunday → Monday open gap");
+  }
+
+  if (vixN != null) {
+    if (vixN >= 18) {
+      score += 18;
+      notes.push(`India VIX ${vixN.toFixed(1)} — overnight gap typically wider`);
+    } else if (vixN >= 15) {
+      score += 8;
+      notes.push(`India VIX ${vixN.toFixed(1)}`);
+    }
   }
 
   const holidayAdv = holidayCarryAdvice(weekday);
@@ -341,13 +352,13 @@ export function carryVerdict({ biases = [], events = [], giftPct = null, weekday
 
   score = Math.min(100, score);
   let band = "CARRY_OK";
-  let advice = "Bias + calendar look manageable — carry only if delta is hedged.";
+  let advice = "Session OI and calendar look carry-able if shorts stay hedged and not too close to spot.";
   if (score >= 55) {
     band = "DO_NOT_CARRY";
-    advice = "Skewed risk into the open — cut or hedge what you won't own through the gap.";
+    advice = "Do not hold unhedged short premium through the gap. Cut or make it defined-risk before the next open.";
   } else if (score >= 30) {
     band = "REDUCE";
-    advice = "Carry with reduced size / hard stop. Events, holidays, or index impacts argue for caution.";
+    advice = "Carry only the shorts that session OI still supports. Hedge or reduce the index working against you.";
   }
   if (holidayAdv && band === "CARRY_OK") {
     band = "REDUCE";

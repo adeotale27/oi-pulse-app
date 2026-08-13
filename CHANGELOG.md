@@ -1,6 +1,15 @@
 # Changelog
 
+## V5.10 — 2026-08-13
+
+Carry brief stays usable on phone and talks like an options seller.
+
+- Phone: moon chip by default; the sheet stays on the dock (no more blank overlay dragged over OI Change / Positions)
+- Dark header + a floating Close control; swipe down on the handle to minimize
+- Copy is about carrying **short premium**: session OI (which shorts are supported), GIFT, India VIX, holidays, and heavy index-impact only
+
 ## V5.09 — 2026-08-13
+
 
 Journal save actually persists notes; carry brief docks left and can be closed on phone.
 

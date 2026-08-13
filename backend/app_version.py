@@ -1,7 +1,7 @@
 """Canonical product version (keep in lockstep with repo-root VERSION)."""
 from pathlib import Path
 
-_FALLBACK = "5.09"
+_FALLBACK = "5.10"
 
 
 def load_app_version() -> str:

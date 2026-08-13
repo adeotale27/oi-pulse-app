@@ -1809,7 +1809,11 @@ export default function Dashboard() {
           onOpenUpload={() => setUploadOpen(true)}
         />
       )}
-      <OvernightGapBrief indices={enabledIndices.length ? enabledIndices : INDICES} />
+      <OvernightGapBrief
+        indices={enabledIndices.length ? enabledIndices : INDICES}
+        vix={current?.vix || status?.vix}
+        activeIndex={activeIndex}
+      />
       <Header
         status={status}
         current={current}

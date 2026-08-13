@@ -4,6 +4,17 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.10",
+    date: "2026-08-13",
+    user: [
+      "Carry brief on phone is a moon chip; open it and Close / swipe-down always work (it no longer covers the chart)",
+      "Brief is written for carrying short premium: session OI support, GIFT, VIX, holidays, heavy index-impact",
+    ],
+    admin: [
+      "Phone ignores old drag-to-top positions; desktop still docks left and can be moved",
+    ],
+  },
+  {
     version: "5.09",
     date: "2026-08-13",
     user: [
