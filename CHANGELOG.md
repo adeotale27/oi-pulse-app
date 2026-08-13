@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.02 — 2026-08-13
+
+Backend crashed on import (nginx `connection refused` to :8001, k8s never Ready).
+
+FastAPI 0.110 treats `GET /positions(request: Optional[Request] = None)` as a Pydantic
+response field. Signature is now `request: Request` like the other desk routes.
+Removing unused Emergent pip packages did not cause this — the traceback is this route.
+
 ## V5.01 — 2026-08-13
 
 K8s publish was timing out at readiness (build OK, pod never Ready).
