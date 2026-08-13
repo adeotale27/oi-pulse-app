@@ -48,7 +48,9 @@ export function connectStraddleWS(index, opts = {}, onMessage, onOpen, onClose, 
     try {
       const { isMarketQuiescent } = require("@/lib/marketTimes");
       if (isMarketQuiescent()) {
-        console.info("[Straddle WS] Market quiescent: deferring WS connect and watching for reopen");
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[Straddle WS] Market quiescent: deferring WS connect and watching for reopen");
+        }
         watcherId = setInterval(() => {
           try {
             if (!isMarketQuiescent()) {
@@ -76,7 +78,9 @@ export function connectStraddleWS(index, opts = {}, onMessage, onOpen, onClose, 
       ws = new WebSocket(wsUrl);
       ws.onopen = () => {
         started = true;
-        console.log("[Straddle WS] Connected");
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[Straddle WS] Connected");
+        }
         backoff = 1000;
         if (onOpen) onOpen();
       };
@@ -85,7 +89,9 @@ export function connectStraddleWS(index, opts = {}, onMessage, onOpen, onClose, 
       };
       ws.onclose = () => {
         started = false;
-        console.log("[Straddle WS] Closed, reconnecting in", backoff, "ms");
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[Straddle WS] Closed, reconnecting in", backoff, "ms");
+        }
         if (onClose) onClose();
         if (stopped) return;
         setTimeout(() => { backoff = Math.min(30000, backoff * 1.5); start(); }, backoff);

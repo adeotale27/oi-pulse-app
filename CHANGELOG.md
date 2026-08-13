@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.08 — 2026-08-13
+
+Journal year grid stays in lockstep with the open month; Straddle WS is quiet in production.
+
+- Year heatmap overlays the calendar’s booked month (so today’s book cannot vanish on the year tab)
+- Saving a journal day reloads the year recap
+- Straddle WebSocket connect/reconnect logs only in development
+
 ## V5.07 — 2026-08-13
 
 Production hardening and leftover desk polish. Alerts are unchanged.

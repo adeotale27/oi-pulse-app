@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { toast } from "sonner";
 import { isHoliday, isTradingDayIST } from "@/lib/holidays";
+import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
 import InfoTip from "@/components/InfoTip";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -297,6 +298,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
       });
       toast.success("Journal saved");
       loadMonth(year, month);
+      loadYear(year);
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Save failed");
     } finally {
@@ -350,67 +352,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const avgWin = Number(stats.avg_win) || 0;
   const avgLoss = Math.abs(Number(stats.avg_loss) || 0);
   const barTotal = avgWin + avgLoss || 1;
-  const heat = useMemo(() => {
-    const base = yearData?.heatmap;
-    const monthDays = data?.days || [];
-    const monthHasBooked = monthDays.some(isTraded);
-    const netsEmpty = !(base?.month_nets || []).some((v) => Math.abs(Number(v) || 0) >= 0.01);
-    if (base && !(netsEmpty && monthHasBooked && data?.month === month && data?.year === year)) {
-      return base;
-    }
-    const by_index = {
-      NIFTY: Array(12).fill(0),
-      SENSEX: Array(12).fill(0),
-      BANKNIFTY: Array(12).fill(0),
-    };
-    const month_nets = Array(12).fill(0);
-    const trading = Array(12).fill(0);
-    if (base?.by_index) {
-      for (const idx of Object.keys(by_index)) {
-        by_index[idx] = (base.by_index[idx] || Array(12).fill(0)).slice();
-      }
-    }
-    if (base?.month_nets) {
-      for (let i = 0; i < 12; i += 1) month_nets[i] = Number(base.month_nets[i]) || 0;
-    }
-    if (base?.months) {
-      for (let i = 0; i < 12; i += 1) trading[i] = Number(base.months[i]?.trading_days) || 0;
-    }
-    const mi = month - 1;
-    if (mi >= 0 && mi < 12 && monthHasBooked) {
-      let net = 0;
-      let days = 0;
-      const idxAcc = { NIFTY: 0, SENSEX: 0, BANKNIFTY: 0 };
-      monthDays.forEach((d) => {
-        if (!isTraded(d)) return;
-        net += cellPnl(d);
-        days += 1;
-        const ip = d.booked_index_pnl || {};
-        for (const k of Object.keys(idxAcc)) {
-          idxAcc[k] += Number(ip[k]) || 0;
-        }
-      });
-      month_nets[mi] = net;
-      trading[mi] = days;
-      for (const k of Object.keys(idxAcc)) by_index[k][mi] = idxAcc[k];
-    }
-    return {
-      year,
-      indices: ["NIFTY", "SENSEX", "BANKNIFTY"],
-      by_index,
-      month_nets,
-      months: month_nets.map((v, i) => ({
-        month: i + 1,
-        net_pnl: v,
-        trading_days: trading[i],
-        by_index: {
-          NIFTY: by_index.NIFTY[i],
-          SENSEX: by_index.SENSEX[i],
-          BANKNIFTY: by_index.BANKNIFTY[i],
-        },
-      })),
-    };
-  }, [yearData, data, year, month]);
+  const heat = useMemo(
+    () => overlayMonthOnYearHeat(yearData?.heatmap, data, year, month),
+    [yearData, data, year, month],
+  );
   const heatMax = Math.max(1, ...(heat?.month_nets || []).map((v) => Math.abs(v)));
   const yearStats = useMemo(() => {
     const s = yearData?.stats;
