@@ -269,6 +269,8 @@ export const fetchOIChange = (idx, minutes, opts = {}) => {
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
 export const fetchJournalMonth = (year, month) =>
   api.get("/journal", { params: { year, month } }).then((r) => r.data);
+export const fetchJournalYear = (year) =>
+  api.get(`/journal/year/${year}`).then((r) => r.data);
 export const fetchJournalDay = (day) =>
   api.get(`/journal/${day}`).then((r) => r.data);
 export const saveJournalDay = (day, body) =>
