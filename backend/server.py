@@ -3734,15 +3734,13 @@ async def kite_user_disconnect(request: Request, role: str = Depends(require_des
 
 
 @api_router.get("/positions")
-async def get_positions(request: Optional[Request] = None, role: str = Depends(require_desk_user)):
+async def get_positions(request: Request, role: str = Depends(require_desk_user)):
     """Fetch F&O positions from the caller's Kite book (net + day).
 
     Admin uses the publisher vault (same client as OI).
     Guests use their own access_token — never the publisher desk token.
     """
     kite = None
-    if request is None:
-        role = "admin"
     if role == "guest":
         guest = await _guest_from_request(request)
         kite, st = await _user_kite_client(guest)

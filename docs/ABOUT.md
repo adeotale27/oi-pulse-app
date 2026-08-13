@@ -1,8 +1,8 @@
 # OI Pulse — About the Project
 
-OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V5.01**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
+OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V5.02**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
 
-Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Click the logo or **V5.01** in the app for the same About panel.
+Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Click the logo or **V5.02** in the app for the same About panel.
 
 Stack: **React (CRA/craco) + FastAPI + Motor/MongoDB + Kite Connect**.
 
