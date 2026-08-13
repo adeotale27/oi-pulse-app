@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { X, Moon, AlertTriangle, TrendingUp, TrendingDown, Minimize2, Maximize2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { X, Moon, AlertTriangle, TrendingUp, TrendingDown, Minimize2, Maximize2, GripHorizontal } from "lucide-react";
 import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
 import {
   briefTriggerKey,
@@ -14,6 +14,25 @@ import {
   sessionBiasFromSnapshots,
   shouldAutoShowBrief,
 } from "@/lib/overnightBrief";
+
+function readCarryBottom() {
+  try {
+    const n = Number(localStorage.getItem("oiCarryBriefBottomPx"));
+    if (Number.isFinite(n) && n >= 8 && n <= 2400) return n;
+  } catch { /* noop */ }
+  return null;
+}
+
+function writeCarryBottom(px) {
+  try { localStorage.setItem("oiCarryBriefBottomPx", String(Math.round(px))); } catch { /* noop */ }
+}
+
+function dockClearance() {
+  if (typeof window === "undefined") return 12;
+  const mobile = window.matchMedia("(max-width: 767px)").matches;
+  const safe = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("env(safe-area-inset-bottom)")) || 0;
+  return mobile ? 52 + (Number.isFinite(safe) ? safe : 0) : 12;
+}
 
 function getISTParts(dt = new Date()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -65,6 +84,48 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   const [loading, setLoading] = useState(false);
   const [gift, setGift] = useState(null);
   const [indexImpacts, setIndexImpacts] = useState([]);
+  const [bottomPx, setBottomPx] = useState(() => readCarryBottom());
+  const dragRef = useRef(null);
+  const skipClickRef = useRef(false);
+
+  const clampBottom = useCallback((raw) => {
+    const min = dockClearance();
+    const max = Math.max(min, (typeof window !== "undefined" ? window.innerHeight : 800) - 72);
+    return Math.min(max, Math.max(min, raw));
+  }, []);
+
+  const onCarryPointerDown = (e) => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const startBottom = bottomPx != null ? bottomPx : dockClearance();
+    dragRef.current = { startY: e.clientY, startBottom, moved: false };
+  };
+
+  const onCarryPointerMove = (e) => {
+    if (!dragRef.current) return;
+    const dy = dragRef.current.startY - e.clientY;
+    if (Math.abs(e.clientY - dragRef.current.startY) > 6) dragRef.current.moved = true;
+    setBottomPx(clampBottom(dragRef.current.startBottom + dy));
+  };
+
+  const onCarryPointerUp = (e) => {
+    if (!dragRef.current) return;
+    skipClickRef.current = !!dragRef.current?.moved;
+    const shouldExpand = minimized && !dragRef.current.moved;
+    dragRef.current = null;
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+    setBottomPx((prev) => {
+      const next = clampBottom(prev != null ? prev : dockClearance());
+      writeCarryBottom(next);
+      return next;
+    });
+    if (shouldExpand) setMinimized(false);
+  };
+
+  const carryPosStyle = {
+    bottom: bottomPx != null ? `${bottomPx}px` : undefined,
+  };
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 15_000);
@@ -210,8 +271,19 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
       <button
         type="button"
         data-testid="overnight-gap-brief-chip"
-        onClick={expand}
-        className={`fixed z-50 bottom-[5.25rem] md:bottom-3 right-3 flex items-center gap-2 rounded-full border-2 px-3 py-2 shadow-lg text-xs font-semibold ${bandCls}`}
+        onClick={() => {
+          if (skipClickRef.current) {
+            skipClickRef.current = false;
+            return;
+          }
+          expand();
+        }}
+        className={`fixed z-50 md:bottom-3 right-3 flex items-center gap-2 rounded-full border-2 px-3 py-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
+        style={carryPosStyle}
+        onPointerDown={onCarryPointerDown}
+        onPointerMove={onCarryPointerMove}
+        onPointerUp={onCarryPointerUp}
+        onPointerCancel={onCarryPointerUp}
         title="Open overnight gap brief"
       >
         <Moon className="w-3.5 h-3.5" />
@@ -225,12 +297,27 @@ export default function OvernightGapBrief({ indices = ["NIFTY", "SENSEX", "BANKN
   return (
     <div
       data-testid="overnight-gap-brief"
-      className={`fixed z-50 bottom-[5.25rem] md:bottom-3 right-3 left-3 sm:left-auto sm:w-[26rem] rounded-md border-2 shadow-lg ${bandCls}`}
+      className={`fixed z-50 md:bottom-3 right-3 left-3 sm:left-auto sm:w-[26rem] rounded-md border-2 shadow-lg ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
+      style={carryPosStyle}
       role="dialog"
       aria-label={title}
     >
-      <div className="flex items-start gap-2 px-3 pt-2.5 pb-1">
-        <Moon className="w-4 h-4 mt-0.5 shrink-0 opacity-80" />
+      <div
+        className="flex items-start gap-2 px-3 pt-2.5 pb-1 md:cursor-default"
+      >
+        <button
+          type="button"
+          className="md:hidden mt-0.5 p-0.5 opacity-70 touch-none"
+          aria-label="Drag carry brief"
+          data-testid="overnight-gap-brief-drag"
+          onPointerDown={onCarryPointerDown}
+          onPointerMove={onCarryPointerMove}
+          onPointerUp={onCarryPointerUp}
+          onPointerCancel={onCarryPointerUp}
+        >
+          <GripHorizontal className="w-4 h-4" />
+        </button>
+        <Moon className="w-4 h-4 mt-0.5 shrink-0 opacity-80 hidden md:block" />
         <div className="min-w-0 flex-1">
           <div className="text-[10px] uppercase tracking-widest opacity-70">Should I carry?</div>
           <div className="text-sm font-semibold leading-tight">{title}</div>

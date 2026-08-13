@@ -145,13 +145,13 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
     api.get(`/events/${activeIndex}`)
       .then((r) => {
         if (cancelled) return;
-        setEvents(r.data.events || []);
-        if (r.data.upload_meta) setUploadMeta(r.data.upload_meta);
+        setEvents(r.data?.events || []);
+        if (isAdmin && r.data.upload_meta) setUploadMeta(r.data.upload_meta);
       })
       .catch((e) => { if (!cancelled) setErr(e?.response?.data?.detail || e.message || "Failed to load events"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [activeIndex, refreshKey]);
+  }, [activeIndex, refreshKey, isAdmin]);
 
   // Admin-only: independent upload stamps (stale file warnings).
   useEffect(() => {

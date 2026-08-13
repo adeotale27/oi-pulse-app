@@ -18,6 +18,7 @@ import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
 import TelegramPrefsModal from "@/components/TelegramPrefsModal";
 import SettingsModal from "@/components/SettingsModal";
+import TradeJournalModal from "@/components/TradeJournalModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import SentimentBar from "@/components/SentimentBar";
 import HugeShiftModal from "@/components/HugeShiftModal";
@@ -96,12 +97,21 @@ const DASHBOARD_PAGES = [
   { v: "activity", l: "Activity" },
   { v: "holidays", l: "Events" },
   { v: "straddle", l: "Straddle" },
-  { v: "index-events", l: "Index Risk", alwaysOn: true },
+  { v: "index-events", l: "Index Risk" },
   { v: "cas", l: "CAS" },
 ];
 const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
   .filter((page) => !page.adminOnly && page.v !== "cas")
   .map((page) => page.v);
+const ALL_DASHBOARD_PAGE_IDS = DASHBOARD_PAGES.map((page) => page.v);
+
+function pageAllowed(id, { isAdmin, visiblePages, adminPages }) {
+  if (isAdmin) {
+    if (!Array.isArray(adminPages) || adminPages.length === 0) return true;
+    return adminPages.includes(id);
+  }
+  return Array.isArray(visiblePages) && visiblePages.includes(id);
+}
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
@@ -207,6 +217,7 @@ export default function Dashboard() {
   const [morningRefreshOpen, setMorningRefreshOpen] = useState(false);
   const [telegramPrefsOpen, setTelegramPrefsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [flash, setFlash] = useState(false);
   const [expiries, setExpiries] = useState([]);
@@ -224,6 +235,7 @@ export default function Dashboard() {
   const [pulsePull, setPulsePull] = useState(false); // green flash on each fresh pull
   const [oiSettings, setOiSettings] = useState(loadOISettings());
   const [visiblePages, setVisiblePages] = useState(PUBLIC_DEFAULT_PAGES);
+  const [adminVisiblePages, setAdminVisiblePages] = useState(ALL_DASHBOARD_PAGE_IDS);
   const [tabOrder, setTabOrder] = useState(() => loadTabOrder());
   const [tileOrder, setTileOrder] = useState(() => loadTileOrder());
   const [layoutNonce, setLayoutNonce] = useState(0);
@@ -452,6 +464,7 @@ export default function Dashboard() {
     const onSaved = (e) => {
       const settings = e?.detail;
       if (Array.isArray(settings?.visible_pages)) setVisiblePages(settings.visible_pages);
+      if (Array.isArray(settings?.admin_visible_pages)) setAdminVisiblePages(settings.admin_visible_pages);
     };
     window.addEventListener("oi-settings-saved", onSaved);
     return () => window.removeEventListener("oi-settings-saved", onSaved);
@@ -483,27 +496,34 @@ export default function Dashboard() {
     return () => conn.stop();
   }, [status]);
 
+  const tabOn = useCallback(
+    (id) => pageAllowed(id, {
+      isAdmin: !!authState.is_admin,
+      visiblePages,
+      adminPages: adminVisiblePages,
+    }),
+    [authState.is_admin, visiblePages, adminVisiblePages],
+  );
+
   useEffect(() => {
-    if (authState.is_admin) return;
     const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
       .filter((page) => {
-        if (page.adminOnly) return false;
-        if (page.alwaysOn) return true;
-        return visiblePages.includes(page.v);
+        if (page.adminOnly && !authState.is_admin) return false;
+        return tabOn(page.v);
       })
       .map((page) => page.v);
     if (allowedTabs.length === 0) return;
     if (!allowedTabs.includes(activeTab)) {
       setActiveTab(allowedTabs[0]);
     }
-  }, [authState.is_admin, activeTab, visiblePages, tabOrder]);
+  }, [authState.is_admin, activeTab, visiblePages, adminVisiblePages, tabOrder, tabOn]);
 
   const dashboardTabs = useMemo(
     () =>
       orderPages(DASHBOARD_PAGES, tabOrder).filter(
-        (t) => authState.is_admin || t.alwaysOn || (!t.adminOnly && visiblePages.includes(t.v))
+        (t) => (!t.adminOnly || authState.is_admin) && tabOn(t.v),
       ),
-    [tabOrder, authState.is_admin, visiblePages],
+    [tabOrder, authState.is_admin, tabOn],
   );
 
   const handleReorderTabs = useCallback(
@@ -574,8 +594,7 @@ export default function Dashboard() {
 
   const openHolidaysTab = useCallback(() => setActiveTab("holidays"), []);
   const openIndexEventsTab = useCallback(() => setActiveTab("index-events"), []);
-  // Index Event Risk desk is admin-only (not for public/guest users).
-  const showImpactTile = !!authState.is_admin;
+  const showImpactTile = tabOn("index-events");
 
   // Dark mode -> toggle html.dark class + persist
   useEffect(() => {
@@ -950,6 +969,9 @@ export default function Dashboard() {
         if (Array.isArray(res.data.visible_pages)) {
           setVisiblePages(res.data.visible_pages);
         }
+        if (Array.isArray(res.data.admin_visible_pages)) {
+          setAdminVisiblePages(res.data.admin_visible_pages);
+        }
         if (Array.isArray(res.data.enabled_indices) && res.data.enabled_indices.length) {
           setEnabledIndices(res.data.enabled_indices);
         }
@@ -997,6 +1019,9 @@ export default function Dashboard() {
       }
       if (Array.isArray(d.visible_pages)) {
         setVisiblePages(d.visible_pages);
+      }
+      if (Array.isArray(d.admin_visible_pages)) {
+        setAdminVisiblePages(d.admin_visible_pages);
       }
       if (typeof d.show_strike_range === "boolean") {
         setShowStrikeRange(d.show_strike_range);
@@ -1696,7 +1721,7 @@ export default function Dashboard() {
         <GuestBanner
           guestName={authState.guest_name}
           adminName={authState.admin_display_name}
-          showKiteConnect={visiblePages.includes("positions")}
+          showKiteConnect={tabOn("positions")}
           onConnectKite={startUserKite}
         />
       )}
@@ -1754,6 +1779,7 @@ export default function Dashboard() {
         onOpenMorningRefresh={() => { if (authState.is_admin) setMorningRefreshOpen(true); }}
         onOpenTelegramPrefs={() => { if (authState.is_admin) setTelegramPrefsOpen(true); }}
         onOpenSettings={() => { if (authState.is_admin) setSettingsOpen(true); }}
+        onOpenJournal={() => { if (authState.is_admin) setJournalOpen(true); }}
         onOpenSounds={() => setSoundsOpen(true)}
         onOpenUpload={() => { if (authState.is_admin) setUploadOpen(true); }}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
@@ -1774,7 +1800,7 @@ export default function Dashboard() {
         slimStatusRail={slimStatusRail}
         onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
         positionsPollMs={positionsPollMs}
-        positionsPublic={authState.is_admin || visiblePages.includes("positions")}
+        positionsPublic={tabOn("positions")}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {
           // Clear warm caches then re-hydrate every enabled index after Fresh Pull.
@@ -1835,7 +1861,7 @@ export default function Dashboard() {
         <main
           className={`flex-1 min-h-0 overflow-hidden p-0 sm:px-4 md:px-5 dark:text-slate-200 flex flex-col ${
             infoTilesOpen ? "sm:pt-4 md:pt-5 sm:pb-4 md:pb-5" : "sm:pt-1.5 md:pt-2 sm:pb-4 md:pb-5"
-          } max-md:pb-[5.5rem]`}
+          } max-md:pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]`}
         >
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
@@ -2042,7 +2068,7 @@ export default function Dashboard() {
                       : undefined
                   }
                 >
-                  {(authState.is_admin || visiblePages.includes("oi-change")) && (
+                  {(tabOn("oi-change")) && (
                     <TabsContent value="oi-change" className="mt-0">
                       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
                       <div className="flex items-center gap-4 flex-wrap">
@@ -2293,7 +2319,7 @@ export default function Dashboard() {
                   </TabsContent>
                 )}
 
-                  {(authState.is_admin || visiblePages.includes("open-interest")) && (
+                  {(tabOn("open-interest")) && (
                     <TabsContent value="open-interest" className="mt-0">
                       <div className="text-sm font-semibold mb-2">{activeIndex} Absolute Open Interest</div>
                     <OIChart
@@ -2305,7 +2331,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("strike-table")) && (
+                  {(tabOn("strike-table")) && (
                     <TabsContent value="strike-table" className="mt-0">
                     <div className="text-sm font-semibold mb-2">{activeIndex} Strike-wise OI Table</div>
                     <StrikeTable
@@ -2325,7 +2351,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("sell-candidates")) && (
+                  {(tabOn("sell-candidates")) && (
                     <TabsContent value="sell-candidates" className="mt-0">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm font-semibold">{activeIndex} Sell Candidates — safest strikes to short</div>
@@ -2349,7 +2375,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("buildup")) && (
+                  {(tabOn("buildup")) && (
                     <TabsContent value="buildup" className="mt-0">
                     <div className="text-sm font-semibold mb-2">{activeIndex} Long / Short Build-up</div>
                     <BuildupTable
@@ -2364,7 +2390,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("positions")) && (
+                  {(tabOn("positions")) && (
                     <TabsContent
                       value="positions"
                       className="mt-0 data-[state=inactive]:hidden"
@@ -2402,14 +2428,14 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("alerts")) && (
+                  {(tabOn("alerts")) && (
                     <TabsContent value="alerts" className="mt-0">
                     <div className="text-sm font-semibold mb-2">All Alerts</div>
                     <AlertsPanel alerts={focusedAlerts} onClear={handleClearAlerts} activeIndex={activeIndex} canClear={authState.is_admin} />
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("activity")) && (
+                  {(tabOn("activity")) && (
                     <TabsContent value="activity" className="mt-0">
                     <div className="text-sm font-semibold mb-2">Unusual Activity Feed</div>
                     <ActivityFeed
@@ -2422,13 +2448,13 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("holidays")) && (
+                  {(tabOn("holidays")) && (
                     <TabsContent value="holidays" className="mt-0">
                     <HolidaysTab />
                   </TabsContent>
                   )}
 
-                  {(authState.is_admin || visiblePages.includes("straddle")) && (
+                  {(tabOn("straddle")) && (
                     <TabsContent value="straddle" className="mt-0">
                     <div className="text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
                     <StraddleChart
@@ -2444,6 +2470,7 @@ export default function Dashboard() {
                   </TabsContent>
                   )}
 
+                  {(tabOn("index-events")) && (
                   <TabsContent value="index-events" className="mt-0">
                       <EventRiskWidget
                         activeIndex={activeIndex}
@@ -2451,8 +2478,9 @@ export default function Dashboard() {
                         isAdmin={!!authState.is_admin}
                       />
                     </TabsContent>
+                  )}
 
-                  {(authState.is_admin || visiblePages.includes("cas")) && (
+                  {(tabOn("cas")) && (
                     <TabsContent value="cas" className="mt-0">
                       <CasPanel
                         isAdmin={!!authState.is_admin}
@@ -2499,8 +2527,9 @@ export default function Dashboard() {
                       view={rightPanelView}
                       onChangeView={setRightPanelView}
                       onClose={() => setRightPanelOpen(false)}
+                      isAdmin={!!authState.is_admin}
                       visiblePages={visiblePages}
-                      isAdmin={authState.is_admin}
+                      adminPages={adminVisiblePages}
                       alerts={focusedAlerts}
                       onClearAlerts={handleClearAlerts}
                       canClearAlerts={authState.is_admin}
@@ -2573,6 +2602,7 @@ export default function Dashboard() {
           activeTab={activeTab}
           isAdmin={!!authState.is_admin}
           visiblePages={visiblePages}
+          adminPages={adminVisiblePages}
           deskOpen={!compact}
           onOpenDesk={() => setCompact((v) => !v)}
           onOpenAdminTools={() => window.dispatchEvent(new Event("oi-toggle-admin-tools"))}
@@ -2617,6 +2647,9 @@ export default function Dashboard() {
           if (Array.isArray(settings.visible_pages)) {
             setVisiblePages(settings.visible_pages);
           }
+          if (Array.isArray(settings.admin_visible_pages)) {
+            setAdminVisiblePages(settings.admin_visible_pages);
+          }
           if (typeof settings.oi_poll_interval_seconds === "number") {
             setPollMs(settings.oi_poll_interval_seconds * 1000);
           }
@@ -2647,6 +2680,13 @@ export default function Dashboard() {
         }}
         onLocalSaved={setOiSettings}
       />
+
+      {authState.is_admin && (
+        <TradeJournalModal
+          open={journalOpen}
+          onOpenChange={setJournalOpen}
+        />
+      )}
 
       <HugeShiftModal
         shift={hugeShift}

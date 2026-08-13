@@ -857,23 +857,36 @@ export default function PositionsPanel({
 
   if (!isGuest && !kiteReady) {
     return (
-      <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center" data-testid="positions-kite-required">
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center space-y-3" data-testid="positions-kite-required">
         <PlugZap className="w-8 h-8 mx-auto text-slate-400 mb-2" />
         <div className="text-sm font-semibold text-slate-700">Kite Live mode required</div>
         <div className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-          Connect Zerodha Kite to pull your open F&amp;O positions here.
+          Connect Zerodha Kite to pull your open F&amp;O positions here. Trade journal still reads booked days from our database.
         </div>
-        {typeof onOpenKite === "function" && (
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          {typeof onOpenKite === "function" && (
+            <Button
+              size="sm"
+              className="h-8 rounded-sm bg-emerald-600 hover:bg-emerald-700"
+              onClick={onOpenKite}
+              data-testid="btn-positions-reconnect-kite"
+            >
+              <PlugZap className="w-3.5 h-3.5 mr-1.5" />
+              Connect Kite
+            </Button>
+          )}
           <Button
             size="sm"
-            className="mt-3 h-8 rounded-sm bg-emerald-600 hover:bg-emerald-700"
-            onClick={onOpenKite}
-            data-testid="btn-positions-reconnect-kite"
+            variant="outline"
+            className="h-8 rounded-sm bg-white text-emerald-800 border-emerald-200"
+            onClick={() => setJournalOpen(true)}
+            data-testid="btn-trade-journal"
           >
-            <PlugZap className="w-3.5 h-3.5 mr-1.5" />
-            Connect Kite
+            <BookOpen className="w-3.5 h-3.5 mr-1" />
+            Journal
           </Button>
-        )}
+        </div>
+        <TradeJournalModal open={journalOpen} onOpenChange={setJournalOpen} privacy={privacyMode} />
       </div>
     );
   }

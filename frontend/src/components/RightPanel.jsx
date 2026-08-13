@@ -28,6 +28,7 @@ export default function RightPanel({
   onChangeView,
   onClose,
   visiblePages = [],
+  adminPages = null,
   isAdmin = false,
   // props for panel contents
   alerts,
@@ -66,10 +67,13 @@ export default function RightPanel({
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
       if (item.pageId == null) return true;
-      if (item.pageId === "index-events") return true;
-      return isAdmin || visiblePages.includes(item.pageId);
+      if (isAdmin) {
+        if (!Array.isArray(adminPages) || adminPages.length === 0) return true;
+        return adminPages.includes(item.pageId);
+      }
+      return Array.isArray(visiblePages) && visiblePages.includes(item.pageId);
     }),
-    [visiblePages, isAdmin]
+    [visiblePages, adminPages, isAdmin]
   );
 
   const selectedView = allowedViews.some((item) => item.key === view)

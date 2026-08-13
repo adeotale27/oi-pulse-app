@@ -710,6 +710,7 @@ class SettingsIn(BaseModel):
     positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (5–3600s)
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
+    admin_visible_pages: Optional[List[str]] = None
     market_open_ist: Optional[str] = None   # e.g. "09:15"
     market_close_ist: Optional[str] = None  # e.g. "15:40" (Index F&O / CAS)
     second_session_ist: Optional[str] = None  # e.g. "12:00" BigClock 2nd-session notify
@@ -1273,6 +1274,14 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             if p not in DASHBOARD_PAGE_KEYS:
                 raise HTTPException(400, f"Unknown dashboard page: {p}")
         patch["visible_pages"] = pages
+    if "admin_visible_pages" in patch:
+        pages = list(patch["admin_visible_pages"] or [])
+        if not pages:
+            raise HTTPException(400, "Keep at least one page on your own dashboard")
+        for p in pages:
+            if p not in DASHBOARD_PAGE_KEYS:
+                raise HTTPException(400, f"Unknown dashboard page: {p}")
+        patch["admin_visible_pages"] = pages
     if "oi_poll_interval_seconds" in patch:
         if int(patch["oi_poll_interval_seconds"]) not in (15, 30, 60):
             raise HTTPException(400, "oi_poll_interval_seconds must be 15, 30, or 60")
@@ -2249,6 +2258,7 @@ async def get_config():
         "straddle_enabled_indices": tracker.settings.get("straddle_enabled_indices", STRADDLE_INDICES),
         "alert_enabled_indices": tracker.settings.get("alert_enabled_indices"),
         "visible_pages": tracker.settings.get("visible_pages"),
+        "admin_visible_pages": tracker.settings.get("admin_visible_pages"),
         "market_open_ist": tracker.settings.get("market_open_ist", open_hm),
         "market_close_ist": tracker.settings.get("market_close_ist", close_hm),
         "second_session_ist": tracker.settings.get("second_session_ist", "12:00"),
