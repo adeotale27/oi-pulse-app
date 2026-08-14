@@ -4881,6 +4881,8 @@ class DeskGuideIn(BaseModel):
     band: Optional[str] = None
     surface: Optional[str] = None
     adjust: Optional[Dict[str, Any]] = None
+    fii: Optional[Dict[str, Any]] = None
+    force: Optional[bool] = False
 
 
 @api_router.get("/desk-guide")

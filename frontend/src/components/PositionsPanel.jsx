@@ -1458,14 +1458,14 @@ export default function PositionsPanel({
 
       {deskGuide?.guide ? (
         <div
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 space-y-1"
+          className="rounded-md border-2 border-violet-400 bg-violet-50 dark:bg-violet-950/30 px-3 py-2.5 space-y-1"
           data-testid="positions-desk-guide"
         >
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-slate-500">
-            <Zap className="w-3 h-3" />
-            Desk coach · {deskGuide.source === "llm" ? "AI" : "rules"}
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-violet-800 dark:text-violet-200">
+            <Zap className="w-3.5 h-3.5" />
+            Desk AI · {deskGuide.source === "llm" ? "Live GPT" : "rules"}
           </div>
-          <p className="text-[12px] text-slate-800 leading-snug whitespace-pre-wrap">{deskGuide.guide}</p>
+          <p className="text-[13px] font-medium text-slate-900 dark:text-slate-100 leading-snug whitespace-pre-wrap">{deskGuide.guide}</p>
         </div>
       ) : null}
 

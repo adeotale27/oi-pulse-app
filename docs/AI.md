@@ -39,7 +39,7 @@ Then:
 
 The backend clips strings, drops unknown fields, and **will not** forward Kite tokens. Cache is **per surface** so carry and Positions do not overwrite each other. If the key is missing, you still get `source: "rules"` from the same snapshot.
 
-Restart the API after adding the key.
+Restart the API after adding the key. The **Desk AI** bar is always on the dashboard. **Ask AI** sends `force: true` (bypasses the 5-minute cache). Positions and the carry brief use the same coach.
 
 ## What not to do
 

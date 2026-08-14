@@ -603,12 +603,12 @@ export default function OvernightGapBrief({
 
         {guideText ? (
           <div
-            className="rounded-md bg-white/80 dark:bg-black/25 px-2 py-1.5 leading-snug whitespace-pre-wrap"
+            className="rounded-md border border-violet-400/70 bg-violet-50/90 dark:bg-violet-950/40 px-2 py-1.5 leading-snug whitespace-pre-wrap font-medium"
             data-testid="overnight-gap-guide"
           >
-            <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest opacity-60 mb-0.5">
-              <Sparkles className="w-3 h-3" />
-              Desk guide · {guide?.source === "llm" ? "AI" : "rules"}
+            <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-violet-800 dark:text-violet-200 mb-0.5 font-bold">
+              <Sparkles className="w-3.5 h-3.5" />
+              Desk AI · {guide?.source === "llm" ? "Live GPT" : "rules"}
             </div>
             {guideText}
           </div>

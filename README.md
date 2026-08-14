@@ -1,6 +1,6 @@
 # OI Pulse
 
-**Version: V5.14** — see [`VERSION`](VERSION), [`CHANGELOG.md`](CHANGELOG.md), [`docs/VERSIONING.md`](docs/VERSIONING.md).
+**Version: V5.15** — see [`VERSION`](VERSION), [`CHANGELOG.md`](CHANGELOG.md), [`docs/VERSIONING.md`](docs/VERSIONING.md).
 
 OI Pulse is a live **NSE open-interest desk** for **NIFTY**, **SENSEX**, and **BANKNIFTY**. It is built for option sellers and OI readers who need strike-level conviction during the cash session — not a generic charting terminal.
 
@@ -95,7 +95,7 @@ echo 'REACT_APP_BACKEND_URL=http://localhost:8000' > .env.local
 yarn start
 ```
 
-Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). Leaving Emergent / Oracle Cloud / GoDaddy DNS: [docs/HOSTING.md](docs/HOSTING.md). Optional LLM over OI + positions: [docs/AI.md](docs/AI.md).
+Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). Leaving Emergent / Oracle Cloud / GoDaddy DNS: [docs/HOSTING.md](docs/HOSTING.md). Optional LLM over OI + positions: [docs/AI.md](docs/AI.md). Domain shortlist: [docs/DOMAINS.md](docs/DOMAINS.md). Chrome holidays/FII/VIX/results (no extra server): [market-radar-ext/README.md](market-radar-ext/README.md).
 
 In the app, click the **logo** or **V5.00** to open the same product story.
 

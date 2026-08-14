@@ -1,5 +1,15 @@
 # Changelog
 
+## V5.15 — 2026-08-14
+
+Desk AI is a first-class strip (not a hidden LLM footnote). Independent Chrome radar for holidays / FII-DII / VIX / results.
+
+- **Desk AI** bar under the header + header **AI** chip; Ask AI bypasses the 5-minute cache
+- Positions and carry brief use the same violet AI treatment
+- Snapshot can include cash FII/DII nets (clipped)
+- New tree [`market-radar-ext/`](market-radar-ext/README.md) — Chrome MV3, **no extra server**
+- Domain shortlist: [`docs/DOMAINS.md`](docs/DOMAINS.md)
+
 ## V5.14 — 2026-08-14
 
 Positions desk coach (roll / hedge / hold) plus a publish-safe desk-guide model.

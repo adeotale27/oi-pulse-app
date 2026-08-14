@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>NSE Market Radar</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <strong>Market Radar</strong>
+    <button id="refresh" type="button">Refresh</button>
+  </header>
+  <p class="hint">$0 extra server. Holidays are bundled. FII/DII from NSE on your machine. VIX from Yahoo. Results optional via your existing OI Pulse URL.</p>
+  <section>
+    <h2>Holiday</h2>
+    <div id="holiday">—</div>
+  </section>
+  <section>
+    <h2>FII / DII (cash ₹ cr)</h2>
+    <div id="fii">—</div>
+  </section>
+  <section>
+    <h2>Market risk · India VIX</h2>
+    <div id="vix">—</div>
+  </section>
+  <section>
+    <h2>Index results</h2>
+    <div id="results">Set Pulse API in Options for weight-joined results, or they stay empty (no new server).</div>
+  </section>
+  <footer><a href="options.html">Options</a></footer>
+  <script src="popup.js"></script>
+</body>
+</html>

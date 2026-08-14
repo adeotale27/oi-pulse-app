@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "NSE Market Radar",
+  "version": "0.1.0",
+  "description": "NSE holidays, FII/DII, India VIX, and index results. Independent of the OI Pulse poller — no extra server required.",
+  "action": { "default_popup": "popup.html", "default_title": "Market Radar" },
+  "background": { "service_worker": "background.js" },
+  "options_ui": { "page": "options.html", "open_in_tab": false },
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "https://www.nseindia.com/*",
+    "https://query1.finance.yahoo.com/*"
+  ],
+  "optional_host_permissions": ["https://*/*"]
+}

@@ -4,6 +4,18 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.15",
+    date: "2026-08-14",
+    user: [
+      "Desk AI sits under the header: live GPT when a key is set, otherwise the same rule coach — Ask AI to refresh",
+      "Positions and the carry brief highlight the same AI coach",
+    ],
+    admin: [
+      "Set OPENAI_API_KEY on the API host (never in git). POST /api/desk-guide accepts force + fii nets",
+      "Independent Chrome extension in market-radar-ext/ (holidays, FII/DII, VIX; optional existing /api/events)",
+    ],
+  },
+  {
     version: "5.14",
     date: "2026-08-14",
     user: [

@@ -115,6 +115,7 @@ One VM, two processes (or Docker Compose). Poller stays inside FastAPI as it doe
    - `ADMIN_USERNAME` / password hash in `settings`
    - `CREDENTIALS_FERNET_KEY` (or you will **lose** the Kite vault)
    - Telegram tokens
+   - `OPENAI_API_KEY` / `DESK_GUIDE_*` (desk AI; never commit)
    - `CORS_ORIGINS`
    - Kite API key + **redirect URL** in Zerodha console
 4. Export Mongo (`mongodump`) from Emergent **before** any DNS cut.

@@ -10,6 +10,7 @@ import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import DeskStatusRail from "@/components/DeskStatusRail";
 import DataTruthStrip from "@/components/DataTruthStrip";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
+import DeskAiBar from "@/components/DeskAiBar";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
 import KiteTokenBanner from "@/components/KiteTokenBanner";
 import KiteMaintenanceBanner from "@/components/KiteMaintenanceBanner";
@@ -1908,6 +1909,7 @@ export default function Dashboard() {
             infoTilesOpen ? "sm:pt-4 md:pt-5 sm:pb-4 md:pb-5" : "sm:pt-1.5 md:pt-2 sm:pb-4 md:pb-5"
           } max-md:pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]`}
         >
+          <DeskAiBar activeIndex={activeIndex} />
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
               activeIndex={activeIndex}
