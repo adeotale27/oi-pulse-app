@@ -17,7 +17,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `guest_ip_names` | Last guest display name per IP |
 | `access_requests` | Pending/approved/rejected guest entry requests |
 | `blocked_ips` | Hard blocks |
-| `trade_journal` | Admin trade journal: one document per IST `date`. Stores booked/exited P&L, brokerage/`charges_total` (from Kite contract notes, copied into **our** DB only), notes, tags, rating, screenshots. Written on admin `/positions` refresh and frozen at 15:45 IST. |
+| `trade_journal` | Admin trade journal: one document per IST `date`. Stores booked/exited P&L, brokerage/`charges_total` (from Kite contract notes, copied into **our** DB only), notes, tags, rating, screenshots. Written on admin `/positions` refresh. Frozen at 15:45 IST on regular sessions, 20:00 IST on Muhurat / live special sessions. Weekends and full holidays are not booked unless Kite prints that day. |
 | Constituents / events docs | Uploaded calendars & index members (`index_constituents`, `nse_events`) — see [UPLOAD.md](./UPLOAD.md) for CSV columns and replace rules |
 
 Retention: OI / straddle samples default to **96 hours** so Friday’s session survives the weekend and Monday pre-open (`SNAPSHOT_RETENTION_HOURS` / `STRADDLE_RETENTION_HOURS`). Prune also floors at the previous trading day’s open. Weekend / holiday / pre-open APIs resolve `session_anchor_date` (last trading day) for history, straddle, and banners. After configured market close, OI polling stops; **GIFT Nifty** continues on its own schedule.

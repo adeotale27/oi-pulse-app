@@ -21,7 +21,7 @@ import {
   deleteJournalScreenshot,
 } from "@/lib/api";
 import { toast } from "sonner";
-import { isHoliday, isTradingDayIST } from "@/lib/holidays";
+import { isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import InfoTip from "@/components/InfoTip";
@@ -89,9 +89,9 @@ function weekBuckets(cells, byDate) {
     let tradingDays = 0;
     for (const c of slice) {
       const hol = isHoliday(c.iso);
-      if (hol) holidays.push(hol);
-      if (isTradingDayIST(c.iso)) tradingDays += 1;
-      if (!isTradingDayIST(c.iso)) continue;
+      if (hol && !isSpecialSessionIST(c.iso)) holidays.push(hol);
+      if (isJournalSessionDayIST(c.iso)) tradingDays += 1;
+      if (!isJournalSessionDayIST(c.iso)) continue;
       const doc = byDate.get(c.iso);
       if (!isTraded(doc)) continue;
       pnl += cellPnl(doc);
@@ -523,10 +523,13 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const traded = isTraded(doc);
                       const isToday = c.iso === today;
                       const isSel = c.iso === selected;
-                      const hol = isHoliday(c.iso);
-                      const session = isTradingDayIST(c.iso);
+                      const session = isJournalSessionDayIST(c.iso);
+                      const special = isSpecialSessionIST(c.iso) && session;
+                      const hol = isHoliday(c.iso) && !special;
                       const showBook = traded && session;
-                      const tone = showBook ? cellClasses(pnl, true, maxAbs) : hol
+                      const tone = showBook ? cellClasses(pnl, true, maxAbs) : special
+                        ? { box: "bg-violet-50 border-violet-300 text-violet-900", amt: "text-violet-900", invert: false }
+                        : hol
                         ? { box: "bg-amber-50 border-amber-300 text-amber-900", amt: "text-amber-900", invert: false }
                         : !session
                           ? { box: "bg-slate-50 border-slate-200 text-slate-400", amt: "text-slate-400", invert: false, weekend: true }
@@ -561,6 +564,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               <div className={`text-[11px] font-bold font-mono-data leading-tight truncate ${tone.amt}`}>
                                 {privacy ? "··" : compactPnl(pnl)}
                               </div>
+                            ) : special ? (
+                              <div className="text-[9px] leading-tight text-violet-800 truncate" title={isHoliday(c.iso)?.name}>Muh.</div>
                             ) : hol ? (
                               <div className="text-[9px] leading-tight text-amber-800 truncate" title={hol.name}>Holi</div>
                             ) : !session ? (
@@ -590,6 +595,13 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                                 <div className={`text-[10px] font-semibold ${tone.invert ? "text-white/90" : "text-slate-600"}`}>{wr}</div>
                               ) : null}
                             </>
+                          ) : special ? (
+                            <div className="text-[12px] text-violet-800 mt-3 leading-tight font-medium" title={isHoliday(c.iso)?.name}>
+                              Muhurat
+                              <div className="text-[11px] font-normal mt-0.5">
+                                {(isHoliday(c.iso)?.name || "Special session").replace(/\s*\(.*$/, "")}
+                              </div>
+                            </div>
                           ) : hol ? (
                             <div className="text-[12px] text-amber-800 mt-3 leading-tight font-medium" title={hol.name}>
                               Holiday

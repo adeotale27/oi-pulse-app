@@ -65,6 +65,13 @@ NSE_HOLIDAYS_2026 = {
 
 NSE_HOLIDAYS: Set[str] = NSE_HOLIDAYS_2025 | NSE_HOLIDAYS_2026
 
+# Special cash/F&O sessions on dates NSE still lists as holidays (OI poll stays off).
+# Keep aligned with frontend/src/lib/holidays.js SPECIAL_SESSIONS / session: "muhurat".
+NSE_SPECIAL_SESSIONS: dict[str, str] = {
+    "2025-10-21": "Diwali Laxmi Pujan (Muhurat)",
+    "2026-11-08": "Diwali Laxmi Pujan (Muhurat)",
+}
+
 
 def _parse_hm(value: str, fallback: dtime) -> dtime:
     try:
@@ -127,7 +134,26 @@ def is_weekend(d: datetime) -> bool:
 
 
 def is_trading_day(d: datetime) -> bool:
+    """Regular NSE session for OI poll. Muhurat stays False (poller treats it as a holiday)."""
     return not is_weekend(d) and not is_holiday(d)
+
+
+def is_special_session_day(d: datetime) -> bool:
+    return d.strftime("%Y-%m-%d") in NSE_SPECIAL_SESSIONS
+
+
+def is_journal_session_day(d: datetime) -> bool:
+    """Days the trade journal books from the calendar.
+
+    Weekends and full holidays are closed. Muhurat (and other listed special
+    sessions) count even though ``is_trading_day`` is False for OI poll.
+    Surprise sessions are detected live from Kite fills/quotes in server.py.
+    """
+    if is_weekend(d):
+        return False
+    if is_special_session_day(d):
+        return True
+    return not is_holiday(d)
 
 
 def is_market_open(dt: datetime = None) -> bool:

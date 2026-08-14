@@ -6,7 +6,9 @@ from kite_charges import (
     aggregate_contract_notes,
     build_charge_params,
     build_charge_params_from_trades,
+    has_fills_on_date,
     order_date_ymd,
+    quotes_traded_on_date,
     resolve_charge_params,
     trade_avg_by_order,
 )
@@ -179,3 +181,36 @@ def test_aggregate_sums_lines_when_total_missing():
     ]
     out = aggregate_contract_notes(notes)
     assert out["charges_total"] == 40.0
+
+
+def test_has_fills_on_date_from_trades_and_orders():
+    trades = [
+        {"fill_timestamp": "2026-11-08 18:22:00", "quantity": 75, "average_price": 12.5},
+        {"fill_timestamp": "2026-11-07 15:20:00", "quantity": 50, "average_price": 8},
+    ]
+    assert has_fills_on_date(trades, [], today_ymd="2026-11-08") is True
+    assert has_fills_on_date(trades, [], today_ymd="2026-01-26") is False
+    orders = [
+        {
+            "status": "COMPLETE",
+            "order_timestamp": "2026-11-08 18:30:00",
+            "filled_quantity": 65,
+        }
+    ]
+    assert has_fills_on_date([], orders, today_ymd="2026-11-08") is True
+    assert has_fills_on_date([], orders, today_ymd="2026-11-07") is False
+
+
+def test_quotes_traded_on_date_uses_last_trade_time():
+    quotes = {
+        "NSE:NIFTY 50": {
+            "last_price": 24500.5,
+            "last_trade_time": "2026-11-08 18:15:01",
+        }
+    }
+    assert quotes_traded_on_date(quotes, "2026-11-08") is True
+    assert quotes_traded_on_date(quotes, "2026-11-07") is False
+    stale = {"NSE:NIFTY 50": {"last_price": 24500.5, "last_trade_time": "2026-11-07 15:29:59"}}
+    assert quotes_traded_on_date(stale, "2026-11-08") is False
+    empty = {"NSE:NIFTY 50": {"last_price": 0, "last_trade_time": "2026-11-08 18:15:01"}}
+    assert quotes_traded_on_date(empty, "2026-11-08") is False

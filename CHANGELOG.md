@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.06 — 2026-08-14
+
+Journal books weekends and full holidays as closed, and treats live special sessions as trading days.
+
+- Weekends and full NSE holidays (Republic Day, Holi, Balipratipada, …) do not get a new journal date; last session stays until the next open
+- Diwali Laxmi Pujan **Muhurat** is a journal session (calendar shows Muhurat, EOD lock 20:00 IST). OI poll still treats it as a holiday
+- If Kite prints fills or index last-trade on a closed calendar day, that day is booked as a live session
+
 ## V6.05 — 2026-08-14
 
 Journal weekends are not trading days. Carry Desk AI is overnight impact only.

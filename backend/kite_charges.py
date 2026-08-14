@@ -6,6 +6,71 @@ from datetime import date, datetime
 from typing import Any, Iterable, Optional
 
 
+def has_fills_on_date(
+    trades: Optional[Iterable[dict]] = None,
+    orders: Optional[Iterable[dict]] = None,
+    *,
+    today_ymd: str,
+) -> bool:
+    """True when Kite has a fill or COMPLETE order stamped on ``today_ymd``."""
+    for t in trades or []:
+        if not isinstance(t, dict):
+            continue
+        ymd = order_date_ymd(
+            t.get("fill_timestamp") or t.get("order_timestamp") or t.get("exchange_timestamp")
+        )
+        if ymd != today_ymd:
+            continue
+        try:
+            qty = float(t.get("quantity") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty > 0:
+            return True
+    for o in orders or []:
+        if not isinstance(o, dict):
+            continue
+        ymd = order_date_ymd(o.get("order_timestamp") or o.get("exchange_timestamp"))
+        if ymd != today_ymd:
+            continue
+        status = str(o.get("status") or "").upper().strip()
+        if status != "COMPLETE":
+            continue
+        try:
+            qty = float(o.get("filled_quantity") or o.get("quantity") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty > 0:
+            return True
+    return False
+
+
+def quotes_traded_on_date(quotes: Optional[dict], today_ymd: str) -> bool:
+    """True when a Kite quote last_trade_time is on ``today_ymd`` (live special session)."""
+    if not isinstance(quotes, dict):
+        return False
+    rows = quotes.values() if quotes else []
+    for q in rows:
+        if not isinstance(q, dict):
+            continue
+        inner = q.get("ohlc") if isinstance(q.get("ohlc"), dict) else None
+        ymd = order_date_ymd(
+            q.get("last_trade_time")
+            or q.get("timestamp")
+            or q.get("exchange_timestamp")
+            or (inner.get("last_trade_time") if inner else None)
+        )
+        if ymd != today_ymd:
+            continue
+        try:
+            lp = float(q.get("last_price") or 0)
+        except (TypeError, ValueError):
+            lp = 0.0
+        if lp > 0:
+            return True
+    return False
+
+
 def order_date_ymd(ts: Any) -> Optional[str]:
     """Normalise Kite order/trade timestamps to YYYY-MM-DD (IST session date)."""
     if ts is None:

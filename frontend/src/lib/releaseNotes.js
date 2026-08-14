@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.06",
+    date: "2026-08-14",
+    user: [
+      "Journal skips weekends and full holidays. Diwali Muhurat (and any day the market actually prints) is a trading day. Friday stays until the next open.",
+    ],
+    admin: [
+      "Journal session ≠ OI is_trading_day: Muhurat books at 20:00 IST. Live fills/quotes on a listed holiday still snapshot. OI poll unchanged.",
+    ],
+  },
+  {
     version: "6.05",
     date: "2026-08-14",
     user: [

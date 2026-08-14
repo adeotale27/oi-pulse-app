@@ -27,6 +27,7 @@ from vrp_service import compute_vrp
 from market_hours import (
     is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend, display_hours, configure_hours,
     session_anchor_date, session_window_utc, previous_trading_day, now_ist,
+    is_special_session_day,
 )
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
@@ -4146,6 +4147,8 @@ def _ist_today_ymd() -> str:
 
 
 _last_journal_charges_mono = 0.0
+_journal_live_probe: tuple[float, bool, str] = (0.0, False, "")
+_last_special_journal_snap_mono = 0.0
 
 
 async def _kite_day_charges(kite) -> Dict[str, Any]:
@@ -4206,8 +4209,46 @@ async def _maybe_journal_charges(*, force: bool = False) -> Optional[Dict[str, A
         return None
 
 
+async def _journal_live_session_today(day: str) -> bool:
+    """True when Kite is printing fills or index last-trade on a closed calendar day.
+
+    Used for unlisted special sessions (and as a live confirm on Muhurat).
+    """
+    global _journal_live_probe
+    nowm = time.monotonic()
+    cached_at, cached_ok, cached_day = _journal_live_probe
+    if cached_day == day and (nowm - cached_at) < 90:
+        return cached_ok
+    kite = tracker.kite_service.kite if tracker and tracker.kite_service else None
+    if not kite:
+        _journal_live_probe = (nowm, False, day)
+        return False
+    from kite_charges import has_fills_on_date, quotes_traded_on_date
+
+    trades: list = []
+    orders: list = []
+    quotes: dict = {}
+    try:
+        trades = await asyncio.to_thread(kite.trades) or []
+    except Exception:
+        trades = []
+    try:
+        orders = await asyncio.to_thread(kite.orders) or []
+    except Exception:
+        orders = []
+    live = has_fills_on_date(trades, orders, today_ymd=day)
+    if not live:
+        try:
+            quotes = await asyncio.to_thread(kite.quote, ["NSE:NIFTY 50", "BSE:SENSEX"]) or {}
+        except Exception:
+            quotes = {}
+        live = quotes_traded_on_date(quotes, day)
+    _journal_live_probe = (nowm, bool(live), day)
+    return bool(live)
+
+
 async def _purge_closed_session_journal_autos() -> int:
-    """Drop Sat/Sun/holiday P&L rows created by the Positions poll. Keep user notes."""
+    """Drop Sat/Sun/full-holiday P&L rows created by the Positions poll. Keep user notes."""
     if db is None:
         return 0
     try:
@@ -4240,29 +4281,39 @@ async def _purge_closed_session_journal_autos() -> int:
         return 0
 
 
-async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool = False) -> None:
+async def _snapshot_trade_journal(
+    payload: Dict[str, Any],
+    *,
+    force_lock: bool = False,
+    live_session: bool = False,
+) -> None:
     """Upsert today's booked P&L + brokerage; never clobber an EOD-locked day.
 
-    Weekends and holidays are not trading days — do not write a new journal date.
-    Friday's locked row stays visible until the next session.
+    Weekends and full holidays do not get a new journal date unless Kite is
+    actually printing (Muhurat, or any surprise session with fills/quotes).
     """
     if db is None:
         return
     now = now_ist()
-    if not journal.iso_is_trading_day(journal.ist_ymd(now)):
+    day = journal.ist_ymd(now)
+    calendar_session = journal.iso_is_trading_day(day)
+    if not calendar_session and not live_session:
+        live_session = await _journal_live_session_today(day)
+    if not calendar_session and not live_session:
         await _purge_closed_session_journal_autos()
         return
     if payload.get("error") and not (payload.get("positions") or payload.get("pnl_today")):
         return
     try:
-        snap = journal.snapshot_from_positions(payload, date=journal.ist_ymd(now))
-        day = snap["date"]
+        snap = journal.snapshot_from_positions(payload, date=day)
         existing = await db.trade_journal.find_one({"date": day})
         need_charges = existing is None or existing.get("charges_total") is None
         charges = await _maybe_journal_charges(force=force_lock or need_charges)
         if journal.charges_usable(charges):
             journal.apply_charges(snap, charges)
-        fields = journal.apply_snapshot(existing, snap, force_lock=force_lock)
+        fields = journal.apply_snapshot(
+            existing, snap, force_lock=force_lock, now=now, live_session=live_session,
+        )
         if not fields:
             return
         await db.trade_journal.update_one(
@@ -4285,16 +4336,34 @@ async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool =
 
 
 async def _journal_eod_lock_loop() -> None:
-    """After 15:45 IST on trading days, freeze booked P&L from the last Positions catch-up."""
+    """Freeze booked P&L after session close; also snapshot Muhurat / live specials."""
+    global _last_special_journal_snap_mono
     locked_for: Optional[str] = None
     log = logging.getLogger("server")
     while True:
         try:
             await asyncio.sleep(20)
             now = now_ist()
-            if not journal.should_lock_eod(now):
-                continue
             day = journal.ist_ymd(now)
+            calendar_session = journal.iso_is_trading_day(day)
+            live = False
+            if not calendar_session:
+                live = await _journal_live_session_today(day)
+            muhurat = is_special_session_day(now) and calendar_session
+            special = muhurat or live
+            t = now.time()
+            in_muhurat_window = dtime(17, 0) <= t <= dtime(20, 30)
+            if special and (live or in_muhurat_window):
+                if time.monotonic() - _last_special_journal_snap_mono >= 60:
+                    try:
+                        mid = await get_positions(None, "admin")
+                        await _snapshot_trade_journal(mid, live_session=live)
+                        _last_special_journal_snap_mono = time.monotonic()
+                    except Exception as e:
+                        log.warning("journal special-session snapshot failed: %s", e)
+
+            if not journal.should_lock_eod(now, live_session=live):
+                continue
             if locked_for == day:
                 continue
             if db is not None:
@@ -4307,7 +4376,7 @@ async def _journal_eod_lock_loop() -> None:
             except Exception as e:
                 log.warning("journal EOD lock: positions fetch failed: %s", e)
                 continue
-            await _snapshot_trade_journal(result, force_lock=True)
+            await _snapshot_trade_journal(result, force_lock=True, live_session=live)
             if db is not None:
                 doc = await db.trade_journal.find_one({"date": day}, {"eod_locked": 1})
                 if doc and doc.get("eod_locked"):

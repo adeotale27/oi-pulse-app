@@ -159,6 +159,57 @@ def test_weekend_journal_autos_are_not_trading_days():
     assert s["net_pnl"] == 2100
 
 
+def test_journal_sessions_skip_full_holidays_keep_muhurat():
+    assert iso_is_trading_day("2026-01-26") is False  # Republic Day
+    assert iso_is_trading_day("2026-11-10") is False  # Balipratipada
+    assert iso_is_trading_day("2026-03-03") is False  # Holi
+    assert iso_is_trading_day("2026-11-08") is False  # listed Muhurat but Sunday 2026
+    assert iso_is_trading_day("2025-10-21") is True  # Diwali Laxmi Pujan muhurat (Tue)
+    muhurat = {
+        "date": "2025-10-21",
+        "booked_pnl": 800,
+        "exited_count": 1,
+        "went_well": "",
+        "notes": "",
+        "tags": [],
+    }
+    republic = {
+        "date": "2026-01-26",
+        "booked_pnl": 800,
+        "exited_count": 1,
+        "went_well": "",
+        "notes": "",
+        "tags": [],
+    }
+    assert is_closed_session_auto_snapshot(muhurat) is False
+    assert include_on_journal_calendar(muhurat) is True
+    assert is_closed_session_auto_snapshot(republic) is True
+    assert include_on_journal_calendar(republic) is False
+    s = month_stats([
+        {"date": "2025-10-17", "booked_pnl": 100, "pnl_exited": 100, "exited_count": 1},
+        muhurat,
+        republic,
+    ])
+    assert s["trading_days"] == 2
+    assert s["net_pnl"] == 900
+
+
+def test_should_lock_eod_muhurat_at_2000():
+    ist = timezone(timedelta(hours=5, minutes=30))
+    afternoon = datetime(2025, 10, 21, 15, 45, tzinfo=ist)
+    evening = datetime(2025, 10, 21, 19, 0, tzinfo=ist)
+    lock = datetime(2025, 10, 21, 20, 0, tzinfo=ist)
+    republic = datetime(2026, 1, 26, 16, 0, tzinfo=ist)
+    sunday_listed = datetime(2026, 11, 8, 20, 0, tzinfo=ist)
+    assert should_lock_eod(afternoon) is False
+    assert should_lock_eod(evening) is False
+    assert should_lock_eod(lock) is True
+    assert should_lock_eod(republic) is False
+    assert should_lock_eod(sunday_listed) is False
+    assert should_lock_eod(republic, live_session=True) is False  # before 20:00
+    assert should_lock_eod(datetime(2026, 1, 26, 20, 0, tzinfo=ist), live_session=True) is True
+
+
 def test_apply_snapshot_does_not_clobber_locked_or_empty():
     existing = {
         "date": "2026-08-13",

@@ -6,10 +6,18 @@ import uuid
 from datetime import datetime, time as dtime, timezone
 from typing import Any, Dict, List, Optional
 
-from market_hours import is_trading_day, now_ist, IST
+from market_hours import (
+    is_trading_day,
+    is_journal_session_day,
+    is_special_session_day,
+    now_ist,
+    IST,
+)
 
 # Freeze after the last Positions auto-refresh (Index F&O 15:40 + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
+# Diwali Laxmi Pujan muhurat is typically ~18:00–19:15 IST.
+SPECIAL_SESSION_LOCK_IST = dtime(20, 0)
 HEATMAP_INDICES = ("NIFTY", "SENSEX", "BANKNIFTY")
 
 MAX_NOTE_CHARS = 8000
@@ -38,14 +46,17 @@ def ist_ymd(dt=None) -> str:
 
 
 def iso_is_trading_day(iso: Optional[str]) -> bool:
-    """NSE session day (weekday and not a holiday). Weekends never count."""
+    """Journal session day: weekday with a cash/F&O print, including Muhurat.
+
+    Full holidays and weekends are False. OI poll uses ``is_trading_day`` instead.
+    """
     if not iso or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(iso)):
         return False
     try:
         dt = datetime.strptime(str(iso), "%Y-%m-%d").replace(hour=12, tzinfo=IST)
     except ValueError:
         return False
-    return is_trading_day(dt)
+    return is_journal_session_day(dt)
 
 
 def has_user_journal_content(doc: Optional[Dict[str, Any]]) -> bool:
@@ -67,7 +78,10 @@ def has_user_journal_content(doc: Optional[Dict[str, Any]]) -> bool:
 
 
 def is_closed_session_auto_snapshot(doc: Optional[Dict[str, Any]]) -> bool:
-    """True when a Sat/Sun/holiday row was written by Positions poll, not the trader."""
+    """True when a Sat/Sun/full-holiday row was written by Positions poll, not the trader.
+
+    Muhurat auto-snapshots are kept (that day is a journal session).
+    """
     if not doc:
         return False
     iso = doc.get("date")
@@ -175,12 +189,17 @@ def snapshot_from_positions(
     return doc
 
 
-def should_lock_eod(dt=None) -> bool:
-    """True on an NSE trading day at/after 15:45 IST (last Positions auto-refresh)."""
+def should_lock_eod(dt=None, *, live_session: bool = False) -> bool:
+    """True when the journal should freeze booked P&L for this IST clock.
+
+    Regular sessions lock at 15:45. Muhurat / live special sessions lock at 20:00.
+    """
     dt = dt or now_ist()
-    if not is_trading_day(dt):
-        return False
-    return dt.time() >= EOD_LOCK_IST
+    if is_trading_day(dt):
+        return dt.time() >= EOD_LOCK_IST
+    if live_session or (is_special_session_day(dt) and is_journal_session_day(dt)):
+        return dt.time() >= SPECIAL_SESSION_LOCK_IST
+    return False
 
 
 def snapshot_is_empty(snap: Optional[Dict[str, Any]]) -> bool:
@@ -217,13 +236,14 @@ def apply_snapshot(
     *,
     force_lock: bool = False,
     now=None,
+    live_session: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Fields to $set for P&L. None = leave stored P&L untouched (already locked / empty clobber)."""
     now = now or now_ist()
     existing = existing or {}
     if existing.get("eod_locked"):
         return None
-    lock = bool(force_lock or should_lock_eod(now))
+    lock = bool(force_lock or should_lock_eod(now, live_session=live_session))
     if snapshot_is_empty(snap):
         if _is_traded(existing) and lock:
             booked = existing.get("booked_pnl")

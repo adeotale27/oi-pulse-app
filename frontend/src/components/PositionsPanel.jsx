@@ -24,8 +24,14 @@ import {
   GripHorizontal,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { isPositionsAutoRefreshOn, istMinutesOfDay, getPositionsCatchupMinute, getMarketCloseHm } from "@/lib/marketTimes";
-import { isTradingDayIST, todayIST } from "@/lib/holidays";
+import { istMinutesOfDay, getPositionsCatchupMinute, getMarketCloseHm, getMarketOpenMinute } from "@/lib/marketTimes";
+import {
+  todayIST,
+  isJournalSessionDayIST,
+  isSpecialSessionIST,
+  SPECIAL_SESSION_OPEN_MINUTE,
+  SPECIAL_SESSION_CATCHUP_MINUTE,
+} from "@/lib/holidays";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -94,6 +100,20 @@ function fmtSessionLeft(mins) {
   const m = Math.round(n % 60);
   if (h <= 0) return `${m}m to close`;
   return `${h}h ${m}m to close`;
+}
+
+function journalPositionsCatchupMinute(iso = todayIST()) {
+  return isSpecialSessionIST(iso) ? SPECIAL_SESSION_CATCHUP_MINUTE : getPositionsCatchupMinute();
+}
+
+/** Auto-refresh the book on journal session days (Muhurat until 20:00; skip full holidays). */
+function journalPositionsRefreshOn() {
+  const iso = todayIST();
+  if (!isJournalSessionDayIST(iso)) return false;
+  const mins = istMinutesOfDay();
+  const open = isSpecialSessionIST(iso) ? SPECIAL_SESSION_OPEN_MINUTE : getMarketOpenMinute();
+  if (mins < open) return false;
+  return mins < journalPositionsCatchupMinute(iso);
 }
 
 function fmt(v, dp = 2) {
@@ -493,13 +513,13 @@ export default function PositionsPanel({
     load();
     loadBrokerage();
     const mins0 = istMinutesOfDay();
-    if (isTradingDayIST(todayIST()) && mins0 >= getPositionsCatchupMinute()) {
+    if (isJournalSessionDayIST(todayIST()) && mins0 >= journalPositionsCatchupMinute()) {
       catchupDoneRef.current = true;
     }
     const poll = () => {
-      const trading = isTradingDayIST(todayIST());
+      const trading = isJournalSessionDayIST(todayIST());
       const mins = istMinutesOfDay();
-      const catchupAt = getPositionsCatchupMinute();
+      const catchupAt = journalPositionsCatchupMinute();
       if (trading && mins < catchupAt) {
         catchupDoneRef.current = false;
         load();
@@ -513,16 +533,16 @@ export default function PositionsPanel({
     };
     const id = setInterval(poll, pollMs);
     const catchId = setInterval(() => {
-      const trading = isTradingDayIST(todayIST());
+      const trading = isJournalSessionDayIST(todayIST());
       const mins = istMinutesOfDay();
-      if (trading && mins >= getPositionsCatchupMinute() && !catchupDoneRef.current) {
+      if (trading && mins >= journalPositionsCatchupMinute() && !catchupDoneRef.current) {
         catchupDoneRef.current = true;
         load();
         loadBrokerage();
       }
     }, 5000);
     const chargesId = setInterval(() => {
-      if (isPositionsAutoRefreshOn()) loadBrokerage();
+      if (journalPositionsRefreshOn()) loadBrokerage();
     }, Math.max(pollMs * 4, 120_000));
     return () => {
       clearInterval(id);
@@ -532,7 +552,7 @@ export default function PositionsPanel({
   }, [kiteReady, load, loadBrokerage, pollMs]);
 
   useEffect(() => {
-    if (!kiteReady || !isPositionsAutoRefreshOn()) return undefined;
+    if (!kiteReady || !journalPositionsRefreshOn()) return undefined;
     setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     const id = setInterval(() => {
       setSecsLeft((s) => Math.max(0, s - 1));
@@ -1261,7 +1281,7 @@ export default function PositionsPanel({
           <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
-            {isPositionsAutoRefreshOn() && (
+            {journalPositionsRefreshOn() && (
               <span className="ml-1 font-mono-data text-[10px] text-slate-500" data-testid="positions-refresh-countdown">
                 {secsLeft}s
               </span>

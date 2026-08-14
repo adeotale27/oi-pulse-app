@@ -17,7 +17,7 @@ const HOLIDAYS_RAW = [
   { date: "2025-08-15", name: "Independence Day" },
   { date: "2025-08-27", name: "Ganesh Chaturthi" },
   { date: "2025-10-02", name: "Mahatma Gandhi Jayanti / Dussehra" },
-  { date: "2025-10-21", name: "Diwali Laxmi Pujan* (Muhurat trading only)" },
+  { date: "2025-10-21", name: "Diwali Laxmi Pujan* (Muhurat trading only)", session: "muhurat" },
   { date: "2025-10-22", name: "Balipratipada" },
   { date: "2025-11-05", name: "Prakash Gurpurb Sri Guru Nanak Dev" },
   { date: "2025-12-25", name: "Christmas" },
@@ -35,7 +35,7 @@ const HOLIDAYS_RAW = [
   { date: "2026-09-14", name: "Ganesh Chaturthi" },
   { date: "2026-10-02", name: "Mahatma Gandhi Jayanti" },
   { date: "2026-10-20", name: "Dussehra" },
-  { date: "2026-11-08", name: "Diwali Laxmi Pujan* (Muhurat trading only)" },
+  { date: "2026-11-08", name: "Diwali Laxmi Pujan* (Muhurat trading only)", session: "muhurat" },
   { date: "2026-11-10", name: "Balipratipada" },
   { date: "2026-11-24", name: "Prakash Gurpurb Sri Guru Nanak Dev" },
   { date: "2026-12-25", name: "Christmas" },
@@ -79,12 +79,33 @@ export function isHoliday(iso) {
   return HOLIDAYS_RAW.find((h) => h.date === iso) || null;
 }
 
-/** True for weekday IST dates that are not on the NSE holiday list. */
+/** True for weekday IST dates that are not on the NSE holiday list (OI poll). */
 export function isTradingDayIST(iso = toIST(new Date())) {
   const wd = weekdayIST(iso);
   if (wd === 0 || wd === 6) return false;
   return !isHoliday(iso);
 }
+
+/** Diwali Laxmi Pujan muhurat (and any HOLIDAYS_RAW row with session: "muhurat"). */
+export function isSpecialSessionIST(iso = toIST(new Date())) {
+  const hol = isHoliday(iso);
+  return Boolean(hol && hol.session === "muhurat");
+}
+
+/**
+ * Days the trade journal books from the calendar: weekdays with a cash/F&O
+ * session, including Muhurat. Full holidays and weekends are false.
+ * OI banners still use isTradingDayIST (Muhurat stays a poll holiday).
+ */
+export function isJournalSessionDayIST(iso = toIST(new Date())) {
+  const wd = weekdayIST(iso);
+  if (wd === 0 || wd === 6) return false;
+  if (isSpecialSessionIST(iso)) return true;
+  return !isHoliday(iso);
+}
+
+export const SPECIAL_SESSION_OPEN_MINUTE = 17 * 60;
+export const SPECIAL_SESSION_CATCHUP_MINUTE = 20 * 60;
 
 export function todayIST() {
   return toIST(new Date());
