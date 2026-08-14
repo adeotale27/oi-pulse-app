@@ -41,7 +41,7 @@ ADMIN_PASSWORD=change-me
 # TELEGRAM_BOT_TOKEN=
 # TELEGRAM_CHAT_ID=
 
-# Optional carry-brief LLM (see docs/AI.md). Leave unset to keep the rule copilot only.
+# Optional desk LLM (see docs/AI.md). Leave unset to keep the rule copilot only.
 # OPENAI_API_KEY=
 # DESK_GUIDE_MODEL=gpt-4o-mini
 

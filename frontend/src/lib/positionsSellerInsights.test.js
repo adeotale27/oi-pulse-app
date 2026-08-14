@@ -5,6 +5,7 @@ import {
   computeDeltaHedgeSuggestions,
   effectiveAdjustThreshold,
   nearestWeeklyExpiry,
+  compactAdjustSnapshot,
 } from "./positionsSellerInsights.js";
 
 const good = computeBookVerdict({
@@ -74,5 +75,20 @@ const hedge = computeDeltaHedgeSuggestions({
 assert.equal(hedge.needed, true, "hedge needed");
 assert.ok(hedge.futuresQty < 0, "positive Δ → sell futures");
 assert.ok(hedge.otmBuys.every((x) => x.side === "PE"), "buy puts to flatten long Δ");
+
+const packed = compactAdjustSnapshot({
+  rows: [
+    { exited: false, isShort: true, isOpt: true, tradingsymbol: "NIFTY25814C24500", side: "CE", strike: 24500, index: "NIFTY", distancePct: 0.4, breachedAdjust: true },
+    { exited: true, isShort: true, isOpt: true, tradingsymbol: "SKIP", side: "PE", strike: 1 },
+  ],
+  stats: { netDelta: 18.22, netTheta: 400, shortCount: 1, adjustCount: 1, netPnl: 1234.9 },
+  assignmentWatch: [{ tradingsymbol: "NIFTY25814C24500", itm: true }],
+  privacy: true,
+});
+assert.equal(packed.legs.length, 1);
+assert.equal(packed.legs[0].close, true);
+assert.equal(packed.legs[0].itm, true);
+assert.equal(packed.pnl, null, "privacy hides rupee P&L");
+assert.equal(packed.netDelta, 18.2);
 
 console.log("positionsSellerInsights.test.js: all assertions passed");

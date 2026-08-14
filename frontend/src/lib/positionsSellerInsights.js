@@ -144,6 +144,44 @@ export function computeBookVerdict({
   return { band, score, bullets, headline };
 }
 
+export function compactAdjustSnapshot({
+  rows = [],
+  stats = {},
+  assignmentWatch = [],
+  privacy = false,
+} = {}) {
+  const itmSyms = new Set(
+    (assignmentWatch || []).filter((w) => w?.itm).map((w) => w.tradingsymbol).filter(Boolean),
+  );
+  const legs = [];
+  for (const r of rows || []) {
+    if (r?.exited || !r?.isShort || !r?.isOpt) continue;
+    const distRaw = r.distancePct != null ? r.distancePct : r.breachInfo?.distancePct;
+    const dist = Number(distRaw);
+    legs.push({
+      s: String(r.tradingsymbol || "").slice(0, 24),
+      side: r.side === "PE" ? "PE" : r.side === "CE" ? "CE" : null,
+      K: r.strike,
+      idx: String(r.index || "").slice(0, 16) || null,
+      dist: Number.isFinite(dist) ? Number(dist.toFixed(2)) : null,
+      itm: itmSyms.has(r.tradingsymbol),
+      close: !!r.breachedAdjust,
+    });
+  }
+  legs.sort((a, b) => Number(b.close) - Number(a.close) || Number(b.itm) - Number(a.itm));
+  const nd = Number(stats.netDelta);
+  const nt = Number(stats.netTheta);
+  const pnl = Number(stats.netPnl);
+  return {
+    netDelta: Number.isFinite(nd) ? Number(nd.toFixed(1)) : null,
+    netTheta: privacy || !Number.isFinite(nt) ? null : Number(nt.toFixed(1)),
+    shortCount: Number(stats.shortCount) || 0,
+    adjustCount: Number(stats.adjustCount) || 0,
+    pnl: privacy || !Number.isFinite(pnl) ? null : Math.round(pnl),
+    legs: legs.slice(0, 8),
+  };
+}
+
 /**
  * Flag short options near intrinsic / ITM, especially late day / expiry.
  */

@@ -4,6 +4,18 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.14",
+    date: "2026-08-14",
+    user: [
+      "Positions desk coach: which shorts to roll, hedge, or hold (too close / ITM / net Δ)",
+      "Carry brief desk guide shows even without an OpenAI key (rules), and AI when a key is set",
+    ],
+    admin: [
+      "Desk-guide body uses Pydantic Field(default_factory) so k8s import cannot fail on mutable list defaults",
+      "POST /api/desk-guide caches carry vs positions separately; clipped adjust.legs only (no Kite tokens)",
+    ],
+  },
+  {
     version: "5.13",
     date: "2026-08-14",
     user: [

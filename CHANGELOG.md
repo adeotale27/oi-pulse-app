@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.14 — 2026-08-14
+
+Positions desk coach (roll / hedge / hold) plus a publish-safe desk-guide model.
+
+- Positions shows a **Desk coach** strip: which shorts are too close or ITM, and when net Δ needs flattening
+- `POST /api/desk-guide` caches **carry** and **positions** separately; `DeskGuideIn` uses `Field(default_factory=list)` so FastAPI 0.110 / Pydantic 2 can import
+- Optional LLM still every ~5 minutes when `OPENAI_API_KEY` is set — alerts unchanged
+
 ## V5.13 — 2026-08-14
 
 Carry brief is a movable case file (why / why-not / results) plus an optional AI pass.

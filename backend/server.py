@@ -13,7 +13,7 @@ import re
 import time
 from collections import defaultdict, deque
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta, date, time as dtime
 
@@ -4870,15 +4870,17 @@ async def get_index_constituents(index: str):
 
 class DeskGuideIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    why: List[str] = []
-    whyNot: List[str] = []
-    results: List[Any] = []
-    holidays: List[Any] = []
+    why: List[str] = Field(default_factory=list)
+    whyNot: List[str] = Field(default_factory=list)
+    results: List[Any] = Field(default_factory=list)
+    holidays: List[Any] = Field(default_factory=list)
     book: Optional[Dict[str, Any]] = None
     vix: Optional[float] = None
     giftPct: Optional[float] = None
     weekday: Optional[int] = None
     band: Optional[str] = None
+    surface: Optional[str] = None
+    adjust: Optional[Dict[str, Any]] = None
 
 
 @api_router.get("/desk-guide")

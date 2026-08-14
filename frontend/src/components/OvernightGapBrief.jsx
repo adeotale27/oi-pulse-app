@@ -422,6 +422,7 @@ export default function OvernightGapBrief({
       const p = payloadRef.current;
       try {
         const { data } = await api.post("/desk-guide", {
+          surface: "carry",
           why: p.why,
           whyNot: p.whyNot,
           results: (p.results || []).map((e) => ({
@@ -600,14 +601,14 @@ export default function OvernightGapBrief({
           {advice}
         </p>
 
-        {guide?.source === "llm" && guideText ? (
+        {guideText ? (
           <div
             className="rounded-md bg-white/80 dark:bg-black/25 px-2 py-1.5 leading-snug whitespace-pre-wrap"
             data-testid="overnight-gap-guide"
           >
             <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest opacity-60 mb-0.5">
               <Sparkles className="w-3 h-3" />
-              Desk guide
+              Desk guide · {guide?.source === "llm" ? "AI" : "rules"}
             </div>
             {guideText}
           </div>
