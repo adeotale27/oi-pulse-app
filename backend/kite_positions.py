@@ -82,6 +82,9 @@ def merge_kite_net_day(net: Optional[list], day: Optional[list]) -> list[dict]:
                 alt = 0.0
             if abs(cur) < 1e-12 and abs(alt) > 1e-12:
                 row[field] = p.get(field)
+            elif field == "realised" and abs(alt) > abs(cur) + 1e-9:
+                # Today's square-off / partial close often lands on the day row.
+                row[field] = p.get(field)
         # Prefer day's last_price when net is flat (LTP still useful for UI).
         try:
             if abs(float(row.get("quantity") or 0)) < 1e-12 and p.get("last_price") is not None:
@@ -157,6 +160,8 @@ def booked_pnl_from_kite_row(
             "unrealised": 0.0,
             "booked_pnl": round(booked, 2),
             "pnl_source": source,
+            "partial": False,
+            "closed_quantity": matched,
         }
 
     # Open: prefer live Kite pnl; fall back to official formula.
@@ -170,13 +175,66 @@ def booked_pnl_from_kite_row(
         open_pnl = computed
         source = "buy_sell"
 
+    partial = matched > 0
+    booked = 0.0
+    booked_source = source
+    if partial:
+        if abs(kite_realised) > 1e-9:
+            booked = kite_realised
+            booked_source = "realised"
+        elif abs(kite_unrealised) > 1e-9:
+            booked = open_pnl - kite_unrealised
+            booked_source = "pnl_minus_unrealised"
+        elif abs(computed) > 1e-9:
+            booked = computed
+            booked_source = "buy_sell"
+        elif value_pnl is not None:
+            # Official total pnl = (sell_value - buy_value) + qty * LTP * mult.
+            # Drop the open MTM term to isolate the closed slice.
+            booked = (sv - bv)
+            booked_source = "buy_sell_value_closed"
+    else:
+        booked = kite_realised
+
     return {
         "pnl": round(open_pnl, 2),
-        "realised": round(kite_realised, 2),
+        "realised": round(booked, 2),
         "unrealised": round(
-            kite_unrealised if abs(kite_unrealised) > 1e-9 else (open_pnl - kite_realised),
+            kite_unrealised if abs(kite_unrealised) > 1e-9 else (open_pnl - booked),
             2,
         ),
-        "booked_pnl": round(kite_realised, 2),
-        "pnl_source": source,
+        "booked_pnl": round(booked, 2),
+        "pnl_source": booked_source if partial else source,
+        "partial": partial,
+        "closed_quantity": matched,
     }
+
+
+def booked_today_from_row(row: Optional[dict]) -> float:
+    """Realised money locked today: full exits + partial closes. Never open MTM."""
+    if not isinstance(row, dict):
+        return 0.0
+    try:
+        booked = float(row.get("booked_pnl") if row.get("booked_pnl") is not None else 0)
+    except (TypeError, ValueError):
+        booked = 0.0
+    if booked != booked:
+        booked = 0.0
+    if row.get("exited"):
+        if abs(booked) > 1e-9:
+            return booked
+        for key in ("realised", "pnl"):
+            try:
+                v = float(row.get(key) or 0)
+            except (TypeError, ValueError):
+                continue
+            if v == v:
+                return v
+        return 0.0
+    try:
+        realised = float(row.get("realised") if row.get("realised") is not None else booked)
+    except (TypeError, ValueError):
+        realised = booked
+    if realised != realised:
+        realised = 0.0
+    return realised

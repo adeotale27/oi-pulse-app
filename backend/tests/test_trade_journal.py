@@ -46,6 +46,60 @@ def test_snapshot_counts_exited_wins():
     assert len(snap["legs"]) == 2
 
 
+def test_snapshot_includes_partial_close_realised():
+    """3 lots closed of 13 still-open: journal books Kite realised, not only flat exits."""
+    payload = {
+        "open_count": 1,
+        "exited_count": 1,
+        "partial_count": 1,
+        "pnl_today": {
+            "open": 19000.0,
+            "exited": 8400.0,
+            "booked": 21000.0,
+            "total": 27400.0,
+        },
+        "positions": [
+            {
+                "tradingsymbol": "NIFTY 24000 CE",
+                "index": "NIFTY",
+                "side": "CE",
+                "quantity": -650,
+                "exited": False,
+                "partial": True,
+                "closed_quantity": 195,
+                "pnl": 19000.0,
+                "realised": 12600.0,
+                "booked_pnl": 12600.0,
+            },
+            {
+                "tradingsymbol": "SENSEX 76600 PE",
+                "index": "SENSEX",
+                "side": "PE",
+                "quantity": 0,
+                "exited": True,
+                "booked_pnl": 8400.0,
+                "realised": 8400.0,
+                "pnl": 8400.0,
+            },
+        ],
+    }
+    snap = snapshot_from_positions(payload, date="2026-08-13")
+    assert snap["booked_pnl"] == 21000.0
+    assert snap["pnl_exited"] == 21000.0
+    assert snap["partial_count"] == 1
+    assert snap["win_trades"] == 2
+    assert snap["booked_index_pnl"]["NIFTY"] == 12600.0
+    assert snap["booked_index_pnl"]["SENSEX"] == 8400.0
+    nifty = next(leg for leg in snap["legs"] if leg["index"] == "NIFTY")
+    assert nifty["partial"] is True
+    assert nifty["exited"] is False
+    assert nifty["realised"] == 12600.0
+    assert day_pnl(snap) == 21000.0
+    s = month_stats([snap])
+    assert s["net_pnl"] == 21000.0
+    assert s["trading_days"] == 1
+
+
 def test_month_stats_win_rate_and_best_day():
     days = [
         {"date": "2026-08-03", "booked_pnl": 2000, "pnl_exited": 2000, "exited_count": 2},

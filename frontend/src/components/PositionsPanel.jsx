@@ -779,13 +779,18 @@ export default function PositionsPanel({
       if (Number.isFinite(openN)) openPnl = openN;
       if (Number.isFinite(exitedN)) {
         exitedPnl = exitedN;
-        // Server exited total is the clean booked figure when present.
-        bookedToday = exitedN;
-        for (const r of rows) {
-          if (r.exited) continue;
-          const realised = Number(r.realised);
-          if (Number.isFinite(realised) && Math.abs(realised) > 1e-9) {
-            bookedToday += realised;
+        const bookedN = Number(pnlToday.booked);
+        if (Number.isFinite(bookedN)) {
+          bookedToday = bookedN;
+        } else {
+          // Server exited total is full square-offs; add realised on still-open legs.
+          bookedToday = exitedN;
+          for (const r of rows) {
+            if (r.exited) continue;
+            const realised = Number(r.realised);
+            if (Number.isFinite(realised) && Math.abs(realised) > 1e-9) {
+              bookedToday += realised;
+            }
           }
         }
       }

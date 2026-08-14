@@ -4005,6 +4005,8 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
             "unrealised": pnl_bits["unrealised"],
             "realised": pnl_bits["realised"],
             "booked_pnl": pnl_bits["booked_pnl"],
+            "partial": bool(pnl_bits.get("partial")),
+            "closed_quantity": int(pnl_bits.get("closed_quantity") or 0),
             "pnl_source": pnl_bits["pnl_source"],
             "buy_quantity": buy_qty,
             "sell_quantity": sell_qty,
@@ -4092,8 +4094,11 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
                 ],
             }
 
+    from kite_positions import booked_today_from_row
+
     open_n = sum(1 for r in out if not r.get("exited"))
     exited_n = sum(1 for r in out if r.get("exited"))
+    partial_n = sum(1 for r in out if r.get("partial") and not r.get("exited"))
     # Today P&L: open legs use Kite net pnl (includes day realised on partials);
     # same-day exits use booked/realised. Sum must match Kite "Total P&L".
     def _row_day_pnl(r: dict) -> float:
@@ -4113,14 +4118,17 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
 
     open_pnl = round(sum(_row_day_pnl(r) for r in out if not r.get("exited")), 2)
     exited_pnl = round(sum(_row_day_pnl(r) for r in out if r.get("exited")), 2)
+    booked_today = round(sum(booked_today_from_row(r) for r in out), 2)
     result = {
         "mode": tracker.mode,
         "positions": out,
         "open_count": open_n,
         "exited_count": exited_n,
+        "partial_count": partial_n,
         "pnl_today": {
             "open": open_pnl,
             "exited": exited_pnl,
+            "booked": booked_today,
             "total": round(open_pnl + exited_pnl, 2),
         },
         "spot": idx_spot,

@@ -121,3 +121,46 @@ def test_booked_pnl_exited_prefers_realised():
     )
     assert bits["booked_pnl"] == 2957.5
     assert bits["pnl_source"] == "realised"
+
+
+def test_partial_close_books_kite_realised():
+    """Still-open short, some lots bought back today — realised is booked, MTM is not."""
+    bits = booked_pnl_from_kite_row(
+        qty=-650,
+        buy_qty=195,
+        sell_qty=845,
+        buy_price=40.0,
+        sell_price=80.0,
+        pnl=19000.0,
+        realised=12600.0,
+        unrealised=6400.0,
+        exited=False,
+    )
+    assert bits["partial"] is True
+    assert bits["closed_quantity"] == 195
+    assert bits["booked_pnl"] == 12600.0
+    assert bits["realised"] == 12600.0
+    assert bits["pnl"] == 19000.0
+
+
+def test_partial_close_falls_back_to_pnl_minus_unrealised():
+    bits = booked_pnl_from_kite_row(
+        qty=-650,
+        buy_qty=195,
+        sell_qty=845,
+        buy_price=40.0,
+        sell_price=80.0,
+        pnl=19000.0,
+        realised=0,
+        unrealised=6400.0,
+        exited=False,
+    )
+    assert bits["partial"] is True
+    assert bits["booked_pnl"] == 12600.0
+
+
+def test_booked_today_from_row_sums_exit_and_partial():
+    from kite_positions import booked_today_from_row
+    assert booked_today_from_row({"exited": True, "booked_pnl": 8400}) == 8400.0
+    assert booked_today_from_row({"exited": False, "realised": 12600, "pnl": 19000, "booked_pnl": 12600}) == 12600.0
+    assert booked_today_from_row({"exited": False, "realised": 0, "pnl": 800, "booked_pnl": 0}) == 0.0

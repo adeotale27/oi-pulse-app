@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.08",
+    date: "2026-08-14",
+    user: [
+      "Trade journal now books partial closes (e.g. 3 lots out of 13), not only fully exited legs. Calendar P&L matches Positions booked today.",
+    ],
+    admin: [
+      "Journal snapshot sums Kite realised on still-open rows plus flat exits. GET /positions pnl_today.booked is that total.",
+    ],
+  },
+  {
     version: "6.07",
     date: "2026-08-14",
     user: [

@@ -136,20 +136,33 @@ def snapshot_from_positions(
     date: Optional[str] = None,
     charges: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build a journal snapshot from /positions payload (does not include notes)."""
+    """Build a journal snapshot from /positions payload (does not include notes).
+
+    Booked P&L is realised money: fully exited legs plus partial closes that
+    still have open quantity. Open MTM is stored separately and is not the calendar.
+    """
+    from kite_positions import booked_today_from_row
+
     rows = payload.get("positions") or []
     pnl = payload.get("pnl_today") or {}
     day = date or ist_ymd()
     legs = []
     wins = 0
     losses = 0
+    partial_n = 0
     for r in rows:
-        pnl_v = _num(r.get("booked_pnl" if r.get("exited") else "pnl"))
-        if r.get("exited"):
-            if pnl_v > 0:
+        booked_v = booked_today_from_row(r)
+        partial = bool(r.get("partial")) or (
+            not r.get("exited") and abs(booked_v) > 1e-9
+        )
+        if r.get("exited") or partial:
+            if booked_v > 0:
                 wins += 1
-            elif pnl_v < 0:
+            elif booked_v < 0:
                 losses += 1
+        if partial and not r.get("exited"):
+            partial_n += 1
+        pnl_v = booked_v if (r.get("exited") or partial) else _num(r.get("pnl"))
         legs.append({
             "tradingsymbol": r.get("tradingsymbol") or r.get("display_name"),
             "index": r.get("index"),
@@ -157,22 +170,35 @@ def snapshot_from_positions(
             "strike": r.get("strike"),
             "quantity": r.get("quantity"),
             "exited": bool(r.get("exited")),
+            "partial": bool(partial and not r.get("exited")),
+            "closed_quantity": r.get("closed_quantity"),
+            "realised": round(booked_v, 2),
             "pnl": round(pnl_v, 2),
         })
     total = _num(pnl.get("total"))
-    exited_pnl = _num(pnl.get("exited"))
+    exited_only = _num(pnl.get("exited"))
     open_pnl = _num(pnl.get("open"))
-    booked_legs = [leg for leg in legs if leg.get("exited")]
+    if pnl.get("booked") is not None:
+        booked = _num(pnl.get("booked"))
+    else:
+        booked = round(sum(booked_today_from_row(r) for r in rows), 2)
+    booked_legs = [
+        leg for leg in legs
+        if leg.get("exited") or leg.get("partial") or abs(_num(leg.get("realised"))) > 1e-9
+    ]
     index_pnl = _index_pnl_from_legs(legs)
-    booked_index_pnl = _index_pnl_from_legs(booked_legs)
+    booked_index_pnl = _index_pnl_from_legs(booked_legs, pnl_key="realised")
+    full_exits = sum(1 for r in rows if r.get("exited"))
     doc = {
         "date": day,
         "pnl_total": round(total, 2),
         "pnl_open": round(open_pnl, 2),
-        "pnl_exited": round(exited_pnl, 2),
-        "booked_pnl": round(exited_pnl, 2),
+        "pnl_exited": round(booked, 2),
+        "booked_pnl": round(booked, 2),
+        "exited_only_pnl": round(exited_only, 2),
         "open_count": int(payload.get("open_count") or sum(1 for r in rows if not r.get("exited"))),
-        "exited_count": int(payload.get("exited_count") or sum(1 for r in rows if r.get("exited"))),
+        "exited_count": int(payload.get("exited_count") or full_exits),
+        "partial_count": int(payload.get("partial_count") or partial_n),
         "trade_count": len(rows),
         "win_trades": wins,
         "loss_trades": losses,
@@ -490,9 +516,14 @@ def _booked_index_pnl(d: Dict[str, Any]) -> Dict[str, float]:
     ip = d.get("booked_index_pnl")
     if isinstance(ip, dict) and ip:
         return ip
-    legs = [leg for leg in (d.get("legs") or []) if isinstance(leg, dict) and leg.get("exited")]
+    legs = [
+        leg for leg in (d.get("legs") or [])
+        if isinstance(leg, dict) and (
+            leg.get("exited") or leg.get("partial") or abs(_num(leg.get("realised"))) > 0.009
+        )
+    ]
     if legs:
-        return _index_pnl_from_legs(legs)
+        return _index_pnl_from_legs(legs, pnl_key="realised")
     return {}
 
 
@@ -513,25 +544,33 @@ def _num(v) -> float:
         return 0.0
 
 
-def _index_pnl_from_legs(legs: List[Dict[str, Any]]) -> Dict[str, float]:
+def _index_pnl_from_legs(legs: List[Dict[str, Any]], *, pnl_key: str = "pnl") -> Dict[str, float]:
     out: Dict[str, float] = {}
     for leg in legs or []:
         idx = str(leg.get("index") or "OTHER").upper()
-        out[idx] = round(out.get(idx, 0.0) + _num(leg.get("pnl")), 2)
+        val = _num(leg.get(pnl_key))
+        if pnl_key == "realised" and abs(val) < 1e-9:
+            val = _num(leg.get("pnl"))
+        out[idx] = round(out.get(idx, 0.0) + val, 2)
     return out
 
 
 def _is_traded(d: Dict[str, Any]) -> bool:
-    """A journal day counts only when something was exited (booked), not open-only MTM."""
+    """A journal day counts when money was booked (full exit or partial close), not open-only MTM."""
     if not d:
         return False
     if int(d.get("exited_count") or 0) > 0:
+        return True
+    if int(d.get("partial_count") or 0) > 0:
         return True
     if abs(_num(d.get("booked_pnl"))) > 0.009:
         return True
     if abs(_num(d.get("pnl_exited"))) > 0.009:
         return True
     legs = d.get("legs") or []
-    if any(isinstance(x, dict) and x.get("exited") for x in legs):
+    if any(
+        isinstance(x, dict) and (x.get("exited") or x.get("partial") or abs(_num(x.get("realised"))) > 0.009)
+        for x in legs
+    ):
         return True
     return False

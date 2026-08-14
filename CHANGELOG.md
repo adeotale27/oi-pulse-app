@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.08 — 2026-08-14
+
+Journal books partial closes, not only fully squared legs.
+
+- Closing 3 of 13 lots is realised P&L on Kite even while quantity stays open. The journal now stores that `realised` with full exits
+- Calendar / heatmap use that booked total (the 8.4k-vs-21k gap was full-exit-only)
+- Positions “Profit booked today” uses the same `pnl_today.booked` figure
+
 ## V6.07 — 2026-08-14
 
 Muhurat is a live trading session for charts and OI, not a holiday.

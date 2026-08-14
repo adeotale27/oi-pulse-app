@@ -58,9 +58,10 @@ function cellPnl(doc) {
 function isTraded(doc) {
   if (!doc) return false;
   if ((doc.exited_count || 0) > 0) return true;
+  if ((doc.partial_count || 0) > 0) return true;
   if (Math.abs(Number(doc.booked_pnl) || 0) > 0.009) return true;
   if (Math.abs(Number(doc.pnl_exited) || 0) > 0.009) return true;
-  if ((doc.legs || []).some((l) => l && l.exited)) return true;
+  if ((doc.legs || []).some((l) => l && (l.exited || l.partial || Math.abs(Number(l.realised) || 0) > 0.009))) return true;
   return false;
 }
 
@@ -392,10 +393,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
             </DialogTitle>
             <DialogDescription className="text-slate-600">
               <span className="hidden sm:inline">
-                Daily booked P&amp;L (exited only) is stored from the last Positions auto-refresh and frozen at 15:45 IST. Brokerage lives in our database — not on Kite.
+                Daily booked P&amp;L (full exits and partial closes) is stored from the last Positions auto-refresh and frozen at session close. Brokerage lives in our database — not on Kite.
               </span>
               <span className="sm:hidden text-[12px]">
-                Booked P&amp;L (exited trades) · tap a day to journal
+                Booked P&amp;L (exits + partials) · tap a day to journal
               </span>
             </DialogDescription>
           </DialogHeader>
@@ -751,7 +752,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </table>
               </div>
               <p className="text-[11px] text-slate-600">
-                Month totals are booked P&amp;L (exited) for each stored day. Open a month on Calendar to journal that book.
+                Month totals are booked P&amp;L (full exits and partial closes) for each stored day. Open a month on Calendar to journal that book.
               </p>
             </div>
           )}
@@ -839,13 +840,16 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <Stat label="All charges" value={privacy ? "••••" : fmtInr(dayDoc.charges_total, 0)} />
               </div>
 
-              {(dayDoc.legs || []).filter((leg) => leg.exited).length > 0 && (
+              {(dayDoc.legs || []).filter((leg) => leg.exited || leg.partial || Math.abs(Number(leg.realised) || 0) > 0.009).length > 0 && (
                 <div className="max-h-28 overflow-auto rounded-md border border-slate-100 text-[11px]">
-                  {dayDoc.legs.filter((leg) => leg.exited).map((leg, i) => (
+                  {dayDoc.legs.filter((leg) => leg.exited || leg.partial || Math.abs(Number(leg.realised) || 0) > 0.009).map((leg, i) => (
                     <div key={i} className="flex justify-between gap-2 px-2 py-1 border-b border-slate-50">
-                      <span className="truncate">{leg.tradingsymbol}</span>
-                      <span className={`font-mono-data ${leg.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                        {privacy ? "••••" : compactPnl(leg.pnl)}
+                      <span className="truncate">
+                        {leg.tradingsymbol}
+                        {leg.partial ? " · partial" : ""}
+                      </span>
+                      <span className={`font-mono-data ${(leg.realised ?? leg.pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                        {privacy ? "••••" : compactPnl(leg.realised ?? leg.pnl)}
                       </span>
                     </div>
                   ))}
