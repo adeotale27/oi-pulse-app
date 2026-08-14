@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.19 — 2026-08-14
+
+Desk AI is **outside the OI chart**: heavyweight cash movers + news, not a PCR recap.
+
+- Quotes top-weight Nifty / Bank / Sensex names (uploaded constituents) via Kite or Yahoo
+- Pulls market headlines (public RSS)
+- Coach tells you which heavyweight is dragging the index and what that means for sold CE vs PE
+
 ## V5.18 — 2026-08-14
 
 Desk AI reads the live OI tape (not just yesterday’s FII print). Admin ticks who sees the bar.

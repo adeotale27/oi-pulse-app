@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.19",
+    date: "2026-08-14",
+    user: [
+      "Desk AI now shows what the OI chart cannot: moving Nifty/Bank/Sensex heavyweights and market news, plus what that means for your shorts",
+    ],
+    admin: [
+      "GET /desk-outside. Upload constituents or the heavyweight tape stays empty. GPT still optional via OPENAI_API_KEY on the server",
+    ],
+  },
+  {
     version: "5.18",
     date: "2026-08-14",
     user: [

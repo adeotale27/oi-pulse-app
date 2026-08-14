@@ -127,6 +127,7 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "adjust": _compact_adjust(b.get("adjust")),
         "fii": _compact_fii(b.get("fii")),
         "oi": _compact_oi(b.get("oi")),
+        "outside": _compact_outside(b.get("outside")),
         "vix": vix,
         "giftPct": gift,
         "weekday": weekday,
@@ -238,6 +239,51 @@ def _compact_fii(raw: Any) -> Optional[Dict[str, Any]]:
     return out
 
 
+def _compact_outside(raw: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    movers = []
+    for item in (raw.get("movers") or [])[:8]:
+        if not isinstance(item, dict):
+            continue
+        pct = item.get("pct")
+        try:
+            pct = float(pct) if pct is not None else None
+        except (TypeError, ValueError):
+            pct = None
+        w = item.get("weightage")
+        try:
+            w = float(w) if w is not None else None
+        except (TypeError, ValueError):
+            w = None
+        movers.append({
+            "symbol": _clip(item.get("symbol"))[:16] or None,
+            "name": _clip(item.get("name"))[:40] or None,
+            "index": _clip(item.get("index"))[:16] or None,
+            "weightage": w,
+            "pct": pct,
+            "note": _clip(item.get("note"))[:160] or None,
+        })
+    news = []
+    for item in (raw.get("news") or [])[:8]:
+        if isinstance(item, dict):
+            t = _clip(item.get("title"))[:140]
+            if t:
+                news.append({"title": t})
+        else:
+            t = _clip(item)
+            if t:
+                news.append({"title": t})
+    if not movers and not news and not raw.get("note"):
+        return None
+    return {
+        "movers": movers,
+        "news": news,
+        "quote_source": _clip(raw.get("quote_source"))[:12] or None,
+        "note": _clip(raw.get("note"))[:180] or None,
+    }
+
+
 def _fmt_chg(n: Any) -> str:
     try:
         v = int(n)
@@ -252,43 +298,33 @@ def _fmt_chg(n: Any) -> str:
 
 
 def compose_rules_guide(snap: Dict[str, Any]) -> str:
+    """What the OI chart cannot show: heavyweight cash moves, news, calendar, book."""
     bits: List[str] = []
-    oi_rows = snap.get("oi") if isinstance(snap.get("oi"), list) else []
-    for row in oi_rows[:3]:
-        if not isinstance(row, dict):
-            continue
-        idx = row.get("idx") or "INDEX"
-        pcr = row.get("pcr")
-        ce, pe = row.get("ceChg"), row.get("peChg")
-        pcr_s = f"{pcr:.2f}" if isinstance(pcr, (int, float)) else "—"
-        bias = "mixed"
-        try:
-            if (ce or 0) > 0 and (pe or 0) > 0:
-                bias = "both sides adding — range / theta"
-            elif (ce or 0) > abs(pe or 0) and (ce or 0) > 0:
-                bias = "call writers adding"
-            elif (pe or 0) > abs(ce or 0) and (pe or 0) > 0:
-                bias = "put writers adding"
-            elif (ce or 0) < 0 and (pe or 0) >= 0:
-                bias = "calls covering — upside can extend"
-            elif (pe or 0) < 0 and (ce or 0) >= 0:
-                bias = "puts covering — downside can extend"
-        except Exception:
-            pass
-        walls = ""
-        if row.get("putWall") or row.get("callWall"):
-            walls = f" · put wall {row.get('putWall') or '—'} / call wall {row.get('callWall') or '—'}"
-        px = row.get("px")
-        atm = row.get("atm")
-        bits.append(
-            f"{idx} {px if px is not None else '—'} ATM {atm if atm is not None else '—'} "
-            f"PCR {pcr_s} · CE OI {_fmt_chg(ce)} PE OI {_fmt_chg(pe)}{walls} — {bias}"
-        )
-        if isinstance(pcr, (int, float)):
-            if pcr >= 1.2:
-                bits.append(f"HOLD: {idx} PCR rich for puts — fade panic shorts, do not chase CE premium")
-            elif pcr <= 0.8:
-                bits.append(f"WATCH: {idx} PCR light — call wall is the lid; do not naked-short PE into a squeeze")
+    outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else None
+    movers = (outside or {}).get("movers") or []
+    news = (outside or {}).get("news") or []
+    if movers:
+        bits.append("OUTSIDE CHART — heavyweight cash (not option OI):")
+        for m in movers[:5]:
+            pct = m.get("pct")
+            w = m.get("weightage")
+            pct_s = f"{pct:+.1f}%" if isinstance(pct, (int, float)) else "—"
+            w_s = f"{w:.1f}% wt" if isinstance(w, (int, float)) else ""
+            bits.append(
+                f"  {m.get('symbol') or m.get('name')} {pct_s} {w_s} ({m.get('index') or ''}) — {m.get('note') or 'moving'}"
+            )
+    elif outside and outside.get("note"):
+        bits.append(str(outside.get("note")))
+    elif outside is not None:
+        bits.append("Heavyweights quiet vs overnight — cash is not dragging the index off your OI map.")
+
+    if news:
+        bits.append("News (not on the OI chart):")
+        for n in news[:4]:
+            title = n.get("title") if isinstance(n, dict) else n
+            if title:
+                bits.append(f"  • {title}")
+
     adj = snap.get("adjust") if isinstance(snap.get("adjust"), dict) else None
     if adj:
         hot = []
@@ -311,25 +347,6 @@ def compose_rules_guide(snap: Dict[str, Any]) -> str:
             bits.append(f"Net Δ {ndf:.0f} — flatten tilt before selling more premium")
         if adj.get("shortCount") and not hot and not adj.get("adjustCount"):
             bits.append(f"{int(adj.get('shortCount'))} short(s) still OK vs adjust % — hold, do not chase")
-    fii = snap.get("fii") if isinstance(snap.get("fii"), dict) else None
-    if fii and (fii.get("fiiNet") is not None or fii.get("diiNet") is not None):
-        fn = fii.get("fiiNet")
-        dn = fii.get("diiNet")
-        bits.append(
-            "Cash FII/DII (T+1, not a tick): "
-            + (f"FII {fn:+.0f} cr" if fn is not None else "FII —")
-            + ", "
-            + (f"DII {dn:+.0f} cr" if dn is not None else "DII —")
-        )
-    vix = snap.get("vix")
-    gift = snap.get("giftPct")
-    macro = []
-    if isinstance(vix, (int, float)):
-        macro.append(f"VIX {vix:.2f}")
-    if isinstance(gift, (int, float)):
-        macro.append(f"GIFT {gift:+.2f}%")
-    if macro:
-        bits.append("Tape: " + " · ".join(macro))
     why = snap.get("why") or []
     why_not = snap.get("whyNot") or []
     if why:
@@ -340,11 +357,21 @@ def compose_rules_guide(snap: Dict[str, Any]) -> str:
     if results:
         names = [r.get("name") for r in results if r.get("name")]
         if names:
-            bits.append("Results: " + "; ".join(names[:6]))
+            bits.append("Calendar (results): " + "; ".join(names[:6]))
+    holidays = snap.get("holidays") or []
+    if holidays:
+        hnames = []
+        for h in holidays[:3]:
+            if isinstance(h, dict) and h.get("name"):
+                hnames.append(h["name"])
+            elif h:
+                hnames.append(str(h))
+        if hnames:
+            bits.append("Holiday: " + "; ".join(hnames))
     if not bits:
-        bits.append("STAND ASIDE until an OI tick lands — no live chain yet.")
+        bits.append("No outside tape yet — upload constituents, or wait for news/movers. Use the OI chart for PCR/walls.")
     else:
-        bits.append("Next tick: if CE covering + PCR falling, stop selling calls; if PE covering, cover or hedge shorts.")
+        bits.append("OI Change chart still owns PCR and walls — this bar is only what that chart cannot see.")
     return "\n".join(bits)
 
 
@@ -434,18 +461,13 @@ async def _call_llm(snap: Dict[str, Any]) -> str:
     base = (os.environ.get("DESK_GUIDE_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     model = (os.environ.get("DESK_GUIDE_MODEL") or "gpt-4o-mini").strip()
     system = (
-        "You are the on-desk vol specialist for an NSE index-options SELLING book "
-        "(NIFTY, SENSEX, BANKNIFTY). Think like a defined-risk premium seller: "
-        "theta, PCR, OI walls, GIFT lead, VIX, and named shorts. "
-        "Use ONLY the JSON. Do not invent prices or strikes. FII/DII is T+1 cash, not a tick. "
-        "Write 6-10 short lines a trader can act on this tick: "
-        "1) ACTION: HOLD / ROLL / CUT / HEDGE / STAND ASIDE "
-        "2) each index tape (spot, ATM, PCR, CE vs PE OI change, walls) "
-        "3) named shorts in adjust.legs "
-        "4) VIX + GIFT "
-        "5) calendar (results/holidays) "
-        "6) what flips the call on the NEXT OI tick. "
-        "Lead with the action verb. No markdown, no disclaimers."
+        "You are an NSE index-options SELLING desk. The trader already sees the OI chart "
+        "(PCR, CE/PE change, walls). Do NOT recap OI numbers. "
+        "Use ONLY JSON. Focus on outside.movers (heavyweight cash stocks by index weight), "
+        "outside.news, results/holidays, and adjust.legs that are ITM/too close. "
+        "6-8 short lines: ACTION, which heavyweight is dragging/lifting the index and why that "
+        "matters for sold CE vs PE, news that can gap the book, named shorts to ROLL/CUT/HOLD. "
+        "Never invent prices. FII/DII is T+1 — mention only if it conflicts with the cash movers."
     )
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(

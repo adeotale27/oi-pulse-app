@@ -1,48 +1,23 @@
-# Desk AI — live OI seller coach
+# Desk AI — outside the OI chart
 
-Alerts stay rule-based. Desk AI does **not** send every 15s poll through GPT. It **does** re-read the live chain on each tick and rewrite the rule coach; GPT is optional and rate-limited.
+The OI Change chart already shows PCR, CE/PE change, and walls. Desk AI must **not** recap that.
 
-## Layer 1 — always on (this app)
+It adds what you cannot see on that chart:
 
-The **Desk AI** bar (when ticked on in Alert Settings) shows:
+- **Heavyweight cash** — top-weight Nifty 50 / Bank Nifty / Sensex names (from your uploaded constituents) quoted live via **Kite**, Yahoo if Kite is down. Only names that are actually moving vs previous close.
+- **News** — public market RSS (Google News + ET markets). Headlines, not a full terminal.
+- **Calendar** — index results / holidays already in Pulse
+- **Your shorts** — ITM / too-close only
 
-- Live tape: spot, ATM, PCR, CE vs PE OI change, put/call walls for NIFTY / SENSEX / BANKNIFTY
-- VIX + GIFT
-- Open shorts from Positions (when Kite is connected)
-- Calendar (results / holidays)
-- Cash FII/DII as **T+1**, never as a tick
+HOLD / ROLL / CUT is about those outside facts vs the book. Alerts stay rule-based. GPT is optional (`OPENAI_API_KEY` on the **server**, never in git). **Ask AI** uses GPT; otherwise the same outside tape is a rules coach.
 
-HOLD / ROLL / CUT / HEDGE / STAND ASIDE comes from that tape even with no API key.
-
-**Carry brief** and **Positions** still have their own coach strips (`surface: carry` / `positions`).
-
-## Layer 2 — optional GPT
-
-Set in `backend/.env` (never in the frontend, never in git):
-
-```
-OPENAI_API_KEY=sk-...
-# optional:
-# DESK_GUIDE_API_KEY=
-# DESK_GUIDE_BASE_URL=https://api.openai.com/v1
-# DESK_GUIDE_MODEL=gpt-4o-mini
-# DESK_GUIDE_MIN_INTERVAL_S=300
-```
-
-- `GET /api/desk-guide` — `{ enabled, model, interval_s }`
-- `POST /api/desk-guide` — clipped snapshot (`oi`, `adjust`, `book`, `fii`, `vix`, `giftPct`, calendar). `force: true` (Ask AI) bypasses the GPT cache. Rules text is always rebuilt from the latest snap.
-
-The backend clips strings, drops strike grids and Kite tokens. If the key is missing or GPT errors (quota), you still get `source: "rules"` from the live tape.
+Upload constituents under Admin → Upload or the heavyweight tape stays empty.
 
 ## Who sees the bar
 
-Alert Settings (admin only):
+Alert Settings: **Desk AI (Admin)** / **Desk AI (Public)**.
 
-- **Desk AI (Admin)** — default on
-- **Desk AI (Public)** — default off (guests)
+## APIs
 
-## What not to do
-
-- Do not LLM the alert engine
-- Do not put `KITE_ACCESS_TOKEN` in chat
-- Do not call the model on every ticker poll
+- `GET /api/desk-outside` — movers + news (cached ~45s)
+- `GET/POST /api/desk-guide` — POST attaches outside tape server-side
