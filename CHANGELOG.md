@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.17 — 2026-08-14
+
+Phone Positions: Live / Exited toggles actually show the book; Columns menu is a portaled sheet.
+
+- Mobile was never rendering exited cards after the Exited chip
+- Duplicate Live/Exited blocks on phone could swallow the same tap (toggle twice = stays closed)
+- Columns no longer clip inside the toolbar — fixed sheet above the phone dock; outside-tap guard so iOS does not close it on the opening tap
+
 ## V5.16 — 2026-08-14
 
 Publish/readiness: `/health` `/ready` `/api/health` bind before Mongo/Kite boot. Chrome events extension left this repo.

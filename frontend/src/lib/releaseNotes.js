@@ -4,6 +4,14 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.17",
+    date: "2026-08-14",
+    user: [
+      "Phone Positions: tap Live / Exited today to expand the book; Columns opens a sheet above the dock (does not vanish on the first tap)",
+    ],
+    admin: [],
+  },
+  {
     version: "5.16",
     date: "2026-08-14",
     user: [

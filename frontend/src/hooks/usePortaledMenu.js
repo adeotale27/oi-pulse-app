@@ -15,6 +15,8 @@ export default function usePortaledMenu({
   width = 288,
   align = "right",
   offset = 4,
+  /** Ignore outside taps this long after open (iOS synthetic mouse closes instantly). */
+  guardMs = 400,
 }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
@@ -46,7 +48,9 @@ export default function usePortaledMenu({
 
   useEffect(() => {
     if (!open || typeof onClose !== "function") return undefined;
+    const openedAt = Date.now();
     const onDoc = (e) => {
+      if (Date.now() - openedAt < guardMs) return;
       const t = e.target;
       if (anchorRef?.current?.contains(t)) return;
       if (panelRef?.current?.contains(t)) return;
@@ -55,15 +59,15 @@ export default function usePortaledMenu({
     const onKey = (e) => {
       if (e.key === "Escape") onClose(e);
     };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("touchstart", onDoc, { passive: true });
+    // pointerdown only — mousedown+touchstart together close the menu on the
+    // same iOS tap that opened it.
+    document.addEventListener("pointerdown", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("touchstart", onDoc);
+      document.removeEventListener("pointerdown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose, anchorRef, panelRef]);
+  }, [open, onClose, anchorRef, panelRef, guardMs]);
 
   return { pos, place };
 }

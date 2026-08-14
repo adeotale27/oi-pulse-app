@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import usePortaledMenu from "@/hooks/usePortaledMenu";
 import {
   RefreshCw,
   PlugZap,
@@ -308,7 +309,17 @@ export default function PositionsPanel({
     }
   });
   const [deskGuide, setDeskGuide] = useState(null);
-  const colsMenuRef = useRef(null);
+  const colsAnchorRef = useRef(null);
+  const colsPanelRef = useRef(null);
+  const closeCols = useCallback(() => setColsOpen(false), []);
+  const { pos: colsPos, place: placeCols } = usePortaledMenu({
+    open: colsOpen,
+    onClose: closeCols,
+    anchorRef: colsAnchorRef,
+    panelRef: colsPanelRef,
+    width: 288,
+    align: "right",
+  });
   const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
   const loadGen = useRef(0);
 
@@ -342,17 +353,6 @@ export default function PositionsPanel({
   const shownCols = useMemo(() => visibleColumnIds(colVis), [colVis]);
   const closeRadar = useCallback(() => setOiRiskOpen(false), []);
   const colOn = useCallback((id) => shownCols.includes(id), [shownCols]);
-
-  useEffect(() => {
-    if (!colsOpen) return undefined;
-    const onDoc = (e) => {
-      if (colsMenuRef.current && !colsMenuRef.current.contains(e.target)) {
-        setColsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [colsOpen]);
 
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 30_000);
@@ -774,9 +774,6 @@ export default function PositionsPanel({
 
   const openRows = useMemo(() => rows.filter((r) => !r.exited), [rows]);
   const exitedRows = useMemo(() => rows.filter((r) => r.exited), [rows]);
-  useEffect(() => {
-    setExitedOpen(exitedRows.length <= 1);
-  }, [exitedRows.length]);
 
   const sellIdeas = useMemo(() => {
     if (!current?.strikes?.length) return null;
@@ -1175,12 +1172,18 @@ export default function PositionsPanel({
             <LineChart className="w-3.5 h-3.5 mr-1" />
             Analyze
           </Button>
-          <div className="relative" ref={colsMenuRef}>
+          <div className="relative" ref={colsAnchorRef}>
             <Button
               size="sm"
               variant="outline"
-              className="h-7 rounded-sm bg-white min-h-[28px] px-2"
-              onClick={() => setColsOpen((v) => !v)}
+              className="h-8 rounded-sm bg-white min-h-11 md:min-h-[28px] md:h-7 px-2 touch-manipulation"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setColsOpen((v) => !v);
+                requestAnimationFrame(() => placeCols());
+              }}
               data-testid="btn-positions-columns"
               title="Show / hide columns"
             >
@@ -1188,19 +1191,25 @@ export default function PositionsPanel({
               Columns
               {colsOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
             </Button>
-            {colsOpen && (
+            {colsOpen && typeof document !== "undefined" && createPortal(
               <div
-                className="absolute right-0 top-full mt-1 z-40 w-52 rounded-md border border-slate-200 bg-white shadow-lg p-2"
+                ref={colsPanelRef}
+                className="fixed z-[80] max-h-[min(70vh,24rem)] overflow-auto rounded-md border border-slate-200 bg-white shadow-xl p-2 left-3 right-3 bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] top-auto md:left-auto md:right-auto md:bottom-auto md:w-[18rem]"
+                style={
+                  typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+                    ? { top: colsPos.top, left: colsPos.left }
+                    : undefined
+                }
                 data-testid="positions-columns-menu"
               >
                 <div className="text-[10px] uppercase tracking-wider text-slate-400 px-1.5 pb-1.5">
                   Table columns
                 </div>
-                <div className="max-h-64 overflow-auto space-y-0.5">
+                <div className="space-y-0.5">
                   {POSITIONS_COLUMN_DEFS.map((c) => (
                     <label
                       key={c.id}
-                      className={`flex items-center gap-2 px-1.5 py-1 rounded-sm text-[11px] ${
+                      className={`flex items-center gap-2 px-1.5 py-2 md:py-1 rounded-sm text-[13px] md:text-[11px] ${
                         c.required
                           ? "text-slate-400 cursor-default"
                           : "text-slate-700 hover:bg-slate-50 cursor-pointer"
@@ -1208,7 +1217,7 @@ export default function PositionsPanel({
                     >
                       <input
                         type="checkbox"
-                        className="accent-emerald-600"
+                        className="accent-emerald-600 h-4 w-4"
                         checked={c.required || colVis[c.id] !== false}
                         disabled={!!c.required}
                         onChange={(e) => setCol(c.id, e.target.checked)}
@@ -1219,7 +1228,8 @@ export default function PositionsPanel({
                     </label>
                   ))}
                 </div>
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
           <span id="positions-tiles-anchor" className="inline-flex" data-testid="positions-tiles-anchor" />
@@ -1497,7 +1507,7 @@ export default function PositionsPanel({
       )}
 
       {/* Mobile cards */}
-      <div className="md:hidden space-y-2" data-testid="positions-mobile-cards">
+      <div className="md:hidden space-y-2 pb-16" data-testid="positions-mobile-cards">
         {rows.length === 0 ? (
           <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No F&amp;O positions today.</div>
         ) : (
@@ -1505,11 +1515,11 @@ export default function PositionsPanel({
         {openRows.length > 0 && (
           <button
             type="button"
-            className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-sky-200 bg-sky-50/70 py-2 text-[12px] font-semibold text-sky-800"
+            className="relative z-20 w-full min-h-11 inline-flex items-center justify-center gap-1 rounded-md border border-sky-200 bg-sky-50 py-2.5 text-[13px] font-semibold text-sky-800 touch-manipulation"
             onClick={() => setLiveOpen((v) => !v)}
             data-testid="btn-toggle-live-positions-mobile"
           >
-            {liveOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            {liveOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             Live · {openRows.length}
           </button>
         )}
@@ -1589,14 +1599,56 @@ export default function PositionsPanel({
         {exitedRows.length > 0 && (
           <button
             type="button"
-            className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-slate-50 py-2 text-[12px] font-semibold text-slate-600"
+            className="relative z-20 w-full min-h-11 inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-slate-50 py-2.5 text-[13px] font-semibold text-slate-700 touch-manipulation"
             onClick={() => setExitedOpen((v) => !v)}
             data-testid="btn-toggle-exited-positions-mobile"
           >
-            {exitedOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            {exitedOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             Exited today · {exitedRows.length}
           </button>
         )}
+        {(exitedOpen ? exitedRows : []).map((r) => {
+          const thetaInr = !r.exited && Number.isFinite(r.thetaInr) ? r.thetaInr : null;
+          return (
+            <div
+              key={`ex-${r.exchange}-${r.product}-${r.tradingsymbol}`}
+              data-testid="position-card"
+              data-position-symbol={r.tradingsymbol}
+              data-exited="1"
+              className={`rounded-lg border px-3 py-2.5 border-slate-200/70 bg-slate-100/80 text-slate-400 shadow-none opacity-[0.58] ${
+                highlightSymbol && r.tradingsymbol === highlightSymbol ? "ring-2 ring-emerald-400" : ""
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <ProductBadge product={r.product} exited />
+                    <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
+                  </div>
+                  <div className="text-base font-semibold truncate text-slate-400">{positionLabel(r)}</div>
+                  <div className="text-xs text-slate-300">{r.exchange}</div>
+                </div>
+                <StatusChip breached={false} isShortOpt={false} exited />
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-mono-data text-slate-400">
+                <div>
+                  <div className="text-[10px] uppercase text-slate-400">Qty</div>
+                  <div className="font-semibold">{privacyMode ? PRIVACY_MASK : 0}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">Avg</div>
+                  <div><AvgCell row={r} privacy={privacyMode} /></div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-400">P&amp;L</div>
+                  <div className={`font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} opacity-70`}>
+                    {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
         </>
         )}
       </div>
