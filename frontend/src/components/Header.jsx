@@ -245,7 +245,7 @@ export default function Header({
     : "rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700";
 
   const deskAiChipClass = (on) =>
-    `inline-flex items-center gap-1 h-8 px-2 rounded-md border-2 text-[11px] font-bold tracking-wide shrink-0 ${
+    `inline-flex items-center justify-center gap-1 h-8 w-8 md:w-auto md:px-2 rounded-md border-2 text-[11px] font-bold tracking-wide shrink-0 ${
       on
         ? "border-violet-400 bg-violet-600 text-white hover:bg-violet-700"
         : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
@@ -261,7 +261,7 @@ export default function Header({
             title="Desk AI — admin + guests together"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            AI
+            <span className="hidden md:inline">AI</span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64 p-2" data-testid="header-ai-menu">
@@ -287,7 +287,7 @@ export default function Header({
         title="Desk AI"
       >
         <Sparkles className="w-3.5 h-3.5" />
-        AI
+        <span className="hidden md:inline">AI</span>
       </button>
     )
   ) : null;
@@ -428,11 +428,11 @@ export default function Header({
 
       {/* Mobile: slim tools row only — brand/index/tabs live in MobileStickyChrome */}
       <div
-        className="md:hidden px-2.5 py-1.5 flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800"
+        className="md:hidden px-2 py-1.5 flex items-center gap-1 border-b border-slate-100 dark:border-slate-800 overflow-hidden"
         data-testid="mobile-header-tools"
       >
-        <div className="flex items-center gap-2 min-w-0 shrink">
-          <BrandLiveClock />
+        <div className="flex items-center gap-1.5 min-w-0 shrink overflow-hidden">
+          <BrandLiveClock compact />
           {isGuestUser && (() => {
             const guestName = authState.guest_name || (typeof window !== "undefined" ? sessionStorage.getItem("oi_guest_name") : null) || "Guest";
             const exitGuest = async () => {
@@ -459,17 +459,7 @@ export default function Header({
             );
           })()}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0 ml-auto min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {(isAdmin || (isGuestUser && positionsPublic)) && (
-              <HeaderTodayPnl
-                enabled
-                status={status}
-                pollMs={positionsPollMs}
-                className="flex flex-col items-end leading-tight px-1 shrink-0"
-              />
-            )}
-          </div>
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
           {deskAiChip}
           {isAdmin && (
             <Button

@@ -151,12 +151,12 @@ def resolve_desk_ai(settings: Optional[Dict[str, Any]] = None) -> Dict[str, bool
         admin = show
         public = show
     else:
-        admin = bool(s.get("desk_ai_admin", True))
+        admin = bool(s.get("desk_ai_admin", False))
         public = bool(s.get("desk_ai_public", False))
         show = admin
     ask = bool(s.get("desk_ai_ask", True))
     positions = bool(s.get("desk_ai_positions", False))
-    radar = bool(s.get("desk_ai_radar", True))
+    radar = bool(s.get("desk_ai_radar", False))
     return {
         "desk_ai_show": show,
         "desk_ai_ask": ask,
@@ -192,8 +192,8 @@ DEFAULT_SETTINGS = {
     # (admin + guests in one go). Until that key exists, admin/public stay independent.
     "desk_ai_ask": True,
     "desk_ai_positions": False,
-    "desk_ai_radar": True,
-    "desk_ai_admin": True,
+    "desk_ai_radar": False,
+    "desk_ai_admin": False,
     "desk_ai_public": False,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
     "show_chart_signals": False,
@@ -332,8 +332,6 @@ class OITracker:
             show = bool(clean["desk_ai_show"])
             clean["desk_ai_admin"] = show
             clean["desk_ai_public"] = show
-            if show and "desk_ai_radar" not in clean:
-                clean["desk_ai_radar"] = True
         # Explicit alert-index change → mark as today's override
         if "alert_enabled_indices" in clean:
             clean["alert_indices_override_date"] = now_ist().date().isoformat()

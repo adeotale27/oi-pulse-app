@@ -16,16 +16,15 @@ OpenAI is optional (`OPENAI_API_KEY` on the **server env**, never in git). Witho
 
 ## Who sees what
 
-Configuration is **not** in Alert Settings.
+Configuration is in **Alert Settings** and on the header **AI** chip. It is **off** until you turn it on.
 
 | Control | Where | Who it applies to |
 |---------|--------|-------------------|
-| **Show Desk AI** | Header **AI** chip (phone and desktop) | Admin **and** guests together |
-| **Ask AI** | Same header menu | Admin **and** guests together |
-| **Slim strip on chart** | Same header menu (this device) | Collapsed one-line strip above the OI grid; drag the grip to resize when expanded |
-| **Desk AI** | Right-panel picker | Full tape so the chart keeps its tiles |
-| **AI** on Positions | Positions toolbar | Strip on the Positions page |
-| **AI** on Radar | Book radar panel only | Intelligence on Radar |
+| **Show Desk AI** | Alert Settings **and** header AI chip | Admin **and** guests together |
+| **Ask AI** | Same | Admin **and** guests together |
+| **Slim strip on chart** | Header AI chip (this device) | Collapsed one-line strip above the OI grid |
+| **Desk AI** | Right-panel picker | Full tape |
+| **Book radar intelligence** | Alert Settings **and** Radar panel tick | Radar only — not the Kite positions book |
 
 Turning **Show Desk AI** on also turns Radar intelligence on; hide it from the Radar switch if you do not want it there.
 

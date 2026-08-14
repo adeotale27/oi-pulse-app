@@ -21,6 +21,7 @@ import {
   BookOpen,
   Sparkles,
   X,
+  GripHorizontal,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { isPositionsAutoRefreshOn, istMinutesOfDay, getPositionsCatchupMinute, getMarketCloseHm } from "@/lib/marketTimes";
@@ -319,6 +320,14 @@ export default function PositionsPanel({
   });
   const [deskGuide, setDeskGuide] = useState(null);
   const [outside, setOutside] = useState(null);
+  const [radarAiH, setRadarAiH] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem("oiRadarAiH"));
+      if (Number.isFinite(n)) return Math.min(360, Math.max(120, n));
+    } catch { /* noop */ }
+    return 200;
+  });
+  const radarDrag = useRef(null);
   const colsAnchorRef = useRef(null);
   const colsPanelRef = useRef(null);
   const closeCols = useCallback(() => setColsOpen(false), []);
@@ -871,7 +880,7 @@ export default function PositionsPanel({
     .join(",")}`;
 
   useEffect(() => {
-    if (!deskAiShow || (!deskAiPositions && !deskAiRadar)) {
+    if (!deskAiShow || !deskAiRadar || !oiRiskOpen) {
       return undefined;
     }
     let cancelled = false;
@@ -896,7 +905,7 @@ export default function PositionsPanel({
       cancelled = true;
       clearInterval(id);
     };
-  }, [deskAiShow, deskAiPositions, deskAiRadar, deskAiAsk, adjustSig, bookVerdict?.band]);
+  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 
@@ -1134,22 +1143,6 @@ export default function PositionsPanel({
               data-testid="positions-privacy-switch"
             />
           </label>
-          {deskAiShow && canConfigureDeskAi ? (
-          <label
-            className="inline-flex items-center gap-2 h-8 px-2.5 rounded-sm border border-violet-300 bg-white text-[13px] font-semibold text-violet-900 cursor-pointer select-none hover:bg-violet-50"
-            title="Show market intelligence on this Positions page"
-            data-testid="positions-desk-ai-toggle"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI</span>
-            <Switch
-              checked={!!deskAiPositions}
-              onCheckedChange={(on) => onDeskAiPositions?.(!!on)}
-              className="scale-90 origin-center"
-              data-testid="positions-desk-ai-switch"
-            />
-          </label>
-          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -1496,15 +1489,6 @@ export default function PositionsPanel({
           ),
         }}
       />
-
-      {deskAiShow && deskAiPositions ? (
-        <div
-          className="rounded-md border-2 border-violet-400 bg-violet-50 dark:bg-violet-950/30 px-3 py-2.5 space-y-1"
-          data-testid="positions-desk-guide"
-        >
-          <MarketIntelCard outside={outside} guide={deskGuide} compact title="Positions · market intelligence" />
-        </div>
-      ) : null}
 
       {stats.shortCount > 0 && (
         <div className="text-[11px] text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 flex flex-wrap gap-x-4 gap-y-1" data-testid="positions-seller-strip">
@@ -2307,7 +2291,39 @@ export default function PositionsPanel({
               className="rounded-md border border-violet-300 bg-violet-50 px-2.5 py-2"
               data-testid="radar-market-intel"
             >
-              <MarketIntelCard outside={outside} guide={deskGuide} compact title="Radar · outside OI" />
+              <div className="overflow-y-auto" style={{ height: radarAiH }}>
+                <MarketIntelCard outside={outside} guide={deskGuide} compact />
+              </div>
+              <button
+                type="button"
+                aria-label="Resize radar AI"
+                data-testid="radar-ai-resize"
+                className="flex w-full items-center justify-center h-3 cursor-ns-resize touch-none text-violet-400 hover:text-violet-700"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  const startY = e.clientY;
+                  const startH = radarAiH;
+                  radarDrag.current = { startY, startH };
+                  const onMove = (ev) => {
+                    if (!radarDrag.current) return;
+                    const next = Math.min(360, Math.max(120, radarDrag.current.startH + (ev.clientY - radarDrag.current.startY)));
+                    setRadarAiH(next);
+                  };
+                  const onUp = () => {
+                    radarDrag.current = null;
+                    window.removeEventListener("pointermove", onMove);
+                    window.removeEventListener("pointerup", onUp);
+                    setRadarAiH((h) => {
+                      try { localStorage.setItem("oiRadarAiH", String(h)); } catch { /* noop */ }
+                      return h;
+                    });
+                  };
+                  window.addEventListener("pointermove", onMove);
+                  window.addEventListener("pointerup", onUp);
+                }}
+              >
+                <GripHorizontal className="w-4 h-4" />
+              </button>
             </div>
           ) : null}
           <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
