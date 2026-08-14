@@ -505,7 +505,12 @@ export default function OvernightGapBrief({
     (leftPx ?? 12) + 80,
     typeof window !== "undefined" ? window.innerWidth : 1200,
   );
-  const guideText = (guide?.guide || "").trim();
+  const guideText = (() => {
+    const raw = (guide?.guide || "").trim();
+    if (!raw) return "";
+    if (/WHAT CHANGED|OPTION BUYER|OPTION SELLER|WHY IT MATTERS/i.test(raw)) return "";
+    return raw;
+  })();
   const phoneOpen = typeof window !== "undefined" && isPhone();
 
   if (minimized) {
@@ -655,7 +660,7 @@ export default function OvernightGapBrief({
           >
             <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-violet-800 dark:text-violet-200 mb-0.5 font-bold">
               <Sparkles className="w-3.5 h-3.5" />
-              Overnight coach · {guide?.source === "llm" ? "Live GPT" : "rules"}
+              Desk AI · {guide?.source === "llm" ? "Live GPT" : "rules"}
             </div>
             {guideText}
           </div>

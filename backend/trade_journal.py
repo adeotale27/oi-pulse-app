@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, time as dtime, timezone
 from typing import Any, Dict, List, Optional
 
-from market_hours import is_trading_day, now_ist
+from market_hours import is_trading_day, now_ist, IST
 
 # Freeze after the last Positions auto-refresh (Index F&O 15:40 + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
@@ -35,6 +35,53 @@ DEFAULT_TAGS = [
 def ist_ymd(dt=None) -> str:
     d = dt or now_ist()
     return d.strftime("%Y-%m-%d")
+
+
+def iso_is_trading_day(iso: Optional[str]) -> bool:
+    """NSE session day (weekday and not a holiday). Weekends never count."""
+    if not iso or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(iso)):
+        return False
+    try:
+        dt = datetime.strptime(str(iso), "%Y-%m-%d").replace(hour=12, tzinfo=IST)
+    except ValueError:
+        return False
+    return is_trading_day(dt)
+
+
+def has_user_journal_content(doc: Optional[Dict[str, Any]]) -> bool:
+    if not doc:
+        return False
+    for key in ("went_well", "went_wrong", "notes"):
+        if str(doc.get(key) or "").strip():
+            return True
+    if doc.get("tags"):
+        return True
+    if doc.get("rating") is not None:
+        return True
+    if doc.get("followed_plan") is not None:
+        return True
+    shots = doc.get("screenshots") or []
+    if any(isinstance(s, dict) and s.get("id") for s in shots):
+        return True
+    return False
+
+
+def is_closed_session_auto_snapshot(doc: Optional[Dict[str, Any]]) -> bool:
+    """True when a Sat/Sun/holiday row was written by Positions poll, not the trader."""
+    if not doc:
+        return False
+    iso = doc.get("date")
+    if iso_is_trading_day(iso):
+        return False
+    return not has_user_journal_content(doc)
+
+
+def include_on_journal_calendar(doc: Optional[Dict[str, Any]]) -> bool:
+    if not doc:
+        return False
+    if iso_is_trading_day(doc.get("date")):
+        return True
+    return has_user_journal_content(doc)
 
 
 def month_bounds(year: int, month: int) -> tuple[str, str]:
@@ -214,6 +261,7 @@ def apply_snapshot(
 
 
 def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
+    days = [d for d in days if include_on_journal_calendar(d)]
     by_index = {idx: [0.0] * 12 for idx in HEATMAP_INDICES}
     other = [0.0] * 12
     month_nets = [0.0] * 12
@@ -261,7 +309,7 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
 
 
 def month_stats(days: List[Dict[str, Any]]) -> Dict[str, Any]:
-    traded = [d for d in days if _is_traded(d)]
+    traded = [d for d in days if _is_traded(d) and iso_is_trading_day(d.get("date"))]
     pnls = [day_pnl(d) for d in traded]
     green = [p for p in pnls if p > 0]
     red = [p for p in pnls if p < 0]

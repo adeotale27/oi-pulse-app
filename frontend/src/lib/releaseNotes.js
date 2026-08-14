@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.05",
+    date: "2026-08-14",
+    user: [
+      "Journal does not book Saturday/Sunday. Friday’s P&L stays until Monday. Carry brief Desk AI (toggle on the card) only shows overnight impact news, not the full tape.",
+    ],
+    admin: [
+      "Weekend/holiday auto journal snapshots are deleted on journal load and skipped on Positions poll. Carry /desk-guide skips LLM and uses carry_outside.",
+    ],
+  },
+  {
     version: "6.04",
     date: "2026-08-14",
     user: [

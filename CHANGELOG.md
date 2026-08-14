@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.05 — 2026-08-14
+
+Journal weekends are not trading days. Carry Desk AI is overnight impact only.
+
+- Positions poll no longer writes Saturday/Sunday (or holiday) journal rows. Friday stays until the next session
+- Auto weekend/holiday journal docs are purged; calendar and weekly recap ignore them
+- Carry brief **Desk AI** toggle stays; the box only lists next-session impact (heavyweights that can gap the index, HIGH events, relevant news) — not the full WHAT/WHY/BUYER dump
+
 ## V6.04 — 2026-08-14
 
 Carry brief, Desk AI, and Radar no longer share one coach dump. Radar tiles move up/down.

@@ -1,4 +1,4 @@
-from desk_guide import compact_snapshot, compose_rules_guide, llm_configured, reset_cache, status
+from desk_guide import compact_snapshot, compose_rules_guide, llm_configured, reset_cache, status, carry_outside
 import asyncio
 from desk_guide import maybe_guide
 
@@ -53,14 +53,20 @@ def test_compact_strips_noise_and_caps_lists():
 
 def test_rules_guide_mentions_results():
     text = compose_rules_guide({
+        "surface": "carry",
         "why": ["VIX calm"],
         "whyNot": ["Friday gap"],
-        "results": [{"name": "MAXHEALTH · NIFTY"}],
-        "fii": {"fiiNet": -100, "diiNet": 200},
+        "holidays": [{"name": "Ganesh Chaturthi"}],
+        "outside": {
+            "movers": [{"symbol": "RELIANCE", "pct": -1.8, "weightage": 9.1, "impact": -0.164}],
+            "events": [{"priority": "HIGH", "event": "MAXHEALTH result tomorrow", "symbol": "MAXHEALTH"}],
+        },
     })
-    assert "Why carry" in text
     assert "MAXHEALTH" in text
+    assert "RELIANCE" in text
     assert "WHAT CHANGED" not in text
+    assert "OPTION BUYER" not in text
+    assert "Why carry" not in text
 
 
 def test_rules_guide_adjust_first():
@@ -105,7 +111,7 @@ def test_carry_desk_radar_guides_differ():
         "surface": "carry",
         "why": ["VIX calm"],
         "whyNot": ["Friday gap"],
-        "outside": {"movers": [{"symbol": "RELIANCE", "pct": -1.8}]},
+        "outside": {"movers": [{"symbol": "RELIANCE", "pct": -1.8, "weightage": 9.1, "impact": -0.164}]},
     })
     desk = compose_rules_guide({
         "surface": "desk",
@@ -116,14 +122,40 @@ def test_carry_desk_radar_guides_differ():
         "adjust": {"shortCount": 2, "adjustCount": 0, "netDelta": 1},
         "outside": {"movers": [{"symbol": "RELIANCE", "pct": -1.8}]},
     })
-    assert "Why carry" in carry
-    assert "RELIANCE" not in carry
+    assert "Next-session impact" in carry
+    assert "RELIANCE" in carry
+    assert "WHAT CHANGED" not in carry
+    assert "OPTION BUYER" not in carry
     assert "RELIANCE" in desk
+    assert "WHAT CHANGED" in desk
     assert "Why carry" not in desk
     assert "still OK" in radar or "WATCH NEXT" in radar
     assert carry != desk
     assert radar != desk
     assert compact_snapshot({"surface": "desk-panel"})["surface"] == "desk"
+
+
+def test_carry_outside_keeps_impact_only():
+    pack = carry_outside({
+        "movers": [
+            {"symbol": "RELIANCE", "pct": -1.8, "weightage": 9.1},
+            {"symbol": "TINY", "pct": 0.2, "weightage": 0.4},
+        ],
+        "news": [
+            {"title": "RBI holds rates"},
+            {"title": "A random stock up 2%"},
+        ],
+        "events": [
+            {"priority": "HIGH", "event": "HDFCBANK result tomorrow"},
+            {"priority": "LOW", "event": "ignore me"},
+        ],
+        "breadth": {"NIFTY": {"adv": 9, "n": 48}},
+    })
+    assert [m["symbol"] for m in pack["movers"]] == ["RELIANCE"]
+    assert pack["news"][0]["title"].startswith("RBI")
+    assert len(pack["news"]) == 1
+    assert pack["events"][0]["event"].startswith("HDFCBANK")
+    assert "breadth" not in pack
 
 
 def test_skip_llm_even_if_key(monkeypatch):
@@ -163,7 +195,10 @@ def test_cache_is_per_surface(monkeypatch):
     monkeypatch.delenv("DESK_GUIDE_API_KEY", raising=False)
 
     async def run():
-        carry = await maybe_guide({"surface": "carry", "why": ["VIX calm"]})
+        carry = await maybe_guide({
+            "surface": "carry",
+            "outside": {"events": [{"priority": "HIGH", "event": "VIX calm overnight"}]},
+        })
         pos = await maybe_guide({
             "surface": "positions",
             "adjust": {
@@ -172,8 +207,15 @@ def test_cache_is_per_surface(monkeypatch):
                 "legs": [{"s": "BANKNIFTY", "side": "PE", "K": 55000, "itm": True}],
             },
         })
-        again = await maybe_guide({"surface": "carry", "why": ["should refresh"]})
-        forced = await maybe_guide({"surface": "carry", "why": ["forced"], "force": True})
+        again = await maybe_guide({
+            "surface": "carry",
+            "outside": {"events": [{"priority": "HIGH", "event": "should refresh"}]},
+        })
+        forced = await maybe_guide({
+            "surface": "carry",
+            "force": True,
+            "outside": {"events": [{"priority": "HIGH", "event": "forced"}]},
+        })
         return carry, pos, again, forced
 
     carry, pos, again, forced = asyncio.run(run())
@@ -181,6 +223,6 @@ def test_cache_is_per_surface(monkeypatch):
     assert "should refresh" in again["guide"]
     assert forced.get("cached") is False
     assert "forced" in forced["guide"]
-    assert "Why carry" in carry["guide"]
+    assert "VIX calm" in carry["guide"]
     assert "Adjust first" in pos["guide"]
     assert carry["guide"] != pos["guide"]
