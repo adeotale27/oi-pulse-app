@@ -13,8 +13,9 @@ function formatIstClock(now = new Date()) {
 }
 
 /**
- * Compact brand + live IST clock for the phone header.
- * Tap opens About (what the desk is).
+ * Brand + live IST clock for the header (including phone).
+ * Compact keeps a smaller logo; name and version always stay visible.
+ * Tap opens About.
  */
 export default function BrandLiveClock({ className = "", compact = false }) {
   const [now, setNow] = useState(() => new Date());
@@ -34,11 +35,9 @@ export default function BrandLiveClock({ className = "", compact = false }) {
     >
       <OiPulseLogo className={`${compact ? "h-7 w-7" : "h-8 w-8"} rounded-lg shrink-0`} />
       <div className="flex flex-col leading-tight min-w-0">
-        {compact ? null : (
-        <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-400 truncate">
+        <span className={`${compact ? "text-[11px]" : "text-[12px]"} font-semibold text-emerald-700 dark:text-emerald-400 truncate`}>
           {APP_NAME} <span className="text-[10px] font-semibold text-slate-500">{APP_VERSION_LABEL}</span>
         </span>
-        )}
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold tabular-nums text-slate-600 dark:text-slate-300">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
           <span className="font-mono-data whitespace-nowrap">{clock}{compact ? "" : " IST"}</span>

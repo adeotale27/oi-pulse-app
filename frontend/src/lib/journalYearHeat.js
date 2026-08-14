@@ -1,9 +1,10 @@
 function isTraded(doc) {
   if (!doc) return false;
   if ((doc.exited_count || 0) > 0) return true;
+  if ((doc.partial_count || 0) > 0) return true;
   if (Math.abs(Number(doc.booked_pnl) || 0) > 0.009) return true;
   if (Math.abs(Number(doc.pnl_exited) || 0) > 0.009) return true;
-  if ((doc.legs || []).some((l) => l && l.exited)) return true;
+  if ((doc.legs || []).some((l) => l && (l.exited || l.partial || Math.abs(Number(l.realised) || 0) > 0.009))) return true;
   return false;
 }
 
@@ -17,18 +18,57 @@ function cellPnl(doc) {
 
 const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 
+export function heatmapIndexFromLeg(leg) {
+  const raw = String(leg?.index || "").trim().toUpperCase();
+  if (INDICES.includes(raw)) return raw;
+  const ts = String(leg?.tradingsymbol || leg?.display_name || "").toUpperCase().replace(/\s+/g, "");
+  if (ts.startsWith("BANKNIFTY")) return "BANKNIFTY";
+  if (ts.startsWith("SENSEX")) return "SENSEX";
+  if (ts.startsWith("NIFTY")) return "NIFTY";
+  return raw || "OTHER";
+}
+
+function bookedIndexPnl(doc) {
+  const acc = { NIFTY: 0, SENSEX: 0, BANKNIFTY: 0 };
+  let other = 0;
+  const legs = (doc?.legs || []).filter(
+    (l) => l && (l.exited || l.partial || Math.abs(Number(l.realised) || 0) > 0.009),
+  );
+  if (legs.length) {
+    for (const leg of legs) {
+      const key = heatmapIndexFromLeg(leg);
+      let val = Number(leg.realised);
+      if (!Number.isFinite(val) || Math.abs(val) < 1e-9) val = Number(leg.pnl) || 0;
+      if (key in acc) acc[key] += val;
+      else other += val;
+    }
+  } else {
+    const ip = doc?.booked_index_pnl || {};
+    for (const k of INDICES) acc[k] += Number(ip[k]) || 0;
+    for (const [k, v] of Object.entries(ip)) {
+      if (!INDICES.includes(String(k).toUpperCase())) other += Number(v) || 0;
+    }
+  }
+  const attributed = INDICES.reduce((s, k) => s + acc[k], 0) + other;
+  const gap = cellPnl(doc) - attributed;
+  if (Math.abs(gap) > 0.5) other += gap;
+  return { ...acc, OTHER: other };
+}
+
 function emptyHeat(year) {
   const by_index = Object.fromEntries(INDICES.map((idx) => [idx, Array(12).fill(0)]));
   return {
     year,
     indices: INDICES.slice(),
     by_index,
+    other: Array(12).fill(0),
     month_nets: Array(12).fill(0),
     months: Array.from({ length: 12 }, (_, i) => ({
       month: i + 1,
       net_pnl: 0,
       trading_days: 0,
       by_index: Object.fromEntries(INDICES.map((idx) => [idx, 0])),
+      other: 0,
     })),
   };
 }
@@ -44,6 +84,9 @@ function cloneHeat(base, year) {
   if (base.month_nets) {
     for (let i = 0; i < 12; i += 1) heat.month_nets[i] = Number(base.month_nets[i]) || 0;
   }
+  if (base.other) {
+    for (let i = 0; i < 12; i += 1) heat.other[i] = Number(base.other[i]) || 0;
+  }
   if (base.months) {
     for (let i = 0; i < 12; i += 1) {
       const m = base.months[i] || {};
@@ -56,6 +99,7 @@ function cloneHeat(base, year) {
           SENSEX: Number(m.by_index?.SENSEX) || heat.by_index.SENSEX[i],
           BANKNIFTY: Number(m.by_index?.BANKNIFTY) || heat.by_index.BANKNIFTY[i],
         },
+        other: Number(m.other) || heat.other[i],
       };
     }
   }
@@ -74,20 +118,24 @@ export function overlayMonthOnYearHeat(yearHeat, monthPayload, year, month) {
   let net = 0;
   let tradedDays = 0;
   const idxAcc = { NIFTY: 0, SENSEX: 0, BANKNIFTY: 0 };
+  let other = 0;
   days.forEach((d) => {
     if (!isTraded(d)) return;
     net += cellPnl(d);
     tradedDays += 1;
-    const ip = d.booked_index_pnl || {};
-    for (const k of Object.keys(idxAcc)) idxAcc[k] += Number(ip[k]) || 0;
+    const ip = bookedIndexPnl(d);
+    for (const k of INDICES) idxAcc[k] += Number(ip[k]) || 0;
+    other += Number(ip.OTHER) || 0;
   });
   if (!tradedDays) return heat;
   heat.month_nets[mi] = net;
+  heat.other[mi] = other;
   heat.months[mi] = {
     month,
     net_pnl: net,
     trading_days: tradedDays,
     by_index: { ...idxAcc },
+    other,
   };
   for (const k of INDICES) heat.by_index[k][mi] = idxAcc[k];
   return heat;

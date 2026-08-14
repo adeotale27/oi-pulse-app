@@ -165,7 +165,7 @@ def snapshot_from_positions(
         pnl_v = booked_v if (r.get("exited") or partial) else _num(r.get("pnl"))
         legs.append({
             "tradingsymbol": r.get("tradingsymbol") or r.get("display_name"),
-            "index": r.get("index"),
+            "index": _heatmap_index(r),
             "side": r.get("side"),
             "strike": r.get("strike"),
             "quantity": r.get("quantity"),
@@ -327,12 +327,18 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
             month_nets[i] += pnl
             month_days[i] += 1
         ip = _booked_index_pnl(d)
+        attributed = 0.0
         for idx, v in ip.items():
             key = str(idx).upper()
+            amt = _num(v)
+            attributed += amt
             if key in by_index:
-                by_index[key][i] += _num(v)
+                by_index[key][i] += amt
             else:
-                other[i] += _num(v)
+                other[i] += amt
+        gap = pnl - attributed
+        if _is_traded(d) and abs(gap) > 0.5:
+            other[i] += gap
     months = []
     for m in range(1, 13):
         i = m - 1
@@ -341,6 +347,7 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
             "net_pnl": round(month_nets[i], 2),
             "trading_days": month_days[i],
             "by_index": {idx: round(by_index[idx][i], 2) for idx in HEATMAP_INDICES},
+            "other": round(other[i], 2),
         })
     return {
         "year": year,
@@ -513,9 +520,6 @@ def _image_magic_ok(raw: bytes, mime: str) -> bool:
 
 def _booked_index_pnl(d: Dict[str, Any]) -> Dict[str, float]:
     """Per-index booked P&L. Never use live index_pnl (includes open MTM)."""
-    ip = d.get("booked_index_pnl")
-    if isinstance(ip, dict) and ip:
-        return ip
     legs = [
         leg for leg in (d.get("legs") or [])
         if isinstance(leg, dict) and (
@@ -524,6 +528,9 @@ def _booked_index_pnl(d: Dict[str, Any]) -> Dict[str, float]:
     ]
     if legs:
         return _index_pnl_from_legs(legs, pnl_key="realised")
+    ip = d.get("booked_index_pnl")
+    if isinstance(ip, dict) and ip:
+        return {str(k).upper(): _num(v) for k, v in ip.items()}
     return {}
 
 
@@ -544,10 +551,32 @@ def _num(v) -> float:
         return 0.0
 
 
+def _heatmap_index(leg: Dict[str, Any]) -> str:
+    """Map a position/leg onto NIFTY / SENSEX / BANKNIFTY for the year grid."""
+    raw = str(leg.get("index") or "").strip().upper()
+    if raw in HEATMAP_INDICES:
+        return raw
+    ts = str(leg.get("tradingsymbol") or leg.get("display_name") or "").strip()
+    try:
+        from fno_symbol import parse_fno_option_symbol
+        parsed = parse_fno_option_symbol(ts)
+    except Exception:
+        parsed = None
+    if parsed:
+        idx = str(parsed.get("index") or "").upper()
+        if idx in HEATMAP_INDICES:
+            return idx
+    compact = ts.upper().replace(" ", "")
+    for name in ("BANKNIFTY", "SENSEX", "NIFTY"):
+        if compact.startswith(name):
+            return name
+    return raw or "OTHER"
+
+
 def _index_pnl_from_legs(legs: List[Dict[str, Any]], *, pnl_key: str = "pnl") -> Dict[str, float]:
     out: Dict[str, float] = {}
     for leg in legs or []:
-        idx = str(leg.get("index") or "OTHER").upper()
+        idx = _heatmap_index(leg)
         val = _num(leg.get(pnl_key))
         if pnl_key == "realised" and abs(val) < 1e-9:
             val = _num(leg.get("pnl"))

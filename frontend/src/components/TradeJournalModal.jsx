@@ -21,7 +21,7 @@ import {
   deleteJournalScreenshot,
 } from "@/lib/api";
 import { toast } from "sonner";
-import { isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
+import { holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import InfoTip from "@/components/InfoTip";
@@ -526,11 +526,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const isSel = c.iso === selected;
                       const session = isJournalSessionDayIST(c.iso);
                       const special = isSpecialSessionIST(c.iso) && session;
-                      const hol = isHoliday(c.iso) && !special;
+                      const holiday = isHoliday(c.iso);
+                      const closedHoliday = Boolean(holiday && !special);
                       const showBook = traded && session;
                       const tone = showBook ? cellClasses(pnl, true, maxAbs) : special
                         ? { box: "bg-violet-50 border-violet-300 text-violet-900", amt: "text-violet-900", invert: false }
-                        : hol
+                        : closedHoliday
                         ? { box: "bg-amber-50 border-amber-300 text-amber-900", amt: "text-amber-900", invert: false }
                         : !session
                           ? { box: "bg-slate-50 border-slate-200 text-slate-400", amt: "text-slate-400", invert: false, weekend: true }
@@ -566,9 +567,9 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                                 {privacy ? "··" : compactPnl(pnl)}
                               </div>
                             ) : special ? (
-                              <div className="text-[9px] leading-tight text-violet-800 truncate" title={isHoliday(c.iso)?.name}>Muh.</div>
-                            ) : hol ? (
-                              <div className="text-[9px] leading-tight text-amber-800 truncate" title={hol.name}>Holi</div>
+                              <div className="text-[9px] leading-tight text-violet-800 truncate" title={holidayShortName(holiday, "Muhurat")}>Muh.</div>
+                            ) : closedHoliday ? (
+                              <div className="text-[9px] leading-tight text-amber-800 truncate" title={holidayShortName(holiday)}>Holi</div>
                             ) : !session ? (
                               <div className="text-[9px] text-slate-400">—</div>
                             ) : (
@@ -597,16 +598,16 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               ) : null}
                             </>
                           ) : special ? (
-                            <div className="text-[12px] text-violet-800 mt-3 leading-tight font-medium" title={isHoliday(c.iso)?.name}>
+                            <div className="text-[12px] text-violet-800 mt-3 leading-tight font-medium" title={holidayShortName(holiday, "Muhurat")}>
                               Muhurat
                               <div className="text-[11px] font-normal mt-0.5">
-                                {(isHoliday(c.iso)?.name || "Special session").replace(/\s*\(.*$/, "")}
+                                {holidayShortName(holiday, "Special session")}
                               </div>
                             </div>
-                          ) : hol ? (
-                            <div className="text-[12px] text-amber-800 mt-3 leading-tight font-medium" title={hol.name}>
+                          ) : closedHoliday ? (
+                            <div className="text-[12px] text-amber-800 mt-3 leading-tight font-medium" title={holidayShortName(holiday)}>
                               Holiday
-                              <div className="text-[11px] font-normal mt-0.5">{hol.name.replace(/\s*\(.*$/, "")}</div>
+                              <div className="text-[11px] font-normal mt-0.5">{holidayShortName(holiday)}</div>
                             </div>
                           ) : !session ? (
                             <div className="text-[12px] text-slate-500 mt-3 font-medium">Market closed</div>
@@ -647,8 +648,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         </span>
                       </div>
                       {w.holidays?.length ? (
-                        <div className="text-[9px] text-amber-700 leading-tight mt-0.5" title={w.holidays.map((h) => h.name).join(", ")}>
-                          Holiday · {w.holidays.map((h) => h.name.replace(/\s*\(.*$/, "")).join(", ")}
+                        <div className="text-[9px] text-amber-700 leading-tight mt-0.5" title={w.holidays.map((h) => holidayShortName(h)).join(", ")}>
+                          Holiday · {w.holidays.map((h) => holidayShortName(h)).join(", ")}
                         </div>
                       ) : null}
                     </div>
@@ -713,6 +714,11 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                             </span>
                           );
                         })}
+                        {Math.abs(Number(heat?.other?.[i] || 0)) >= 0.01 ? (
+                          <span className={Number(heat.other[i]) >= 0 ? "text-emerald-700" : "text-rose-700"}>
+                            Other {compactPnl(heat.other[i])}
+                          </span>
+                        ) : null}
                         <span className="text-slate-400">{days}d</span>
                       </div>
                     </button>
@@ -724,8 +730,17 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   <thead>
                     <tr className="text-slate-600 bg-slate-50">
                       <th className="text-left p-2 font-medium">Index</th>
-                      {MONTH_SHORT.map((m) => (
-                        <th key={m} className="p-2 font-medium">{m}</th>
+                      {MONTH_SHORT.map((m, i) => (
+                        <th key={m} className="p-2 font-medium">
+                          <button
+                            type="button"
+                            className="hover:text-emerald-700 hover:underline"
+                            onClick={() => { setMonth(i + 1); setTab("calendar"); }}
+                            title={`Open ${m} on Calendar`}
+                          >
+                            {m}
+                          </button>
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -740,6 +755,16 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         ))}
                       </tr>
                     ))}
+                    {Array.isArray(heat?.other) && heat.other.some((v) => Math.abs(Number(v) || 0) >= 0.01) ? (
+                      <tr>
+                        <td className="p-2 font-semibold text-slate-500">Other</td>
+                        {(heat.other || Array(12).fill(0)).map((v, i) => (
+                          <td key={i} className={`p-1.5 text-center font-mono-data font-semibold ${heatCell(v, heatMax)}`}>
+                            {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : compactPnl(v))}
+                          </td>
+                        ))}
+                      </tr>
+                    ) : null}
                     <tr className="border-t border-slate-100">
                       <td className="p-2 font-semibold">Month</td>
                       {(heat?.month_nets || Array(12).fill(0)).map((v, i) => (

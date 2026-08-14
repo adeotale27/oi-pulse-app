@@ -49,4 +49,15 @@ assert.equal(isSpecialSessionIST("2025-10-21"), true);
 assert.equal(isJournalSessionDayIST("2025-10-21"), true);
 assert.equal(isJournalSessionDayIST("2026-11-10"), false);
 
+function holidayShortName(h, fallback = "Holiday") {
+  const name = typeof h === "object" && h ? h.name : "";
+  const s = String(name || fallback);
+  return s.replace(/\s*\(.*$/, "");
+}
+assert.equal(({ name: "Ganesh Chaturthi" } && true), true, "JS && true drops the object");
+assert.equal(holidayShortName(true), "Holiday");
+assert.equal(holidayShortName(undefined), "Holiday");
+assert.equal(holidayShortName({ name: "Ganesh Chaturthi" }), "Ganesh Chaturthi");
+assert.equal(holidayShortName({ name: "Id-Ul-Fitr (Ramzan Id)" }), "Id-Ul-Fitr");
+
 console.log("holidays.test.js ok");

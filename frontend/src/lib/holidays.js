@@ -79,6 +79,13 @@ export function isHoliday(iso) {
   return HOLIDAYS_RAW.find((h) => h.date === iso) || null;
 }
 
+/** Safe calendar label. `holidayObj && !special` is boolean `true` in JS — never call `.replace` on that. */
+export function holidayShortName(h, fallback = "Holiday") {
+  const name = typeof h === "object" && h ? h.name : "";
+  const s = String(name || fallback);
+  return s.replace(/\s*\(.*$/, "");
+}
+
 /** True for weekday IST dates with a cash/F&O session, including Muhurat. */
 export function isTradingDayIST(iso = toIST(new Date())) {
   const wd = weekdayIST(iso);

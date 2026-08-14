@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.09 — 2026-08-14
+
+Journal next-month crash, year heatmap index rows, phone brand.
+
+- Opening a month that has an NSE holiday no longer blanks the desk (`object && true` was calling `.replace` on a missing holiday name)
+- Year heatmap attributes booked P&L from the option symbol when a stored leg has no `index` (Thursday SENSEX ~21k lands on SENSEX, not only the month total)
+- Phone header always shows **OI Pulse** and the version next to the live clock
+
 ## V6.08 — 2026-08-14
 
 Journal books partial closes, not only fully squared legs.

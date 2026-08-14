@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.09",
+    date: "2026-08-14",
+    user: [
+      "Journal no longer crashes when you open a month that has a holiday. Year heatmap puts each index’s booked P&L on its own row (e.g. Thursday SENSEX on August). Phone header shows OI Pulse and the version.",
+    ],
+    admin: [
+      "Holiday cells must keep the holiday object — `obj && true` is boolean true in JS. Heatmap infers index from tradingsymbol when leg.index is missing; remainder goes to Other.",
+    ],
+  },
+  {
     version: "6.08",
     date: "2026-08-14",
     user: [

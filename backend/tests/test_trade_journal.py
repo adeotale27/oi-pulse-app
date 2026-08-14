@@ -390,6 +390,49 @@ def test_year_heatmap_ignores_open_nifty_mtm():
     assert h["months"][7]["trading_days"] == 1
 
 
+def test_year_heatmap_infers_index_from_symbol():
+    """Locked days may omit leg.index; SENSEX booked still belongs on the SENSEX row."""
+    days = [
+        {
+            "date": "2026-08-13",
+            "booked_pnl": 23100,
+            "exited_count": 1,
+            "partial_count": 1,
+            "booked_index_pnl": {"NIFTY": 2100},
+            "legs": [
+                {"tradingsymbol": "NIFTY26AUG24800CE", "index": "NIFTY", "exited": True, "realised": 2100, "pnl": 2100},
+                {"tradingsymbol": "SENSEX26AUG76800PE", "partial": True, "realised": 21000, "pnl": 21000},
+            ],
+        },
+    ]
+    h = year_heatmap(days, 2026)
+    assert h["by_index"]["NIFTY"][7] == 2100
+    assert h["by_index"]["SENSEX"][7] == 21000
+    assert h["month_nets"][7] == 23100
+    assert h["other"][7] == 0
+
+
+def test_snapshot_fills_index_from_tradingsymbol():
+    snap = snapshot_from_positions(
+        {
+            "exited_count": 1,
+            "pnl_today": {"open": 0, "exited": 21000, "booked": 21000, "total": 21000},
+            "positions": [
+                {
+                    "tradingsymbol": "SENSEX26AUG76800PE",
+                    "quantity": 0,
+                    "exited": True,
+                    "booked_pnl": 21000,
+                    "pnl": 21000,
+                },
+            ],
+        },
+        date="2026-08-13",
+    )
+    assert snap["legs"][0]["index"] == "SENSEX"
+    assert snap["booked_index_pnl"]["SENSEX"] == 21000
+
+
 def test_day_pnl_never_uses_open_total():
     assert day_pnl({"pnl_total": 5000, "booked_pnl": 1200, "pnl_exited": 1200}) == 1200
     assert day_pnl({"pnl_total": -400, "open_count": 2, "exited_count": 0}) == 0
