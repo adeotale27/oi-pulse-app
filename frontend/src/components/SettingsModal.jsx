@@ -71,6 +71,8 @@ export default function SettingsModal({
           show_writer_defense: true,
           show_suggestion: true,
           show_chart_signals: false,
+          desk_ai_admin: true,
+          desk_ai_public: false,
         });
       });
     setLocal(loadOISettings());
@@ -169,6 +171,8 @@ export default function SettingsModal({
           show_writer_defense: settings.show_writer_defense,
           show_suggestion: settings.show_suggestion,
           show_chart_signals: settings.show_chart_signals,
+          desk_ai_admin: settings.desk_ai_admin !== false,
+          desk_ai_public: !!settings.desk_ai_public,
           visible_pages: Array.from(new Set(
             (Array.isArray(settings.visible_pages) ? settings.visible_pages : []).filter((id) => !HARD_ADMIN_PAGES.has(id)),
           )),
@@ -665,6 +669,40 @@ export default function SettingsModal({
                     <div className="text-sm font-medium">Chart signal chips (gamma / institution)</div>
                     <div className="text-[10px] text-slate-500">
                       Show CE/PE gamma-wall, institution, and velocity chips under the OI Change chart (and matching badges on Strike Table). Off by default — thresholds still live under local OI settings below.
+                    </div>
+                  </div>
+                </label>
+                <label
+                  className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                  data-testid="desk-ai-admin-row"
+                >
+                  <Checkbox
+                    data-testid="desk-ai-admin"
+                    className="mt-0.5"
+                    checked={settings.desk_ai_admin !== false}
+                    onCheckedChange={(ck) => setSettings({ ...settings, desk_ai_admin: !!ck })}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Desk AI (Admin)</div>
+                    <div className="text-[10px] text-slate-500">
+                      Show the live OI seller coach on your desk (chain + book; GPT when a key is set).
+                    </div>
+                  </div>
+                </label>
+                <label
+                  className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                  data-testid="desk-ai-public-row"
+                >
+                  <Checkbox
+                    data-testid="desk-ai-public"
+                    className="mt-0.5"
+                    checked={!!settings.desk_ai_public}
+                    onCheckedChange={(ck) => setSettings({ ...settings, desk_ai_public: !!ck })}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Desk AI (Public)</div>
+                    <div className="text-[10px] text-slate-500">
+                      Show the same bar to guests. Off by default — you tick this.
                     </div>
                   </div>
                 </label>

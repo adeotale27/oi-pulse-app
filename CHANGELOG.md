@@ -1,5 +1,21 @@
 # Changelog
 
+## V5.18 — 2026-08-14
+
+Desk AI reads the live OI tape (not just yesterday’s FII print). Admin ticks who sees the bar.
+
+- Coach uses PCR, CE/PE OI change, walls, VIX, GIFT, shorts, calendar; FII/DII labelled T+1
+- Rules rewrite every tick; GPT only on Ask AI / ~5 min cache
+- Alert Settings: **Desk AI (Admin)** / **Desk AI (Public)**
+
+## V5.17 — 2026-08-14
+
+Phone Positions: Live / Exited toggles actually show the book; Columns menu is a portaled sheet.
+
+- Mobile was never rendering exited cards after the Exited chip
+- Duplicate Live/Exited blocks on phone could swallow the same tap (toggle twice = stays closed)
+- Columns no longer clip inside the toolbar — fixed sheet above the phone dock; outside-tap guard so iOS does not close it on the opening tap
+
 ## V5.16 — 2026-08-14
 
 Publish/readiness: `/health` `/ready` `/api/health` bind before Mongo/Kite boot. Chrome events extension left this repo.

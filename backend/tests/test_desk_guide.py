@@ -15,6 +15,11 @@ def test_compact_strips_noise_and_caps_lists():
         "band": "REDUCE",
         "kite_access_token": "should-not-copy",
         "fii": {"date": "2026-08-13", "fiiNet": "-1200.5", "diiNet": "800", "secret": "x"},
+        "oi": [{
+            "idx": "NIFTY", "px": 24501.2, "atm": 24500, "pcr": 0.92,
+            "ceChg": 120000, "peChg": -30000, "callWall": 24600, "putWall": 24300,
+            "strikes": [{"strike": 1, "ce_oi": 9}],
+        }],
         "adjust": {
             "netDelta": "12.4",
             "adjustCount": 1,
@@ -35,6 +40,8 @@ def test_compact_strips_noise_and_caps_lists():
     assert snap["book"]["byIndex"]["NIFTY"]["pe"] == 1
     assert snap["vix"] == 11.4
     assert "SECRET" not in str(snap["results"])
+    assert snap["oi"][0]["idx"] == "NIFTY"
+    assert "strikes" not in snap["oi"][0]
 
 
 def test_rules_guide_mentions_results():
@@ -63,6 +70,22 @@ def test_rules_guide_adjust_first():
     assert "Net Δ" in text
 
 
+def test_rules_guide_uses_oi_tape():
+    text = compose_rules_guide({
+        "oi": [{
+            "idx": "NIFTY", "px": 24500, "atm": 24500, "pcr": 1.25,
+            "ceChg": 80000, "peChg": 120000, "callWall": 24600, "putWall": 24300,
+        }],
+        "vix": 12.4,
+        "giftPct": -0.18,
+    })
+    assert "NIFTY" in text
+    assert "PCR" in text
+    assert "VIX" in text
+    assert "GIFT" in text
+    assert "HOLD" in text or "range" in text.lower() or "put" in text.lower()
+
+
 def test_status_without_key(monkeypatch):
     reset_cache()
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -88,13 +111,13 @@ def test_cache_is_per_surface(monkeypatch):
                 "legs": [{"s": "BANKNIFTY", "side": "PE", "K": 55000, "itm": True}],
             },
         })
-        again = await maybe_guide({"surface": "carry", "why": ["should cache"]})
+        again = await maybe_guide({"surface": "carry", "why": ["should refresh"]})
         forced = await maybe_guide({"surface": "carry", "why": ["forced"], "force": True})
         return carry, pos, again, forced
 
     carry, pos, again, forced = asyncio.run(run())
-    assert again.get("cached") is True
-    assert "Why carry: VIX calm" in again["guide"]
+    assert again.get("cached") is False
+    assert "should refresh" in again["guide"]
     assert forced.get("cached") is False
     assert "forced" in forced["guide"]
     assert "Why carry" in carry["guide"]

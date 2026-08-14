@@ -4,6 +4,24 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.18",
+    date: "2026-08-14",
+    user: [
+      "Desk AI now coaches off live OI (spot, PCR, CE vs PE change) — not only FII/DII. Ask AI for GPT when a key is set.",
+    ],
+    admin: [
+      "Alert Settings: Desk AI (Admin) and Desk AI (Public) ticks. POST /desk-guide accepts oi tape; rules no longer freeze for 5 minutes",
+    ],
+  },
+  {
+    version: "5.17",
+    date: "2026-08-14",
+    user: [
+      "Phone Positions: tap Live / Exited today to expand the book; Columns opens a sheet above the dock (does not vanish on the first tap)",
+    ],
+    admin: [],
+  },
+  {
     version: "5.16",
     date: "2026-08-14",
     user: [

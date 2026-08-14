@@ -162,6 +162,7 @@ export default function Header({
   positionsPollMs = 15_000,
   /** Guests only see header P&L when Positions is a public page. */
   positionsPublic = true,
+  showDeskAi = true,
   onToggleSlimStatusRail,
 }) {
   const price = current?.price ?? 0;
@@ -573,6 +574,7 @@ export default function Header({
       {/* Row 1: brand + status + essential actions */}
       <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
         <BrandMark compact={headerRail} className="shrink-0" />
+        {showDeskAi ? (
         <button
           type="button"
           data-testid="header-ai-chip"
@@ -583,6 +585,7 @@ export default function Header({
           <Sparkles className="w-3.5 h-3.5" />
           AI
         </button>
+        ) : null}
 
         {/* VIX / GIFT — always visible; slim = chips, normal = stacked metrics */}
         <div className={`flex items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>

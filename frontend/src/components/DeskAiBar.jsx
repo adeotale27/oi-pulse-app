@@ -1,26 +1,52 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, RefreshCw } from "lucide-react";
-import { api, subscribeExtras } from "@/lib/api";
+import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
 import { upcomingHolidays } from "@/lib/holidays";
 import { eventDisplayName } from "@/lib/carryFocus";
+import { compactBookFromPositions, fmtOiLakh, summarizeIndexTape } from "@/lib/deskAiTape";
 
-export default function DeskAiBar({ activeIndex }) {
+const INDEXES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+
+export default function DeskAiBar({
+  activeIndex,
+  current,
+  previous,
+  enabledIndices,
+  visible = true,
+}) {
   const [guide, setGuide] = useState(null);
   const [meta, setMeta] = useState(null);
   const [busy, setBusy] = useState(false);
   const extrasRef = useRef({});
+  const [extrasTick, setExtrasTick] = useState(0);
+  const currentRef = useRef(current);
+  const previousRef = useRef(previous);
+  currentRef.current = current;
+  previousRef.current = previous;
 
   useEffect(() => subscribeExtras((d) => {
     extrasRef.current = d || {};
+    setExtrasTick((n) => n + 1);
   }), []);
 
+  const liveTape = useMemo(
+    () => summarizeIndexTape(current, previous),
+    [current, previous],
+  );
+
   const run = useCallback(async (force = false) => {
+    if (!visible) return;
     setBusy(true);
     try {
-      const [st, fiiRes, evRes] = await Promise.all([
+      const snapCurrent = currentRef.current;
+      const snapPrevious = previousRef.current;
+      const idxs = (enabledIndices?.length ? enabledIndices : INDEXES).filter((i) => INDEXES.includes(i));
+      const [st, fiiRes, evRes, posRes, ...oiPack] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
         api.get("/market/fii-dii").catch(() => ({ data: null })),
         activeIndex ? api.get(`/events/${activeIndex}`).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+        api.get("/positions").catch(() => ({ data: null })),
+        ...idxs.map((idx) => fetchOIChange(idx, 15).catch(() => null)),
       ]);
       setMeta(st.data);
       const fii = fiiRes.data?.data;
@@ -29,11 +55,18 @@ export default function DeskAiBar({ activeIndex }) {
       const gift = extrasRef.current?.gift_nifty?.change_pct;
       const vRaw = extrasRef.current?.vix;
       const vix = vRaw?.last ?? vRaw?.ltp ?? vRaw;
+      const oi = idxs.map((idx, i) => {
+        if (idx === activeIndex && snapCurrent) return summarizeIndexTape(snapCurrent, snapPrevious);
+        const pack = oiPack[i];
+        return summarizeIndexTape(pack?.current, pack?.previous);
+      }).filter(Boolean);
+      const packed = compactBookFromPositions(posRes.data);
       const { data } = await api.post("/desk-guide", {
         surface: "desk",
         force: !!force,
         vix: vix != null ? Number(vix) : null,
         giftPct: gift != null ? Number(gift) : null,
+        weekday: new Date().getDay(),
         fii: {
           date: fii?.as_of_date,
           fiiNet: fii?.fii?.net,
@@ -43,9 +76,12 @@ export default function DeskAiBar({ activeIndex }) {
         results: events.map((e) => ({
           name: eventDisplayName(e) || e.name,
           date: e.date,
-          daysAway: e.daysAway,
+          daysAway: e.days_remaining ?? e.daysAway,
           index: e.index || activeIndex,
         })),
+        oi,
+        book: packed.book,
+        adjust: packed.adjust,
       });
       setGuide(data);
     } catch {
@@ -53,17 +89,29 @@ export default function DeskAiBar({ activeIndex }) {
     } finally {
       setBusy(false);
     }
-  }, [activeIndex]);
+  }, [activeIndex, enabledIndices, visible]);
 
   useEffect(() => {
+    if (!visible) return undefined;
     run(false);
-    const id = setInterval(() => run(false), 5 * 60 * 1000);
+    const id = setInterval(() => run(false), 30 * 1000);
     return () => clearInterval(id);
-  }, [run]);
+  }, [run, visible]);
+
+  useEffect(() => {
+    if (!visible || !current?.timestamp) return undefined;
+    const t = setTimeout(() => run(false), 1500);
+    return () => clearTimeout(t);
+  }, [current?.timestamp, visible, run]);
+
+  if (!visible) return null;
 
   const text = (guide?.guide || "").trim();
-  const llm = guide?.source === "llm" || meta?.enabled;
   const source = guide?.source === "llm" ? "AI" : "rules";
+  const llmLive = source === "AI";
+  const gift = extrasRef.current?.gift_nifty?.change_pct;
+  const vRaw = extrasRef.current?.vix;
+  const vixNow = vRaw?.last ?? vRaw?.ltp ?? vRaw;
 
   return (
     <section
@@ -80,16 +128,19 @@ export default function DeskAiBar({ activeIndex }) {
             </span>
             <span
               className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${
-                llm && source === "AI"
+                llmLive
                   ? "border-violet-500 bg-violet-600 text-white"
                   : "border-slate-300 bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300"
               }`}
               data-testid="desk-ai-source"
             >
-              {source === "AI" ? "Live GPT" : meta?.enabled ? "GPT ready" : "Rules"}
+              {llmLive ? "Live GPT" : meta?.enabled ? "Rules · GPT retry" : "Rules"}
             </span>
-            {guide?.cached ? (
-              <span className="text-[10px] uppercase tracking-widest text-slate-400">cached</span>
+            {guide?.cached && llmLive ? (
+              <span className="text-[10px] uppercase tracking-widest text-slate-400">GPT cached</span>
+            ) : null}
+            {guide?.llm_error ? (
+              <span className="text-[10px] text-amber-700" title={guide.llm_error}>GPT miss</span>
             ) : null}
             <button
               type="button"
@@ -102,11 +153,30 @@ export default function DeskAiBar({ activeIndex }) {
               Ask AI
             </button>
           </div>
+          <div
+            className="flex flex-wrap gap-1.5 mb-1.5 font-mono-data text-[11px] text-slate-700 dark:text-slate-200"
+            data-testid="desk-ai-tape"
+          >
+            {liveTape ? (
+              <span className="rounded-sm border border-violet-200 bg-white/80 px-1.5 py-0.5">
+                {liveTape.idx} {liveTape.px ?? "—"} ATM {liveTape.atm ?? "—"} PCR {liveTape.pcr ?? "—"} CE {fmtOiLakh(liveTape.ceChg)} PE {fmtOiLakh(liveTape.peChg)}
+              </span>
+            ) : (
+              <span className="text-slate-400">Waiting for OI tick…</span>
+            )}
+            {vixNow != null && Number.isFinite(Number(vixNow)) ? (
+              <span className="rounded-sm border border-slate-200 bg-white/80 px-1.5 py-0.5">VIX {Number(vixNow).toFixed(2)}</span>
+            ) : null}
+            {gift != null && Number.isFinite(Number(gift)) ? (
+              <span className="rounded-sm border border-slate-200 bg-white/80 px-1.5 py-0.5">GIFT {Number(gift) >= 0 ? "+" : ""}{Number(gift).toFixed(2)}%</span>
+            ) : null}
+            <span className="sr-only">{extrasTick}</span>
+          </div>
           <p
             className="text-[13px] leading-snug text-slate-900 dark:text-slate-100 whitespace-pre-wrap font-medium"
             data-testid="desk-ai-guide"
           >
-            {text || (busy ? "Reading the book, FII/DII, VIX, and the calendar…" : "Open Positions or wait one tick — the coach uses your book + session tape.")}
+            {text || (busy ? "Reading live OI, book, VIX, GIFT, FII/DII, and the calendar…" : "Waiting for the next OI tick.")}
           </p>
         </div>
       </div>

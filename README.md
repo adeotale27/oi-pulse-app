@@ -1,6 +1,6 @@
 # OI Pulse
 
-**Version: V5.16** — see [`VERSION`](VERSION), [`CHANGELOG.md`](CHANGELOG.md), [`docs/VERSIONING.md`](docs/VERSIONING.md).
+**Version: V5.18** — see [`VERSION`](VERSION), [`CHANGELOG.md`](CHANGELOG.md), [`docs/VERSIONING.md`](docs/VERSIONING.md).
 
 OI Pulse is a live **NSE open-interest desk** for **NIFTY**, **SENSEX**, and **BANKNIFTY**. It is built for option sellers and OI readers who need strike-level conviction during the cash session — not a generic charting terminal.
 
@@ -96,6 +96,8 @@ yarn start
 ```
 
 Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). Leaving Emergent / Oracle Cloud / GoDaddy DNS: [docs/HOSTING.md](docs/HOSTING.md). Optional LLM over OI + positions: [docs/AI.md](docs/AI.md). Domain shortlist: [docs/DOMAINS.md](docs/DOMAINS.md).
+
+The **Market Events Chrome extension** is **not** in this app. It lives in [adeotale27/Market_Events](https://github.com/adeotale27/Market_Events). A Pulse-only copy of that tree is on orphan branch `cursor/market-events-1bf9` (do not merge it into `main`).
 
 In the app, click the **logo** or **V5.00** to open the same product story.
 
