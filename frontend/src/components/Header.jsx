@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -573,6 +573,16 @@ export default function Header({
       {/* Row 1: brand + status + essential actions */}
       <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
         <BrandMark compact={headerRail} className="shrink-0" />
+        <button
+          type="button"
+          data-testid="header-ai-chip"
+          onClick={() => document.getElementById("desk-ai-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+          className="hidden lg:inline-flex items-center gap-1 h-8 px-2 rounded-md border-2 border-violet-400 bg-violet-600 text-white text-[11px] font-bold tracking-wide hover:bg-violet-700 shrink-0"
+          title="Jump to Desk AI"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          AI
+        </button>
 
         {/* VIX / GIFT — always visible; slim = chips, normal = stacked metrics */}
         <div className={`flex items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>

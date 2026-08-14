@@ -45,6 +45,7 @@ import {
   computeExpiryDayClock,
   effectiveAdjustThreshold,
   nearestWeeklyExpiry,
+  compactAdjustSnapshot,
 } from "@/lib/positionsSellerInsights";
 import {
   POSITIONS_COLUMN_DEFS,
@@ -306,6 +307,7 @@ export default function PositionsPanel({
       return false;
     }
   });
+  const [deskGuide, setDeskGuide] = useState(null);
   const colsMenuRef = useRef(null);
   const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
   const loadGen = useRef(0);
@@ -849,6 +851,40 @@ export default function PositionsPanel({
       pnl: stats.netPnl,
     });
   }, [toggles.bookVerdict, stats, assignmentWatch]);
+
+  const adjustSnap = useMemo(
+    () => compactAdjustSnapshot({ rows, stats, assignmentWatch, privacy: privacyMode }),
+    [rows, stats, assignmentWatch, privacyMode],
+  );
+  const adjustRef = useRef(adjustSnap);
+  adjustRef.current = adjustSnap;
+  const adjustSig = `${adjustSnap.adjustCount}|${adjustSnap.shortCount}|${Math.round(Number(adjustSnap.netDelta) || 0)}|${(adjustSnap.legs || [])
+    .filter((l) => l.close || l.itm)
+    .map((l) => l.s)
+    .join(",")}`;
+
+  useEffect(() => {
+    if (!kiteReady) return undefined;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const { data } = await api.post("/desk-guide", {
+          surface: "positions",
+          band: bookVerdict?.band || null,
+          adjust: adjustRef.current,
+        });
+        if (!cancelled) setDeskGuide(data || null);
+      } catch {
+        if (!cancelled) setDeskGuide(null);
+      }
+    };
+    run();
+    const id = setInterval(run, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [kiteReady, adjustSig, bookVerdict?.band]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 
@@ -1419,6 +1455,19 @@ export default function PositionsPanel({
           ),
         }}
       />
+
+      {deskGuide?.guide ? (
+        <div
+          className="rounded-md border-2 border-violet-400 bg-violet-50 dark:bg-violet-950/30 px-3 py-2.5 space-y-1"
+          data-testid="positions-desk-guide"
+        >
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-violet-800 dark:text-violet-200">
+            <Zap className="w-3.5 h-3.5" />
+            Desk AI · {deskGuide.source === "llm" ? "Live GPT" : "rules"}
+          </div>
+          <p className="text-[13px] font-medium text-slate-900 dark:text-slate-100 leading-snug whitespace-pre-wrap">{deskGuide.guide}</p>
+        </div>
+      ) : null}
 
       {stats.shortCount > 0 && (
         <div className="text-[11px] text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 flex flex-wrap gap-x-4 gap-y-1" data-testid="positions-seller-strip">

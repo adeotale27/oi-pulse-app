@@ -4,6 +4,41 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.16",
+    date: "2026-08-14",
+    user: [
+      "Desk AI unchanged from V5.15",
+    ],
+    admin: [
+      "/health /ready /api/health return 200 before Mongo/Kite finish booting (publish readiness)",
+      "Chrome Market Events extension moved to its own GitHub repo (no Kite)",
+    ],
+  },
+  {
+    version: "5.15",
+    date: "2026-08-14",
+    user: [
+      "Desk AI sits under the header: live GPT when a key is set, otherwise the same rule coach — Ask AI to refresh",
+      "Positions and the carry brief highlight the same AI coach",
+    ],
+    admin: [
+      "Set OPENAI_API_KEY on the API host (never in git). POST /api/desk-guide accepts force + fii nets",
+      "Chrome Market Events extension is a separate GitHub repo (no Kite / no Pulse poller)",
+    ],
+  },
+  {
+    version: "5.14",
+    date: "2026-08-14",
+    user: [
+      "Positions desk coach: which shorts to roll, hedge, or hold (too close / ITM / net Δ)",
+      "Carry brief desk guide shows even without an OpenAI key (rules), and AI when a key is set",
+    ],
+    admin: [
+      "Desk-guide body uses Pydantic Field(default_factory) so k8s import cannot fail on mutable list defaults",
+      "POST /api/desk-guide caches carry vs positions separately; clipped adjust.legs only (no Kite tokens)",
+    ],
+  },
+  {
     version: "5.13",
     date: "2026-08-14",
     user: [

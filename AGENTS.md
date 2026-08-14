@@ -1,6 +1,6 @@
 # OI Pulse — notes for humans and AI
 
-**Current version: V5.13** (`VERSION` at repo root).
+**Current version: V5.16** (`VERSION` at repo root).
 
 This is an Indian-market **open interest desk** (NIFTY, SENSEX, BANKNIFTY): FastAPI + MongoDB + React, live data from **Zerodha Kite Connect**.
 
