@@ -157,11 +157,13 @@ def resolve_desk_ai(settings: Optional[Dict[str, Any]] = None) -> Dict[str, bool
     ask = True if show else bool(s.get("desk_ai_ask", True))
     positions = bool(s.get("desk_ai_positions", False))
     radar = bool(s.get("desk_ai_radar", False))
+    carry = bool(s.get("desk_ai_carry", False))
     return {
         "desk_ai_show": show,
         "desk_ai_ask": ask,
         "desk_ai_positions": positions,
         "desk_ai_radar": radar,
+        "desk_ai_carry": carry,
         "desk_ai_admin": admin,
         "desk_ai_public": public,
     }
@@ -192,6 +194,7 @@ DEFAULT_SETTINGS = {
     "desk_ai_ask": True,
     "desk_ai_positions": False,
     "desk_ai_radar": False,
+    "desk_ai_carry": False,
     "desk_ai_admin": False,
     "desk_ai_public": False,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
@@ -324,6 +327,7 @@ class OITracker:
             "show_strike_range", "show_writer_defense", "show_suggestion",
             "show_chart_signals",
             "desk_ai_show", "desk_ai_ask", "desk_ai_positions", "desk_ai_radar",
+            "desk_ai_carry",
             "desk_ai_admin", "desk_ai_public",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}

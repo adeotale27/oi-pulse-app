@@ -77,9 +77,17 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         else:
             holidays.append({"name": _clip(item)})
 
-    surface = _clip(b.get("surface") or "carry")[:16].lower() or "carry"
+    surface = _clip(b.get("surface") or "")[:16].lower()
+    if surface in ("desk-panel", "desk_panel"):
+        surface = "desk"
     if surface not in ("carry", "positions", "desk"):
-        surface = "carry"
+        # Untyped snapshots: overnight case vs market tape vs book.
+        if b.get("why") or b.get("whyNot") or b.get("band"):
+            surface = "carry"
+        elif b.get("adjust"):
+            surface = "positions"
+        else:
+            surface = "desk"
 
     book = b.get("book") if isinstance(b.get("book"), dict) else None
     if book:
@@ -316,8 +324,81 @@ def _fmt_chg(n: Any) -> str:
     return f"{sign}{v}"
 
 
-def compose_rules_guide(snap: Dict[str, Any]) -> str:
-    """What the OI chart cannot show: heavyweights, breadth, news, calendar, book."""
+def _holiday_names(snap: Dict[str, Any]) -> List[str]:
+    names: List[str] = []
+    for h in (snap.get("holidays") or [])[:3]:
+        if isinstance(h, dict) and h.get("name"):
+            names.append(str(h["name"]))
+        elif h:
+            names.append(str(h))
+    return names
+
+
+def _adjust_watch(snap: Dict[str, Any]) -> List[str]:
+    adj = snap.get("adjust") if isinstance(snap.get("adjust"), dict) else None
+    bits: List[str] = []
+    if not adj:
+        return bits
+    hot = []
+    for leg in adj.get("legs") or []:
+        if not (leg.get("close") or leg.get("itm")):
+            continue
+        label = leg.get("s") or f"{leg.get('idx') or ''} {leg.get('side') or ''} {leg.get('K') or ''}".strip()
+        reason = "ITM — cut or define risk" if leg.get("itm") else "too close — roll or hedge"
+        hot.append(f"{label} ({reason})")
+    if hot:
+        bits.append("Adjust first: " + "; ".join(hot[:4]))
+    elif adj.get("adjustCount"):
+        bits.append(f"{int(adj.get('adjustCount') or 0)} short(s) too close — roll, hedge, or cut before adding")
+    nd = adj.get("netDelta")
+    try:
+        ndf = float(nd) if nd is not None else None
+    except (TypeError, ValueError):
+        ndf = None
+    if ndf is not None and abs(ndf) >= 10:
+        bits.append(f"Net Δ {ndf:.0f} — flatten tilt before selling more premium")
+    if adj.get("shortCount") and not hot and not adj.get("adjustCount"):
+        bits.append(f"{int(adj.get('shortCount'))} short(s) still OK vs adjust % — hold, do not chase")
+    return bits
+
+
+def _compose_carry(snap: Dict[str, Any]) -> str:
+    """Overnight only — do not dump the Desk AI / Radar market tape."""
+    bits: List[str] = []
+    band = snap.get("band")
+    if band:
+        bits.append(f"Overnight: {band}")
+    why_carry = snap.get("why") or []
+    why_not = snap.get("whyNot") or []
+    if why_carry:
+        bits.append("Why carry: " + "; ".join(why_carry[:3]))
+    if why_not:
+        bits.append("Why not: " + "; ".join(why_not[:3]))
+    extras = []
+    if snap.get("vix") is not None:
+        extras.append(f"VIX {snap['vix']:.1f}" if isinstance(snap.get("vix"), (int, float)) else f"VIX {snap['vix']}")
+    if snap.get("giftPct") is not None:
+        gp = snap["giftPct"]
+        extras.append(f"GIFT {gp:+.2f}%" if isinstance(gp, (int, float)) else f"GIFT {gp}")
+    book = snap.get("book") if isinstance(snap.get("book"), dict) else None
+    if book and book.get("shortCount"):
+        extras.append(f"{int(book['shortCount'])} short(s) in the book")
+    if extras:
+        bits.append("Tape: " + " · ".join(extras))
+    results = snap.get("results") or []
+    names = [r.get("name") for r in results if isinstance(r, dict) and r.get("name")]
+    if names:
+        bits.append("Calendar: " + "; ".join(names[:4]))
+    hnames = _holiday_names(snap)
+    if hnames:
+        bits.append("Holiday: " + "; ".join(hnames))
+    if not bits:
+        bits.append("Carry brief is live — use Why carry / Why not on the card. Desk AI panel has the cash tape.")
+    return "\n".join(bits[:6])
+
+
+def _compose_desk(snap: Dict[str, Any]) -> str:
+    """Side-panel / phone popup: cash + news. Not overnight carry, not the book radar."""
     bits: List[str] = []
     outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else None
     briefing = (outside or {}).get("briefing")
@@ -363,59 +444,57 @@ def compose_rules_guide(snap: Dict[str, Any]) -> str:
         bits.append("  " + ("; ".join(buyer[:3]) if buyer else "No extra directional catalyst beyond the cash tape."))
         bits.append("OPTION SELLER")
         bits.append("  " + ("; ".join(seller[:3]) if seller else "No extra gap/event risk scored outside OI."))
-
-    adj = snap.get("adjust") if isinstance(snap.get("adjust"), dict) else None
-    if adj:
-        hot = []
-        for leg in adj.get("legs") or []:
-            if not (leg.get("close") or leg.get("itm")):
-                continue
-            label = leg.get("s") or f"{leg.get('idx') or ''} {leg.get('side') or ''} {leg.get('K') or ''}".strip()
-            reason = "ITM — cut or define risk" if leg.get("itm") else "too close — roll or hedge"
-            hot.append(f"{label} ({reason})")
-        if hot:
-            bits.append("WATCH NEXT")
-            bits.append("  Adjust first: " + "; ".join(hot[:4]))
-        elif adj.get("adjustCount"):
-            bits.append("WATCH NEXT")
-            bits.append(f"  {int(adj.get('adjustCount') or 0)} short(s) too close — roll, hedge, or cut before adding")
-        nd = adj.get("netDelta")
-        try:
-            ndf = float(nd) if nd is not None else None
-        except (TypeError, ValueError):
-            ndf = None
-        if ndf is not None and abs(ndf) >= 10:
-            if not any(x.startswith("WATCH NEXT") for x in bits):
-                bits.append("WATCH NEXT")
-            bits.append(f"  Net Δ {ndf:.0f} — flatten tilt before selling more premium")
-        if adj.get("shortCount") and not hot and not adj.get("adjustCount"):
-            if not any(x.startswith("WATCH NEXT") for x in bits):
-                bits.append("WATCH NEXT")
-            bits.append(f"  {int(adj.get('shortCount'))} short(s) still OK vs adjust % — hold, do not chase")
-    why_carry = snap.get("why") or []
-    why_not = snap.get("whyNot") or []
-    if why_carry:
-        bits.append("Why carry: " + "; ".join(why_carry[:4]))
-    if why_not:
-        bits.append("Why not: " + "; ".join(why_not[:4]))
-    results = snap.get("results") or []
-    if results:
-        names = [r.get("name") for r in results if r.get("name")]
-        if names:
-            bits.append("Calendar (results): " + "; ".join(names[:6]))
-    holidays = snap.get("holidays") or []
-    if holidays:
-        hnames = []
-        for h in holidays[:3]:
-            if isinstance(h, dict) and h.get("name"):
-                hnames.append(h["name"])
-            elif h:
-                hnames.append(str(h))
-        if hnames:
-            bits.append("Holiday: " + "; ".join(hnames))
     if not bits:
         bits.append("No outside tape yet — upload constituents (Impact Risk), or wait for news/movers. Use the OI chart for PCR/walls.")
     return "\n".join(bits)
+
+
+def _compose_positions(snap: Dict[str, Any]) -> str:
+    """Radar: book risk vs cash. Not the overnight carry card."""
+    bits: List[str] = []
+    watch = _adjust_watch(snap)
+    if watch:
+        bits.append("WATCH NEXT")
+        bits.extend(f"  {t}" for t in watch)
+    outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else None
+    briefing = (outside or {}).get("briefing")
+    movers = (outside or {}).get("movers") or []
+    if briefing:
+        bits.append("Cash vs book: " + str(briefing)[:220])
+    elif movers:
+        top = movers[0]
+        sym = top.get("symbol") or "Heavyweight"
+        pct = top.get("pct")
+        line = f"{sym}"
+        if isinstance(pct, (int, float)):
+            line += f" {pct:+.1f}%"
+        bits.append("Cash vs book: " + line + " — size shorts off this, not off PCR.")
+    if not bits:
+        bits.append("Book looks quiet vs adjust %. Open Desk AI for the cash tape; this radar is your shorts.")
+    return "\n".join(bits)
+
+
+def _guide_surface(snap: Optional[Dict[str, Any]] = None) -> str:
+    s = str((snap or {}).get("surface") or "").lower()
+    if s in ("desk-panel", "desk_panel"):
+        return "desk"
+    if s in ("carry", "positions", "desk"):
+        return s
+    if (snap or {}).get("why") or (snap or {}).get("whyNot") or (snap or {}).get("band"):
+        return "carry"
+    if (snap or {}).get("adjust"):
+        return "positions"
+    return "desk"
+
+
+def compose_rules_guide(snap: Dict[str, Any]) -> str:
+    """Surface-specific coach so carry / desk / radar are not the same dump."""
+    surface = _guide_surface(snap)
+    if surface == "carry":
+        return _compose_carry(snap)
+    if surface == "positions":
+        return _compose_positions(snap)
+    return _compose_desk(snap)
 
 
 def reset_cache() -> None:
@@ -504,15 +583,29 @@ async def _call_llm(snap: Dict[str, Any]) -> str:
     key = (os.environ.get("OPENAI_API_KEY") or os.environ.get("DESK_GUIDE_API_KEY") or "").strip()
     base = (os.environ.get("DESK_GUIDE_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     model = (os.environ.get("DESK_GUIDE_MODEL") or "gpt-4o-mini").strip()
-    system = (
-        "You are an NSE index-options desk for buyers AND non-directional sellers. "
-        "The trader already sees the OI chart (PCR, CE/PE change, walls) — do NOT recap OI numbers. "
-        "Use ONLY the JSON. Lead with outside.briefing, outside.events, outside.movers (cash by weight), "
-        "outside.breadth, news, results/holidays, and ITM/too-close adjust.legs. "
-        "Format exactly: WHAT CHANGED / WHY IT MATTERS / OPTION BUYER / OPTION SELLER / WATCH NEXT. "
-        "Explain what OI alone misses (heavyweight cash, breadth vs index, news, event risk). "
-        "Never invent prices."
-    )
+    surface = str(snap.get("surface") or "desk")
+    if surface == "carry":
+        system = (
+            "You write a SHORT overnight carry note for NSE index-option sellers. "
+            "Use ONLY why, whyNot, band, vix, giftPct, book.shortCount, holidays. "
+            "Do NOT recap heavyweight cash, news, breadth, or OI walls — those live in Desk AI. "
+            "Max 4 short lines. Never invent prices."
+        )
+    elif surface == "positions":
+        system = (
+            "You coach the open shorts book on Radar. Use ONLY adjust.legs / netDelta and a one-line "
+            "outside.briefing if present. Do NOT dump the full Desk AI tape or overnight carry why/whyNot. "
+            "Lead with WATCH NEXT. Max 6 lines. Never invent prices."
+        )
+    else:
+        system = (
+            "You are an NSE index-options desk for buyers AND non-directional sellers. "
+            "The trader already sees the OI chart (PCR, CE/PE change, walls) — do NOT recap OI numbers. "
+            "Use ONLY outside.briefing, outside.events, outside.movers, outside.breadth, news. "
+            "Do NOT write overnight carry why/whyNot (that is a different window). "
+            "Format exactly: WHAT CHANGED / WHY IT MATTERS / OPTION BUYER / OPTION SELLER. "
+            "Never invent prices."
+        )
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(
             f"{base}/chat/completions",

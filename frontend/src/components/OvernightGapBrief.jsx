@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, AlignLeft, AlignCenter, AlignRight, Sparkles } from "lucide-react";
 import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
 import {
   CARRY_PANEL_WIDTH,
   clampCarryLeft,
@@ -49,6 +50,16 @@ function readCarryIconOnly() {
 
 function writeCarryIconOnly(on) {
   try { localStorage.setItem("oiCarryBriefIconOnly", on ? "1" : "0"); } catch { /* noop */ }
+}
+
+const CARRY_AI_KEY = "oiCarryDeskAi";
+
+function readCarryAi() {
+  try { return localStorage.getItem(CARRY_AI_KEY) === "1"; } catch { return false; }
+}
+
+function writeCarryAi(on) {
+  try { localStorage.setItem(CARRY_AI_KEY, on ? "1" : "0"); } catch { /* noop */ }
 }
 
 function dockClearance() {
@@ -118,6 +129,7 @@ export default function OvernightGapBrief({
   const [vixLive, setVixLive] = useState(null);
   const [book, setBook] = useState(null);
   const [guide, setGuide] = useState(null);
+  const [carryAi, setCarryAi] = useState(() => readCarryAi());
   const dragRef = useRef(null);
   const skipClickRef = useRef(false);
   const userPinnedRef = useRef(null);
@@ -359,6 +371,24 @@ export default function OvernightGapBrief({
     return () => clearInterval(id);
   }, [loadBook, active, minimized]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/settings")
+      .then((r) => {
+        if (cancelled || typeof r.data?.desk_ai_carry !== "boolean") return;
+        setCarryAi(r.data.desk_ai_carry);
+        writeCarryAi(r.data.desk_ai_carry);
+      })
+      .catch(() => { /* keep local */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleCarryAi = (on) => {
+    setCarryAi(!!on);
+    writeCarryAi(!!on);
+    api.post("/desk-ai", { desk_ai_carry: !!on }).catch(() => { /* local still applies */ });
+  };
+
   const giftPct = gift?.change_pct != null ? Number(gift.change_pct) : null;
   const vixNow = (() => {
     const fromLive = vixLive?.last ?? vixLive?.ltp ?? vixLive;
@@ -416,7 +446,10 @@ export default function OvernightGapBrief({
   };
 
   useEffect(() => {
-    if (!active || minimized) return undefined;
+    if (!active || minimized || !carryAi || isPhone()) {
+      setGuide(null);
+      return undefined;
+    }
     let cancelled = false;
     const run = async () => {
       const p = payloadRef.current;
@@ -449,7 +482,7 @@ export default function OvernightGapBrief({
       cancelled = true;
       clearInterval(id);
     };
-  }, [active, minimized]);
+  }, [active, minimized, carryAi]);
 
   if (!active) return null;
 
@@ -525,7 +558,7 @@ export default function OvernightGapBrief({
           ? {}
           : {
               width: `min(${CARRY_PANEL_WIDTH}px, calc(100vw - 16px))`,
-              maxHeight: "min(38rem, calc(100vh - 20px))",
+              maxHeight: "min(28rem, calc(100vh - 20px))",
             }),
       }}
       role="dialog"
@@ -557,6 +590,20 @@ export default function OvernightGapBrief({
           <div className="min-w-0 text-sm font-semibold leading-tight">{title}</div>
         </div>
         <div className="md:hidden min-w-0 flex-1 text-sm font-semibold leading-tight">{title}</div>
+        <label
+          className="hidden md:inline-flex items-center gap-1.5 shrink-0 text-[10px] font-bold uppercase tracking-widest"
+          data-testid="overnight-gap-ai-toggle"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          AI
+          <Switch
+            checked={!!carryAi}
+            onCheckedChange={toggleCarryAi}
+            className="scale-90 origin-center"
+            data-testid="overnight-gap-ai-switch"
+          />
+        </label>
         <div className="hidden md:inline-flex items-center rounded-md bg-white/50 dark:bg-black/20 p-0.5" data-testid="overnight-gap-brief-dock-toggle">
           <button type="button" onClick={() => snap("left")} className="p-1 rounded opacity-80 hover:opacity-100" aria-label="Snap carry brief left" title="Left">
             <AlignLeft className="w-3.5 h-3.5" />
@@ -601,14 +648,14 @@ export default function OvernightGapBrief({
           {advice}
         </p>
 
-        {guideText ? (
+        {guideText && carryAi && !phoneOpen ? (
           <div
-            className="rounded-md border border-violet-400/70 bg-violet-50/90 dark:bg-violet-950/40 px-2 py-1.5 leading-snug whitespace-pre-wrap font-medium"
+            className="rounded-md border border-violet-400/70 bg-violet-50/90 dark:bg-violet-950/40 px-2 py-1.5 leading-snug font-medium max-h-24 overflow-y-auto"
             data-testid="overnight-gap-guide"
           >
             <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-violet-800 dark:text-violet-200 mb-0.5 font-bold">
               <Sparkles className="w-3.5 h-3.5" />
-              Desk AI · {guide?.source === "llm" ? "Live GPT" : "rules"}
+              Overnight coach · {guide?.source === "llm" ? "Live GPT" : "rules"}
             </div>
             {guideText}
           </div>

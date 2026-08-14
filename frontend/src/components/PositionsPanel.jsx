@@ -59,6 +59,7 @@ import {
 import { resolvePositionSpot, positionExpiryISO } from "@/lib/positionPayoff";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
 import MarketIntelCard from "@/components/MarketIntelCard";
+import { RADAR_AI_LAYOUT_KEY } from "@/lib/deskAiLayout";
 import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import OiRiskMeter from "@/components/OiRiskMeter";
 import PositionHeatmap from "@/components/PositionHeatmap";
@@ -2292,7 +2293,7 @@ export default function PositionsPanel({
               data-testid="radar-market-intel"
             >
               <div className="overflow-y-auto" style={{ height: radarAiH }}>
-                <MarketIntelCard outside={outside} guide={deskGuide} compact />
+                <MarketIntelCard outside={outside} guide={deskGuide} compact layoutKey={RADAR_AI_LAYOUT_KEY} />
               </div>
               <button
                 type="button"

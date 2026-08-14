@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import { GripVertical } from "lucide-react";
-import { firstSentence, loadDeskAiTileOrder, reorderDeskAiTiles } from "@/lib/deskAiLayout";
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { firstSentence, loadDeskAiTileOrder, nudgeDeskAiTile, reorderDeskAiTiles } from "@/lib/deskAiLayout";
 
 function pctLabel(pct) {
   const n = Number(pct);
@@ -20,11 +20,17 @@ function summaryLine(outside, guide) {
   return outside?.note || "Nothing material outside the OI chart right now.";
 }
 
-function Tile({ id, title, hint, children, dragging, over, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function Tile({ id, title, hint, children, dragging, over, canUp, canDown, onMove, onDragStart, onDragOver, onDrop, onDragEnd }) {
   return (
     <article
       draggable
-      onDragStart={(e) => onDragStart(e, id)}
+      onDragStart={(e) => {
+        if (e.target instanceof Element && e.target.closest("button")) {
+          e.preventDefault();
+          return;
+        }
+        onDragStart(e, id);
+      }}
       onDragOver={(e) => onDragOver(e, id)}
       onDrop={(e) => onDrop(e, id)}
       onDragEnd={onDragEnd}
@@ -32,12 +38,44 @@ function Tile({ id, title, hint, children, dragging, over, onDragStart, onDragOv
       className={`rounded-md border bg-white/90 dark:bg-slate-900/70 px-2.5 py-2 min-w-0 ${
         over ? "border-violet-500 ring-1 ring-violet-300" : "border-slate-200 dark:border-slate-700"
       } ${dragging ? "opacity-60" : ""}`}
-      title="Drag to swap tiles"
+      title="Drag or use arrows to reorder"
     >
       <div className="flex items-center gap-1 mb-1">
         <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{title}</h3>
         {hint ? <span className="ml-auto text-[10px] text-slate-400">{hint}</span> : null}
+        <div className="flex items-center shrink-0 ml-1">
+          <button
+            type="button"
+            data-testid={`intel-tile-up-${id}`}
+            aria-label={`Move ${title} up`}
+            disabled={!canUp}
+            className="h-6 w-6 inline-flex items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMove?.(id, -1);
+            }}
+          >
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            data-testid={`intel-tile-down-${id}`}
+            aria-label={`Move ${title} down`}
+            disabled={!canDown}
+            className="h-6 w-6 inline-flex items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMove?.(id, 1);
+            }}
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
       {children}
     </article>
@@ -48,8 +86,9 @@ export default function MarketIntelCard({
   outside,
   guide,
   compact = false,
+  layoutKey,
 }) {
-  const [order, setOrder] = useState(() => loadDeskAiTileOrder());
+  const [order, setOrder] = useState(() => loadDeskAiTileOrder(layoutKey));
   const [draggingId, setDraggingId] = useState(null);
   const [overId, setOverId] = useState(null);
   const skipClick = useRef(false);
@@ -142,7 +181,7 @@ export default function MarketIntelCard({
     setOverId(null);
     if (from && dropId && from !== dropId) {
       skipClick.current = true;
-      setOrder((prev) => reorderDeskAiTiles(prev, from, dropId));
+      setOrder((prev) => reorderDeskAiTiles(prev, from, dropId, layoutKey));
     }
   };
 
@@ -155,10 +194,10 @@ export default function MarketIntelCard({
         {headline}
       </p>
       <p className="text-[10px] text-slate-500">
-        Drag tiles to swap · {outside?.quote_source ? `prices from ${outside.quote_source}` : "waiting for quotes"}
+        Drag or arrows to reorder · {outside?.quote_source ? `prices from ${outside.quote_source}` : "waiting for quotes"}
       </p>
       <div className={compact ? "grid grid-cols-1 gap-1.5" : "grid grid-cols-1 sm:grid-cols-2 gap-2"}>
-        {visible.map((id) => (
+        {visible.map((id, i) => (
           <Tile
             key={id}
             id={id}
@@ -166,6 +205,9 @@ export default function MarketIntelCard({
             hint={hints[id]}
             dragging={draggingId === id}
             over={overId === id}
+            canUp={i > 0}
+            canDown={i < visible.length - 1}
+            onMove={(tileId, delta) => setOrder((prev) => nudgeDeskAiTile(prev, tileId, delta, layoutKey))}
             onDragStart={onDragStart}
             onDragOver={onDragOver}
             onDrop={onDrop}

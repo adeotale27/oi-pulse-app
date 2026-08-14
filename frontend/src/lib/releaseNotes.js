@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.04",
+    date: "2026-08-14",
+    user: [
+      "Carry brief AI is its own short overnight note (toggle on the card, off on phones). Desk AI and Radar are different tapes. On Radar, move intel tiles up or down.",
+    ],
+    admin: [
+      "POST /desk-ai accepts desk_ai_carry. desk-guide surfaces carry / desk / positions no longer share one prompt.",
+    ],
+  },
+  {
     version: "6.03",
     date: "2026-08-14",
     user: [

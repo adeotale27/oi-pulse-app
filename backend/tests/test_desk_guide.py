@@ -60,6 +60,7 @@ def test_rules_guide_mentions_results():
     })
     assert "Why carry" in text
     assert "MAXHEALTH" in text
+    assert "WHAT CHANGED" not in text
 
 
 def test_rules_guide_adjust_first():
@@ -74,6 +75,7 @@ def test_rules_guide_adjust_first():
     assert "Adjust first" in text
     assert "NIFTY25814C24500" in text
     assert "Net Δ" in text
+    assert "Why carry" not in text
 
 
 def test_rules_guide_uses_outside_tape_not_oi_dump():
@@ -95,6 +97,33 @@ def test_rules_guide_uses_outside_tape_not_oi_dump():
     assert "put writers adding" not in text
     assert "PCR 1.25" not in text
     assert "WHAT CHANGED" in text or "Heavyweight" in text
+    assert "Why carry" not in text
+
+
+def test_carry_desk_radar_guides_differ():
+    carry = compose_rules_guide({
+        "surface": "carry",
+        "why": ["VIX calm"],
+        "whyNot": ["Friday gap"],
+        "outside": {"movers": [{"symbol": "RELIANCE", "pct": -1.8}]},
+    })
+    desk = compose_rules_guide({
+        "surface": "desk",
+        "outside": {"movers": [{"symbol": "RELIANCE", "pct": -1.8, "index": "NIFTY"}]},
+    })
+    radar = compose_rules_guide({
+        "surface": "positions",
+        "adjust": {"shortCount": 2, "adjustCount": 0, "netDelta": 1},
+        "outside": {"movers": [{"symbol": "RELIANCE", "pct": -1.8}]},
+    })
+    assert "Why carry" in carry
+    assert "RELIANCE" not in carry
+    assert "RELIANCE" in desk
+    assert "Why carry" not in desk
+    assert "still OK" in radar or "WATCH NEXT" in radar
+    assert carry != desk
+    assert radar != desk
+    assert compact_snapshot({"surface": "desk-panel"})["surface"] == "desk"
 
 
 def test_skip_llm_even_if_key(monkeypatch):

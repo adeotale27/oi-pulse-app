@@ -741,6 +741,7 @@ class SettingsIn(BaseModel):
     desk_ai_ask: Optional[bool] = None  # Kept for compat; on whenever Desk AI is on
     desk_ai_positions: Optional[bool] = None  # Positions page intelligence strip
     desk_ai_radar: Optional[bool] = None  # Book radar intelligence (toggled on Radar)
+    desk_ai_carry: Optional[bool] = None  # Overnight carry-brief coach (desktop)
     desk_ai_admin: Optional[bool] = None  # Compat alias of desk_ai_show
     desk_ai_public: Optional[bool] = None  # Compat alias of desk_ai_show
 
@@ -4908,17 +4909,20 @@ class DeskAiToggleIn(BaseModel):
     desk_ai_show: Optional[bool] = None
     desk_ai_radar: Optional[bool] = None
     desk_ai_positions: Optional[bool] = None
+    desk_ai_carry: Optional[bool] = None
 
 
 @api_router.post("/desk-ai")
 async def update_desk_ai(payload: DeskAiToggleIn, role: str = Depends(require_desk_user)):
-    """One on/off for admin and guests. Radar ticks stay admin-only."""
+    """Desk-wide on/off plus per-surface ticks. Radar stays admin-only."""
     dump = payload.model_dump()
     patch = {}
     if dump.get("desk_ai_show") is not None:
         show = bool(dump["desk_ai_show"])
         patch["desk_ai_show"] = show
         patch["desk_ai_ask"] = True
+    if dump.get("desk_ai_carry") is not None:
+        patch["desk_ai_carry"] = bool(dump["desk_ai_carry"])
     if role == "admin":
         if dump.get("desk_ai_radar") is not None:
             patch["desk_ai_radar"] = bool(dump["desk_ai_radar"])
