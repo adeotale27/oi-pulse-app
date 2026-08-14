@@ -1,0 +1,494 @@
+{
+  "events": [
+    {
+      "date": "2025-02-07",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-04-09",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-06-06",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-08-06",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-10-08",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-12-05",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-02-06",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-04-08",
+      "name": "RBI MPC Decision (est.)",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-06-05",
+      "name": "RBI MPC Decision",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-08-06",
+      "name": "RBI MPC Decision (est.)",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-10-08",
+      "name": "RBI MPC Decision (est.)",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-12-04",
+      "name": "RBI MPC Decision (est.)",
+      "type": "rbi",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-02-01",
+      "name": "Union Budget 2025-26",
+      "type": "budget",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-02-01",
+      "name": "Union Budget 2026-27",
+      "type": "budget",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-01-29",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-03-19",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-05-07",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-06-18",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-07-30",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-09-17",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-10-29",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2025-12-10",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-01-28",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-03-18",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-04-29",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-06-17",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-07-29",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-09-16",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-10-28",
+      "name": "FOMC Rate Decision",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-12-09",
+      "name": "FOMC Rate Decision + SEP",
+      "type": "fomc",
+      "country": "US",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-01-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-02-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-03-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-04-13",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-05-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-06-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-07-13",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-08-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-09-14",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-10-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-11-12",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-12-14",
+      "name": "India CPI Inflation",
+      "type": "cpi",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-02-27",
+      "name": "India GDP Q3 FY26",
+      "type": "gdp",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-05-29",
+      "name": "India GDP Q4 FY26 & FY26 Annual",
+      "type": "gdp",
+      "country": "IN",
+      "impact": "critical"
+    },
+    {
+      "date": "2026-08-31",
+      "name": "India GDP Q1 FY27",
+      "type": "gdp",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-11-30",
+      "name": "India GDP Q2 FY27",
+      "type": "gdp",
+      "country": "IN",
+      "impact": "high"
+    },
+    {
+      "date": "2026-01-13",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-02-11",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-03-12",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-04-10",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-05-13",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-06-10",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-07-15",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-08-12",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-09-10",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-10-14",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-11-13",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-12-10",
+      "name": "US CPI Inflation",
+      "type": "us-cpi",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-01-02",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-02-06",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-03-06",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-04-03",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-05-01",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-06-05",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-07-02",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-08-07",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-09-04",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-10-02",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-11-06",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    },
+    {
+      "date": "2026-12-04",
+      "name": "US Non-Farm Payrolls",
+      "type": "nfp",
+      "country": "US",
+      "impact": "high"
+    }
+  ]
+}

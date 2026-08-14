@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Market Events",
+  "version": "1.0.0",
+  "description": "NSE holidays, FII/DII, next macro event, per-index impact, live NIFTY/SENSEX/BANKNIFTY. No Kite.",
+  "action": { "default_popup": "popup.html", "default_title": "Market Events" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "https://www.nseindia.com/*",
+    "https://query1.finance.yahoo.com/*",
+    "https://raw.githubusercontent.com/*"
+  ]
+}

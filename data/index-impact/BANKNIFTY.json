@@ -1,0 +1,13 @@
+{
+  "index": "BANKNIFTY",
+  "note": "Admin: replace this file with NSE event-calendar join for this index (name, date, event_type, weightage). Same idea as OI Pulse Index Impact tile.",
+  "events": [
+    {
+      "name": "Example BANKNIFTY constituent result",
+      "date": "2026-08-14",
+      "event_type": "Quarterly Results",
+      "weightage": 2.5,
+      "symbol": "EXAMPLE"
+    }
+  ]
+}

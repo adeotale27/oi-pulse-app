@@ -1,0 +1,4 @@
+{
+  "remoteBase": "https://raw.githubusercontent.com/adeotale27/Market_Events/main",
+  "comment": "Admin JSON on GitHub is the server. Set remoteBase to empty to use only bundled + Options uploads."
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Market Events</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <strong>Market Events</strong>
+    <span>
+      <a href="options.html" target="_blank" rel="noreferrer">Admin</a>
+      <button id="refresh" type="button">Refresh</button>
+    </span>
+  </header>
+
+  <div class="spots" id="spots">—</div>
+  <p class="hint" id="sessionHint"></p>
+  <div class="chips" id="indexChips"></div>
+
+  <section id="tile-holiday" class="tile">
+    <h2>Holiday</h2>
+    <div id="holiday">—</div>
+  </section>
+  <section>
+    <h2>FII / DII (cash ₹ cr)</h2>
+    <div id="fii">—</div>
+  </section>
+  <section id="tile-econ" class="tile">
+    <h2>Next Event</h2>
+    <div id="econ">—</div>
+  </section>
+  <section id="tile-impact" class="tile">
+    <h2>Index Impact · <span id="impactIdx">NIFTY</span></h2>
+    <div id="impact">—</div>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>

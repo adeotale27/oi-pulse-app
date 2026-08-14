@@ -1,0 +1,6 @@
+# Market Events extension
+
+Keep this tree free of Kite tokens, Mongo URLs, and the OI Pulse poller.
+.env
+*.env
+node_modules/

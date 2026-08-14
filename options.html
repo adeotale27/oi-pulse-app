@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Market Events · Admin</title>
+  <style>
+    body { font: 14px/1.45 system-ui, sans-serif; max-width: 52rem; margin: 24px auto; color: #0f172a; }
+    h1 { font-size: 1.25rem; }
+    section { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+    label { display: block; margin: 8px 0; font-weight: 600; }
+    .ok { color: #047857; } .err { color: #be123c; }
+    button { font-weight: 700; padding: 6px 10px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Admin uploads</h1>
+  <p>
+    This is the Chrome-side admin desk. Files you pick are stored in
+    <code>chrome.storage</code> on this browser and win over GitHub / bundled JSON.
+    FII/DII is never uploaded — NSE is fetched in the service worker.
+  </p>
+  <p>
+    To publish for everyone, commit the same JSON into
+    <a href="https://github.com/adeotale27/Market_Events">adeotale27/Market_Events</a>
+    (<code>data/</code>). That GitHub tree is the shared “server”.
+  </p>
+
+  <section>
+    <h2>Holiday list</h2>
+    <label>JSON file <code>{ "holidays": [ { "date": "YYYY-MM-DD", "name": "…" } ] }</code>
+      <input id="file-holidays" type="file" accept="application/json,.json" />
+    </label>
+    <div id="st-holidays"></div>
+  </section>
+
+  <section>
+    <h2>Next Event (macro calendar)</h2>
+    <label>JSON file <code>{ "events": [ { "date", "name", "type", "country", "impact" } ] }</code>
+      <input id="file-econ" type="file" accept="application/json,.json" />
+    </label>
+    <div id="st-econ"></div>
+  </section>
+
+  <section>
+    <h2>Index impact (per index)</h2>
+    <p>Same idea as Pulse Upload events + constituents join. One file per index. Popup chips NIFTY / SENSEX / BANKNIFTY read only that file.</p>
+    <label>NIFTY <input id="file-NIFTY" type="file" accept="application/json,.json" /></label>
+    <div id="st-NIFTY"></div>
+    <label>SENSEX <input id="file-SENSEX" type="file" accept="application/json,.json" /></label>
+    <div id="st-SENSEX"></div>
+    <label>BANKNIFTY <input id="file-BANKNIFTY" type="file" accept="application/json,.json" /></label>
+    <div id="st-BANKNIFTY"></div>
+  </section>
+
+  <section>
+    <h2>GitHub remote (shared server)</h2>
+    <label>raw.githubusercontent.com base
+      <input id="remoteBase" type="url" style="width:100%" placeholder="https://raw.githubusercontent.com/adeotale27/Market_Events/main" />
+    </label>
+    <button id="saveRemote" type="button">Save remote</button>
+    <div id="st-remote"></div>
+  </section>
+
+  <p>
+    <button id="clearAdmin" type="button">Clear this browser’s uploads (fall back to GitHub / bundled)</button>
+    <button id="refresh" type="button">Refresh extension data</button>
+  </p>
+  <div id="st-clear"></div>
+  <script src="options.js"></script>
+</body>
+</html>
