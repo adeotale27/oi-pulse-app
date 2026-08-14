@@ -4,6 +4,17 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.13",
+    date: "2026-08-14",
+    user: [
+      "Carry brief opens as a full case: why to carry vs why not, results and holidays without cutting them off, plus your shorts vs session OI",
+      "On desktop, drag the brief left / middle / right (or use the align buttons)",
+    ],
+    admin: [
+      "Optional desk LLM: OPENAI_API_KEY + POST /api/desk-guide (clipped snapshot, 5-minute floor). See docs/AI.md",
+    ],
+  },
+  {
     version: "5.12",
     date: "2026-08-13",
     user: [

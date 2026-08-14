@@ -1,6 +1,6 @@
 # OI Pulse — notes for humans and AI
 
-**Current version: V5.12** (`VERSION` at repo root).
+**Current version: V5.13** (`VERSION` at repo root).
 
 This is an Indian-market **open interest desk** (NIFTY, SENSEX, BANKNIFTY): FastAPI + MongoDB + React, live data from **Zerodha Kite Connect**.
 
@@ -12,6 +12,7 @@ Read first:
 4. [docs/DATA.md](docs/DATA.md) — Mongo collections and the poll pipeline
 5. [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) — run locally
 6. [docs/HOSTING.md](docs/HOSTING.md) — leaving Emergent, Oracle Cloud vs keeping Mongo, GoDaddy DNS
+7. [docs/AI.md](docs/AI.md) — rule copilot on the carry brief; optional LLM over OI + book
 
 Rules of the product:
 

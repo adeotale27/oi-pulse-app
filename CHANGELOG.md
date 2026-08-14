@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.13 — 2026-08-14
+
+Carry brief is a movable case file (why / why-not / results) plus an optional AI pass.
+
+- Open the brief for **Why carry** vs **Why not**, session OI vs your shorts, and wrapping result/holiday rows (not a 3-line dump)
+- Drag it horizontally anywhere on desktop, or snap left / center / right
+- Optional LLM: `POST /api/desk-guide` every ~5 minutes when `OPENAI_API_KEY` is set — see [docs/AI.md](docs/AI.md). Alerts are unchanged
+
 ## V5.12 — 2026-08-13
 
 Carry brief matches the mint card (no black bar) and fits on a phone without inner scroll.

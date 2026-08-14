@@ -32,6 +32,7 @@ from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
 import event_risk_service as ers
 import trade_journal as journal
+import desk_guide as desk_guide_svc
 from fastapi import UploadFile, File, Form
 
 # cryptography import deferred inside _fernet() to reduce startup import cost
@@ -4865,6 +4866,31 @@ async def get_index_constituents(index: str):
         "uploaded_at": cmeta.get("uploaded_at"),
         "source_filename": cmeta.get("source_filename"),
     }
+
+
+class DeskGuideIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    why: List[str] = []
+    whyNot: List[str] = []
+    results: List[Any] = []
+    holidays: List[Any] = []
+    book: Optional[Dict[str, Any]] = None
+    vix: Optional[float] = None
+    giftPct: Optional[float] = None
+    weekday: Optional[int] = None
+    band: Optional[str] = None
+
+
+@api_router.get("/desk-guide")
+async def get_desk_guide(role: str = Depends(require_desk_user)):
+    """LLM availability for the carry-brief copilot. No Kite secrets."""
+    return desk_guide_svc.status()
+
+
+@api_router.post("/desk-guide")
+async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_user)):
+    """Optional ~5-minute LLM pass over a clipped OI/book snapshot."""
+    return await desk_guide_svc.maybe_guide(body.model_dump())
 
 
 # ------------------- Lifecycle -------------------
