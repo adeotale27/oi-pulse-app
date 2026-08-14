@@ -64,6 +64,14 @@ db = None
 app = FastAPI(title="NSE OI Tracker")
 api_router = APIRouter(prefix="/api")
 
+
+@app.get("/health")
+@app.get("/ready")
+@app.get("/api/health")
+async def k8s_health():
+    """K8s / Emergent readiness — 200 as soon as uvicorn binds. No Kite/Yahoo/Mongo wait."""
+    return {"ok": True, "name": APP_NAME, "version": APP_VERSION, "version_label": APP_VERSION_LABEL}
+
 tracker = None
 
 # Straddle sample retention (hours)
@@ -4901,13 +4909,6 @@ async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_us
 app.include_router(api_router)
 
 
-@app.get("/health")
-@app.get("/ready")
-@app.get("/api/health")
-async def k8s_health():
-    """K8s / Emergent readiness — must return 200 without waiting on Kite or Yahoo."""
-    return {"ok": True, "name": APP_NAME, "version": APP_VERSION, "version_label": APP_VERSION_LABEL}
-
 # --- Security: Trusted Host (prevent Host header attacks) ---
 _trusted_hosts_env = os.environ.get('TRUSTED_HOSTS', '').strip()
 if _trusted_hosts_env:
@@ -5028,6 +5029,12 @@ journal_eod_task = None
 
 @app.on_event("startup")
 async def _startup():
+    # Return immediately so uvicorn accepts /health /ready (Emergent/k8s probes).
+    # Mongo, Kite, FII, GIFT/VIX continue in the background.
+    asyncio.create_task(_boot())
+
+
+async def _boot():
     # Initialize MongoDB client and db here to avoid creating connection objects at import time.
     global client, db
     try:
@@ -5041,7 +5048,7 @@ async def _startup():
         await asyncio.wait_for(client.admin.command("ping"), timeout=6)
     except Exception as e:
         logger.exception(f"Failed to initialize MongoDB client: {e}")
-        raise
+        return
 
     # Ensure indexes for fast history / retention queries.
     try:
@@ -5142,9 +5149,19 @@ async def _startup():
 
 @app.on_event("shutdown")
 async def _shutdown():
-    await tracker.stop()
-    await extra_tickers.stop()
-    await fii_dii.stop()
+    try:
+        if tracker:
+            await tracker.stop()
+    except Exception:
+        pass
+    try:
+        await extra_tickers.stop()
+    except Exception:
+        pass
+    try:
+        await fii_dii.stop()
+    except Exception:
+        pass
     for task_name in ("straddle_sampler_task", "poll_watchdog_task", "journal_eod_task"):
         task = globals().get(task_name)
         if task:

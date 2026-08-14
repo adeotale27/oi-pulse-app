@@ -1,5 +1,12 @@
 # Changelog
 
+## V5.16 — 2026-08-14
+
+Publish/readiness: `/health` `/ready` `/api/health` bind before Mongo/Kite boot. Chrome events extension left this repo.
+
+- Startup schedules `_boot()` in the background so Emergent/k8s probes get 200 as soon as uvicorn listens
+- Market Events Chrome extension lives in **`adeotale27/Market_Events_extension`** (no Kite, no OI Pulse poller)
+
 ## V5.15 — 2026-08-14
 
 Desk AI is a first-class strip (not a hidden LLM footnote). Independent Chrome radar for holidays / FII-DII / VIX / results.
@@ -7,8 +14,8 @@ Desk AI is a first-class strip (not a hidden LLM footnote). Independent Chrome r
 - **Desk AI** bar under the header + header **AI** chip; Ask AI bypasses the 5-minute cache
 - Positions and carry brief use the same violet AI treatment
 - Snapshot can include cash FII/DII nets (clipped)
-- New tree [`market-radar-ext/`](market-radar-ext/README.md) — Chrome MV3, **no extra server**
 - Domain shortlist: [`docs/DOMAINS.md`](docs/DOMAINS.md)
+- Chrome radar was added here then **moved** to `Market_Events_extension` in V5.16
 
 ## V5.14 — 2026-08-14
 

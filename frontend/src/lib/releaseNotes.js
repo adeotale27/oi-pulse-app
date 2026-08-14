@@ -4,6 +4,17 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "5.16",
+    date: "2026-08-14",
+    user: [
+      "Desk AI unchanged from V5.15",
+    ],
+    admin: [
+      "/health /ready /api/health return 200 before Mongo/Kite finish booting (publish readiness)",
+      "Chrome Market Events extension moved to its own GitHub repo (no Kite)",
+    ],
+  },
+  {
     version: "5.15",
     date: "2026-08-14",
     user: [
@@ -12,7 +23,7 @@ export const RELEASE_NOTES = [
     ],
     admin: [
       "Set OPENAI_API_KEY on the API host (never in git). POST /api/desk-guide accepts force + fii nets",
-      "Independent Chrome extension in market-radar-ext/ (holidays, FII/DII, VIX; optional existing /api/events)",
+      "Chrome Market Events extension is a separate GitHub repo (no Kite / no Pulse poller)",
     ],
   },
   {
