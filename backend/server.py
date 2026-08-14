@@ -4206,14 +4206,56 @@ async def _maybe_journal_charges(*, force: bool = False) -> Optional[Dict[str, A
         return None
 
 
-async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool = False) -> None:
-    """Upsert today's booked P&L + brokerage; never clobber an EOD-locked day."""
+async def _purge_closed_session_journal_autos() -> int:
+    """Drop Sat/Sun/holiday P&L rows created by the Positions poll. Keep user notes."""
     if db is None:
+        return 0
+    try:
+        docs = await db.trade_journal.find(
+            {},
+            {
+                "date": 1,
+                "went_well": 1,
+                "went_wrong": 1,
+                "notes": 1,
+                "tags": 1,
+                "rating": 1,
+                "followed_plan": 1,
+                "screenshots.id": 1,
+            },
+        ).to_list(length=4000)
+    except Exception:
+        return 0
+    dates = [d.get("date") for d in docs if journal.is_closed_session_auto_snapshot(d)]
+    dates = [x for x in dates if x]
+    if not dates:
+        return 0
+    try:
+        result = await db.trade_journal.delete_many({"date": {"$in": dates}})
+        n = int(getattr(result, "deleted_count", 0) or 0)
+        if n:
+            logging.getLogger("server").info("Purged %s weekend/holiday journal auto-snapshots", n)
+        return n
+    except Exception:
+        return 0
+
+
+async def _snapshot_trade_journal(payload: Dict[str, Any], *, force_lock: bool = False) -> None:
+    """Upsert today's booked P&L + brokerage; never clobber an EOD-locked day.
+
+    Weekends and holidays are not trading days — do not write a new journal date.
+    Friday's locked row stays visible until the next session.
+    """
+    if db is None:
+        return
+    now = now_ist()
+    if not journal.iso_is_trading_day(journal.ist_ymd(now)):
+        await _purge_closed_session_journal_autos()
         return
     if payload.get("error") and not (payload.get("positions") or payload.get("pnl_today")):
         return
     try:
-        snap = journal.snapshot_from_positions(payload)
+        snap = journal.snapshot_from_positions(payload, date=journal.ist_ymd(now))
         day = snap["date"]
         existing = await db.trade_journal.find_one({"date": day})
         need_charges = existing is None or existing.get("charges_total") is None
@@ -4293,13 +4335,14 @@ class JournalShotIn(BaseModel):
 
 
 async def _journal_year_payload(y: int) -> Dict[str, Any]:
+    await _purge_closed_session_journal_autos()
     start, end = f"{y:04d}-01-01", f"{y + 1:04d}-01-01"
     docs = await db.trade_journal.find(
         {"date": {"$gte": start, "$lt": end}},
         {"_id": 0, "screenshots": 0},
     ).to_list(length=400)
     days = [journal.public_day(d, include_images=False) for d in docs]
-    days = [d for d in days if d]
+    days = [d for d in days if d and journal.include_on_journal_calendar(d)]
     return {
         "year": y,
         "today": journal.ist_ymd(),
@@ -4326,12 +4369,13 @@ async def journal_month(
     if m < 1 or m > 12:
         raise HTTPException(400, "Invalid year/month")
     start, end = journal.month_bounds(y, m)
+    await _purge_closed_session_journal_autos()
     docs = await db.trade_journal.find(
         {"date": {"$gte": start, "$lt": end}},
         {"_id": 0, "screenshots.data": 0},
     ).to_list(length=40)
     days = [journal.public_day(d, include_images=False) for d in docs]
-    days = [d for d in days if d]
+    days = [d for d in days if d and journal.include_on_journal_calendar(d)]
     days.sort(key=lambda d: d.get("date") or "")
     return {
         "year": y,
@@ -4356,6 +4400,7 @@ async def journal_year(year: int, _admin: bool = Depends(require_admin)):
 async def journal_day(day: str, _admin: bool = Depends(require_admin)):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         raise HTTPException(400, "Use YYYY-MM-DD")
+    await _purge_closed_session_journal_autos()
     doc = await db.trade_journal.find_one({"date": day}, {"_id": 0})
     if not doc:
         return {"date": day, "empty": True, "tags": journal.DEFAULT_TAGS}
@@ -4951,13 +4996,22 @@ async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_us
     """Coach over outside tape (movers/news) plus clipped book. Optional GPT."""
     payload = body.model_dump()
     flags = resolve_desk_ai(tracker.settings if tracker else {})
+    surface = str(payload.get("surface") or "").lower()
+    if surface in ("desk-panel", "desk_panel"):
+        surface = "desk"
+        payload["surface"] = "desk"
     if not flags.get("desk_ai_show", False):
         payload["skip_llm"] = True
     elif not flags.get("desk_ai_ask", True):
         payload["skip_llm"] = True
+    if surface == "carry":
+        payload["skip_llm"] = True
     try:
         outside = await desk_outside_svc.snapshot(db, tracker)
-        payload["outside"] = outside
+        if surface == "carry":
+            payload["outside"] = desk_guide_svc.carry_outside(outside)
+        else:
+            payload["outside"] = outside
     except Exception:
         pass
     return await desk_guide_svc.maybe_guide(payload)

@@ -362,39 +362,96 @@ def _adjust_watch(snap: Dict[str, Any]) -> List[str]:
     return bits
 
 
+def carry_outside(outside: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Cash/news that can gap the book overnight — not the full Desk AI tape."""
+    raw = outside if isinstance(outside, dict) else {}
+    movers = []
+    for item in raw.get("movers") or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            w = float(item.get("weightage") or 0)
+            p = float(item.get("pct") or 0)
+        except (TypeError, ValueError):
+            continue
+        impact = abs(w * p / 100.0)
+        if impact < 0.08 and abs(p) < 1.5:
+            continue
+        movers.append({
+            "symbol": item.get("symbol"),
+            "pct": p,
+            "weightage": w,
+            "index": item.get("index"),
+            "impact": round(w * p / 100.0, 3),
+        })
+    movers.sort(key=lambda m: abs(m.get("impact") or 0), reverse=True)
+    movers = movers[:3]
+    events = []
+    for e in raw.get("events") or []:
+        if not isinstance(e, dict):
+            continue
+        if str(e.get("priority") or "").upper() not in ("CRITICAL", "HIGH"):
+            continue
+        events.append(e)
+    events = events[:3]
+    keys = ("rbi", "fomc", "fed", "holiday", "gap", "result", "sebi", "crude", "usd/inr", "rupee", "vix", "geopolit")
+    news = []
+    for n in raw.get("news") or []:
+        title = (n.get("title") if isinstance(n, dict) else str(n)) or ""
+        low = title.lower()
+        if any(k in low for k in keys):
+            news.append({"title": title} if not isinstance(n, dict) else {"title": n.get("title")})
+        if len(news) >= 2:
+            break
+    return {"movers": movers, "news": news, "events": events}
+
+
 def _compose_carry(snap: Dict[str, Any]) -> str:
-    """Overnight only — do not dump the Desk AI / Radar market tape."""
+    """Overnight gap risk only — not WHAT/WHY/BUYER/SELLER and not the carry-card why list."""
     bits: List[str] = []
-    band = snap.get("band")
-    if band:
-        bits.append(f"Overnight: {band}")
-    why_carry = snap.get("why") or []
-    why_not = snap.get("whyNot") or []
-    if why_carry:
-        bits.append("Why carry: " + "; ".join(why_carry[:3]))
-    if why_not:
-        bits.append("Why not: " + "; ".join(why_not[:3]))
-    extras = []
-    if snap.get("vix") is not None:
-        extras.append(f"VIX {snap['vix']:.1f}" if isinstance(snap.get("vix"), (int, float)) else f"VIX {snap['vix']}")
-    if snap.get("giftPct") is not None:
-        gp = snap["giftPct"]
-        extras.append(f"GIFT {gp:+.2f}%" if isinstance(gp, (int, float)) else f"GIFT {gp}")
-    book = snap.get("book") if isinstance(snap.get("book"), dict) else None
-    if book and book.get("shortCount"):
-        extras.append(f"{int(book['shortCount'])} short(s) in the book")
-    if extras:
-        bits.append("Tape: " + " · ".join(extras))
-    results = snap.get("results") or []
-    names = [r.get("name") for r in results if isinstance(r, dict) and r.get("name")]
-    if names:
-        bits.append("Calendar: " + "; ".join(names[:4]))
+    outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else {}
+    movers = outside.get("movers") or []
+    events = outside.get("events") or []
+    news = outside.get("news") or []
+    impacts = []
+    for m in movers[:3]:
+        if not isinstance(m, dict) or not m.get("symbol"):
+            continue
+        try:
+            pct = float(m.get("pct")) if m.get("pct") is not None else None
+        except (TypeError, ValueError):
+            pct = None
+        try:
+            imp = float(m.get("impact")) if m.get("impact") is not None else None
+        except (TypeError, ValueError):
+            imp = None
+        if imp is None and pct is not None:
+            try:
+                w = float(m.get("weightage") or 0)
+                imp = w * pct / 100.0
+            except (TypeError, ValueError):
+                imp = None
+        pct_s = f"{pct:+.1f}%" if pct is not None else ""
+        imp_s = f" ~{imp:+.2f} idx" if imp is not None else ""
+        impacts.append(f"{m.get('symbol')} {pct_s}{imp_s}".strip())
+    if impacts:
+        bits.append("Next-session impact: " + "; ".join(impacts))
+    for e in events[:3]:
+        if not isinstance(e, dict):
+            continue
+        line = e.get("event") or e.get("why") or e.get("symbol")
+        if line:
+            bits.append(str(line))
+    for n in news[:2]:
+        title = n.get("title") if isinstance(n, dict) else str(n)
+        if title:
+            bits.append(str(title))
     hnames = _holiday_names(snap)
     if hnames:
-        bits.append("Holiday: " + "; ".join(hnames))
+        bits.append("Holiday in window: " + "; ".join(hnames))
     if not bits:
-        bits.append("Carry brief is live — use Why carry / Why not on the card. Desk AI panel has the cash tape.")
-    return "\n".join(bits[:6])
+        bits.append("No material overnight gap news vs the cash tape. Size from Why carry / Why not on this card.")
+    return "\n".join(bits[:5])
 
 
 def _compose_desk(snap: Dict[str, Any]) -> str:

@@ -13,6 +13,9 @@ from trade_journal import (
     day_pnl,
     charges_usable,
     apply_charges,
+    iso_is_trading_day,
+    is_closed_session_auto_snapshot,
+    include_on_journal_calendar,
 )
 
 
@@ -129,6 +132,31 @@ def test_should_lock_eod_at_1545_on_weekday():
     assert should_lock_eod(at) is True
     assert should_lock_eod(after) is True
     assert should_lock_eod(sunday) is False
+
+
+def test_weekend_journal_autos_are_not_trading_days():
+    assert iso_is_trading_day("2026-08-14") is True
+    assert iso_is_trading_day("2026-08-15") is False
+    assert iso_is_trading_day("2026-08-16") is False
+    sat = {
+        "date": "2026-08-15",
+        "booked_pnl": 2100,
+        "exited_count": 1,
+        "went_well": "",
+        "notes": "",
+        "tags": [],
+    }
+    assert is_closed_session_auto_snapshot(sat) is True
+    assert include_on_journal_calendar(sat) is False
+    sat_notes = {**sat, "notes": "weekend review"}
+    assert is_closed_session_auto_snapshot(sat_notes) is False
+    assert include_on_journal_calendar(sat_notes) is True
+    s = month_stats([
+        {"date": "2026-08-14", "booked_pnl": 2100, "pnl_exited": 2100, "exited_count": 1},
+        sat,
+    ])
+    assert s["trading_days"] == 1
+    assert s["net_pnl"] == 2100
 
 
 def test_apply_snapshot_does_not_clobber_locked_or_empty():

@@ -91,6 +91,7 @@ function weekBuckets(cells, byDate) {
       const hol = isHoliday(c.iso);
       if (hol) holidays.push(hol);
       if (isTradingDayIST(c.iso)) tradingDays += 1;
+      if (!isTradingDayIST(c.iso)) continue;
       const doc = byDate.get(c.iso);
       if (!isTraded(doc)) continue;
       pnl += cellPnl(doc);
@@ -524,7 +525,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const isSel = c.iso === selected;
                       const hol = isHoliday(c.iso);
                       const session = isTradingDayIST(c.iso);
-                      const tone = traded ? cellClasses(pnl, traded, maxAbs) : hol
+                      const showBook = traded && session;
+                      const tone = showBook ? cellClasses(pnl, true, maxAbs) : hol
                         ? { box: "bg-amber-50 border-amber-300 text-amber-900", amt: "text-amber-900", invert: false }
                         : !session
                           ? { box: "bg-slate-50 border-slate-200 text-slate-400", amt: "text-slate-400", invert: false, weekend: true }
@@ -550,12 +552,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               <span className="hidden md:flex items-center gap-0.5">
                                 {hasNote ? <FileText className="w-3 h-3" /> : null}
                                 {doc?.screenshot_count > 0 ? <span title="Has screenshot">🖼</span> : null}
-                                {doc?.eod_locked ? <span title="Locked after last Positions refresh" className="text-[8px] font-bold">EOD</span> : null}
+                                {doc?.eod_locked && session ? <span title="Locked after last Positions refresh" className="text-[8px] font-bold">EOD</span> : null}
                               </span>
                             </span>
                           </div>
                           <div className="md:hidden mt-1 min-w-0">
-                            {traded ? (
+                            {showBook ? (
                               <div className={`text-[11px] font-bold font-mono-data leading-tight truncate ${tone.amt}`}>
                                 {privacy ? "··" : compactPnl(pnl)}
                               </div>
@@ -568,7 +570,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                             )}
                           </div>
                           <div className="hidden md:block">
-                          {traded ? (
+                          {showBook ? (
                             <>
                               <div className={`mt-2 text-[17px] font-bold font-mono-data leading-tight ${tone.amt}`}>
                                 {privacy ? "••••" : compactPnl(pnl)}
