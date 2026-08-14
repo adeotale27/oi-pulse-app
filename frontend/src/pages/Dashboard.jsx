@@ -668,6 +668,8 @@ export default function Dashboard() {
   const [showWriterDefense, setShowWriterDefense] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showChartSignals, setShowChartSignals] = useState(false);
+  const [deskAiAdmin, setDeskAiAdmin] = useState(true);
+  const [deskAiPublic, setDeskAiPublic] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
@@ -1007,6 +1009,12 @@ export default function Dashboard() {
         if (typeof res.data.show_chart_signals === "boolean") {
           setShowChartSignals(res.data.show_chart_signals);
         }
+        if (typeof res.data.desk_ai_admin === "boolean") {
+          setDeskAiAdmin(res.data.desk_ai_admin);
+        }
+        if (typeof res.data.desk_ai_public === "boolean") {
+          setDeskAiPublic(res.data.desk_ai_public);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch settings", e);
@@ -1051,6 +1059,12 @@ export default function Dashboard() {
       }
       if (typeof d.show_chart_signals === "boolean") {
         setShowChartSignals(d.show_chart_signals);
+      }
+      if (typeof d.desk_ai_admin === "boolean") {
+        setDeskAiAdmin(d.desk_ai_admin);
+      }
+      if (typeof d.desk_ai_public === "boolean") {
+        setDeskAiPublic(d.desk_ai_public);
       }
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, []);
@@ -1847,6 +1861,7 @@ export default function Dashboard() {
         onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
         positionsPollMs={positionsPollMs}
         positionsPublic={tabOn("positions")}
+        showDeskAi={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {
           // Clear warm caches then re-hydrate every enabled index after Fresh Pull.
@@ -1909,7 +1924,13 @@ export default function Dashboard() {
             infoTilesOpen ? "sm:pt-4 md:pt-5 sm:pb-4 md:pb-5" : "sm:pt-1.5 md:pt-2 sm:pb-4 md:pb-5"
           } max-md:pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]`}
         >
-          <DeskAiBar activeIndex={activeIndex} />
+          <DeskAiBar
+            activeIndex={activeIndex}
+            current={current}
+            previous={previous}
+            enabledIndices={enabledIndices.length ? enabledIndices : INDICES}
+            visible={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
+          />
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
               activeIndex={activeIndex}
@@ -2725,6 +2746,12 @@ export default function Dashboard() {
           }
           if (typeof settings.show_chart_signals === "boolean") {
             setShowChartSignals(settings.show_chart_signals);
+          }
+          if (typeof settings.desk_ai_admin === "boolean") {
+            setDeskAiAdmin(settings.desk_ai_admin);
+          }
+          if (typeof settings.desk_ai_public === "boolean") {
+            setDeskAiPublic(settings.desk_ai_public);
           }
         }}
         onLocalSaved={setOiSettings}

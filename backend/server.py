@@ -736,6 +736,8 @@ class SettingsIn(BaseModel):
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
+    desk_ai_admin: Optional[bool] = None  # Show Desk AI bar on the admin desk
+    desk_ai_public: Optional[bool] = None  # Show Desk AI bar to guests
 
     @field_validator(
         "cooldown_seconds",
@@ -2318,6 +2320,8 @@ async def get_config():
         "show_writer_defense": bool(tracker.settings.get("show_writer_defense", True)),
         "show_suggestion": bool(tracker.settings.get("show_suggestion", True)),
         "show_chart_signals": bool(tracker.settings.get("show_chart_signals", False)),
+        "desk_ai_admin": bool(tracker.settings.get("desk_ai_admin", True)),
+        "desk_ai_public": bool(tracker.settings.get("desk_ai_public", False)),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "app_version": APP_VERSION,
         "app_version_label": APP_VERSION_LABEL,
@@ -4890,6 +4894,7 @@ class DeskGuideIn(BaseModel):
     surface: Optional[str] = None
     adjust: Optional[Dict[str, Any]] = None
     fii: Optional[Dict[str, Any]] = None
+    oi: Optional[List[Any]] = None
     force: Optional[bool] = False
 
 

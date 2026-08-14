@@ -1,5 +1,13 @@
 # Changelog
 
+## V5.18 — 2026-08-14
+
+Desk AI reads the live OI tape (not just yesterday’s FII print). Admin ticks who sees the bar.
+
+- Coach uses PCR, CE/PE OI change, walls, VIX, GIFT, shorts, calendar; FII/DII labelled T+1
+- Rules rewrite every tick; GPT only on Ask AI / ~5 min cache
+- Alert Settings: **Desk AI (Admin)** / **Desk AI (Public)**
+
 ## V5.17 — 2026-08-14
 
 Phone Positions: Live / Exited toggles actually show the book; Columns menu is a portaled sheet.
