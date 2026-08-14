@@ -143,6 +143,30 @@ FORCE_ALWAYS_POLL = os.environ.get("FORCE_ALWAYS_POLL", "false").lower() == "tru
 # Sleep interval when market is closed — check every 60s if window has opened.
 CLOSED_MARKET_SLEEP_SECONDS = 60
 
+def resolve_desk_ai(settings: Optional[Dict[str, Any]] = None) -> Dict[str, bool]:
+    """Header Show/Ask apply to admin and guests together. Positions/Radar are extra surfaces."""
+    s = settings or {}
+    if "desk_ai_show" in s:
+        show = bool(s.get("desk_ai_show"))
+        admin = show
+        public = show
+    else:
+        admin = bool(s.get("desk_ai_admin", True))
+        public = bool(s.get("desk_ai_public", False))
+        show = admin
+    ask = bool(s.get("desk_ai_ask", True))
+    positions = bool(s.get("desk_ai_positions", False))
+    radar = bool(s.get("desk_ai_radar", True))
+    return {
+        "desk_ai_show": show,
+        "desk_ai_ask": ask,
+        "desk_ai_positions": positions,
+        "desk_ai_radar": radar,
+        "desk_ai_admin": admin,
+        "desk_ai_public": public,
+    }
+
+
 DEFAULT_SETTINGS = {
     "threshold_pct": 15.0,      # % OI change to trigger alert
     "cooldown_seconds": 120,    # per-index alert cooldown
@@ -164,7 +188,11 @@ DEFAULT_SETTINGS = {
     "show_writer_defense": True,
     # Suggestion posture card under the right panel (admin-togglable)
     "show_suggestion": True,
-    # Desk AI bar — admin tick Public / Admin independently
+    # Desk AI — Ask AI / Positions / Radar. `desk_ai_show` is written from the header
+    # (admin + guests in one go). Until that key exists, admin/public stay independent.
+    "desk_ai_ask": True,
+    "desk_ai_positions": False,
+    "desk_ai_radar": True,
     "desk_ai_admin": True,
     "desk_ai_public": False,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
@@ -295,9 +323,17 @@ class OITracker:
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",
             "show_strike_range", "show_writer_defense", "show_suggestion",
-            "show_chart_signals", "desk_ai_admin", "desk_ai_public",
+            "show_chart_signals",
+            "desk_ai_show", "desk_ai_ask", "desk_ai_positions", "desk_ai_radar",
+            "desk_ai_admin", "desk_ai_public",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}
+        if "desk_ai_show" in clean:
+            show = bool(clean["desk_ai_show"])
+            clean["desk_ai_admin"] = show
+            clean["desk_ai_public"] = show
+            if show and "desk_ai_radar" not in clean:
+                clean["desk_ai_radar"] = True
         # Explicit alert-index change → mark as today's override
         if "alert_enabled_indices" in clean:
             clean["alert_indices_override_date"] = now_ist().date().isoformat()

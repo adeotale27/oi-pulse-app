@@ -21,7 +21,7 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
-from oi_tracker import OITracker, INDICES, JsonLogFormatter
+from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
 from market_hours import (
@@ -737,8 +737,12 @@ class SettingsIn(BaseModel):
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
-    desk_ai_admin: Optional[bool] = None  # Show Desk AI bar on the admin desk
-    desk_ai_public: Optional[bool] = None  # Show Desk AI bar to guests
+    desk_ai_show: Optional[bool] = None  # Header: Show Desk AI for admin and guests together
+    desk_ai_ask: Optional[bool] = None  # Header: Ask AI / GPT for admin and guests together
+    desk_ai_positions: Optional[bool] = None  # Positions page intelligence strip
+    desk_ai_radar: Optional[bool] = None  # Book radar intelligence (toggled on Radar)
+    desk_ai_admin: Optional[bool] = None  # Compat alias of desk_ai_show
+    desk_ai_public: Optional[bool] = None  # Compat alias of desk_ai_show
 
     @field_validator(
         "cooldown_seconds",
@@ -2321,8 +2325,7 @@ async def get_config():
         "show_writer_defense": bool(tracker.settings.get("show_writer_defense", True)),
         "show_suggestion": bool(tracker.settings.get("show_suggestion", True)),
         "show_chart_signals": bool(tracker.settings.get("show_chart_signals", False)),
-        "desk_ai_admin": bool(tracker.settings.get("desk_ai_admin", True)),
-        "desk_ai_public": bool(tracker.settings.get("desk_ai_public", False)),
+        **resolve_desk_ai(tracker.settings),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "app_version": APP_VERSION,
         "app_version_label": APP_VERSION_LABEL,
@@ -4898,6 +4901,7 @@ class DeskGuideIn(BaseModel):
     oi: Optional[List[Any]] = None
     outside: Optional[Dict[str, Any]] = None
     force: Optional[bool] = False
+    skip_llm: Optional[bool] = False
 
 
 @api_router.get("/desk-outside")
@@ -4916,6 +4920,9 @@ async def get_desk_guide(role: str = Depends(require_desk_user)):
 async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_user)):
     """Coach over outside tape (movers/news) plus clipped book. Optional GPT."""
     payload = body.model_dump()
+    flags = resolve_desk_ai(tracker.settings if tracker else {})
+    if not flags.get("desk_ai_ask", True):
+        payload["skip_llm"] = True
     try:
         outside = await desk_outside_svc.snapshot(db, tracker)
         payload["outside"] = outside

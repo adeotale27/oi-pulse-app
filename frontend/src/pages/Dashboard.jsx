@@ -668,6 +668,10 @@ export default function Dashboard() {
   const [showWriterDefense, setShowWriterDefense] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showChartSignals, setShowChartSignals] = useState(false);
+  const [deskAiShow, setDeskAiShow] = useState(true);
+  const [deskAiAsk, setDeskAiAsk] = useState(true);
+  const [deskAiPositions, setDeskAiPositions] = useState(false);
+  const [deskAiRadar, setDeskAiRadar] = useState(true);
   const [deskAiAdmin, setDeskAiAdmin] = useState(true);
   const [deskAiPublic, setDeskAiPublic] = useState(false);
   // Wall-clock timestamp of the last /change response — used together with a
@@ -968,6 +972,25 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [enabledIndices, ensureExpiryForIndex]);
 
+  const applyDeskAi = useCallback((d) => {
+    if (!d) return;
+    if (typeof d.desk_ai_show === "boolean") setDeskAiShow(d.desk_ai_show);
+    if (typeof d.desk_ai_ask === "boolean") setDeskAiAsk(d.desk_ai_ask);
+    if (typeof d.desk_ai_positions === "boolean") setDeskAiPositions(d.desk_ai_positions);
+    if (typeof d.desk_ai_radar === "boolean") setDeskAiRadar(d.desk_ai_radar);
+    if (typeof d.desk_ai_admin === "boolean") setDeskAiAdmin(d.desk_ai_admin);
+    if (typeof d.desk_ai_public === "boolean") setDeskAiPublic(d.desk_ai_public);
+  }, []);
+
+  const patchDeskAi = useCallback(async (patch) => {
+    try {
+      const { data } = await api.post("/settings", patch);
+      applyDeskAi(data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not save Desk AI");
+    }
+  }, [applyDeskAi]);
+
   const fetchSettings = useCallback(async () => {
     try {
       const res = await api.get("/settings");
@@ -1009,17 +1032,12 @@ export default function Dashboard() {
         if (typeof res.data.show_chart_signals === "boolean") {
           setShowChartSignals(res.data.show_chart_signals);
         }
-        if (typeof res.data.desk_ai_admin === "boolean") {
-          setDeskAiAdmin(res.data.desk_ai_admin);
-        }
-        if (typeof res.data.desk_ai_public === "boolean") {
-          setDeskAiPublic(res.data.desk_ai_public);
-        }
+        applyDeskAi(res.data);
       }
     } catch (e) {
       console.error("Failed to fetch settings", e);
     }
-  }, []);
+  }, [applyDeskAi]);
 
   // Boot: pull /config once so poll interval is correct before first OI tick.
   useEffect(() => {
@@ -1060,14 +1078,9 @@ export default function Dashboard() {
       if (typeof d.show_chart_signals === "boolean") {
         setShowChartSignals(d.show_chart_signals);
       }
-      if (typeof d.desk_ai_admin === "boolean") {
-        setDeskAiAdmin(d.desk_ai_admin);
-      }
-      if (typeof d.desk_ai_public === "boolean") {
-        setDeskAiPublic(d.desk_ai_public);
-      }
+      applyDeskAi(d);
     }).catch(() => { /* ignore — settings poll will retry */ });
-  }, []);
+  }, [applyDeskAi]);
 
   // Auth state — once on mount + every 60s (broadcast so Header/Sidebar don't re-poll).
   useEffect(() => {
@@ -1862,6 +1875,16 @@ export default function Dashboard() {
         positionsPollMs={positionsPollMs}
         positionsPublic={tabOn("positions")}
         showDeskAi={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
+        deskAiAsk={deskAiAsk}
+        onDeskAiChange={(next) => {
+          const patch = {};
+          if (typeof next?.show === "boolean") {
+            patch.desk_ai_show = next.show;
+            if (next.show) patch.desk_ai_radar = true;
+          }
+          if (typeof next?.ask === "boolean") patch.desk_ai_ask = next.ask;
+          if (Object.keys(patch).length) patchDeskAi(patch);
+        }}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {
           // Clear warm caches then re-hydrate every enabled index after Fresh Pull.
@@ -1927,6 +1950,7 @@ export default function Dashboard() {
           <DeskAiBar
             activeIndex={activeIndex}
             visible={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
+            askAi={deskAiAsk}
           />
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
@@ -2481,6 +2505,13 @@ export default function Dashboard() {
                       onPinNearestWeekly={handleChangeExpiry}
                       positionsPollMs={positionsPollMs}
                       onOpenKite={openKiteCreds}
+                      deskAiShow={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
+                      deskAiAsk={deskAiAsk}
+                      deskAiPositions={deskAiPositions}
+                      deskAiRadar={deskAiRadar}
+                      canConfigureDeskAi={!!authState.is_admin}
+                      onDeskAiPositions={(on) => patchDeskAi({ desk_ai_positions: !!on })}
+                      onDeskAiRadar={(on) => patchDeskAi({ desk_ai_radar: !!on })}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "adjust-watch",
@@ -2628,6 +2659,13 @@ export default function Dashboard() {
                       straddlePollMs={straddlePollMs}
                       uploadRefreshKey={uploadRefreshKey}
                       onOpenKite={openKiteCreds}
+                      deskAiShow={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
+                      deskAiAsk={deskAiAsk}
+                      deskAiPositions={deskAiPositions}
+                      deskAiRadar={deskAiRadar}
+                      canConfigureDeskAi={!!authState.is_admin}
+                      onDeskAiPositions={(on) => patchDeskAi({ desk_ai_positions: !!on })}
+                      onDeskAiRadar={(on) => patchDeskAi({ desk_ai_radar: !!on })}
                       suggestion={
                         showSuggestion ? (
                           <SuggestionBox
@@ -2744,12 +2782,7 @@ export default function Dashboard() {
           if (typeof settings.show_chart_signals === "boolean") {
             setShowChartSignals(settings.show_chart_signals);
           }
-          if (typeof settings.desk_ai_admin === "boolean") {
-            setDeskAiAdmin(settings.desk_ai_admin);
-          }
-          if (typeof settings.desk_ai_public === "boolean") {
-            setDeskAiPublic(settings.desk_ai_public);
-          }
+          applyDeskAi(settings);
         }}
         onLocalSaved={setOiSettings}
       />

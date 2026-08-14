@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.00",
+    date: "2026-08-14",
+    user: [
+      "Desk AI is now a market-intelligence strip: heavyweight cash, breadth, and news that the OI chart cannot show — plus buyer vs seller implications",
+    ],
+    admin: [
+      "Header AI chip turns Show Desk AI and Ask AI on/off for you and guests together. Positions and Radar have their own AI ticks. Constituents still come from Impact Risk uploads. OPENAI_API_KEY stays on the server.",
+    ],
+  },
+  {
     version: "5.19",
     date: "2026-08-14",
     user: [
