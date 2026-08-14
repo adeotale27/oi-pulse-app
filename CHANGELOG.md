@@ -5,7 +5,7 @@
 Publish/readiness: `/health` `/ready` `/api/health` bind before Mongo/Kite boot. Chrome events extension left this repo.
 
 - Startup schedules `_boot()` in the background so Emergent/k8s probes get 200 as soon as uvicorn listens
-- Market Events Chrome extension lives in **`adeotale27/Market_Events_extension`** (no Kite, no OI Pulse poller)
+- Market Events Chrome extension lives in **https://github.com/adeotale27/Market_Events** (no Kite, no OI Pulse poller)
 
 ## V5.15 — 2026-08-14
 
@@ -15,7 +15,7 @@ Desk AI is a first-class strip (not a hidden LLM footnote). Independent Chrome r
 - Positions and carry brief use the same violet AI treatment
 - Snapshot can include cash FII/DII nets (clipped)
 - Domain shortlist: [`docs/DOMAINS.md`](docs/DOMAINS.md)
-- Chrome radar was added here then **moved** to `Market_Events_extension` in V5.16
+- Chrome radar was added here then **moved** to https://github.com/adeotale27/Market_Events in V5.16
 
 ## V5.14 — 2026-08-14
 
