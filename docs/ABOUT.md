@@ -1,8 +1,8 @@
 # OI Pulse — About the Project
 
-OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V6.02**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
+OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V6.03**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
 
-Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Optional desk LLM: **[AI.md](./AI.md)**. Click the logo or **V6.02** in the app for the same About panel.
+Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Optional desk LLM: **[AI.md](./AI.md)**. Click the logo or **V6.03** in the app for the same About panel.
 
 Stack: **React (CRA/craco) + FastAPI + Motor/MongoDB + Kite Connect**.
 
@@ -47,6 +47,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false }` (admin). Gu
 | GET | `/positions` | Open F&O from Kite (admin) |
 | GET | `/desk-outside` | Heavyweight cash movers + news (not OI) |
 | GET/POST | `/desk-guide` | Seller coach over that outside tape; optional GPT (see [AI.md](./AI.md)) |
+| POST | `/desk-ai` | Desk user: one `desk_ai_show` flag for the whole desk |
 | POST | `/admin/refresh-day` | **Fresh Pull** — wipe snapshots, live-pull all **enabled** indices |
 | POST | `/admin/upload/constituents` | CSV/XLSX constituents (replaces index bucket on success — see [UPLOAD.md](./UPLOAD.md)) |
 | POST | `/admin/upload/events` | Event calendar upload (full replace on success) |

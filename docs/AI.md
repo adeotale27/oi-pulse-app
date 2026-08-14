@@ -12,23 +12,23 @@ Deterministic code scores:
 - **Corporate calendar** — `nse_events` joined onto those same constituents
 - **India VIX** when the poller has it
 
-OpenAI is optional (`OPENAI_API_KEY` on the **server env**, never in git). Without a key you still get the heavyweight + news coach. **Ask AI** is GPT on that same outside tape.
+OpenAI is optional (`OPENAI_API_KEY` on the **server env**, never in git). Without a key you still get the heavyweight + news coach.
 
 ## Who sees what
 
-Configuration is in **Alert Settings** and on the header **AI** chip. It is **off** until you turn it on.
+Desk AI is **open for the whole desk** (admin and guests share one switch). It is **off** until someone turns it on from the header **AI** chip.
 
 | Control | Where | Who it applies to |
 |---------|--------|-------------------|
-| **Show Desk AI** | Alert Settings **and** header AI chip | Admin **and** guests together |
-| **Ask AI** | Same | Admin **and** guests together |
-| **Slim strip on chart** | Header AI chip (this device) | Collapsed one-line strip above the OI grid |
-| **Desk AI** | Right-panel picker | Full tape |
-| **Book radar intelligence** | Alert Settings **and** Radar panel tick | Radar only — not the Kite positions book |
+| **On / Off** | Header AI chip only | Everyone — one flag |
+| **Open in side panel** | Header AI menu (desktop) | Full tape in the right panel |
+| **Phone popup** | Tap the AI chip | Full tape in a sheet; close returns to the chart |
+| **Book radar intelligence** | Radar panel tick | Radar only — not the Kite positions book |
 
-Turning **Show Desk AI** on also turns Radar intelligence on; hide it from the Radar switch if you do not want it there.
+There is no chart strip and no Desk AI section in Admin configuration.
 
 ## APIs
 
 - `GET /api/desk-outside` — movers, breadth, sectors, events, briefing (cached ~45s)
-- `GET/POST /api/desk-guide` — POST attaches outside tape server-side; `skip_llm` when Ask AI is off
+- `GET/POST /api/desk-guide` — POST attaches outside tape server-side
+- `POST /api/desk-ai` — any signed-in desk user can flip `desk_ai_show` (Radar ticks stay admin-only)

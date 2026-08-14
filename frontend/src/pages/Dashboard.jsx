@@ -10,7 +10,7 @@ import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import DeskStatusRail from "@/components/DeskStatusRail";
 import DataTruthStrip from "@/components/DataTruthStrip";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
-import DeskAiBar from "@/components/DeskAiBar";
+import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
 import KiteTokenBanner from "@/components/KiteTokenBanner";
 import KiteMaintenanceBanner from "@/components/KiteMaintenanceBanner";
@@ -415,6 +415,7 @@ export default function Dashboard() {
   }, []);
   useEffect(() => {
     if (isMobile) setCompact(true);
+    else setDeskAiMobileOpen(false);
   }, [isMobile]);
 
   // On phones, never keep the side panel open by default — it was leaving a narrow
@@ -669,38 +670,16 @@ export default function Dashboard() {
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showChartSignals, setShowChartSignals] = useState(false);
   const [deskAiShow, setDeskAiShow] = useState(false);
-  const [deskAiAsk, setDeskAiAsk] = useState(true);
   const [deskAiPositions, setDeskAiPositions] = useState(false);
   const [deskAiRadar, setDeskAiRadar] = useState(false);
-  const [deskAiAdmin, setDeskAiAdmin] = useState(false);
-  const [deskAiPublic, setDeskAiPublic] = useState(false);
-  const [deskAiOnGrid, setDeskAiOnGrid] = useState(() => {
-    try {
-      const v = localStorage.getItem("oiDeskAiOnGrid");
-      if (v === "0") return false;
-      if (v === "1") return true;
-    } catch { /* noop */ }
-    return false;
-  });
-  const toggleDeskAiOnGrid = useCallback((on) => {
-    setDeskAiOnGrid(!!on);
-    try { localStorage.setItem("oiDeskAiOnGrid", on ? "1" : "0"); } catch { /* noop */ }
-  }, []);
+  const [deskAiMobileOpen, setDeskAiMobileOpen] = useState(false);
   const openDeskAiPanel = useCallback(() => {
-    const phone = (() => {
-      try { return window.matchMedia("(max-width: 767px)").matches; } catch { return false; }
-    })();
-    if (phone) {
-      toggleDeskAiOnGrid(true);
-      window.dispatchEvent(new CustomEvent("oi-desk-ai-expand"));
-      setTimeout(() => {
-        document.getElementById("desk-ai-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 50);
-      return;
-    }
     setRightPanelView("desk-ai");
     setRightPanelOpen(true);
-  }, [toggleDeskAiOnGrid]);
+  }, []);
+  const openDeskAiMobile = useCallback(() => {
+    setDeskAiMobileOpen(true);
+  }, []);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
@@ -1002,21 +981,28 @@ export default function Dashboard() {
   const applyDeskAi = useCallback((d) => {
     if (!d) return;
     if (typeof d.desk_ai_show === "boolean") setDeskAiShow(d.desk_ai_show);
-    if (typeof d.desk_ai_ask === "boolean") setDeskAiAsk(d.desk_ai_ask);
+    else if (typeof d.desk_ai_admin === "boolean" || typeof d.desk_ai_public === "boolean") {
+      setDeskAiShow(!!d.desk_ai_admin || !!d.desk_ai_public);
+    }
     if (typeof d.desk_ai_positions === "boolean") setDeskAiPositions(d.desk_ai_positions);
     if (typeof d.desk_ai_radar === "boolean") setDeskAiRadar(d.desk_ai_radar);
-    if (typeof d.desk_ai_admin === "boolean") setDeskAiAdmin(d.desk_ai_admin);
-    if (typeof d.desk_ai_public === "boolean") setDeskAiPublic(d.desk_ai_public);
   }, []);
 
   const patchDeskAi = useCallback(async (patch) => {
+    const prev = { show: deskAiShow, radar: deskAiRadar, positions: deskAiPositions };
+    if (typeof patch.desk_ai_show === "boolean") setDeskAiShow(patch.desk_ai_show);
+    if (typeof patch.desk_ai_radar === "boolean") setDeskAiRadar(patch.desk_ai_radar);
+    if (typeof patch.desk_ai_positions === "boolean") setDeskAiPositions(patch.desk_ai_positions);
     try {
-      const { data } = await api.post("/settings", patch);
+      const { data } = await api.post("/desk-ai", patch);
       applyDeskAi(data);
     } catch (e) {
+      setDeskAiShow(prev.show);
+      setDeskAiRadar(prev.radar);
+      setDeskAiPositions(prev.positions);
       toast.error(e?.response?.data?.detail || "Could not save Desk AI");
     }
-  }, [applyDeskAi]);
+  }, [applyDeskAi, deskAiShow, deskAiRadar, deskAiPositions]);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -1901,18 +1887,14 @@ export default function Dashboard() {
         onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
         positionsPollMs={positionsPollMs}
         positionsPublic={tabOn("positions")}
-        showDeskAi={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
-        deskAiAsk={deskAiAsk}
-        deskAiOnGrid={deskAiOnGrid}
-        onToggleDeskAiGrid={toggleDeskAiOnGrid}
-        onOpenDeskAiPanel={openDeskAiPanel}
+        showDeskAi={deskAiShow}
+        onOpenDeskAiPanel={() => {
+          if (!deskAiShow) patchDeskAi({ desk_ai_show: true });
+          openDeskAiPanel();
+        }}
+        onOpenDeskAiMobile={openDeskAiMobile}
         onDeskAiChange={(next) => {
-          const patch = {};
-          if (typeof next?.show === "boolean") {
-            patch.desk_ai_show = next.show;
-          }
-          if (typeof next?.ask === "boolean") patch.desk_ai_ask = next.ask;
-          if (Object.keys(patch).length) patchDeskAi(patch);
+          if (typeof next?.show === "boolean") patchDeskAi({ desk_ai_show: next.show });
         }}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {
@@ -1976,13 +1958,6 @@ export default function Dashboard() {
             infoTilesOpen ? "sm:pt-4 md:pt-5 sm:pb-4 md:pb-5" : "sm:pt-1.5 md:pt-2 sm:pb-4 md:pb-5"
           } max-md:pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]`}
         >
-          <DeskAiBar
-            activeIndex={activeIndex}
-            visible={deskAiOnGrid && (!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic)}
-            askAi={deskAiAsk}
-            variant="strip"
-            onOpenPanel={openDeskAiPanel}
-          />
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
               activeIndex={activeIndex}
@@ -2536,8 +2511,8 @@ export default function Dashboard() {
                       onPinNearestWeekly={handleChangeExpiry}
                       positionsPollMs={positionsPollMs}
                       onOpenKite={openKiteCreds}
-                      deskAiShow={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
-                      deskAiAsk={deskAiAsk}
+                      deskAiShow={deskAiShow}
+                      deskAiAsk
                       deskAiPositions={deskAiPositions}
                       deskAiRadar={deskAiRadar}
                       canConfigureDeskAi={!!authState.is_admin}
@@ -2690,8 +2665,8 @@ export default function Dashboard() {
                       straddlePollMs={straddlePollMs}
                       uploadRefreshKey={uploadRefreshKey}
                       onOpenKite={openKiteCreds}
-                      deskAiShow={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
-                      deskAiAsk={deskAiAsk}
+                      deskAiShow={deskAiShow}
+                      deskAiAsk
                       deskAiPositions={deskAiPositions}
                       deskAiRadar={deskAiRadar}
                       canConfigureDeskAi={!!authState.is_admin}
@@ -2772,6 +2747,16 @@ export default function Dashboard() {
           onOpenChange={setTelegramPrefsOpen}
         />
       )}
+
+      <DeskAiMobileSheet
+        open={deskAiMobileOpen}
+        onOpenChange={setDeskAiMobileOpen}
+        activeIndex={activeIndex}
+        showDeskAi={deskAiShow}
+        onDeskAiChange={(next) => {
+          if (typeof next?.show === "boolean") patchDeskAi({ desk_ai_show: next.show });
+        }}
+      />
 
       <SettingsModal
         open={settingsOpen}
