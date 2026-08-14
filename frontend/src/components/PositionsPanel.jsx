@@ -28,9 +28,8 @@ import { istMinutesOfDay, getPositionsCatchupMinute, getMarketCloseHm, getMarket
 import {
   todayIST,
   isJournalSessionDayIST,
-  isSpecialSessionIST,
-  SPECIAL_SESSION_OPEN_MINUTE,
-  SPECIAL_SESSION_CATCHUP_MINUTE,
+  specialSessionOpenMinute,
+  specialSessionCatchupMinute,
 } from "@/lib/holidays";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -103,15 +102,15 @@ function fmtSessionLeft(mins) {
 }
 
 function journalPositionsCatchupMinute(iso = todayIST()) {
-  return isSpecialSessionIST(iso) ? SPECIAL_SESSION_CATCHUP_MINUTE : getPositionsCatchupMinute();
+  return specialSessionCatchupMinute(iso) ?? getPositionsCatchupMinute();
 }
 
-/** Auto-refresh the book on journal session days (Muhurat until 20:00; skip full holidays). */
+/** Auto-refresh the book on session days (Muhurat uses that day's close + 5 min). */
 function journalPositionsRefreshOn() {
   const iso = todayIST();
   if (!isJournalSessionDayIST(iso)) return false;
   const mins = istMinutesOfDay();
-  const open = isSpecialSessionIST(iso) ? SPECIAL_SESSION_OPEN_MINUTE : getMarketOpenMinute();
+  const open = specialSessionOpenMinute(iso) ?? getMarketOpenMinute();
   if (mins < open) return false;
   return mins < journalPositionsCatchupMinute(iso);
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.07 — 2026-08-14
+
+Muhurat is a live trading session for charts and OI, not a holiday.
+
+- Diwali Laxmi Pujan Muhurat polls Open Interest during the NSE special window (2025: 13:30–14:45 IST)
+- Kite has no exchange-open API; a fresh NIFTY/SENSEX last_trade_time also starts polling if the tape is printing
+- Journal EOD lock follows that session’s close + 5 minutes. Full holidays stay closed
+
 ## V6.06 — 2026-08-14
 
 Journal books weekends and full holidays as closed, and treats live special sessions as trading days.

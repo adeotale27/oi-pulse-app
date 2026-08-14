@@ -9,7 +9,7 @@ import {
   buildEventWarningCopy,
   SECOND_SESSION_MINUTE,
 } from "@/lib/overnightBrief";
-import { isHoliday, todayIST } from "@/lib/holidays";
+import { isHoliday, isTradingDayIST, todayIST } from "@/lib/holidays";
 
 const CARRY_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
 
@@ -108,10 +108,10 @@ export default function BigClock({ compact = false, secondSessionIst = null }) {
   const ampm = h >= 12 ? "PM" : "AM";
 
   const minutesOfDay = h * 60 + m;
-  const holidayToday = isHoliday(todayIST());
+  const holidayToday = isHoliday(todayIST()) && !isTradingDayIST(todayIST());
   const isWeekend = (weekday === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || weekday === 6 || weekday === 0;
-  // Closing-soon / open reminders only on real NSE trading days (not Sat/Sun/holidays).
-  const isTradingDay = !isWeekend && !holidayToday && weekday >= 1 && weekday <= 5;
+  // Closing-soon / open reminders on real NSE session days (Muhurat included).
+  const isTradingDay = isTradingDayIST(todayIST()) && !isWeekend;
   const isWeekday = isTradingDay;
   const holidayName = holidayToday?.name || null;
 

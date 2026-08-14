@@ -6,8 +6,10 @@ Browser-independent: on working market days with live Kite credentials the polle
 keeps writing OI Change / Open Interest / straddle samples to the DB whether or
 not any client has the app open.
 
-Polls ONLY during NSE market hours (default open 09:15 / Index F&O close 15:40 IST,
-Mon–Fri, excl. holidays; configurable in Admin Settings) when FORCE_ALWAYS_POLL=false.
+Polls ONLY during NSE market hours (regular 09:15–15:40 IST, or Muhurat /
+special-session hours on Diwali Laxmi Pujan) when FORCE_ALWAYS_POLL=false.
+Kite Connect has no exchange-open API; a fresh quote last_trade_time also
+starts polling if the tape is printing on a listed holiday.
 Retains 24 h of snapshots so any timeframe from 5 min – 4 h has data available.
 """
 import asyncio
@@ -34,6 +36,7 @@ from market_hours import (
     is_market_open, market_status, now_ist, configure_hours,
     default_alert_indices_for_today, is_holiday, is_trading_day,
     session_window_utc, IST,
+    is_special_session_day, is_full_holiday, mark_quote_session_live,
 )
 import notifier
 class JsonLogFormatter(logging.Formatter):
@@ -733,6 +736,7 @@ class OITracker:
         """
         if self.mode != "kite" or not self.kite_service:
             return
+        await self._refresh_quote_session_flag()
         if not (FORCE_ALWAYS_POLL or is_market_open()):
             return
 
@@ -790,14 +794,39 @@ class OITracker:
             wait = interval_seconds
         return max(0.0, wait)
 
+    async def _refresh_quote_session_flag(self) -> None:
+        """Kite has no holidays/session-open API — use a fresh index last_trade_time."""
+        dt = now_ist()
+        should_probe = is_special_session_day(dt) or is_holiday(dt) or dt.weekday() >= 5
+        if not should_probe:
+            mark_quote_session_live(False)
+            return
+        if self.mode != "kite" or not self.kite_service:
+            mark_quote_session_live(False)
+            return
+        try:
+            quotes = await asyncio.wait_for(
+                asyncio.to_thread(self.kite_service.kite.quote, ["NSE:NIFTY 50", "BSE:SENSEX"]),
+                timeout=8.0,
+            )
+        except Exception as e:
+            logger.debug("quote session probe failed: %s", e)
+            return
+        from kite_charges import quote_session_live_now
+        live = quote_session_live_now(quotes or {}, now=dt, max_age_seconds=180)
+        mark_quote_session_live(live)
+        if live:
+            logger.debug("Kite last_trade_time is live — treating tape as open.")
+
     async def _loop(self):
         """
         Main polling loop.
 
         Behavior:
           * If FORCE_ALWAYS_POLL=true → poll every configured OI interval regardless of time.
-          * Else → poll only during NSE market hours (9:00–15:30 IST Mon–Fri, excl. holidays);
-            outside the window, sleep 60s and re-check. Announce open/close to Telegram once/day.
+          * Else → poll only while NSE cash/F&O is in session (regular hours or
+            Muhurat; Kite last_trade_time covers unlisted specials). Outside the
+            window, sleep 60s and re-check. Announce open/close to Telegram once/day.
           * Polls are aligned to the selected cadence (15/30/60s) so each sample lands on the
             next clock boundary rather than drifting after the previous request finishes.
         """
@@ -805,6 +834,7 @@ class OITracker:
         while self.running:
             try:
                 poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
+                await self._refresh_quote_session_flag()
                 if FORCE_ALWAYS_POLL or is_market_open():
                     if not was_open:
                         logger.info("Market OPEN — starting continuous OI / straddle polling (browser-independent).")
@@ -876,7 +906,7 @@ class OITracker:
         If not, ping the user on Telegram (once per day)."""
         try:
             dt = now_ist()
-            if dt.weekday() >= 5 or is_holiday(dt):
+            if dt.weekday() >= 5 or is_full_holiday(dt):
                 return
             if not (dt.hour == 8 and dt.minute >= 45):
                 return

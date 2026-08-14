@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.07",
+    date: "2026-08-14",
+    user: [
+      "Diwali Muhurat is a live session on the OI charts, not a holiday. The desk polls that window; a full holiday still stays on last session.",
+    ],
+    admin: [
+      "Kite has no session-open API. OI poll uses NSE Muhurat hours plus a fresh quote last_trade_time. is_trading_day includes special sessions.",
+    ],
+  },
+  {
     version: "6.06",
     date: "2026-08-14",
     user: [

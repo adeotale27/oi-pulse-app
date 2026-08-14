@@ -9,14 +9,14 @@ from typing import Any, Dict, List, Optional
 from market_hours import (
     is_trading_day,
     is_journal_session_day,
-    is_special_session_day,
     now_ist,
     IST,
+    eod_lock_time,
 )
 
-# Freeze after the last Positions auto-refresh (Index F&O 15:40 + 5 min catch-up).
+# Freeze after the last Positions auto-refresh (Index F&O close + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
-# Diwali Laxmi Pujan muhurat is typically ~18:00–19:15 IST.
+# Fallback if special-session close is missing (evening Muhurat).
 SPECIAL_SESSION_LOCK_IST = dtime(20, 0)
 HEATMAP_INDICES = ("NIFTY", "SENSEX", "BANKNIFTY")
 
@@ -46,10 +46,7 @@ def ist_ymd(dt=None) -> str:
 
 
 def iso_is_trading_day(iso: Optional[str]) -> bool:
-    """Journal session day: weekday with a cash/F&O print, including Muhurat.
-
-    Full holidays and weekends are False. OI poll uses ``is_trading_day`` instead.
-    """
+    """Journal session day: weekday with a cash/F&O print, including Muhurat."""
     if not iso or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(iso)):
         return False
     try:
@@ -192,12 +189,13 @@ def snapshot_from_positions(
 def should_lock_eod(dt=None, *, live_session: bool = False) -> bool:
     """True when the journal should freeze booked P&L for this IST clock.
 
-    Regular sessions lock at 15:45. Muhurat / live special sessions lock at 20:00.
+    Regular sessions lock at 15:45. Muhurat locks at that session's close + 5 min.
+    Unlisted live sessions lock at 20:00.
     """
     dt = dt or now_ist()
     if is_trading_day(dt):
-        return dt.time() >= EOD_LOCK_IST
-    if live_session or (is_special_session_day(dt) and is_journal_session_day(dt)):
+        return dt.time() >= eod_lock_time(dt)
+    if live_session:
         return dt.time() >= SPECIAL_SESSION_LOCK_IST
     return False
 

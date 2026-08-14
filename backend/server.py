@@ -25,9 +25,9 @@ from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai
 from oi_service import INDEX_CONFIG
 from vrp_service import compute_vrp
 from market_hours import (
-    is_market_open, IST, MARKET_OPEN, is_holiday, is_weekend, display_hours, configure_hours,
+    is_market_open, IST, MARKET_OPEN, is_weekend, display_hours, configure_hours,
     session_anchor_date, session_window_utc, previous_trading_day, now_ist,
-    is_special_session_day,
+    is_special_session_day, is_full_holiday, session_poll_bounds,
 )
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
@@ -567,21 +567,19 @@ async def _guest_from_request(request: Request):
 
 
 def _next_market_close_ist() -> datetime:
-    from market_hours import IST, is_weekend, is_holiday, display_hours
+    from market_hours import IST, is_trading_day, session_display_bounds
     now = datetime.now(IST)
-    _, close_hm = display_hours()
-    try:
-        hh, mm = [int(x) for x in close_hm.split(":")[:2]]
-    except Exception:
-        hh, mm = 15, 40
-    close = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    _open, close_t = session_display_bounds(now)
+    close = now.replace(hour=close_t.hour, minute=close_t.minute, second=0, microsecond=0)
     if now >= close:
         close = close + timedelta(days=1)
     for _ in range(15):
-        if not is_weekend(close) and not is_holiday(close):
+        if is_trading_day(close):
+            _o, ct = session_display_bounds(close)
+            close = close.replace(hour=ct.hour, minute=ct.minute, second=0, microsecond=0)
             break
         close = close + timedelta(days=1)
-        close = close.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        close = close.replace(hour=close_t.hour, minute=close_t.minute, second=0, microsecond=0)
     return close.astimezone(timezone.utc)
 
 
@@ -3450,7 +3448,7 @@ async def admin_refresh_day(
     On weekend/holiday requires force=true (second admin confirmation in UI).
     """
     force = bool(getattr(payload, "force", False))
-    if (is_weekend(datetime.now(IST)) or is_holiday(datetime.now(IST))) and not force:
+    if (is_weekend(datetime.now(IST)) or is_full_holiday(datetime.now(IST))) and not force:
         raise HTTPException(
             400,
             "Fresh Pull is disabled on weekends/holidays so the last trading "
@@ -4352,8 +4350,9 @@ async def _journal_eod_lock_loop() -> None:
             muhurat = is_special_session_day(now) and calendar_session
             special = muhurat or live
             t = now.time()
-            in_muhurat_window = dtime(17, 0) <= t <= dtime(20, 30)
-            if special and (live or in_muhurat_window):
+            start, end = session_poll_bounds(now)
+            in_special_window = start <= t <= end
+            if special and (live or in_special_window or is_special_session_day(now)):
                 if time.monotonic() - _last_special_journal_snap_mono >= 60:
                     try:
                         mid = await get_positions(None, "admin")

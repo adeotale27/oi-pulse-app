@@ -17,7 +17,7 @@ const HOLIDAYS_RAW = [
   { date: "2025-08-15", name: "Independence Day" },
   { date: "2025-08-27", name: "Ganesh Chaturthi" },
   { date: "2025-10-02", name: "Mahatma Gandhi Jayanti / Dussehra" },
-  { date: "2025-10-21", name: "Diwali Laxmi Pujan* (Muhurat trading only)", session: "muhurat" },
+  { date: "2025-10-21", name: "Diwali Laxmi Pujan* (Muhurat trading)", session: "muhurat", open: "13:30", close: "14:45" },
   { date: "2025-10-22", name: "Balipratipada" },
   { date: "2025-11-05", name: "Prakash Gurpurb Sri Guru Nanak Dev" },
   { date: "2025-12-25", name: "Christmas" },
@@ -35,7 +35,7 @@ const HOLIDAYS_RAW = [
   { date: "2026-09-14", name: "Ganesh Chaturthi" },
   { date: "2026-10-02", name: "Mahatma Gandhi Jayanti" },
   { date: "2026-10-20", name: "Dussehra" },
-  { date: "2026-11-08", name: "Diwali Laxmi Pujan* (Muhurat trading only)", session: "muhurat" },
+  { date: "2026-11-08", name: "Diwali Laxmi Pujan* (Muhurat trading)", session: "muhurat", open: "13:30", close: "19:15" },
   { date: "2026-11-10", name: "Balipratipada" },
   { date: "2026-11-24", name: "Prakash Gurpurb Sri Guru Nanak Dev" },
   { date: "2026-12-25", name: "Christmas" },
@@ -79,10 +79,11 @@ export function isHoliday(iso) {
   return HOLIDAYS_RAW.find((h) => h.date === iso) || null;
 }
 
-/** True for weekday IST dates that are not on the NSE holiday list (OI poll). */
+/** True for weekday IST dates with a cash/F&O session, including Muhurat. */
 export function isTradingDayIST(iso = toIST(new Date())) {
   const wd = weekdayIST(iso);
   if (wd === 0 || wd === 6) return false;
+  if (isSpecialSessionIST(iso)) return true;
   return !isHoliday(iso);
 }
 
@@ -92,20 +93,35 @@ export function isSpecialSessionIST(iso = toIST(new Date())) {
   return Boolean(hol && hol.session === "muhurat");
 }
 
-/**
- * Days the trade journal books from the calendar: weekdays with a cash/F&O
- * session, including Muhurat. Full holidays and weekends are false.
- * OI banners still use isTradingDayIST (Muhurat stays a poll holiday).
- */
-export function isJournalSessionDayIST(iso = toIST(new Date())) {
-  const wd = weekdayIST(iso);
-  if (wd === 0 || wd === 6) return false;
-  if (isSpecialSessionIST(iso)) return true;
-  return !isHoliday(iso);
+export function isFullHolidayIST(iso = toIST(new Date())) {
+  return Boolean(isHoliday(iso) && !isSpecialSessionIST(iso));
 }
 
-export const SPECIAL_SESSION_OPEN_MINUTE = 17 * 60;
-export const SPECIAL_SESSION_CATCHUP_MINUTE = 20 * 60;
+/** Same calendar as charts: weekdays with a session, including Muhurat. */
+export function isJournalSessionDayIST(iso = toIST(new Date())) {
+  return isTradingDayIST(iso);
+}
+
+function hmToMinute(hm, fallback) {
+  const [h, m] = String(hm || "").split(":").map(Number);
+  if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
+  return fallback;
+}
+
+export function specialSessionOpenMinute(iso = toIST(new Date())) {
+  const hol = isHoliday(iso);
+  if (!hol || hol.session !== "muhurat") return null;
+  return hmToMinute(hol.open, 13 * 60 + 30);
+}
+
+export function specialSessionCatchupMinute(iso = toIST(new Date())) {
+  const hol = isHoliday(iso);
+  if (!hol || hol.session !== "muhurat") return null;
+  return hmToMinute(hol.close, 14 * 60 + 45) + 5;
+}
+
+export const SPECIAL_SESSION_OPEN_MINUTE = 13 * 60 + 30;
+export const SPECIAL_SESSION_CATCHUP_MINUTE = 14 * 60 + 50;
 
 export function todayIST() {
   return toIST(new Date());
@@ -139,6 +155,8 @@ export function previousTradingDayIST(iso = todayIST()) {
 export function sessionAnchorDateIST(now = new Date(), openMinute = getMarketOpenMinute()) {
   const today = toIST(now);
   if (!isTradingDayIST(today)) return previousTradingDayIST(today);
+  const specialOpen = specialSessionOpenMinute(today);
+  const open = specialOpen != null ? specialOpen : openMinute;
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
     hour12: false,
@@ -147,7 +165,7 @@ export function sessionAnchorDateIST(now = new Date(), openMinute = getMarketOpe
   }).formatToParts(now);
   const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
   const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
-  if (hour * 60 + minute < openMinute) return previousTradingDayIST(today);
+  if (hour * 60 + minute < open) return previousTradingDayIST(today);
   return today;
 }
 

@@ -23,13 +23,11 @@ function isSpecialSessionIST(iso) {
 function isTradingDayIST(iso) {
   const wd = weekdayIST(iso);
   if (wd === 0 || wd === 6) return false;
+  if (isSpecialSessionIST(iso)) return true;
   return !isHoliday(iso);
 }
 function isJournalSessionDayIST(iso) {
-  const wd = weekdayIST(iso);
-  if (wd === 0 || wd === 6) return false;
-  if (isSpecialSessionIST(iso)) return true;
-  return !isHoliday(iso);
+  return isTradingDayIST(iso);
 }
 
 assert.equal(isTradingDayIST("2026-08-14"), true);
@@ -46,7 +44,7 @@ assert.equal(isSpecialSessionIST("2026-11-08"), true);
 assert.equal(isJournalSessionDayIST("2026-11-08"), false, "weekend still closed");
 
 assert.equal(weekdayIST("2025-10-21"), 2);
-assert.equal(isTradingDayIST("2025-10-21"), false, "OI poll still treats Muhurat as a holiday");
+assert.equal(isTradingDayIST("2025-10-21"), true, "Muhurat is a trading day for charts/OI");
 assert.equal(isSpecialSessionIST("2025-10-21"), true);
 assert.equal(isJournalSessionDayIST("2025-10-21"), true);
 assert.equal(isJournalSessionDayIST("2026-11-10"), false);

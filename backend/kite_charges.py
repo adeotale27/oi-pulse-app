@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def has_fills_on_date(
@@ -69,6 +71,68 @@ def quotes_traded_on_date(quotes: Optional[dict], today_ymd: str) -> bool:
         if lp > 0:
             return True
     return False
+
+
+def parse_kite_timestamp(ts: Any) -> Optional[datetime]:
+    """Best-effort datetime for Kite last_trade_time / order timestamps (IST if naive)."""
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=IST)
+        return ts
+    s = str(ts).strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        if "T" in s or "+" in s[10:] or s.count("-") > 2:
+            dt = datetime.fromisoformat(s[:32])
+        else:
+            dt = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=IST)
+        return dt
+    except Exception:
+        return None
+
+
+def newest_last_trade_age_seconds(quotes: Optional[dict], *, now: Optional[datetime] = None) -> Optional[float]:
+    """Age in seconds of the newest quote last_trade_time, or None."""
+    if not isinstance(quotes, dict):
+        return None
+    now = now or datetime.now(IST)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=IST)
+    best = None
+    for q in quotes.values():
+        if not isinstance(q, dict):
+            continue
+        inner = q.get("ohlc") if isinstance(q.get("ohlc"), dict) else None
+        ts = parse_kite_timestamp(
+            q.get("last_trade_time")
+            or q.get("timestamp")
+            or q.get("exchange_timestamp")
+            or (inner.get("last_trade_time") if inner else None)
+        )
+        if ts is None:
+            continue
+        age = (now - ts.astimezone(now.tzinfo)).total_seconds()
+        if best is None or age < best:
+            best = age
+    return best
+
+
+def quote_session_live_now(
+    quotes: Optional[dict],
+    *,
+    now: Optional[datetime] = None,
+    max_age_seconds: float = 180,
+) -> bool:
+    """True when an index last_trade_time is within ``max_age_seconds`` — session is printing."""
+    age = newest_last_trade_age_seconds(quotes, now=now)
+    return age is not None and 0 <= age <= max_age_seconds
 
 
 def order_date_ymd(ts: Any) -> Optional[str]:

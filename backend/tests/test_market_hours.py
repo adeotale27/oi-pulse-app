@@ -1,21 +1,55 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time as dtime
 
-from market_hours import is_trading_day, is_journal_session_day, is_special_session_day, is_holiday
+from market_hours import (
+    is_trading_day,
+    is_journal_session_day,
+    is_special_session_day,
+    is_holiday,
+    is_full_holiday,
+    is_market_open,
+    mark_quote_session_live,
+    session_poll_bounds,
+    eod_lock_time,
+    session_anchor_date,
+)
 
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
-def _d(y, m, d):
-    return datetime(y, m, d, 12, 0, tzinfo=IST)
+def _d(y, m, d, hh=12, mm=0):
+    return datetime(y, m, d, hh, mm, tzinfo=IST)
 
 
-def test_oi_poll_still_treats_muhurat_as_holiday():
+def setup_function():
+    mark_quote_session_live(False)
+
+
+def test_muhurat_is_a_trading_day_for_oi():
     muhurat = _d(2025, 10, 21)
     assert is_holiday(muhurat) is True
+    assert is_full_holiday(muhurat) is False
     assert is_special_session_day(muhurat) is True
-    assert is_trading_day(muhurat) is False
+    assert is_trading_day(muhurat) is True
     assert is_journal_session_day(muhurat) is True
+    start, end = session_poll_bounds(muhurat)
+    assert start == dtime(13, 29)
+    assert end == dtime(14, 46)
+    assert is_market_open(_d(2025, 10, 21, 10, 0)) is False
+    assert is_market_open(_d(2025, 10, 21, 13, 30)) is True
+    assert is_market_open(_d(2025, 10, 21, 14, 20)) is True
+    assert is_market_open(_d(2025, 10, 21, 15, 0)) is False
+    assert eod_lock_time(muhurat) == dtime(14, 50)
+    assert session_anchor_date(_d(2025, 10, 21, 14, 0)).isoformat() == "2025-10-21"
+    assert session_anchor_date(_d(2025, 10, 21, 10, 0)).isoformat() == "2025-10-20"
+
+
+def test_fresh_kite_print_opens_a_closed_calendar_day():
+    republic = _d(2026, 1, 26, 11, 0)
+    assert is_market_open(republic) is False
+    mark_quote_session_live(True)
+    assert is_market_open(republic) is True
+    mark_quote_session_live(False)
 
 
 def test_full_holidays_are_closed_for_journal_and_oi():

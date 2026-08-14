@@ -2,7 +2,7 @@
 // Shared by BigClock (15:15 toast) and OvernightGapBrief sticky card.
 
 import { eventsWithinDays } from "@/lib/econCalendar";
-import { upcomingHolidays, todayIST, isHoliday, daysBetweenIST, isTradingDayIST } from "@/lib/holidays";
+import { upcomingHolidays, todayIST, daysBetweenIST, isTradingDayIST, isFullHolidayIST } from "@/lib/holidays";
 import { EVENT_WARNING_MINUTE, getMarketOpenMinute } from "@/lib/marketTimes";
 
 /** Sunday-night auto surface (IST). */
@@ -49,7 +49,7 @@ export function carryWindowMaxDays(weekday /* 0=Sun … 5=Fri */, fromISO = toda
   for (let guard = 0; guard < 12; guard++) {
     const candidate = addDaysISO(fromISO, days);
     const wd = weekdayOfISO(candidate);
-    if (wd === 0 || wd === 6 || isHoliday(candidate)) {
+    if (wd === 0 || wd === 6 || isFullHolidayIST(candidate)) {
       days += 1;
       continue;
     }
@@ -62,6 +62,7 @@ export function carryWindowMaxDays(weekday /* 0=Sun … 5=Fri */, fromISO = toda
 export function carryWindowHolidays(weekday, fromISO = todayIST()) {
   const maxDays = carryWindowMaxDays(weekday, fromISO);
   return upcomingHolidays(fromISO)
+    .filter((h) => h.session !== "muhurat")
     .map((h) => ({
       ...h,
       daysAway: daysBetweenIST(fromISO, h.date),

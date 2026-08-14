@@ -9,6 +9,7 @@ from kite_charges import (
     has_fills_on_date,
     order_date_ymd,
     quotes_traded_on_date,
+    quote_session_live_now,
     resolve_charge_params,
     trade_avg_by_order,
 )
@@ -214,3 +215,21 @@ def test_quotes_traded_on_date_uses_last_trade_time():
     assert quotes_traded_on_date(stale, "2026-11-08") is False
     empty = {"NSE:NIFTY 50": {"last_price": 0, "last_trade_time": "2026-11-08 18:15:01"}}
     assert quotes_traded_on_date(empty, "2026-11-08") is False
+
+
+def test_quote_session_live_now_uses_fresh_last_trade():
+    now = datetime(2025, 10, 21, 13, 50, 0)
+    live = {
+        "NSE:NIFTY 50": {
+            "last_price": 24800,
+            "last_trade_time": "2025-10-21 13:49:30",
+        }
+    }
+    stale = {
+        "NSE:NIFTY 50": {
+            "last_price": 24800,
+            "last_trade_time": "2025-10-21 13:40:00",
+        }
+    }
+    assert quote_session_live_now(live, now=now, max_age_seconds=180) is True
+    assert quote_session_live_now(stale, now=now, max_age_seconds=180) is False

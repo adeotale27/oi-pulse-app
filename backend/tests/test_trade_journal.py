@@ -194,16 +194,18 @@ def test_journal_sessions_skip_full_holidays_keep_muhurat():
     assert s["net_pnl"] == 900
 
 
-def test_should_lock_eod_muhurat_at_2000():
+def test_should_lock_eod_muhurat_after_session_close():
     ist = timezone(timedelta(hours=5, minutes=30))
-    afternoon = datetime(2025, 10, 21, 15, 45, tzinfo=ist)
-    evening = datetime(2025, 10, 21, 19, 0, tzinfo=ist)
-    lock = datetime(2025, 10, 21, 20, 0, tzinfo=ist)
+    before = datetime(2025, 10, 21, 14, 49, tzinfo=ist)
+    at = datetime(2025, 10, 21, 14, 50, tzinfo=ist)
+    after_regular = datetime(2025, 10, 21, 15, 45, tzinfo=ist)
+    morning = datetime(2025, 10, 21, 13, 0, tzinfo=ist)
     republic = datetime(2026, 1, 26, 16, 0, tzinfo=ist)
     sunday_listed = datetime(2026, 11, 8, 20, 0, tzinfo=ist)
-    assert should_lock_eod(afternoon) is False
-    assert should_lock_eod(evening) is False
-    assert should_lock_eod(lock) is True
+    assert should_lock_eod(morning) is False
+    assert should_lock_eod(before) is False
+    assert should_lock_eod(at) is True
+    assert should_lock_eod(after_regular) is True
     assert should_lock_eod(republic) is False
     assert should_lock_eod(sunday_listed) is False
     assert should_lock_eod(republic, live_session=True) is False  # before 20:00
