@@ -6,6 +6,7 @@ import StrikeTable from "@/components/StrikeTable";
 import BuildupTable from "@/components/BuildupTable";
 import ActivityFeed from "@/components/ActivityFeed";
 import PositionsPanel from "@/components/PositionsPanel";
+import DeskAiBar from "@/components/DeskAiBar";
 import OIChart from "@/components/OIChart";
 import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
@@ -13,6 +14,7 @@ import StraddleChart from "@/components/StraddleChart";
 // Content picker options for the right (side-by-side) panel.
 // pageId maps to the same dashboard-visible_page keys used by settings.
 export const RIGHT_PANEL_VIEWS = [
+  { key: "desk-ai", label: "Desk AI", pageId: null, requiresDeskAi: true },
   { key: "alerts",   label: "Alerts", pageId: "alerts" },
   { key: "strike",   label: "Strike Table", pageId: "strike-table" },
   { key: "buildup",  label: "Build-up", pageId: "buildup" },
@@ -74,6 +76,7 @@ export default function RightPanel({
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
+      if (item.requiresDeskAi && !deskAiShow) return false;
       if (item.pageId == null) return true;
       if (isAdmin) {
         if (!Array.isArray(adminPages) || adminPages.length === 0) return true;
@@ -81,7 +84,7 @@ export default function RightPanel({
       }
       return Array.isArray(visiblePages) && visiblePages.includes(item.pageId);
     }),
-    [visiblePages, adminPages, isAdmin]
+    [visiblePages, adminPages, isAdmin, deskAiShow]
   );
 
   const selectedView = allowedViews.some((item) => item.key === view)
@@ -127,9 +130,21 @@ export default function RightPanel({
       {/* Content scrolls inside the panel; suggestion stays pinned under the fold edge. */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2"
+          className={`flex-1 min-h-0 overscroll-contain p-2 ${
+            selectedView === "desk-ai" ? "overflow-hidden flex flex-col" : "overflow-y-auto"
+          }`}
           data-testid="right-panel-scroll"
         >
+          {selectedView === "desk-ai" && (
+            <div className="flex-1 min-h-0">
+              <DeskAiBar
+                activeIndex={activeIndex}
+                visible={deskAiShow}
+                askAi={deskAiAsk}
+                variant="panel"
+              />
+            </div>
+          )}
           {selectedView === "alerts" && (
             <AlertsPanel
               alerts={alerts}

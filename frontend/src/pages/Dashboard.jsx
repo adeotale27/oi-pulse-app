@@ -674,6 +674,33 @@ export default function Dashboard() {
   const [deskAiRadar, setDeskAiRadar] = useState(true);
   const [deskAiAdmin, setDeskAiAdmin] = useState(true);
   const [deskAiPublic, setDeskAiPublic] = useState(false);
+  const [deskAiOnGrid, setDeskAiOnGrid] = useState(() => {
+    try {
+      const v = localStorage.getItem("oiDeskAiOnGrid");
+      if (v === "0") return false;
+      if (v === "1") return true;
+    } catch { /* noop */ }
+    return true;
+  });
+  const toggleDeskAiOnGrid = useCallback((on) => {
+    setDeskAiOnGrid(!!on);
+    try { localStorage.setItem("oiDeskAiOnGrid", on ? "1" : "0"); } catch { /* noop */ }
+  }, []);
+  const openDeskAiPanel = useCallback(() => {
+    const phone = (() => {
+      try { return window.matchMedia("(max-width: 767px)").matches; } catch { return false; }
+    })();
+    if (phone) {
+      toggleDeskAiOnGrid(true);
+      window.dispatchEvent(new CustomEvent("oi-desk-ai-expand"));
+      setTimeout(() => {
+        document.getElementById("desk-ai-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 50);
+      return;
+    }
+    setRightPanelView("desk-ai");
+    setRightPanelOpen(true);
+  }, [toggleDeskAiOnGrid]);
   // Wall-clock timestamp of the last /change response — used together with a
   // 1s ticker to render a LIVE countdown in the "warming up" banner so users
   // can see the exact time remaining until a true N-min compare unlocks.
@@ -1876,6 +1903,9 @@ export default function Dashboard() {
         positionsPublic={tabOn("positions")}
         showDeskAi={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
         deskAiAsk={deskAiAsk}
+        deskAiOnGrid={deskAiOnGrid}
+        onToggleDeskAiGrid={toggleDeskAiOnGrid}
+        onOpenDeskAiPanel={openDeskAiPanel}
         onDeskAiChange={(next) => {
           const patch = {};
           if (typeof next?.show === "boolean") {
@@ -1949,8 +1979,10 @@ export default function Dashboard() {
         >
           <DeskAiBar
             activeIndex={activeIndex}
-            visible={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
+            visible={deskAiOnGrid && (!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic)}
             askAi={deskAiAsk}
+            variant="strip"
+            onOpenPanel={openDeskAiPanel}
           />
           <div className="md:hidden shrink-0">
             <MobileStickyChrome

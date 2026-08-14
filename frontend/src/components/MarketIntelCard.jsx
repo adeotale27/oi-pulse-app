@@ -105,7 +105,7 @@ export default function MarketIntelCard({
       ) : null}
 
       {events.length ? (
-        <ul className="space-y-1.5 max-h-[22rem] overflow-y-auto" data-testid="intel-events">
+        <ul className={`space-y-1.5 overflow-y-auto ${compact ? "max-h-32" : "max-h-[22rem]"}`} data-testid="intel-events">
           {events.slice(0, compact ? 5 : 12).map((e) => {
             const pri = String(e.priority || "MEDIUM").toUpperCase();
             return (

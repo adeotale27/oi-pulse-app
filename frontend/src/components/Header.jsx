@@ -5,7 +5,7 @@ import GiftSessionsModal from "@/components/GiftSessionsModal";
 import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import DeskAiConfigMenu from "@/components/DeskAiConfigMenu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -165,7 +165,10 @@ export default function Header({
   positionsPublic = true,
   showDeskAi = true,
   deskAiAsk = true,
+  deskAiOnGrid = true,
   onDeskAiChange,
+  onToggleDeskAiGrid,
+  onOpenDeskAiPanel,
   onToggleSlimStatusRail,
 }) {
   const price = current?.price ?? 0;
@@ -240,6 +243,54 @@ export default function Header({
   const kiteBtnCls = kiteUserId
     ? "rounded-sm h-8 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400 font-semibold"
     : "rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700";
+
+  const deskAiChipClass = (on) =>
+    `inline-flex items-center gap-1 h-8 px-2 rounded-md border-2 text-[11px] font-bold tracking-wide shrink-0 ${
+      on
+        ? "border-violet-400 bg-violet-600 text-white hover:bg-violet-700"
+        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+    }`;
+  const deskAiChip = (isAdmin || showDeskAi) ? (
+    isAdmin && typeof onDeskAiChange === "function" ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            data-testid="header-ai-chip"
+            className={deskAiChipClass(showDeskAi)}
+            title="Desk AI — admin + guests together"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            AI
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64 p-2" data-testid="header-ai-menu">
+          <DeskAiConfigMenu
+            showDeskAi={showDeskAi}
+            deskAiAsk={deskAiAsk}
+            onGrid={deskAiOnGrid}
+            onDeskAiChange={onDeskAiChange}
+            onToggleGrid={onToggleDeskAiGrid}
+            onOpenPanel={onOpenDeskAiPanel}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : (
+      <button
+        type="button"
+        data-testid="header-ai-chip"
+        onClick={() => {
+          if (typeof onOpenDeskAiPanel === "function") onOpenDeskAiPanel();
+          else document.getElementById("desk-ai-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }}
+        className={deskAiChipClass(true)}
+        title="Desk AI"
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        AI
+      </button>
+    )
+  ) : null;
 
   // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
   // to avoid duplicate network requests across components.
@@ -419,6 +470,7 @@ export default function Header({
               />
             )}
           </div>
+          {deskAiChip}
           {isAdmin && (
             <Button
               data-testid="btn-mobile-tools"
@@ -577,69 +629,7 @@ export default function Header({
       {/* Row 1: brand + status + essential actions */}
       <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
         <BrandMark compact={headerRail} className="shrink-0" />
-        {(isAdmin || showDeskAi) ? (
-        isAdmin && typeof onDeskAiChange === "function" ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              data-testid="header-ai-chip"
-              className={`hidden lg:inline-flex items-center gap-1 h-8 px-2 rounded-md border-2 text-[11px] font-bold tracking-wide shrink-0 ${
-                showDeskAi
-                  ? "border-violet-400 bg-violet-600 text-white hover:bg-violet-700"
-                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-              title="Desk AI — admin + guests together"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              AI
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64 p-2" data-testid="header-ai-menu">
-            <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
-              Desk AI (admin and guests)
-            </DropdownMenuLabel>
-            <div className="flex items-center justify-between gap-2 px-1 py-2">
-              <span className="text-xs font-semibold text-slate-800">Show Desk AI</span>
-              <Switch
-                checked={!!showDeskAi}
-                onCheckedChange={(on) => onDeskAiChange({ show: !!on })}
-                data-testid="header-desk-ai-show"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2 px-1 py-2">
-              <span className="text-xs font-semibold text-slate-800">Ask AI</span>
-              <Switch
-                checked={!!deskAiAsk}
-                onCheckedChange={(on) => onDeskAiChange({ ask: !!on })}
-                data-testid="header-desk-ai-ask"
-              />
-            </div>
-            <p className="px-1 pb-1 text-[10px] text-slate-500 leading-snug">
-              One switch for you and guests. Positions and Radar have their own AI ticks on those screens.
-            </p>
-            {showDeskAi ? (
-              <DropdownMenuItem
-                onSelect={() => document.getElementById("desk-ai-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
-              >
-                Jump to bar
-              </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        ) : (
-        <button
-          type="button"
-          data-testid="header-ai-chip"
-          onClick={() => document.getElementById("desk-ai-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
-          className="hidden lg:inline-flex items-center gap-1 h-8 px-2 rounded-md border-2 border-violet-400 bg-violet-600 text-white text-[11px] font-bold tracking-wide hover:bg-violet-700 shrink-0"
-          title="Jump to Desk AI"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          AI
-        </button>
-        )
-        ) : null}
+        {deskAiChip}
 
         {/* VIX / GIFT — always visible; slim = chips, normal = stacked metrics */}
         <div className={`flex items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
