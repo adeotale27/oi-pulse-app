@@ -1926,9 +1926,6 @@ export default function Dashboard() {
         >
           <DeskAiBar
             activeIndex={activeIndex}
-            current={current}
-            previous={previous}
-            enabledIndices={enabledIndices.length ? enabledIndices : INDICES}
             visible={!!authState.is_admin ? deskAiAdmin !== false : !!deskAiPublic}
           />
           <div className="md:hidden shrink-0">

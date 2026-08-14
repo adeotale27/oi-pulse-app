@@ -33,6 +33,7 @@ from fii_dii_service import fii_dii
 import event_risk_service as ers
 import trade_journal as journal
 import desk_guide as desk_guide_svc
+import desk_outside as desk_outside_svc
 from fastapi import UploadFile, File, Form
 
 # cryptography import deferred inside _fernet() to reduce startup import cost
@@ -4895,7 +4896,14 @@ class DeskGuideIn(BaseModel):
     adjust: Optional[Dict[str, Any]] = None
     fii: Optional[Dict[str, Any]] = None
     oi: Optional[List[Any]] = None
+    outside: Optional[Dict[str, Any]] = None
     force: Optional[bool] = False
+
+
+@api_router.get("/desk-outside")
+async def get_desk_outside(role: str = Depends(require_desk_user)):
+    """Heavyweight cash movers + news. Not the OI chain."""
+    return await desk_outside_svc.snapshot(db, tracker)
 
 
 @api_router.get("/desk-guide")
@@ -4906,8 +4914,14 @@ async def get_desk_guide(role: str = Depends(require_desk_user)):
 
 @api_router.post("/desk-guide")
 async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_user)):
-    """Optional ~5-minute LLM pass over a clipped OI/book snapshot."""
-    return await desk_guide_svc.maybe_guide(body.model_dump())
+    """Coach over outside tape (movers/news) plus clipped book. Optional GPT."""
+    payload = body.model_dump()
+    try:
+        outside = await desk_outside_svc.snapshot(db, tracker)
+        payload["outside"] = outside
+    except Exception:
+        pass
+    return await desk_guide_svc.maybe_guide(payload)
 
 
 # ------------------- Lifecycle -------------------

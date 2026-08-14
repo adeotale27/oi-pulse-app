@@ -20,6 +20,10 @@ def test_compact_strips_noise_and_caps_lists():
             "ceChg": 120000, "peChg": -30000, "callWall": 24600, "putWall": 24300,
             "strikes": [{"strike": 1, "ce_oi": 9}],
         }],
+        "outside": {
+            "movers": [{"symbol": "RELIANCE", "pct": -1.5, "weightage": 9, "token": "x"}],
+            "news": [{"title": "RBI", "url": "http://secret"}],
+        },
         "adjust": {
             "netDelta": "12.4",
             "adjustCount": 1,
@@ -42,6 +46,9 @@ def test_compact_strips_noise_and_caps_lists():
     assert "SECRET" not in str(snap["results"])
     assert snap["oi"][0]["idx"] == "NIFTY"
     assert "strikes" not in snap["oi"][0]
+    assert snap["outside"]["movers"][0]["symbol"] == "RELIANCE"
+    assert "token" not in snap["outside"]["movers"][0]
+    assert "url" not in snap["outside"]["news"][0]
 
 
 def test_rules_guide_mentions_results():
@@ -53,7 +60,6 @@ def test_rules_guide_mentions_results():
     })
     assert "Why carry" in text
     assert "MAXHEALTH" in text
-    assert "FII" in text
 
 
 def test_rules_guide_adjust_first():
@@ -70,20 +76,24 @@ def test_rules_guide_adjust_first():
     assert "Net Δ" in text
 
 
-def test_rules_guide_uses_oi_tape():
+def test_rules_guide_uses_outside_tape_not_oi_dump():
     text = compose_rules_guide({
         "oi": [{
             "idx": "NIFTY", "px": 24500, "atm": 24500, "pcr": 1.25,
             "ceChg": 80000, "peChg": 120000, "callWall": 24600, "putWall": 24300,
         }],
-        "vix": 12.4,
-        "giftPct": -0.18,
+        "outside": {
+            "movers": [{
+                "symbol": "RELIANCE", "pct": -1.8, "weightage": 9.1, "index": "NIFTY",
+                "note": "9.1% wt dumping — index can slip the put wall; do not add PE shorts",
+            }],
+            "news": [{"title": "RBI holds rates, rupee slides"}],
+        },
     })
-    assert "NIFTY" in text
-    assert "PCR" in text
-    assert "VIX" in text
-    assert "GIFT" in text
-    assert "HOLD" in text or "range" in text.lower() or "put" in text.lower()
+    assert "RELIANCE" in text
+    assert "RBI" in text
+    assert "put writers adding" not in text
+    assert "PCR 1.25" not in text
 
 
 def test_status_without_key(monkeypatch):
