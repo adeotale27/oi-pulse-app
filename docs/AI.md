@@ -20,8 +20,10 @@ Configuration is **not** in Alert Settings.
 
 | Control | Where | Who it applies to |
 |---------|--------|-------------------|
-| **Show Desk AI** | Header **AI** chip (admin) | Admin **and** guests together |
+| **Show Desk AI** | Header **AI** chip (phone and desktop) | Admin **and** guests together |
 | **Ask AI** | Same header menu | Admin **and** guests together |
+| **Slim strip on chart** | Same header menu (this device) | Collapsed one-line strip above the OI grid; drag the grip to resize when expanded |
+| **Desk AI** | Right-panel picker | Full tape so the chart keeps its tiles |
 | **AI** on Positions | Positions toolbar | Strip on the Positions page |
 | **AI** on Radar | Book radar panel only | Intelligence on Radar |
 

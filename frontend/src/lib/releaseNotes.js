@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.01",
+    date: "2026-08-14",
+    user: [
+      "Desk AI is a slim strip above the chart (tap More, drag to resize). The full tape is in the right panel so OI tiles stay readable. Phone header now has the AI chip.",
+    ],
+    admin: [
+      "Header AI on mobile: Show Desk AI, Ask AI, and slim-strip-on-chart. Side panel picker includes Desk AI.",
+    ],
+  },
+  {
     version: "6.00",
     date: "2026-08-14",
     user: [

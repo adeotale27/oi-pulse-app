@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.01 — 2026-08-14
+
+Desk AI no longer eats the OI grid. Config works on the phone.
+
+- Chart keeps a **collapsed one-line strip** (More + drag to resize). Full tape is a **Desk AI** view in the right panel
+- Header **AI** chip is on phone and desktop: Show / Ask / slim-strip-on-chart
+- Tiles and OI chart stay the main surface
+
 ## V6.00 — 2026-08-14
 
 Market intelligence desk: what OI alone cannot see (heavyweights, breadth, news, event risk).
