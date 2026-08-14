@@ -737,8 +737,8 @@ class SettingsIn(BaseModel):
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
-    desk_ai_show: Optional[bool] = None  # Header: Show Desk AI for admin and guests together
-    desk_ai_ask: Optional[bool] = None  # Header: Ask AI / GPT for admin and guests together
+    desk_ai_show: Optional[bool] = None  # Header: Desk AI on/off for the whole desk
+    desk_ai_ask: Optional[bool] = None  # Kept for compat; on whenever Desk AI is on
     desk_ai_positions: Optional[bool] = None  # Positions page intelligence strip
     desk_ai_radar: Optional[bool] = None  # Book radar intelligence (toggled on Radar)
     desk_ai_admin: Optional[bool] = None  # Compat alias of desk_ai_show
@@ -4904,6 +4904,32 @@ class DeskGuideIn(BaseModel):
     skip_llm: Optional[bool] = False
 
 
+class DeskAiToggleIn(BaseModel):
+    desk_ai_show: Optional[bool] = None
+    desk_ai_radar: Optional[bool] = None
+    desk_ai_positions: Optional[bool] = None
+
+
+@api_router.post("/desk-ai")
+async def update_desk_ai(payload: DeskAiToggleIn, role: str = Depends(require_desk_user)):
+    """One on/off for admin and guests. Radar ticks stay admin-only."""
+    dump = payload.model_dump()
+    patch = {}
+    if dump.get("desk_ai_show") is not None:
+        show = bool(dump["desk_ai_show"])
+        patch["desk_ai_show"] = show
+        patch["desk_ai_ask"] = True
+    if role == "admin":
+        if dump.get("desk_ai_radar") is not None:
+            patch["desk_ai_radar"] = bool(dump["desk_ai_radar"])
+        if dump.get("desk_ai_positions") is not None:
+            patch["desk_ai_positions"] = bool(dump["desk_ai_positions"])
+    if not patch:
+        raise HTTPException(400, "Nothing to update")
+    await tracker.save_settings(patch)
+    return resolve_desk_ai(tracker.settings)
+
+
 @api_router.get("/desk-outside")
 async def get_desk_outside(role: str = Depends(require_desk_user)):
     """Heavyweight cash movers + news. Not the OI chain."""
@@ -4921,7 +4947,9 @@ async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_us
     """Coach over outside tape (movers/news) plus clipped book. Optional GPT."""
     payload = body.model_dump()
     flags = resolve_desk_ai(tracker.settings if tracker else {})
-    if not flags.get("desk_ai_ask", True):
+    if not flags.get("desk_ai_show", False):
+        payload["skip_llm"] = True
+    elif not flags.get("desk_ai_ask", True):
         payload["skip_llm"] = True
     try:
         outside = await desk_outside_svc.snapshot(db, tracker)

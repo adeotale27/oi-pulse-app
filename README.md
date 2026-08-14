@@ -59,7 +59,7 @@ Details: [docs/DATA.md](docs/DATA.md) · APIs: [docs/ABOUT.md](docs/ABOUT.md).
 - **Huge-shift popup** on ATM ± 1 when institutions dump OI in a short window.
 - **Writer defense / gamma wall / institutional detector** on the strikes that actually matter.
 - **Two desks, one feed** — publisher OI for everyone; each user can still connect their own Kite book.
-- **Public / Admin page ticks** in Alert Settings so you hide noise from guests *or* from yourself.
+- **Public / Admin page ticks** in Admin configuration so you hide noise from guests *or* from yourself.
 - **Weekend / holiday carry brief** so Friday’s board is not thrown away.
 - **Journal that stores booked P&L in Mongo**, not only in the browser.
 
@@ -69,8 +69,8 @@ Details: [docs/DATA.md](docs/DATA.md) · APIs: [docs/ABOUT.md](docs/ABOUT.md).
 
 | Knob | Where |
 |------|--------|
-| Tracked indices, alert focus, poll seconds, market close | **Admin Settings** (gear) |
-| **Public vs Admin pages** (two ticks per tile) | Admin Settings → Public / Admin dashboard pages |
+| Tracked indices, alert focus, poll seconds, market close | **Admin configuration** (gear) |
+| **Public vs Admin pages** (two ticks per tile) | Admin configuration → Public / Admin dashboard pages |
 | Site-wide guest access ON/OFF | Header **Public** switch |
 | Extra guest pages (Positions, Sell Candidates, Index Risk) | Public icon menu (same flags as settings) |
 | Publisher Kite key / daily token | **Kite API** |

@@ -144,7 +144,7 @@ FORCE_ALWAYS_POLL = os.environ.get("FORCE_ALWAYS_POLL", "false").lower() == "tru
 CLOSED_MARKET_SLEEP_SECONDS = 60
 
 def resolve_desk_ai(settings: Optional[Dict[str, Any]] = None) -> Dict[str, bool]:
-    """Header Show/Ask apply to admin and guests together. Positions/Radar are extra surfaces."""
+    """One Desk AI flag for the whole desk. Radar/Positions remain extra surfaces."""
     s = settings or {}
     if "desk_ai_show" in s:
         show = bool(s.get("desk_ai_show"))
@@ -153,8 +153,8 @@ def resolve_desk_ai(settings: Optional[Dict[str, Any]] = None) -> Dict[str, bool
     else:
         admin = bool(s.get("desk_ai_admin", False))
         public = bool(s.get("desk_ai_public", False))
-        show = admin
-    ask = bool(s.get("desk_ai_ask", True))
+        show = admin or public
+    ask = True if show else bool(s.get("desk_ai_ask", True))
     positions = bool(s.get("desk_ai_positions", False))
     radar = bool(s.get("desk_ai_radar", False))
     return {
@@ -188,8 +188,7 @@ DEFAULT_SETTINGS = {
     "show_writer_defense": True,
     # Suggestion posture card under the right panel (admin-togglable)
     "show_suggestion": True,
-    # Desk AI — Ask AI / Positions / Radar. `desk_ai_show` is written from the header
-    # (admin + guests in one go). Until that key exists, admin/public stay independent.
+    # Desk AI — one header on/off for the whole desk. Radar stays a Positions tick.
     "desk_ai_ask": True,
     "desk_ai_positions": False,
     "desk_ai_radar": False,

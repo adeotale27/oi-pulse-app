@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.03",
+    date: "2026-08-14",
+    user: [
+      "Desk AI is one on/off for everyone. On a phone the AI chip opens a popup with the tape; close to get back to the chart. Desktop still uses the side panel.",
+    ],
+    admin: [
+      "Alert settings is now Admin configuration. Desk AI is only on the header chip (POST /desk-ai). Ask AI / chart strip options are gone.",
+    ],
+  },
+  {
     version: "6.02",
     date: "2026-08-14",
     user: [

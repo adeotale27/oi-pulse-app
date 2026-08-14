@@ -163,12 +163,10 @@ export default function Header({
   positionsPollMs = 15_000,
   /** Guests only see header P&L when Positions is a public page. */
   positionsPublic = true,
-  showDeskAi = true,
-  deskAiAsk = true,
-  deskAiOnGrid = true,
+  showDeskAi = false,
   onDeskAiChange,
-  onToggleDeskAiGrid,
   onOpenDeskAiPanel,
+  onOpenDeskAiMobile,
   onToggleSlimStatusRail,
 }) {
   const price = current?.price ?? 0;
@@ -250,47 +248,39 @@ export default function Header({
         ? "border-violet-400 bg-violet-600 text-white hover:bg-violet-700"
         : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
     }`;
-  const deskAiChip = (isAdmin || showDeskAi) ? (
-    isAdmin && typeof onDeskAiChange === "function" ? (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            data-testid="header-ai-chip"
-            className={deskAiChipClass(showDeskAi)}
-            title="Desk AI — admin + guests together"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">AI</span>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64 p-2" data-testid="header-ai-menu">
-          <DeskAiConfigMenu
-            showDeskAi={showDeskAi}
-            deskAiAsk={deskAiAsk}
-            onGrid={deskAiOnGrid}
-            onDeskAiChange={onDeskAiChange}
-            onToggleGrid={onToggleDeskAiGrid}
-            onOpenPanel={onOpenDeskAiPanel}
-          />
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ) : (
-      <button
-        type="button"
-        data-testid="header-ai-chip"
-        onClick={() => {
-          if (typeof onOpenDeskAiPanel === "function") onOpenDeskAiPanel();
-          else document.getElementById("desk-ai-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }}
-        className={deskAiChipClass(true)}
-        title="Desk AI"
-      >
-        <Sparkles className="w-3.5 h-3.5" />
-        <span className="hidden md:inline">AI</span>
-      </button>
-    )
-  ) : null;
+  const deskAiChipMobile = (
+    <button
+      type="button"
+      data-testid="header-ai-chip"
+      onClick={() => onOpenDeskAiMobile?.()}
+      className={deskAiChipClass(showDeskAi)}
+      title="Desk AI"
+    >
+      <Sparkles className="w-3.5 h-3.5" />
+    </button>
+  );
+  const deskAiChipDesktop = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          data-testid="header-ai-chip"
+          className={deskAiChipClass(showDeskAi)}
+          title="Desk AI"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>AI</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64 p-2" data-testid="header-ai-menu">
+        <DeskAiConfigMenu
+          showDeskAi={showDeskAi}
+          onDeskAiChange={onDeskAiChange}
+          onOpenPanel={onOpenDeskAiPanel}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   // Extras (VIX + GIFT NIFTY) — use the centralized extras poller/subscription
   // to avoid duplicate network requests across components.
@@ -460,7 +450,7 @@ export default function Header({
           })()}
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-auto">
-          {deskAiChip}
+          {deskAiChipMobile}
           {isAdmin && (
             <Button
               data-testid="btn-mobile-tools"
@@ -577,7 +567,7 @@ export default function Header({
           </div>
           <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Alert settings
+            Admin configuration
           </Button>
           <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
@@ -619,7 +609,7 @@ export default function Header({
       {/* Row 1: brand + status + essential actions */}
       <div className={`px-3 sm:px-4 flex items-center gap-1.5 lg:gap-2 flex-nowrap min-w-0 ${headerRail ? "py-1" : "py-2 gap-2 lg:gap-3"}`}>
         <BrandMark compact={headerRail} className="shrink-0" />
-        {deskAiChip}
+        {deskAiChipDesktop}
 
         {/* VIX / GIFT — always visible; slim = chips, normal = stacked metrics */}
         <div className={`flex items-center ${headerRail ? "gap-1.5" : "gap-3"} pl-2 border-l border-slate-200 dark:border-slate-700 shrink-0`}>
@@ -883,7 +873,7 @@ export default function Header({
                   onSelect={(e) => { e.preventDefault(); onOpenSettings?.(); }}
                 >
                   <Settings2 className="w-4 h-4" />
-                  Alert settings
+                  Admin configuration
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
@@ -993,7 +983,7 @@ export default function Header({
                 ? "bg-slate-900 text-white hover:bg-slate-800"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
-            title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings: Public access, Alert settings, Kite API, Fresh Pull"}
+            title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings: Public access, Admin configuration, Kite API, Fresh Pull"}
           >
             <Settings2 className="w-4 h-4" />
             <span className="sr-only">Settings</span>
@@ -1022,7 +1012,7 @@ export default function Header({
           </div>
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Alert settings
+            Admin configuration
           </Button>
           <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />

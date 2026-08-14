@@ -318,7 +318,7 @@ export default function AdminControls({
               />
             </label>
           ))}
-          <div className="text-[10px] text-slate-500">Full Guest / Admin ticks live in Alert settings. Upload stamps stay admin-only.</div>
+          <div className="text-[10px] text-slate-500">Full Guest / Admin ticks live in Admin configuration. Upload stamps stay admin-only.</div>
         </PopoverContent>
       </Popover>
       <span className={`text-[10px] font-semibold uppercase tracking-wide ${publicOn ? "text-emerald-600" : "text-slate-400"}`}>

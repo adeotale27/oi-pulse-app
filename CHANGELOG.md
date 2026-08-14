@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.03 — 2026-08-14
+
+Desk AI is one on/off for the whole desk. Phone opens a popup; desktop keeps the side panel.
+
+- Header AI: one switch + Open in side panel (Ask AI / slim strip / Jump to strip removed)
+- Guests can turn it on the same as admin (`POST /desk-ai`)
+- Phone: AI chip opens a full-tape popup; close returns to the chart (no strip on the grid)
+- Desk AI removed from Admin configuration (renamed from Alert settings)
+
 ## V6.02 — 2026-08-14
 
 Desk AI is off until you turn it on. The tape is readable tiles, Radar-only on Positions, and the phone header no longer overflows.
