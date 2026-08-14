@@ -41,6 +41,10 @@ ADMIN_PASSWORD=change-me
 # TELEGRAM_BOT_TOKEN=
 # TELEGRAM_CHAT_ID=
 
+# Optional carry-brief LLM (see docs/AI.md). Leave unset to keep the rule copilot only.
+# OPENAI_API_KEY=
+# DESK_GUIDE_MODEL=gpt-4o-mini
+
 CORS_ORIGINS=http://localhost:3000
 # ENABLE_DEV_MOCK=true   # only for local fake OI without Kite
 ```

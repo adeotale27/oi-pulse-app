@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, PanelLeft, PanelRight } from "lucide-react";
+import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, AlignLeft, AlignCenter, AlignRight, Sparkles } from "lucide-react";
 import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
-import { readCarryDockSide, snapDockFromClientX, writeCarryDockSide } from "@/lib/carryDock";
-import { carryFocusEvents, eventShortName, sellerCarryAdvice, writerBiasLine } from "@/lib/carryFocus";
+import {
+  CARRY_PANEL_WIDTH,
+  clampCarryLeft,
+  readCarryLeft,
+  snapCarryLeft,
+  snapDockFromClientX,
+  writeCarryLeft,
+} from "@/lib/carryDock";
+import { carryCase, eventDisplayName, sellerCarryAdvice, summarizeBook, writerBiasLine } from "@/lib/carryFocus";
 import {
   briefTriggerKey,
   carryHorizonLabel,
@@ -89,8 +96,8 @@ function fmtDelta(v) {
 /**
  * Sticky “Should I carry?” overnight gap brief.
  * Auto-opens from 14:00 IST on a trading day through next market open.
- * Desktop: left by default; drag the header or use the dock button to move it.
- * Phone: chip by default; expanded sheet stays on the dock (not dragged over the chart).
+ * Desktop: drag the header horizontally (left / middle / right) or use snap buttons.
+ * Phone: chip by default; expanded sheet is full-width at the dock (not over the chart).
  */
 export default function OvernightGapBrief({
   indices = ["NIFTY", "SENSEX", "BANKNIFTY"],
@@ -107,16 +114,24 @@ export default function OvernightGapBrief({
   const [indexImpacts, setIndexImpacts] = useState([]);
   const [bottomPx, setBottomPx] = useState(() => readCarryBottom());
   const [iconOnly, setIconOnly] = useState(() => readCarryIconOnly());
-  const [dock, setDock] = useState(() => readCarryDockSide());
+  const [leftPx, setLeftPx] = useState(() => readCarryLeft());
   const [vixLive, setVixLive] = useState(null);
+  const [book, setBook] = useState(null);
+  const [guide, setGuide] = useState(null);
   const dragRef = useRef(null);
   const skipClickRef = useRef(false);
   const userPinnedRef = useRef(null);
 
-  const setDockSide = (side) => {
-    const next = side === "right" ? "right" : "left";
-    setDock(next);
-    writeCarryDockSide(next);
+  const setLeft = (px) => {
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const next = clampCarryLeft(px, w, isPhone() ? 280 : CARRY_PANEL_WIDTH);
+    setLeftPx(next);
+    writeCarryLeft(next);
+  };
+
+  const snap = (mode) => {
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    setLeft(snapCarryLeft(mode, w, isPhone() ? 280 : CARRY_PANEL_WIDTH));
   };
 
   const minimize = () => {
@@ -151,11 +166,12 @@ export default function OvernightGapBrief({
   const onCarryPointerDown = (e, kind = "mobile") => {
     const desktop = !isPhone();
     if (kind === "mobile" && desktop) return;
-    if (kind === "dock" && !desktop) return;
+    if (kind === "move" && !desktop) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const startBottom = bottomPx != null ? bottomPx : dockClearance();
-    dragRef.current = { kind, startY: e.clientY, startX: e.clientX, startBottom, moved: false };
+    const startLeft = leftPx != null ? leftPx : 12;
+    dragRef.current = { kind, startY: e.clientY, startX: e.clientX, startBottom, startLeft, moved: false };
   };
 
   const onCarryPointerMove = (e) => {
@@ -163,8 +179,13 @@ export default function OvernightGapBrief({
     if (Math.abs(e.clientY - dragRef.current.startY) > 6 || Math.abs(e.clientX - dragRef.current.startX) > 6) {
       dragRef.current.moved = true;
     }
-    if (dragRef.current.kind === "dock") return;
-    // Expanded phone sheet stays docked; only the moon chip can slide a little.
+    const kind = dragRef.current.kind;
+    if (kind === "move" || kind === "both") {
+      const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const panel = minimized || isPhone() ? 72 : CARRY_PANEL_WIDTH;
+      setLeftPx(clampCarryLeft(dragRef.current.startLeft + (e.clientX - dragRef.current.startX), w, panel));
+      if (kind === "move") return;
+    }
     if (!minimized && isPhone()) return;
     const dy = dragRef.current.startY - e.clientY;
     setBottomPx(clampBottom(dragRef.current.startBottom + dy));
@@ -177,13 +198,13 @@ export default function OvernightGapBrief({
     const moved = dragRef.current.moved;
     const startY = dragRef.current.startY;
     const shouldExpand = minimized && !moved;
-    const endX = e.clientX;
-    const w = typeof window !== "undefined" ? window.innerWidth : 400;
-    if (kind === "dock") {
-      if (moved) setDockSide(snapDockFromClientX(endX, w));
-      dragRef.current = null;
-      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
-      return;
+    if (kind === "move" || kind === "both") {
+      if (moved && leftPx != null) writeCarryLeft(leftPx);
+      if (kind === "move") {
+        dragRef.current = null;
+        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+        return;
+      }
     }
     if (!minimized && isPhone()) {
       const swipeDown = e.clientY - startY;
@@ -192,16 +213,6 @@ export default function OvernightGapBrief({
       if (swipeDown > 36) minimize();
       return;
     }
-    const edgeDock = dock === "left" ? endX <= 72 : endX >= w - 72;
-    if (edgeDock) {
-      setIconOnly(true);
-      setMinimized(true);
-      userPinnedRef.current = "min";
-      writeCarryIconOnly(true);
-    } else if (Math.abs(endX - (dock === "left" ? 0 : w)) > 120) {
-      setIconOnly(false);
-      writeCarryIconOnly(false);
-    }
     dragRef.current = null;
     try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
     setBottomPx((prev) => {
@@ -209,15 +220,28 @@ export default function OvernightGapBrief({
       writeCarryBottom(next);
       return next;
     });
-    if (shouldExpand && !edgeDock) {
+    if (shouldExpand) {
       userPinnedRef.current = "open";
       setMinimized(false);
     }
   };
 
-  const carryPosStyle = isPhone() && !minimized
-    ? { bottom: `${dockClearance()}px` }
-    : { bottom: bottomPx != null ? `${bottomPx}px` : undefined };
+  const carryPosStyle = (() => {
+    const bottom = isPhone() && !minimized
+      ? `${dockClearance()}px`
+      : (bottomPx != null ? `${bottomPx}px` : undefined);
+    if (isPhone() && !minimized) return { bottom };
+    const left = leftPx != null ? `${leftPx}px` : "12px";
+    return { bottom, left, right: "auto" };
+  })();
+
+  useEffect(() => {
+    if (leftPx != null) return;
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const n = clampCarryLeft(12, w, CARRY_PANEL_WIDTH);
+    setLeftPx(n);
+    writeCarryLeft(n);
+  }, [leftPx]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 15_000);
@@ -318,6 +342,23 @@ export default function OvernightGapBrief({
     loadIndexImpacts();
   }, [loadIndexImpacts]);
 
+  const loadBook = useCallback(async () => {
+    if (!active || minimized) return;
+    try {
+      const { data } = await api.get("/positions");
+      setBook(summarizeBook(data?.positions || []));
+    } catch {
+      setBook(null);
+    }
+  }, [active, minimized]);
+
+  useEffect(() => {
+    loadBook();
+    if (!active || minimized) return undefined;
+    const id = setInterval(loadBook, 60_000);
+    return () => clearInterval(id);
+  }, [loadBook, active, minimized]);
+
   const giftPct = gift?.change_pct != null ? Number(gift.change_pct) : null;
   const vixNow = (() => {
     const fromLive = vixLive?.last ?? vixLive?.ltp ?? vixLive;
@@ -325,7 +366,19 @@ export default function OvernightGapBrief({
     const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? n : null;
   })();
-  const focusEvents = useMemo(() => carryFocusEvents(events), [events]);
+  const kase = useMemo(
+    () =>
+      carryCase({
+        weekday: ist.weekday,
+        vix: vixNow,
+        giftPct,
+        biases,
+        events,
+        book,
+        holidayAdvice: holidayNote,
+      }),
+    [ist.weekday, vixNow, giftPct, biases, events, book, holidayNote],
+  );
   const verdict = useMemo(
     () =>
       carryVerdict({
@@ -342,19 +395,60 @@ export default function OvernightGapBrief({
     holidayAdvice: holidayNote,
     vix: vixNow,
     giftPct,
-    focusCount: focusEvents.length,
+    focusCount: kase.results.length + kase.holidays.length,
   });
   const orderedBiases = useMemo(() => {
     if (!activeIndex) return biases;
     return [...biases].sort((a, b) => (a.index === activeIndex ? -1 : b.index === activeIndex ? 1 : 0));
   }, [biases, activeIndex]);
 
-  const dockEdge = dock === "left"
-    ? (iconOnly ? "left-1" : "left-3")
-    : (iconOnly ? "right-1" : "right-3");
-  const expandedDock = dock === "left"
-    ? "left-3 right-3 sm:right-auto sm:w-[26rem]"
-    : "left-3 right-3 sm:left-auto sm:w-[26rem]";
+  const payloadRef = useRef({});
+  payloadRef.current = {
+    why: kase.why,
+    whyNot: kase.whyNot,
+    results: kase.results,
+    holidays: kase.holidays,
+    book,
+    vix: vixNow,
+    giftPct,
+    weekday: ist.weekday,
+    band: verdict.band,
+  };
+
+  useEffect(() => {
+    if (!active || minimized) return undefined;
+    let cancelled = false;
+    const run = async () => {
+      const p = payloadRef.current;
+      try {
+        const { data } = await api.post("/desk-guide", {
+          why: p.why,
+          whyNot: p.whyNot,
+          results: (p.results || []).map((e) => ({
+            name: eventDisplayName(e),
+            date: e.date,
+            daysAway: e.daysAway,
+            index: e.index,
+          })),
+          holidays: (p.holidays || []).map((e) => ({ name: eventDisplayName(e), date: e.date })),
+          book: p.book,
+          vix: p.vix,
+          giftPct: p.giftPct,
+          weekday: p.weekday,
+          band: p.band,
+        });
+        if (!cancelled) setGuide(data || null);
+      } catch {
+        if (!cancelled) setGuide(null);
+      }
+    };
+    run();
+    const id = setInterval(run, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [active, minimized]);
 
   if (!active) return null;
 
@@ -373,6 +467,12 @@ export default function OvernightGapBrief({
         : "Carry shorts (sized)";
 
   const title = "Carry shorts overnight?";
+  const dockHint = snapDockFromClientX(
+    (leftPx ?? 12) + 80,
+    typeof window !== "undefined" ? window.innerWidth : 1200,
+  );
+  const guideText = (guide?.guide || "").trim();
+  const phoneOpen = typeof window !== "undefined" && isPhone();
 
   if (minimized) {
     return (
@@ -380,7 +480,7 @@ export default function OvernightGapBrief({
         type="button"
         data-testid="overnight-gap-brief-chip"
         data-icon-only={iconOnly ? "1" : "0"}
-        data-dock={dock}
+        data-dock={dockHint}
         onClick={() => {
           if (skipClickRef.current) {
             skipClickRef.current = false;
@@ -388,15 +488,15 @@ export default function OvernightGapBrief({
           }
           expand();
         }}
-        className={`fixed z-40 md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${dockEdge} ${
+        className={`fixed z-40 md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
           iconOnly ? "p-2.5" : "gap-2 px-3 py-2"
         } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
         style={carryPosStyle}
-        onPointerDown={(e) => onCarryPointerDown(e, "mobile")}
+        onPointerDown={(e) => onCarryPointerDown(e, "both")}
         onPointerMove={onCarryPointerMove}
         onPointerUp={onCarryPointerUp}
         onPointerCancel={onCarryPointerUp}
-        title="Open carry brief · shorts overnight"
+        title="Open carry brief · drag to move"
         aria-label="Carry brief"
       >
         <Moon className={iconOnly ? "w-5 h-5" : "w-3.5 h-3.5"} />
@@ -414,15 +514,23 @@ export default function OvernightGapBrief({
   return (
     <div
       data-testid="overnight-gap-brief"
-      data-dock={dock}
-      className={`fixed z-40 md:bottom-3 ${expandedDock} flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
-      style={carryPosStyle}
+      data-dock={dockHint}
+      className={`fixed z-40 md:bottom-3 flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${
+        phoneOpen ? "left-3 right-3" : ""
+      } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
+      style={{
+        ...carryPosStyle,
+        ...(phoneOpen
+          ? {}
+          : {
+              width: `min(${CARRY_PANEL_WIDTH}px, calc(100vw - 16px))`,
+              maxHeight: "min(38rem, calc(100vh - 20px))",
+            }),
+      }}
       role="dialog"
       aria-label={title}
     >
-      <div
-        className="flex items-center gap-1.5 px-2.5 py-1.5 shrink-0 border-b border-black/10 dark:border-white/10"
-      >
+      <div className="flex items-center gap-1 px-2 py-1.5 shrink-0 border-b border-current/15">
         <button
           type="button"
           className="md:hidden p-1 opacity-70 touch-none"
@@ -438,26 +546,27 @@ export default function OvernightGapBrief({
         <div
           className="hidden md:flex items-center gap-1.5 min-w-0 flex-1 cursor-grab active:cursor-grabbing touch-none"
           data-testid="overnight-gap-brief-dock-drag"
-          onPointerDown={(e) => onCarryPointerDown(e, "dock")}
+          onPointerDown={(e) => onCarryPointerDown(e, "move")}
           onPointerMove={onCarryPointerMove}
           onPointerUp={onCarryPointerUp}
           onPointerCancel={onCarryPointerUp}
-          title="Drag to the left or right of the desk"
+          title="Drag anywhere horizontally"
         >
           <Moon className="w-4 h-4 shrink-0 opacity-80" />
           <div className="min-w-0 text-sm font-semibold leading-tight">{title}</div>
         </div>
         <div className="md:hidden min-w-0 flex-1 text-sm font-semibold leading-tight">{title}</div>
-        <button
-          type="button"
-          onClick={() => setDockSide(dock === "left" ? "right" : "left")}
-          className="hidden md:inline-flex opacity-70 hover:opacity-100 p-1 rounded"
-          aria-label={dock === "left" ? "Move carry brief to the right" : "Move carry brief to the left"}
-          title={dock === "left" ? "Move to right" : "Move to left"}
-          data-testid="overnight-gap-brief-dock-toggle"
-        >
-          {dock === "left" ? <PanelRight className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
-        </button>
+        <div className="hidden md:inline-flex items-center rounded-md bg-white/50 dark:bg-black/20 p-0.5" data-testid="overnight-gap-brief-dock-toggle">
+          <button type="button" onClick={() => snap("left")} className="p-1 rounded opacity-80 hover:opacity-100" aria-label="Snap carry brief left" title="Left">
+            <AlignLeft className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" onClick={() => snap("center")} className="p-1 rounded opacity-80 hover:opacity-100" aria-label="Snap carry brief to center" title="Center">
+            <AlignCenter className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" onClick={() => snap("right")} className="p-1 rounded opacity-80 hover:opacity-100" aria-label="Snap carry brief right" title="Right">
+            <AlignRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={minimize}
@@ -479,7 +588,7 @@ export default function OvernightGapBrief({
         </button>
       </div>
 
-      <div className="px-2.5 pb-2 pt-1.5 space-y-1.5 text-xs">
+      <div className="px-2.5 pb-2.5 pt-1.5 space-y-1.5 text-xs md:overflow-y-auto">
         <div
           className="flex items-center justify-between gap-2 rounded-md bg-white/70 dark:bg-black/20 px-2 py-1"
           data-testid="overnight-gap-verdict"
@@ -487,17 +596,41 @@ export default function OvernightGapBrief({
           <span className="font-semibold">{bandLabel}</span>
           <span className="font-mono-data opacity-70">{verdict.score}/100</span>
         </div>
-        <p className="leading-snug opacity-90 line-clamp-2 md:line-clamp-none" data-testid="overnight-gap-advice">
+        <p className="leading-snug opacity-90" data-testid="overnight-gap-advice">
           {advice}
         </p>
-        {holidayNote && (
+
+        {guide?.source === "llm" && guideText ? (
           <div
-            className="rounded border border-amber-400/60 bg-amber-100/70 dark:bg-amber-950/40 px-2 py-1 text-[11px] leading-snug"
-            data-testid="overnight-gap-holiday-note"
+            className="rounded-md bg-white/80 dark:bg-black/25 px-2 py-1.5 leading-snug whitespace-pre-wrap"
+            data-testid="overnight-gap-guide"
           >
-            {holidayNote}
+            <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest opacity-60 mb-0.5">
+              <Sparkles className="w-3 h-3" />
+              Desk guide
+            </div>
+            {guideText}
           </div>
-        )}
+        ) : null}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5" data-testid="overnight-gap-case">
+          <div className="rounded-md bg-white/70 dark:bg-black/20 px-2 py-1.5">
+            <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1">Why carry</div>
+            <ul className="space-y-1 leading-snug">
+              {kase.why.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-md bg-white/70 dark:bg-black/20 px-2 py-1.5">
+            <div className="text-[10px] uppercase tracking-widest opacity-60 mb-1">Why not</div>
+            <ul className="space-y-1 leading-snug">
+              {kase.whyNot.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-0.5" data-testid="overnight-gap-gift">
           <span>
@@ -516,7 +649,10 @@ export default function OvernightGapBrief({
             <span className="opacity-60 mr-1">VIX</span>
             <span className="font-mono-data font-semibold">{vixNow != null ? vixNow.toFixed(1) : "—"}</span>
           </span>
-          <span className="opacity-60 truncate">{carryHorizonLabel(ist.weekday)}</span>
+          <span className="opacity-70">{carryHorizonLabel(ist.weekday)}</span>
+          {book?.shortCount != null ? (
+            <span className="opacity-70">Book {book.shortCount} short{book.shortCount === 1 ? "" : "s"}</span>
+          ) : null}
         </div>
 
         <div data-testid="overnight-gap-biases">
@@ -527,10 +663,11 @@ export default function OvernightGapBrief({
               {orderedBiases.map((row) => {
                 const line = writerBiasLine(row);
                 const on = row.index === activeIndex;
+                const bag = book?.byIndex?.[row.index];
                 return (
                   <div
                     key={row.index}
-                    className={`flex items-center gap-2 rounded-md px-2 py-0.5 ${on ? "bg-white/80 dark:bg-black/30" : ""}`}
+                    className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-2 py-0.5 ${on ? "bg-white/80 dark:bg-black/30" : ""}`}
                     data-testid={`overnight-bias-${row.index}`}
                   >
                     <span className="font-semibold w-[5.5rem] shrink-0">{row.index}</span>
@@ -542,6 +679,11 @@ export default function OvernightGapBrief({
                     ) : (
                       <span className="ml-auto opacity-50">—</span>
                     )}
+                    {bag ? (
+                      <span className="w-full sm:w-auto sm:ml-0 text-[10px] opacity-60">
+                        You: {bag.pe} PE short{bag.pe === 1 ? "" : "s"} · {bag.ce} CE
+                      </span>
+                    ) : null}
                   </div>
                 );
               })}
@@ -552,17 +694,31 @@ export default function OvernightGapBrief({
         <div>
           <div className="text-[10px] uppercase tracking-widest opacity-60 mb-0.5 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
-            Next open
+            Results &amp; next open
           </div>
-          {focusEvents.length === 0 ? (
-            <div className="opacity-60 px-0.5">No holiday or heavy index-impact.</div>
+          {kase.results.length === 0 && kase.holidays.length === 0 && kase.other.length === 0 ? (
+            <div className="opacity-60 px-0.5">No holiday or heavy index-impact in the carry window.</div>
           ) : (
-            <ul className="space-y-0.5" data-testid="overnight-gap-events">
-              {focusEvents.slice(0, 3).map((e) => (
-                <li key={`${e.date}|${e.name}`} className="leading-snug px-0.5 truncate">
+            <ul className="space-y-1" data-testid="overnight-gap-events">
+              {kase.results.map((e) => (
+                <li key={`r|${e.date}|${e.name}`} className="leading-snug px-0.5 break-words">
+                  <span className="font-medium">Result · {dayLabel(e.daysAway, ist.weekday)}</span>
+                  {" · "}
+                  {eventDisplayName(e)}
+                </li>
+              ))}
+              {kase.holidays.map((e) => (
+                <li key={`h|${e.date}|${e.name}`} className="leading-snug px-0.5 break-words">
+                  <span className="font-medium">Holiday · {dayLabel(e.daysAway, ist.weekday)}</span>
+                  {" · "}
+                  {eventDisplayName(e)}
+                </li>
+              ))}
+              {kase.other.map((e) => (
+                <li key={`o|${e.date}|${e.name}`} className="leading-snug px-0.5 break-words">
                   <span className="font-medium">{dayLabel(e.daysAway, ist.weekday)}</span>
                   {" · "}
-                  {eventShortName(e)}
+                  {eventDisplayName(e)}
                 </li>
               ))}
             </ul>
