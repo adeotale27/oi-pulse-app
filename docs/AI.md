@@ -21,9 +21,10 @@ Desk AI is **open for the whole desk** (admin and guests share one switch). It i
 | Control | Where | Who it applies to |
 |---------|--------|-------------------|
 | **On / Off** | Header AI chip only | Everyone — one flag |
-| **Open in side panel** | Header AI menu (desktop) | Full tape in the right panel |
-| **Phone popup** | Tap the AI chip | Full tape in a sheet; close returns to the chart |
-| **Book radar intelligence** | Radar panel tick | Radar only — not the Kite positions book |
+| **Open in side panel** | Header AI menu (desktop) | Full **cash / news** tape in the right panel |
+| **Phone popup** | Tap the AI chip | Same cash tape; close returns to the chart |
+| **Carry brief AI** | Toggle on the carry card (desktop) | Overnight why-carry only — **not** the cash tape. Hidden on phones |
+| **Book radar intelligence** | Radar panel tick | Book risk vs cash; tiles reorder up/down |
 
 There is no chart strip and no Desk AI section in Admin configuration.
 
@@ -31,4 +32,4 @@ There is no chart strip and no Desk AI section in Admin configuration.
 
 - `GET /api/desk-outside` — movers, breadth, sectors, events, briefing (cached ~45s)
 - `GET/POST /api/desk-guide` — POST attaches outside tape server-side
-- `POST /api/desk-ai` — any signed-in desk user can flip `desk_ai_show` (Radar ticks stay admin-only)
+- `POST /api/desk-ai` — signed-in desk user: `desk_ai_show` and `desk_ai_carry`. Radar ticks stay admin-only

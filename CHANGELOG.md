@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.04 — 2026-08-14
+
+Carry brief, Desk AI, and Radar no longer share one coach dump. Radar tiles move up/down.
+
+- Carry brief has its own **AI** toggle (desktop). Off on phones for now. Coach is overnight-only (why carry / VIX / GIFT), not the cash tape
+- Desk AI panel stays heavyweights + news; Radar stays book risk vs cash
+- Radar intel tiles: up/down arrows (and drag) with a separate saved order
+
 ## V6.03 — 2026-08-14
 
 Desk AI is one on/off for the whole desk. Phone opens a popup; desktop keeps the side panel.

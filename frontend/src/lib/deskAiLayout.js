@@ -1,6 +1,7 @@
-import { loadIdOrder, saveIdOrder, moveIdBefore, orderByIds } from "@/lib/tabOrder";
+import { loadIdOrder, saveIdOrder, moveIdBefore, moveIdByOffset, orderByIds } from "@/lib/tabOrder";
 
 export const DESK_AI_LAYOUT_KEY = "oiDeskAiTileOrder.v1";
+export const RADAR_AI_LAYOUT_KEY = "oiRadarAiTileOrder.v1";
 
 export const DESK_AI_TILES = [
   { id: "movers", label: "Heavyweights" },
@@ -10,18 +11,24 @@ export const DESK_AI_TILES = [
   { id: "coach", label: "What to do" },
 ];
 
-export function loadDeskAiTileOrder() {
-  const saved = loadIdOrder(DESK_AI_LAYOUT_KEY);
+export function loadDeskAiTileOrder(key = DESK_AI_LAYOUT_KEY) {
+  const saved = loadIdOrder(key);
   return orderByIds(DESK_AI_TILES, saved).map((t) => t.id);
 }
 
-export function saveDeskAiTileOrder(ids) {
-  saveIdOrder(DESK_AI_LAYOUT_KEY, ids);
+export function saveDeskAiTileOrder(ids, key = DESK_AI_LAYOUT_KEY) {
+  saveIdOrder(key, ids);
 }
 
-export function reorderDeskAiTiles(order, dragId, dropId) {
+export function reorderDeskAiTiles(order, dragId, dropId, key = DESK_AI_LAYOUT_KEY) {
   const next = moveIdBefore(order, dragId, dropId);
-  saveDeskAiTileOrder(next);
+  saveDeskAiTileOrder(next, key);
+  return next;
+}
+
+export function nudgeDeskAiTile(order, id, delta, key = DESK_AI_LAYOUT_KEY) {
+  const next = moveIdByOffset(order, id, delta);
+  saveDeskAiTileOrder(next, key);
   return next;
 }
 

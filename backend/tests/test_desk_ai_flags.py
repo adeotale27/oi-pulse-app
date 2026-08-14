@@ -16,6 +16,7 @@ def test_default_is_off():
     assert flags["desk_ai_admin"] is False
     assert flags["desk_ai_public"] is False
     assert flags["desk_ai_radar"] is False
+    assert flags["desk_ai_carry"] is False
 
 
 def test_header_switch_applies_to_both():

@@ -58,7 +58,7 @@ export default function DeskAiBar({
       const events = (evRes.data?.events || []).slice(0, 8);
       const packed = compactBookFromPositions(posRes.data);
       const { data } = await api.post("/desk-guide", {
-        surface: variant === "panel" ? "desk-panel" : "desk",
+        surface: "desk",
         force: !!force,
         skip_llm: !askAi || !force,
         holidays,
