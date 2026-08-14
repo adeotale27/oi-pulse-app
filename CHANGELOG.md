@@ -1,5 +1,15 @@
 # Changelog
 
+## V6.00 — 2026-08-14
+
+Market intelligence desk: what OI alone cannot see (heavyweights, breadth, news, event risk).
+
+- Uses the **same constituent files** already uploaded under Impact Risk / Admin → Upload (weightage included)
+- Kite last prices; Yahoo fallback. OpenAI key still optional, server env only
+- Header **AI** chip: Show Desk AI + Ask AI for admin **and** guests together (not Alert Settings)
+- Positions toolbar **AI** tick; Radar panel **AI** tick (on when you turn Desk AI on)
+- Coach format: WHAT / WHY / OPTION BUYER / OPTION SELLER / WATCH NEXT
+
 ## V5.19 — 2026-08-14
 
 Desk AI is **outside the OI chart**: heavyweight cash movers + news, not a PCR recap.

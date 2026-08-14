@@ -64,6 +64,13 @@ export default function RightPanel({
   onPinNearestWeekly,
   positionsPollMs = 30000,
   onOpenKite,
+  deskAiShow = false,
+  deskAiAsk = true,
+  deskAiPositions = false,
+  deskAiRadar = true,
+  canConfigureDeskAi = false,
+  onDeskAiPositions,
+  onDeskAiRadar,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -180,6 +187,13 @@ export default function RightPanel({
               onPinNearestWeekly={onPinNearestWeekly}
               positionsPollMs={positionsPollMs}
               onOpenKite={onOpenKite}
+              deskAiShow={deskAiShow}
+              deskAiAsk={deskAiAsk}
+              deskAiPositions={deskAiPositions}
+              deskAiRadar={deskAiRadar}
+              canConfigureDeskAi={canConfigureDeskAi}
+              onDeskAiPositions={onDeskAiPositions}
+              onDeskAiRadar={onDeskAiRadar}
             />
           )}
           {selectedView === "oichart" && (

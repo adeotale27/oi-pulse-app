@@ -19,6 +19,7 @@ import {
   Eye,
   EyeOff,
   BookOpen,
+  Sparkles,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -56,6 +57,7 @@ import {
 } from "@/lib/positionsColumns";
 import { resolvePositionSpot, positionExpiryISO } from "@/lib/positionPayoff";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
+import MarketIntelCard from "@/components/MarketIntelCard";
 import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import OiRiskMeter from "@/components/OiRiskMeter";
 import PositionHeatmap from "@/components/PositionHeatmap";
@@ -267,6 +269,13 @@ export default function PositionsPanel({
   positionsPollMs = 30000,
   onOpenKite,
   hasKiteCredentials = null,
+  deskAiShow = false,
+  deskAiAsk = true,
+  deskAiPositions = false,
+  deskAiRadar = true,
+  canConfigureDeskAi = false,
+  onDeskAiPositions,
+  onDeskAiRadar,
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
@@ -309,6 +318,7 @@ export default function PositionsPanel({
     }
   });
   const [deskGuide, setDeskGuide] = useState(null);
+  const [outside, setOutside] = useState(null);
   const colsAnchorRef = useRef(null);
   const colsPanelRef = useRef(null);
   const closeCols = useCallback(() => setColsOpen(false), []);
@@ -861,12 +871,17 @@ export default function PositionsPanel({
     .join(",")}`;
 
   useEffect(() => {
-    if (!kiteReady) return undefined;
+    if (!deskAiShow || (!deskAiPositions && !deskAiRadar)) {
+      return undefined;
+    }
     let cancelled = false;
     const run = async () => {
       try {
+        const out = await api.get("/desk-outside").catch(() => ({ data: null }));
+        if (!cancelled) setOutside(out.data || null);
         const { data } = await api.post("/desk-guide", {
           surface: "positions",
+          skip_llm: !deskAiAsk,
           band: bookVerdict?.band || null,
           adjust: adjustRef.current,
         });
@@ -876,12 +891,12 @@ export default function PositionsPanel({
       }
     };
     run();
-    const id = setInterval(run, 5 * 60 * 1000);
+    const id = setInterval(run, 45 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [kiteReady, adjustSig, bookVerdict?.band]);
+  }, [deskAiShow, deskAiPositions, deskAiRadar, deskAiAsk, adjustSig, bookVerdict?.band]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 
@@ -1119,6 +1134,22 @@ export default function PositionsPanel({
               data-testid="positions-privacy-switch"
             />
           </label>
+          {deskAiShow && canConfigureDeskAi ? (
+          <label
+            className="inline-flex items-center gap-2 h-8 px-2.5 rounded-sm border border-violet-300 bg-white text-[13px] font-semibold text-violet-900 cursor-pointer select-none hover:bg-violet-50"
+            title="Show market intelligence on this Positions page"
+            data-testid="positions-desk-ai-toggle"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>AI</span>
+            <Switch
+              checked={!!deskAiPositions}
+              onCheckedChange={(on) => onDeskAiPositions?.(!!on)}
+              className="scale-90 origin-center"
+              data-testid="positions-desk-ai-switch"
+            />
+          </label>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -1466,16 +1497,12 @@ export default function PositionsPanel({
         }}
       />
 
-      {deskGuide?.guide ? (
+      {deskAiShow && deskAiPositions ? (
         <div
           className="rounded-md border-2 border-violet-400 bg-violet-50 dark:bg-violet-950/30 px-3 py-2.5 space-y-1"
           data-testid="positions-desk-guide"
         >
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-violet-800 dark:text-violet-200">
-            <Zap className="w-3.5 h-3.5" />
-            Desk AI · {deskGuide.source === "llm" ? "Live GPT" : "rules"}
-          </div>
-          <p className="text-[13px] font-medium text-slate-900 dark:text-slate-100 leading-snug whitespace-pre-wrap">{deskGuide.guide}</p>
+          <MarketIntelCard outside={outside} guide={deskGuide} compact title="Positions · market intelligence" />
         </div>
       ) : null}
 
@@ -2247,7 +2274,23 @@ export default function PositionsPanel({
               15-minute OI vs your nearest sold strike, plus the live position heatmap. The page stays usable — click anywhere else to close.
             </p>
           </div>
-          <button
+          <div className="flex items-center gap-2 shrink-0">
+            {deskAiShow && canConfigureDeskAi ? (
+              <label
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-violet-900"
+                data-testid="radar-desk-ai-toggle"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                AI
+                <Switch
+                  checked={!!deskAiRadar}
+                  onCheckedChange={(on) => onDeskAiRadar?.(!!on)}
+                  className="scale-90 origin-center"
+                  data-testid="radar-desk-ai-switch"
+                />
+              </label>
+            ) : null}
+            <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800 shrink-0"
             onClick={closeRadar}
@@ -2256,8 +2299,17 @@ export default function PositionsPanel({
           >
             <X className="w-4 h-4" />
           </button>
+          </div>
         </div>
         <div className="px-4 pb-4 space-y-3 overflow-y-auto">
+          {deskAiShow && deskAiRadar ? (
+            <div
+              className="rounded-md border border-violet-300 bg-violet-50 px-2.5 py-2"
+              data-testid="radar-market-intel"
+            >
+              <MarketIntelCard outside={outside} guide={deskGuide} compact title="Radar · outside OI" />
+            </div>
+          ) : null}
           <OiRiskMeter activeIndex={activeIndex} expiry={expiry} rows={rows} />
           <PositionHeatmap
             rows={rows}

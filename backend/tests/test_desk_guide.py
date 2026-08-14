@@ -94,6 +94,28 @@ def test_rules_guide_uses_outside_tape_not_oi_dump():
     assert "RBI" in text
     assert "put writers adding" not in text
     assert "PCR 1.25" not in text
+    assert "WHAT CHANGED" in text or "Heavyweight" in text
+
+
+def test_skip_llm_even_if_key(monkeypatch):
+    reset_cache()
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    async def boom(_snap):
+        raise AssertionError("LLM must not run when skip_llm")
+
+    monkeypatch.setattr("desk_guide._call_llm", boom)
+
+    async def run():
+        return await maybe_guide({
+            "surface": "desk",
+            "skip_llm": True,
+            "outside": {"movers": [{"symbol": "HDFCBANK", "pct": 1.5, "weightage": 11}]},
+        })
+
+    out = asyncio.run(run())
+    assert out["source"] == "rules"
+    assert "HDFCBANK" in out["guide"]
 
 
 def test_status_without_key(monkeypatch):

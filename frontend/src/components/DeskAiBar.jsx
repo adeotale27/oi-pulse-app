@@ -4,10 +4,12 @@ import { api } from "@/lib/api";
 import { upcomingHolidays } from "@/lib/holidays";
 import { eventDisplayName } from "@/lib/carryFocus";
 import { compactBookFromPositions } from "@/lib/deskAiTape";
+import MarketIntelCard from "@/components/MarketIntelCard";
 
 export default function DeskAiBar({
   activeIndex,
   visible = true,
+  askAi = true,
 }) {
   const [guide, setGuide] = useState(null);
   const [meta, setMeta] = useState(null);
@@ -32,6 +34,7 @@ export default function DeskAiBar({
       const { data } = await api.post("/desk-guide", {
         surface: "desk",
         force: !!force,
+        skip_llm: !askAi || !force,
         holidays,
         results: events.map((e) => ({
           name: eventDisplayName(e) || e.name,
@@ -48,7 +51,7 @@ export default function DeskAiBar({
     } finally {
       setBusy(false);
     }
-  }, [activeIndex, visible]);
+  }, [activeIndex, visible, askAi]);
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -59,11 +62,8 @@ export default function DeskAiBar({
 
   if (!visible) return null;
 
-  const text = (guide?.guide || "").trim();
   const source = guide?.source === "llm" ? "AI" : "rules";
   const llmLive = source === "AI";
-  const movers = outside?.movers || [];
-  const news = outside?.news || [];
 
   return (
     <section
@@ -94,53 +94,22 @@ export default function DeskAiBar({
             {guide?.llm_error ? (
               <span className="text-[10px] text-amber-700" title={guide.llm_error}>GPT miss</span>
             ) : null}
-            <button
-              type="button"
-              onClick={() => run(true)}
-              disabled={busy}
-              className="ml-auto inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-violet-300 bg-white text-[11px] font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-60 dark:bg-slate-800 dark:text-violet-200 dark:border-violet-700"
-              data-testid="desk-ai-refresh"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
-              Ask AI
-            </button>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5 mb-1.5" data-testid="desk-ai-movers">
-            {movers.length ? movers.slice(0, 6).map((m) => {
-              const up = Number(m.pct) >= 0;
-              return (
-                <span
-                  key={`${m.index}-${m.symbol}`}
-                  className={`rounded-sm border px-1.5 py-0.5 font-mono-data text-[11px] ${
-                    up ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"
-                  }`}
-                  title={m.note || ""}
-                >
-                  {m.symbol} {up ? "+" : ""}{Number(m.pct).toFixed(1)}%
-                  {m.weightage != null ? ` · ${Number(m.weightage).toFixed(1)}%wt` : ""}
-                </span>
-              );
-            }) : (
-              <span className="text-[11px] text-slate-500">
-                {outside?.note || (busy ? "Scanning heavyweights + news…" : "No heavyweight cash move vs overnight")}
-              </span>
+            {askAi ? (
+              <button
+                type="button"
+                onClick={() => run(true)}
+                disabled={busy}
+                className="ml-auto inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-violet-300 bg-white text-[11px] font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-60 dark:bg-slate-800 dark:text-violet-200 dark:border-violet-700"
+                data-testid="desk-ai-refresh"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
+                Ask AI
+              </button>
+            ) : (
+              <span className="ml-auto text-[10px] text-slate-500">Ask AI off</span>
             )}
           </div>
-          {news.length ? (
-            <ul className="mb-1.5 space-y-0.5 text-[12px] text-slate-800 dark:text-slate-100" data-testid="desk-ai-news">
-              {news.slice(0, 3).map((n) => (
-                <li key={n.title} className="truncate">• {n.title}</li>
-              ))}
-            </ul>
-          ) : null}
-
-          <p
-            className="text-[13px] leading-snug text-slate-900 dark:text-slate-100 whitespace-pre-wrap font-medium"
-            data-testid="desk-ai-guide"
-          >
-            {text || (busy ? "Reading cash heavyweights, headlines, and your shorts…" : "Waiting for outside tape.")}
-          </p>
+          <MarketIntelCard outside={outside} guide={guide} />
         </div>
       </div>
     </section>

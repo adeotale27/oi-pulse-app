@@ -274,11 +274,30 @@ def _compact_outside(raw: Any) -> Optional[Dict[str, Any]]:
             t = _clip(item)
             if t:
                 news.append({"title": t})
-    if not movers and not news and not raw.get("note"):
+    events = []
+    for item in (raw.get("events") or [])[:12]:
+        if not isinstance(item, dict):
+            continue
+        events.append({
+            "priority": _clip(item.get("priority"))[:12] or None,
+            "kind": _clip(item.get("kind"))[:16] or None,
+            "symbol": _clip(item.get("symbol"))[:16] or None,
+            "index": _clip(item.get("index"))[:16] or None,
+            "event": _clip(item.get("event"))[:160] or None,
+            "why": _clip(item.get("why"))[:180] or None,
+            "buyer": _clip(item.get("buyer"))[:140] or None,
+            "seller": _clip(item.get("seller"))[:140] or None,
+        })
+    breadth = raw.get("breadth") if isinstance(raw.get("breadth"), dict) else None
+    briefing = _clip(raw.get("briefing"))[:400] or None
+    if not movers and not news and not events and not raw.get("note") and not briefing:
         return None
     return {
         "movers": movers,
         "news": news,
+        "events": events,
+        "breadth": breadth,
+        "briefing": briefing,
         "quote_source": _clip(raw.get("quote_source"))[:12] or None,
         "note": _clip(raw.get("note"))[:180] or None,
     }
@@ -298,32 +317,52 @@ def _fmt_chg(n: Any) -> str:
 
 
 def compose_rules_guide(snap: Dict[str, Any]) -> str:
-    """What the OI chart cannot show: heavyweight cash moves, news, calendar, book."""
+    """What the OI chart cannot show: heavyweights, breadth, news, calendar, book."""
     bits: List[str] = []
     outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else None
+    briefing = (outside or {}).get("briefing")
     movers = (outside or {}).get("movers") or []
     news = (outside or {}).get("news") or []
-    if movers:
-        bits.append("OUTSIDE CHART — heavyweight cash (not option OI):")
-        for m in movers[:5]:
-            pct = m.get("pct")
-            w = m.get("weightage")
-            pct_s = f"{pct:+.1f}%" if isinstance(pct, (int, float)) else "—"
-            w_s = f"{w:.1f}% wt" if isinstance(w, (int, float)) else ""
-            bits.append(
-                f"  {m.get('symbol') or m.get('name')} {pct_s} {w_s} ({m.get('index') or ''}) — {m.get('note') or 'moving'}"
-            )
-    elif outside and outside.get("note"):
-        bits.append(str(outside.get("note")))
-    elif outside is not None:
-        bits.append("Heavyweights quiet vs overnight — cash is not dragging the index off your OI map.")
+    evs = (outside or {}).get("events") or []
+    breadth = (outside or {}).get("breadth") if isinstance((outside or {}).get("breadth"), dict) else {}
 
+    what = []
+    if briefing:
+        what.append(str(briefing))
+    elif movers:
+        what.append("Heavyweight cash (not option OI): " + ", ".join(
+            f"{m.get('symbol')} {m['pct']:+.1f}%" if isinstance(m.get("pct"), (int, float)) else str(m.get("symbol"))
+            for m in movers[:5]
+        ))
+    elif outside and outside.get("note"):
+        what.append(str(outside.get("note")))
+    hi = [e for e in evs if str(e.get("priority") or "").upper() in ("CRITICAL", "HIGH")]
+    if hi:
+        what.extend(e.get("event") for e in hi[:4] if e.get("event"))
+    if what:
+        bits.append("WHAT CHANGED")
+        bits.extend(f"  {t}" for t in what if t)
+
+    why = []
+    for e in (hi or evs)[:4]:
+        if e.get("why"):
+            why.append(f"{e.get('symbol') or e.get('kind')}: {e.get('why')}")
     if news:
-        bits.append("News (not on the OI chart):")
-        for n in news[:4]:
-            title = n.get("title") if isinstance(n, dict) else n
-            if title:
-                bits.append(f"  • {title}")
+        why.extend((n.get("title") if isinstance(n, dict) else str(n)) for n in news[:3])
+    nifty_b = breadth.get("NIFTY") if isinstance(breadth.get("NIFTY"), dict) else None
+    if nifty_b and nifty_b.get("n"):
+        why.append(f"NIFTY breadth {nifty_b.get('adv')}/{nifty_b.get('n')} advancing — not visible on the OI ladder.")
+    if why:
+        bits.append("WHY IT MATTERS")
+        bits.extend(f"  {t}" for t in why if t)
+
+    buyer = [e.get("buyer") for e in evs[:3] if e.get("buyer")]
+    seller = [e.get("seller") for e in evs[:3] if e.get("seller")]
+    if outside is not None or what or why:
+        bits.append("OPTION BUYER")
+        bits.append("  " + ("; ".join(buyer[:3]) if buyer else "No extra directional catalyst beyond the cash tape."))
+        bits.append("OPTION SELLER")
+        bits.append("  " + ("; ".join(seller[:3]) if seller else "No extra gap/event risk scored outside OI."))
 
     adj = snap.get("adjust") if isinstance(snap.get("adjust"), dict) else None
     if adj:
@@ -332,25 +371,31 @@ def compose_rules_guide(snap: Dict[str, Any]) -> str:
             if not (leg.get("close") or leg.get("itm")):
                 continue
             label = leg.get("s") or f"{leg.get('idx') or ''} {leg.get('side') or ''} {leg.get('K') or ''}".strip()
-            why = "ITM — cut or define risk" if leg.get("itm") else "too close — roll or hedge"
-            hot.append(f"{label} ({why})")
+            reason = "ITM — cut or define risk" if leg.get("itm") else "too close — roll or hedge"
+            hot.append(f"{label} ({reason})")
         if hot:
-            bits.append("Adjust first: " + "; ".join(hot[:4]))
+            bits.append("WATCH NEXT")
+            bits.append("  Adjust first: " + "; ".join(hot[:4]))
         elif adj.get("adjustCount"):
-            bits.append(f"{int(adj.get('adjustCount') or 0)} short(s) too close — roll, hedge, or cut before adding")
+            bits.append("WATCH NEXT")
+            bits.append(f"  {int(adj.get('adjustCount') or 0)} short(s) too close — roll, hedge, or cut before adding")
         nd = adj.get("netDelta")
         try:
             ndf = float(nd) if nd is not None else None
         except (TypeError, ValueError):
             ndf = None
         if ndf is not None and abs(ndf) >= 10:
-            bits.append(f"Net Δ {ndf:.0f} — flatten tilt before selling more premium")
+            if not any(x.startswith("WATCH NEXT") for x in bits):
+                bits.append("WATCH NEXT")
+            bits.append(f"  Net Δ {ndf:.0f} — flatten tilt before selling more premium")
         if adj.get("shortCount") and not hot and not adj.get("adjustCount"):
-            bits.append(f"{int(adj.get('shortCount'))} short(s) still OK vs adjust % — hold, do not chase")
-    why = snap.get("why") or []
+            if not any(x.startswith("WATCH NEXT") for x in bits):
+                bits.append("WATCH NEXT")
+            bits.append(f"  {int(adj.get('shortCount'))} short(s) still OK vs adjust % — hold, do not chase")
+    why_carry = snap.get("why") or []
     why_not = snap.get("whyNot") or []
-    if why:
-        bits.append("Why carry: " + "; ".join(why[:4]))
+    if why_carry:
+        bits.append("Why carry: " + "; ".join(why_carry[:4]))
     if why_not:
         bits.append("Why not: " + "; ".join(why_not[:4]))
     results = snap.get("results") or []
@@ -369,9 +414,7 @@ def compose_rules_guide(snap: Dict[str, Any]) -> str:
         if hnames:
             bits.append("Holiday: " + "; ".join(hnames))
     if not bits:
-        bits.append("No outside tape yet — upload constituents, or wait for news/movers. Use the OI chart for PCR/walls.")
-    else:
-        bits.append("OI Change chart still owns PCR and walls — this bar is only what that chart cannot see.")
+        bits.append("No outside tape yet — upload constituents (Impact Risk), or wait for news/movers. Use the OI chart for PCR/walls.")
     return "\n".join(bits)
 
 
@@ -402,8 +445,9 @@ async def maybe_guide(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     prev = _last.get(surface)
     prev_ts = _last_ts.get(surface, 0.0)
     force = bool(body.get("force"))
+    skip_llm = bool(body.get("skip_llm"))
     rules = compose_rules_guide(snap)
-    if not llm_configured():
+    if skip_llm or not llm_configured():
         payload = {
             **status(),
             "source": "rules",
@@ -461,13 +505,13 @@ async def _call_llm(snap: Dict[str, Any]) -> str:
     base = (os.environ.get("DESK_GUIDE_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     model = (os.environ.get("DESK_GUIDE_MODEL") or "gpt-4o-mini").strip()
     system = (
-        "You are an NSE index-options SELLING desk. The trader already sees the OI chart "
-        "(PCR, CE/PE change, walls). Do NOT recap OI numbers. "
-        "Use ONLY JSON. Focus on outside.movers (heavyweight cash stocks by index weight), "
-        "outside.news, results/holidays, and adjust.legs that are ITM/too close. "
-        "6-8 short lines: ACTION, which heavyweight is dragging/lifting the index and why that "
-        "matters for sold CE vs PE, news that can gap the book, named shorts to ROLL/CUT/HOLD. "
-        "Never invent prices. FII/DII is T+1 — mention only if it conflicts with the cash movers."
+        "You are an NSE index-options desk for buyers AND non-directional sellers. "
+        "The trader already sees the OI chart (PCR, CE/PE change, walls) — do NOT recap OI numbers. "
+        "Use ONLY the JSON. Lead with outside.briefing, outside.events, outside.movers (cash by weight), "
+        "outside.breadth, news, results/holidays, and ITM/too-close adjust.legs. "
+        "Format exactly: WHAT CHANGED / WHY IT MATTERS / OPTION BUYER / OPTION SELLER / WATCH NEXT. "
+        "Explain what OI alone misses (heavyweight cash, breadth vs index, news, event risk). "
+        "Never invent prices."
     )
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(

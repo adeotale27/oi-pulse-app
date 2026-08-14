@@ -1,6 +1,6 @@
 # OI Pulse
 
-**Version: V5.19** — see [`VERSION`](VERSION), [`CHANGELOG.md`](CHANGELOG.md), [`docs/VERSIONING.md`](docs/VERSIONING.md).
+**Version: V6.00** — see [`VERSION`](VERSION), [`CHANGELOG.md`](CHANGELOG.md), [`docs/VERSIONING.md`](docs/VERSIONING.md).
 
 OI Pulse is a live **NSE open-interest desk** for **NIFTY**, **SENSEX**, and **BANKNIFTY**. It is built for option sellers and OI readers who need strike-level conviction during the cash session — not a generic charting terminal.
 
