@@ -42,7 +42,7 @@ export default function DeskAiConfigMenu({
         </div>
       ) : null}
       <p className="px-1 pb-1 text-[10px] text-slate-500 leading-snug">
-        One switch for you and guests. Full tape lives in the side panel so the OI chart keeps the grid.
+        One switch for you and guests. Off until you turn it on. Full tape is in the side panel; Radar has its own AI tick.
       </p>
       {typeof onOpenPanel === "function" ? (
         <DropdownMenuItem

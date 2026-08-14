@@ -1,5 +1,15 @@
 # Changelog
 
+## V6.02 — 2026-08-14
+
+Desk AI is off until you turn it on. The tape is readable tiles, Radar-only on Positions, and the phone header no longer overflows.
+
+- Alert Settings: Show Desk AI, Ask AI, Book radar intelligence
+- Header AI chip still flips the same Show/Ask on the desk (icon-only on phone)
+- Intelligence is one sentence + swapable tiles (heavyweights, breadth, news, calendar, what to do)
+- Positions book has no AI strip — Radar has the tick, resizable
+- Phone header: compact clock, icon AI chip, Today P&L off that row
+
 ## V6.01 — 2026-08-14
 
 Desk AI no longer eats the OI grid. Config works on the phone.

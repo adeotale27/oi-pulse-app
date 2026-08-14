@@ -46,7 +46,13 @@ export default function SettingsModal({
     setLoadError(null);
     setSettings(null);
     api.get("/settings")
-      .then((r) => setSettings(r.data))
+      .then((r) => {
+        const d = r.data || {};
+        if (d.desk_ai_show == null) d.desk_ai_show = !!d.desk_ai_admin;
+        if (d.desk_ai_ask == null) d.desk_ai_ask = true;
+        if (d.desk_ai_radar == null) d.desk_ai_radar = false;
+        setSettings(d);
+      })
       .catch((e) => {
         setLoadError(e?.response?.data?.detail || e.message || "Failed to load settings");
         // Provide sensible defaults so the modal is still usable.
@@ -71,6 +77,9 @@ export default function SettingsModal({
           show_writer_defense: true,
           show_suggestion: true,
           show_chart_signals: false,
+          desk_ai_show: false,
+          desk_ai_ask: true,
+          desk_ai_radar: false,
         });
       });
     setLocal(loadOISettings());
@@ -169,6 +178,11 @@ export default function SettingsModal({
           show_writer_defense: settings.show_writer_defense,
           show_suggestion: settings.show_suggestion,
           show_chart_signals: settings.show_chart_signals,
+          desk_ai_show: !!settings.desk_ai_show,
+          desk_ai_ask: settings.desk_ai_ask !== false,
+          desk_ai_radar: !!settings.desk_ai_radar,
+          desk_ai_admin: !!settings.desk_ai_show,
+          desk_ai_public: !!settings.desk_ai_show,
           visible_pages: Array.from(new Set(
             (Array.isArray(settings.visible_pages) ? settings.visible_pages : []).filter((id) => !HARD_ADMIN_PAGES.has(id)),
           )),
@@ -665,6 +679,65 @@ export default function SettingsModal({
                     <div className="text-sm font-medium">Chart signal chips (gamma / institution)</div>
                     <div className="text-[10px] text-slate-500">
                       Show CE/PE gamma-wall, institution, and velocity chips under the OI Change chart (and matching badges on Strike Table). Off by default — thresholds still live under local OI settings below.
+                    </div>
+                  </div>
+                </label>
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 pt-1">
+                  Desk AI
+                </div>
+                <label
+                  className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-violet-200 bg-violet-50/40"
+                  data-testid="desk-ai-show-row"
+                >
+                  <Checkbox
+                    data-testid="desk-ai-show"
+                    className="mt-0.5"
+                    checked={settings.desk_ai_show != null ? !!settings.desk_ai_show : !!settings.desk_ai_admin}
+                    onCheckedChange={(ck) => setSettings({
+                      ...settings,
+                      desk_ai_show: !!ck,
+                      desk_ai_admin: !!ck,
+                      desk_ai_public: !!ck,
+                    })}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Show Desk AI</div>
+                    <div className="text-[10px] text-slate-500">
+                      Off until you tick this. Turns the intelligence tape on for you and guests together (header AI chip still lets you flip it on the desk).
+                    </div>
+                  </div>
+                </label>
+                <label
+                  className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                  data-testid="desk-ai-ask-row"
+                >
+                  <Checkbox
+                    data-testid="desk-ai-ask"
+                    className="mt-0.5"
+                    checked={settings.desk_ai_ask !== false}
+                    onCheckedChange={(ck) => setSettings({ ...settings, desk_ai_ask: !!ck })}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Ask AI (GPT)</div>
+                    <div className="text-[10px] text-slate-500">
+                      Optional. Needs OPENAI_API_KEY on the server. Without a key you still get the rules coach.
+                    </div>
+                  </div>
+                </label>
+                <label
+                  className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"
+                  data-testid="desk-ai-radar-row"
+                >
+                  <Checkbox
+                    data-testid="desk-ai-radar"
+                    className="mt-0.5"
+                    checked={!!settings.desk_ai_radar}
+                    onCheckedChange={(ck) => setSettings({ ...settings, desk_ai_radar: !!ck })}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Book radar intelligence</div>
+                    <div className="text-[10px] text-slate-500">
+                      Show the tape inside Positions → Radar only — not on the Kite positions book.
                     </div>
                   </div>
                 </label>

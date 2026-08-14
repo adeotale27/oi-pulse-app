@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.02",
+    date: "2026-08-14",
+    user: [
+      "Desk AI stays off until an admin turns it on. The tape is short tiles you can drag to swap. On Positions it only appears inside Radar.",
+    ],
+    admin: [
+      "Alert Settings: Show Desk AI, Ask AI, Book radar. Header AI chip still works on phone (icon). Phone header no longer wraps off-screen.",
+    ],
+  },
+  {
     version: "6.01",
     date: "2026-08-14",
     user: [

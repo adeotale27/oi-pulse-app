@@ -668,11 +668,11 @@ export default function Dashboard() {
   const [showWriterDefense, setShowWriterDefense] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showChartSignals, setShowChartSignals] = useState(false);
-  const [deskAiShow, setDeskAiShow] = useState(true);
+  const [deskAiShow, setDeskAiShow] = useState(false);
   const [deskAiAsk, setDeskAiAsk] = useState(true);
   const [deskAiPositions, setDeskAiPositions] = useState(false);
-  const [deskAiRadar, setDeskAiRadar] = useState(true);
-  const [deskAiAdmin, setDeskAiAdmin] = useState(true);
+  const [deskAiRadar, setDeskAiRadar] = useState(false);
+  const [deskAiAdmin, setDeskAiAdmin] = useState(false);
   const [deskAiPublic, setDeskAiPublic] = useState(false);
   const [deskAiOnGrid, setDeskAiOnGrid] = useState(() => {
     try {
@@ -680,7 +680,7 @@ export default function Dashboard() {
       if (v === "0") return false;
       if (v === "1") return true;
     } catch { /* noop */ }
-    return true;
+    return false;
   });
   const toggleDeskAiOnGrid = useCallback((on) => {
     setDeskAiOnGrid(!!on);
@@ -1910,7 +1910,6 @@ export default function Dashboard() {
           const patch = {};
           if (typeof next?.show === "boolean") {
             patch.desk_ai_show = next.show;
-            if (next.show) patch.desk_ai_radar = true;
           }
           if (typeof next?.ask === "boolean") patch.desk_ai_ask = next.ask;
           if (Object.keys(patch).length) patchDeskAi(patch);
