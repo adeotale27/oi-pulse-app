@@ -17,5 +17,9 @@ assert.equal(
   pickIndexLtp({ idx: "GOLD", live: null, tickerLtp: null, current: { index: "GOLD", price: 112578 } }),
   112578,
 );
+assert.equal(
+  pickIndexLtp({ idx: "SENSEX", live: null, tickerLtp: 0, cachedPrice: 81150, current: { index: "NIFTY", price: 24366 } }),
+  81150,
+);
 
 console.log("indexQuotes.test.js: ok");

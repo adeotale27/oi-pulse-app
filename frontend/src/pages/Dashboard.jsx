@@ -482,7 +482,8 @@ export default function Dashboard() {
     let conn;
     const t = setTimeout(() => {
       if (stopped) return;
-      conn = connectSpotWS((message) => {
+      conn = connectSpotWS(
+      (message) => {
       if (message?.type !== "spot" || !Array.isArray(message.tickers)) return;
       const nextPrices = {};
       message.tickers.forEach((ticker) => {
@@ -499,7 +500,11 @@ export default function Dashboard() {
           atm: match.atm != null ? match.atm : prevCurrent.atm,
         };
       });
-    });
+    },
+      undefined,
+      undefined,
+      { allowDuringQuiescent: true },
+    );
     }, 600);
     return () => {
       stopped = true;
@@ -1002,10 +1007,27 @@ export default function Dashboard() {
     try {
       const data = await fetchTickers();
       const map = {};
+      const spots = {};
       for (const t of data?.tickers || []) {
-        if (t?.index) map[t.index] = t;
+        if (!t?.index) continue;
+        map[t.index] = t;
+        const n = Number(t.ltp);
+        if (Number.isFinite(n) && n) spots[t.index] = n;
       }
       setTickerQuotes(map);
+      if (Object.keys(spots).length) {
+        setLiveSpotPrices((prev) => {
+          const out = { ...prev };
+          let changed = false;
+          for (const [idx, px] of Object.entries(spots)) {
+            if (out[idx] == null) {
+              out[idx] = px;
+              changed = true;
+            }
+          }
+          return changed ? out : prev;
+        });
+      }
     } catch (e) {
       console.error("loadTickers failed", e);
     }
@@ -1202,7 +1224,7 @@ export default function Dashboard() {
     if (expiryCaughtUp) return;
     loadOI();
   }, [timeframe, activeIndex, selectedExpiry, loadOI]);
-  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 1500 });
+  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 0, allowDuringQuiescent: true });
   useQuiescentAwarePolling(
     async () => {
       await loadAlerts();
@@ -1851,7 +1873,7 @@ export default function Dashboard() {
       const changePct = price != null && prev
         ? ((price - prev) / prev) * 100
         : (t?.change_pct != null ? Number(t.change_pct) : null);
-      out[idx] = { price, changePts, changePct };
+      out[idx] = { price, changePts, changePct, ltp: t?.ltp };
     }
     return out;
   }, [enabledIndices, tickerQuotes, liveSpotPrices, activeIndex, current]);
@@ -1950,6 +1972,7 @@ export default function Dashboard() {
         vixSessionOpen={vixSessionOpen}
         activeIndex={activeIndex}
         onSelectIndex={setActiveIndex}
+        tickerData={Object.values(tickerQuotes)}
         lastPulledAt={lastPulledAt}
         darkMode={darkMode}
         onToggleDark={() => setDarkMode((v) => !v)}

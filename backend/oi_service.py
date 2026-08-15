@@ -170,7 +170,8 @@ class KiteService:
             rows = fut.to_dict("records")
         return nearest_fut_quote_symbol(rows, cfg["name"]) or cfg.get("quote_symbol")
 
-    def _quote_ltp(self, cfg: Dict[str, Any]) -> tuple:
+    def _quote_index(self, cfg: Dict[str, Any]) -> tuple:
+        """Return (quote_key, ltp, ohlc_dict)."""
         key = self.resolve_quote_symbol(cfg)
         if not key:
             raise RuntimeError("no quote symbol")
@@ -180,7 +181,12 @@ class KiteService:
             blob = next(iter(q.values()))
         if not blob:
             raise RuntimeError(f"empty quote for {key}")
-        return key, float(blob.get("last_price") or 0)
+        ohlc = blob.get("ohlc") if isinstance(blob.get("ohlc"), dict) else {}
+        return key, float(blob.get("last_price") or 0), ohlc
+
+    def _quote_ltp(self, cfg: Dict[str, Any]) -> tuple:
+        key, ltp, _ohlc = self._quote_index(cfg)
+        return key, ltp
 
     def quote_ltp_safe(self, index_name: str) -> Optional[Dict[str, Any]]:
         """LTP only (no option chain). Used by the spot websocket."""
@@ -230,8 +236,9 @@ class KiteService:
             logger.error(f"[get_snapshot:{index_name}] not in INDEX_CONFIG")
             return None
         ltp: float = 0.0
+        ohlc: dict = {}
         try:
-            _key, ltp = self._quote_ltp(cfg)
+            _key, ltp, ohlc = self._quote_index(cfg)
         except Exception as e:
             logger.error(f"[get_snapshot:{index_name}] index quote failed for {cfg.get('quote_symbol')}: {type(e).__name__}: {e}")
             return None
@@ -320,6 +327,8 @@ class KiteService:
             "index": index_name,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "price": float(ltp),
+            "prev_close": float(ohlc.get("close") or 0) or None,
+            "day_open": float(ohlc.get("open") or 0) or None,
             "atm": int(atm),
             "expiry": str(pd.Timestamp(selected).date()),
             "expiries": all_expiries,

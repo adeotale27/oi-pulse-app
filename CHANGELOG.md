@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.30 — 2026-08-15
+
+Every index chip always shows last price and change; fewer duplicate quote calls.
+
+- `/tickers` fills SENSEX/BANKNIFTY from last OI snapshot when Kite LTP is missing or zero (NIFTY selected no longer blanks the other chips)
+- Quote lookup matches Kite keys with or without the `BSE:` prefix. Snapshots store prev_close / day_open
+- One Dashboard `/tickers` fetch is shared with the header and phone ticker (no triple request). Tickers load immediately, including weekend. Spot WS still uses last snapshots (no extra Kite)
+
 ## V6.29 — 2026-08-15
 
 Stop last-session OI toasts when NSE is closed; keep info tiles and tabs stable.

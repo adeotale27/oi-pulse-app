@@ -646,6 +646,7 @@ export default function Header({
             activeIndex={activeIndex}
             onSelectIndex={onSelectIndex}
             spotPrices={spotPrices}
+            tickers={Array.isArray(tickerData) ? tickerData : null}
           />
         </div>
 

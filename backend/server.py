@@ -3561,90 +3561,64 @@ async def delete_sidebar_note(_admin: bool = Depends(require_admin)):
 # ------------------- Multi-index quote for header ticker -------------------
 @api_router.get("/tickers")
 async def get_tickers():
-    """Return LTP + previous close + change + change% for NIFTY 50, SENSEX and
-    BANK NIFTY. Used by the header static ticker strip so users can eyeball
-    today's movement at a glance across all three main indices.
-    Falls back to last DB snapshot when Kite isn't connected."""
-    result = []
-    from universe import DESK_IDS, get as universe_get
-    symbols = [
-        ("NIFTY",     "NSE:NIFTY 50",   "NIFTY 50"),
-        ("SENSEX",    "BSE:SENSEX",     "SENSEX"),
-        ("BANKNIFTY", "NSE:NIFTY BANK", "BANK NIFTY"),
-    ]
+    """LTP + prev close for every enabled desk index.
+
+    Kite quote when connected; any name with missing/zero LTP (common for
+    BSE:SENSEX on a partial quote) falls back to last OI snapshot / Mongo so
+    mobile chips never show a blank price while NIFTY is selected.
+    """
+    from universe import DESK_IDS, get as universe_get, without_paused_mcx
+    from desk_tickers import merge_ticker_row, pick_quote_blob, ticker_symbol_list
+
     enabled = list((tracker.settings.get("enabled_indices") if tracker else None) or DESK_IDS)
-    seen = {s[0] for s in symbols}
+    try:
+        enabled = without_paused_mcx(enabled, INDEX_CONFIG)
+    except Exception:
+        enabled = [i for i in enabled if i in DESK_IDS]
+    extra = []
     for uid in enabled:
-        if uid in seen:
-            continue
-        cfg = INDEX_CONFIG.get(uid)
-        if not cfg:
-            continue
-        u = universe_get(uid) or {}
+        cfg = INDEX_CONFIG.get(uid) or {}
         qsym = cfg.get("quote_symbol")
-        if tracker.kite_service:
+        if tracker and tracker.kite_service:
             try:
                 qsym = tracker.kite_service.resolve_quote_symbol(cfg) or qsym
             except Exception:
                 pass
-        if not qsym:
-            continue
-        symbols.append((uid, qsym, u.get("label") or uid))
-        seen.add(uid)
-    if tracker.mode == "kite" and tracker.kite_service:
+        u = universe_get(uid) or {}
+        if qsym:
+            extra.append((uid, qsym, u.get("label") or uid))
+    symbols = ticker_symbol_list(enabled, index_config=INDEX_CONFIG, extra=extra)
+
+    async def _snap_for(idx: str) -> dict:
+        snap = (tracker.last_snapshot or {}).get(idx) if tracker else None
+        if snap and snap.get("price"):
+            return snap
+        try:
+            doc = await db.oi_snapshots.find_one(
+                {"index": idx},
+                sort=[("timestamp", -1)],
+                projection={"_id": 0, "price": 1, "atm": 1, "timestamp": 1, "prev_close": 1, "day_open": 1},
+            )
+            return doc or {}
+        except Exception:
+            return {}
+
+    kite_data = None
+    if tracker and tracker.mode == "kite" and tracker.kite_service:
         try:
             kite = tracker.kite_service.kite
             keys = [s[1] for s in symbols]
-            data = await asyncio.to_thread(kite.quote, keys)
-            for internal, symbol, label in symbols:
-                q = data.get(symbol, {}) if isinstance(data, dict) else {}
-                ltp = float(q.get("last_price", 0) or 0)
-                ohlc = q.get("ohlc") or {}
-                prev = float(ohlc.get("close", 0) or 0)
-                change = ltp - prev if prev else 0.0
-                change_pct = (change / prev * 100) if prev else 0.0
-                result.append({
-                    "index": internal,
-                    "label": label,
-                    "ltp": round(ltp, 2),
-                    "prev_close": round(prev, 2),
-                    "day_open": round(float(ohlc.get("open", 0) or 0), 2),
-                    "day_high": round(float(ohlc.get("high", 0) or 0), 2),
-                    "day_low":  round(float(ohlc.get("low", 0) or 0), 2),
-                    "change": round(change, 2),
-                    "change_pct": round(change_pct, 3),
-                    "source": "kite",
-                })
-            return {"mode": tracker.mode, "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
+            kite_data = await asyncio.to_thread(kite.quote, keys)
         except Exception as e:
-            logger.warning(f"tickers kite failed, falling back to snapshot: {e}")
+            logger.warning("tickers kite failed, using snapshots: %s", e)
+            kite_data = None
 
-    # Fallback: use the tracker's last_snapshot (seeded from DB on boot).
-    # Never invent random prev_close — that misleads weekend/holiday viewers.
-    for internal, _symbol, label in symbols:
-        snap = tracker.last_snapshot.get(internal)
-        if not snap:
-            try:
-                snap = await db.oi_snapshots.find_one(
-                    {"index": internal},
-                    sort=[("timestamp", -1)],
-                    projection={"_id": 0, "price": 1, "atm": 1, "timestamp": 1},
-                )
-            except Exception:
-                snap = None
-        snap = snap or {}
-        ltp = float(snap.get("price") or snap.get("atm") or 0)
-        prev = ltp  # unknown prev_close offline — show flat rather than fake %
-        result.append({
-            "index": internal, "label": label,
-            "ltp": round(ltp, 2), "prev_close": round(prev, 2),
-            "day_open": round(prev, 2),
-            "day_high": round(ltp, 2), "day_low": round(ltp, 2),
-            "change": 0.0, "change_pct": 0.0,
-            "source": "historical",
-            "as_of": snap.get("timestamp"),
-        })
-    return {"mode": tracker.mode, "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
+    result = []
+    for internal, symbol, label in symbols:
+        snap = await _snap_for(internal)
+        blob = pick_quote_blob(kite_data, symbol) if kite_data else {}
+        result.append(merge_ticker_row(internal, label, kite_blob=blob, snap=snap))
+    return {"mode": tracker.mode if tracker else "offline", "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
 
 
 # ------------------- Extra tickers: VIX + GIFT NIFTY -------------------

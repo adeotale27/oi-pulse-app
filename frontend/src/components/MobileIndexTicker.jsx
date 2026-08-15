@@ -31,10 +31,10 @@ export default function MobileIndexTicker({
   const [tickersLocal, setTickersLocal] = useState([]);
   const [extras, setExtras] = useState({ vix: null, gift_nifty: null, windows: {} });
   const [giftOpen, setGiftOpen] = useState(false);
-  const tickers = Array.isArray(tickersProp) && tickersProp.length ? tickersProp : tickersLocal;
+  const tickers = tickersProp != null ? (Array.isArray(tickersProp) ? tickersProp : []) : tickersLocal;
 
   useEffect(() => {
-    if (Array.isArray(tickersProp) && tickersProp.length) return undefined;
+    if (tickersProp != null) return undefined;
     let cancelled = false;
     const load = async () => {
       try {
@@ -90,8 +90,10 @@ export default function MobileIndexTicker({
     for (const idx of order) {
       const t = byIndex[idx];
       const ltp = pickIndexLtp({ idx, live: spotPrices[idx], tickerLtp: t?.ltp });
-      const prev = Number(t?.prev_close) || 0;
-      const chgPct = ltp && prev ? ((ltp - prev) / prev) * 100 : null;
+      const prev = Number(t?.prev_close || t?.day_open) || 0;
+      const chgPct = Number.isFinite(Number(t?.change_pct)) && t?.change_pct != null && prev
+        ? Number(t.change_pct)
+        : (ltp && prev ? ((ltp - prev) / prev) * 100 : null);
       out.push({
         key: idx,
         label: INDEX_SHORT[idx] || idx,

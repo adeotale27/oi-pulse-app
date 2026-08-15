@@ -166,37 +166,44 @@ function headerTileTone(indexKey, up, flat, isActive) {
   };
 }
 
-export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default" }) {
-  const [tickers, setTickers] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default", tickers: tickersProp = null }) {
+  const [tickersLocal, setTickersLocal] = useState([]);
+  const [loadingLocal, setLoadingLocal] = useState(tickersProp == null);
+  const owned = tickersProp != null;
+  const tickers = owned ? tickersProp : tickersLocal;
+  const loading = owned ? tickers.length === 0 : loadingLocal;
   const scrollerRef = useRef(null);
   const isHeader = layout === "header";
   const isRail = layout === "rail";
 
   useEffect(() => {
+    if (tickersProp != null) {
+      return undefined;
+    }
     let cancelled = false;
-    async function fetchTickers() {
+    async function loadTickersOnce() {
       try {
         const { data } = await api.get("/tickers");
-        if (!cancelled) setTickers(data.tickers || []);
+        if (!cancelled) setTickersLocal(data.tickers || []);
       } catch (_e) { /* silent */ }
-      finally { if (!cancelled) setLoading(false); }
+      finally {
+        if (!cancelled) setLoadingLocal(false);
+      }
     }
-    // If market quiescent (weekend/holiday), fetch once and skip periodic refreshes
     try {
       const closed = isMarketQuiescent();
-      fetchTickers();
+      loadTickersOnce();
       if (!closed) {
-        const id = setInterval(fetchTickers, 300000); // refresh metadata every 5m
+        const id = setInterval(loadTickersOnce, 300000);
         return () => { cancelled = true; clearInterval(id); };
       }
-    } catch (e) {
-      fetchTickers();
-      const id = setInterval(fetchTickers, 300000); // refresh metadata every 5m
+    } catch {
+      loadTickersOnce();
+      const id = setInterval(loadTickersOnce, 300000);
       return () => { cancelled = true; clearInterval(id); };
     }
     return () => { cancelled = true; };
-  }, []);
+  }, [tickersProp]);
 
   const displayTickers = useMemo(() => {
     return tickers.map((t) => {

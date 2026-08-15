@@ -121,7 +121,7 @@ export default function MobileStickyChrome({
   const chip = (idx) => {
     const active = idx === activeIndex;
     const q = indexQuotes?.[idx] || {};
-    const raw = q.price ?? pickIndexLtp({ idx, live: spotPrices?.[idx] });
+    const raw = q.price ?? pickIndexLtp({ idx, live: spotPrices?.[idx], tickerLtp: q.ltp });
     const spotN = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
     const spotTxt = spotN != null
       ? spotN.toLocaleString("en-IN", { maximumFractionDigits: 1, minimumFractionDigits: 0 })

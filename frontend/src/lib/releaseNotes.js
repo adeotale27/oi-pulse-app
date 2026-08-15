@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.30",
+    date: "2026-08-15",
+    user: [
+      "NIFTY / SENSEX / BANKNIFTY chips on phone always show last price and day’s change, even when another index is selected or the market is closed.",
+    ],
+    admin: [
+      "/tickers merges Kite LTP with last snapshot per name. Header and mobile share one ticker fetch. Spot WS may push last-session prints on the weekend (still no Kite quote).",
+    ],
+  },
+  {
     version: "6.29",
     date: "2026-08-15",
     user: [
