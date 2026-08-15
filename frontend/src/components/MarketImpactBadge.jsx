@@ -3,16 +3,22 @@ import { createPortal } from "react-dom";
 import { AlertTriangle, TrendingUp, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 import usePortaledMenu from "@/hooks/usePortaledMenu";
+import {
+  upcomingIndexEvents,
+  impactTone,
+  eventDisplayName,
+  daysText,
+} from "@/lib/indexEventRisk";
 
 /**
- * MarketImpactBadge — small header tile that shows a dropdown of upcoming
- * high-impact events (Quarterly Results, Board Meetings) for the current
- * strategy's index (activeIndex).
+ * Index Impact tile — upcoming constituent events for the selected index
+ * (results, board meetings, dividends, AGMs, …). Click opens an in-place
+ * dropdown; does not switch dashboard tabs.
  *
  * Color rules:
  *   • RED  if any event is today OR within THIS week (≤7d)
  *   • BLUE if only upcoming next week (8–14d)
- *   • Neutral if further out / no events
+ *   • Neutral if further out / no upcoming events
  */
 
 const INDEX_LABEL = {
@@ -57,35 +63,12 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
     };
   }, [activeIndex]);
 
-  // High-impact = Quarterly Results or Board Meeting
-  const impactful = useMemo(() => {
-    return events
-      .filter((e) => e.days_remaining >= 0)
-      .filter((e) =>
-        ["Quarterly Results", "Board Meeting"].includes(e.event_type)
-      )
-      .sort(
-        (a, b) =>
-          a.days_remaining - b.days_remaining ||
-          -((a.weightage || 0) - (b.weightage || 0))
-      );
-  }, [events]);
+  const upcoming = useMemo(() => upcomingIndexEvents(events), [events]);
+  const pastOnly = events.length > 0 && upcoming.length === 0;
 
-  const primary = impactful[0];
+  const primary = upcoming[0];
   const indexLabel = INDEX_LABEL[activeIndex] || activeIndex || "this index";
-
-  const hasThisWeek = impactful.some((e) => e.days_remaining <= 7);
-  const hasNextWeek = impactful.some(
-    (e) => e.days_remaining > 7 && e.days_remaining <= 14
-  );
-
-  const tone = !primary
-    ? "neutral"
-    : hasThisWeek
-      ? "red"
-      : hasNextWeek
-        ? "blue"
-        : "neutral";
+  const tone = impactTone(upcoming);
 
   const toneCls =
     tone === "red"
@@ -94,40 +77,8 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
       ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200"
       : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300";
 
-  const daysText = (d) =>
-    d === 0 ? "TODAY" : d === 1 ? "TOMORROW" : `in ${d}d`;
-
   const tileBase =
     "w-full min-h-[58px] h-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 flex flex-col justify-between";
-
-  if (!primary) {
-    return (
-      <div className="relative w-full h-full" data-testid="market-impact-badge-wrap">
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => {
-            if (typeof onOpenIndexEvents === "function") onOpenIndexEvents();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && typeof onOpenIndexEvents === "function") onOpenIndexEvents();
-          }}
-          data-testid="market-impact-badge"
-          className={`${tileBase} cursor-pointer ${toneCls}`}
-          title={`No upcoming events for ${indexLabel}`}
-        >
-          <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
-            <TrendingUp className="w-3 h-3" />
-            Index Impact
-          </div>
-          <div className="text-xs font-semibold leading-snug mt-0.5" data-testid="market-impact-empty">
-            There are no upcoming events for {indexLabel}
-          </div>
-          <div className="text-[10px] leading-tight opacity-60">Tap to open Index Risk</div>
-        </div>
-      </div>
-    );
-  }
 
   const toggle = () => {
     setOpen((v) => {
@@ -135,6 +86,10 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
       return !v;
     });
   };
+
+  const emptyCopy = pastOnly
+    ? `Calendar for ${indexLabel} is in the past`
+    : `There are no upcoming events for ${indexLabel}`;
 
   return (
     <div
@@ -151,7 +106,11 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
         }}
         data-testid="market-impact-badge"
         className={`${tileBase} cursor-pointer ${toneCls}`}
-        title={`${impactful.length} high-impact events for ${activeIndex}`}
+        title={
+          primary
+            ? `${upcoming.length} upcoming events for ${activeIndex}`
+            : emptyCopy
+        }
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -162,10 +121,10 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
             <TrendingUp className="w-3 h-3" />
           )}
 
-          Index Impact · {daysText(primary.days_remaining)}
+          {primary ? `Index Impact · ${daysText(primary.days_remaining)}` : "Index Impact"}
 
           <span className="ml-auto inline-flex items-center gap-0.5 opacity-70">
-            {impactful.length > 1 && `+${impactful.length - 1}`}
+            {upcoming.length > 1 && `+${upcoming.length - 1}`}
             <ChevronDown
               className={`w-3 h-3 transition-transform ${
                 open ? "rotate-180" : ""
@@ -174,26 +133,31 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
           </span>
         </div>
 
-        <div
-          className="flex items-center text-xs font-semibold leading-tight truncate mt-0.5"
-          data-testid="market-impact-name"
-        >
-          <span className="truncate">
-            {activeIndex === "SENSEX"
-              ? (primary.constituents || primary.company_name || primary.symbol)
-              : primary.symbol}
-          </span>
-
-          <span className="ml-3">
-            {primary.event_type}
-          </span>
-        </div>
-
-        <div className="text-[10px] leading-tight opacity-80 font-mono-data">
-          {primary.weightage != null
-            ? `${primary.weightage.toFixed(2)}% Weightage`
-            : "Weightage N/A"}
-        </div>
+        {primary ? (
+          <>
+            <div
+              className="flex items-center text-xs font-semibold leading-tight truncate mt-0.5"
+              data-testid="market-impact-name"
+            >
+              <span className="truncate">
+                {eventDisplayName(primary, activeIndex)}
+              </span>
+              <span className="ml-3">{primary.event_type}</span>
+            </div>
+            <div className="text-[10px] leading-tight opacity-80 font-mono-data">
+              {primary.weightage != null
+                ? `${primary.weightage.toFixed(2)}% Weightage`
+                : "Weightage N/A"}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-xs font-semibold leading-snug mt-0.5" data-testid="market-impact-empty">
+              {emptyCopy}
+            </div>
+            <div className="text-[10px] leading-tight opacity-60">Tap for the event list</div>
+          </>
+        )}
       </div>
 
       {open && typeof document !== "undefined" && createPortal(
@@ -205,7 +169,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
           style={{ top: pos.top, left: pos.left }}
         >
           <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
-            <span>Upcoming High-Impact Events</span>
+            <span>Upcoming index events</span>
 
             {typeof onOpenIndexEvents === "function" && (
               <button
@@ -222,8 +186,15 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
             )}
           </div>
 
+          {upcoming.length === 0 ? (
+            <div className="px-3 py-3 text-[11px] text-slate-500 dark:text-slate-400">
+              {pastOnly
+                ? "Joined events for this index are all dated before today. Upload a fresh NSE event calendar in Admin."
+                : `No upcoming constituent events for ${indexLabel}.`}
+            </div>
+          ) : (
           <ul className="max-h-72 overflow-auto divide-y divide-slate-100 dark:divide-slate-700">
-            {impactful.slice(0, 15).map((e) => {
+            {upcoming.slice(0, 15).map((e) => {
               const wk =
                 e.days_remaining <= 7
                   ? "red"
@@ -255,11 +226,12 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
 
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
-                      {e.symbol} · {e.event_type}
+                      {eventDisplayName(e, activeIndex)} · {e.event_type}
                     </div>
 
                     <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
                       {e.company_name}
+                      {e.event_date ? ` · ${e.event_date}` : ""}
                     </div>
                   </div>
 
@@ -278,6 +250,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
               );
             })}
           </ul>
+          )}
         </div>,
         document.body,
       )}

@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.31 — 2026-08-15
+
+Index Impact and Upcoming Index Event Risk show the same upcoming constituent calendar.
+
+- Tile lists every upcoming joined event (not only results / board meetings), sorted by days then weight
+- Empty tile opens an in-place list (does not jump tabs). Past-only calendars say the file is dated before today
+- `days_remaining` uses IST today. Join still matches symbol then company name; non-constituents stay out
+- Sensex tiles use company name. Weight colours match the stated buckets (3%+ high, 1–3% medium, &lt;1% low)
+
 ## V6.30 — 2026-08-15
 
 Every index chip always shows last price and change; fewer duplicate quote calls.

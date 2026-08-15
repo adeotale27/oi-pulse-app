@@ -8,6 +8,7 @@ import {
   formatUploadAge,
   evaluateUploadFreshness,
 } from "@/lib/uploadFreshness";
+import { eventDisplayName, weightageBucket } from "@/lib/indexEventRisk";
 
 const DISMISS_LS_KEY = "oi_event_risk_dismissed";
 
@@ -43,14 +44,6 @@ const INDEX_LABEL = {
   SENSEX: "Sensex",
 };
 
-function weightageBucket(w) {
-  if (w == null) return "grey";
-  if (w > 5) return "dark-red";
-  if (w >= 3) return "red";
-  if (w >= 1) return "orange";
-  return "yellow";
-}
-
 const BUCKET_STYLES = {
   // Professional palette — left-border severity stripe + neutral card body.
   "dark-red": {
@@ -67,18 +60,18 @@ const BUCKET_STYLES = {
     badge: "text-rose-600 dark:text-rose-400",
     label: "High",
   },
- yellow: {
-  card:  "border-l-4 border-l-lime-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100",
-  chip:  "bg-lime-500 text-white border-lime-600",
-  dot:   "bg-lime-500",
-  badge: "text-lime-600 dark:text-lime-400",
-  label: "Medium",
-},
   orange: {
-    card:  "border-l-4 border-l-sky-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100",
-    chip:  "bg-sky-500 text-white border-sky-600",
-    dot:   "bg-sky-500",
-    badge: "text-sky-600 dark:text-sky-400",
+    card:  "border-l-4 border-l-orange-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100",
+    chip:  "bg-orange-500 text-white border-orange-600",
+    dot:   "bg-orange-500",
+    badge: "text-orange-600 dark:text-orange-400",
+    label: "Medium",
+  },
+  yellow: {
+    card:  "border-l-4 border-l-amber-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100",
+    chip:  "bg-amber-400 text-amber-950 border-amber-500",
+    dot:   "bg-amber-400",
+    badge: "text-amber-700 dark:text-amber-300",
     label: "Low",
   },
   grey: {
@@ -171,6 +164,7 @@ export default function EventRiskWidget({
 
   // ---- Derived data ----
   const upcoming = useMemo(() => events.filter((e) => e.days_remaining >= 0), [events]);
+  const pastOnly = events.length > 0 && upcoming.length === 0;
   const next7 = useMemo(() => upcoming.filter((e) => e.days_remaining <= 7), [upcoming]);
 
   const summary = useMemo(() => {
@@ -340,37 +334,25 @@ export default function EventRiskWidget({
           icon={Building2}
           label="Highest Weightage Upcoming Event company "
           value={
-    summary.highest
-      ? (
-          activeIndex === "SENSEX"
-            ? (summary.highest.constituents ||
-               summary.highest.company_name ||
-               summary.highest.symbol)
-            : summary.highest.symbol
-        )
-      : "—"
-  }
-  sub={
-    summary.highest
-      ? `${summary.highest.weightage?.toFixed(2)}%`
-      : ""
-  }
+            summary.highest
+              ? eventDisplayName(summary.highest, activeIndex)
+              : "—"
+          }
+          sub={
+            summary.highest
+              ? `${summary.highest.weightage?.toFixed(2)}%`
+              : ""
+          }
           tint="red"
         />
         <SummaryCard
           icon={Calendar}
           label="Next Upcoming"
           value={
-  summary.nextEvent
-    ? (
-        activeIndex === "SENSEX"
-          ? (summary.nextEvent.constituents ||
-             summary.nextEvent.company_name ||
-             summary.nextEvent.symbol)
-          : summary.nextEvent.symbol
-      )
-    : "—"
-}
+            summary.nextEvent
+              ? eventDisplayName(summary.nextEvent, activeIndex)
+              : "—"
+          }
           sub={summary.nextEvent ? daysLeftText(summary.nextEvent.days_remaining) : ""}
           tint="emerald"
         />
@@ -394,9 +376,13 @@ export default function EventRiskWidget({
       <div className="p-3">
         {upcoming.length === 0 && !loading && !err && (
           <p className="text-xs text-slate-500 text-center py-6" data-testid="event-risk-empty">
-            There are no upcoming events for {label}.
+            {pastOnly
+              ? `All joined events for ${label} are dated before today.`
+              : `There are no upcoming events for ${label}.`}
             {isAdmin
-              ? " Upload the NSE event calendar and this index’s constituents in Admin if the list should not be empty."
+              ? pastOnly
+                ? " Upload a fresh NSE event calendar in Admin."
+                : " Upload the NSE event calendar and this index’s constituents in Admin if the list should not be empty."
               : " The board fills in after the desk uploads the event calendar."}
           </p>
         )}

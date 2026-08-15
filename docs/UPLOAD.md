@@ -120,6 +120,8 @@ Typical source: NSE Corporate Filings → Event Calendar export.
 
 `GET /api/events/{NIFTY|SENSEX|BANKNIFTY}` joins calendar rows to that index’s **current** constituents (by symbol, then normalized company name). Companies not in the uploaded constituent list for that index are skipped.
 
+`days_remaining` is calendar days from **IST today** (not the server TZ). The Index Impact tile and Index Risk board only **show** rows with `days_remaining >= 0`; past dates stay in the API payload. The tile lists every upcoming type (results, board meetings, dividends, AGMs, …), not only results/board meetings. An empty list usually means the uploaded NSE calendar is already in the past — re-upload a current 1-month file.
+
 ---
 
 ### Freshness advisories (admin only)

@@ -18,8 +18,10 @@ from __future__ import annotations
 import io
 import re
 import uuid
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, date
 from typing import Any, Dict, List, Optional, Tuple
+
+from market_hours import now_ist
 
 # pandas is heavy — import only when parsing uploads, not on every API boot.
 
@@ -140,6 +142,13 @@ def classify_event_type(purpose: Any, details: Any = "") -> str:
 
 def event_priority(event_type: str) -> int:
     return _EVENT_PRIORITY_MAP.get(event_type, 99)
+
+
+def event_days_remaining(event_date: date, today: Optional[date] = None) -> int:
+    """Calendar days from IST today (not the host TZ) until the event date."""
+    if today is None:
+        today = now_ist().date()
+    return (event_date - today).days
 
 
 # =====================================================================
@@ -399,7 +408,6 @@ def parse_events(df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], List[str]]:
         )
         return [], errors
 
-    today = date.today()
     rows: List[Dict[str, Any]] = []
     for i, r in df.iterrows():
         excel_row = i + 2
@@ -469,7 +477,7 @@ def build_index_event_dataset(
     by_symbol = {c["symbol"]: c for c in constituents if c.get("symbol")}
     by_name = {c["normalized_name"]: c for c in constituents if c.get("normalized_name")}
 
-    today = date.today()
+    today = now_ist().date()
     out: List[Dict[str, Any]] = []
 
     for ev in events:
@@ -488,11 +496,12 @@ def build_index_event_dataset(
             ev_dt = datetime.fromisoformat(ev["event_date"]).date()
         except Exception:
             continue
-        days_remaining = (ev_dt - today).days
+        days_remaining = event_days_remaining(ev_dt, today)
 
         out.append({
             "id": ev["id"],
             "company_name": match["company_name"],
+            "constituents": match["company_name"],
             "symbol": match["symbol"],
             "industry": match.get("industry") or None,
             "isin": match.get("isin"),

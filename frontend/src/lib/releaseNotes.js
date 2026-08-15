@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.31",
+    date: "2026-08-15",
+    user: [
+      "Index Impact lists every upcoming constituent event (results, board meetings, dividends, AGMs). An empty tile opens on the tile instead of changing page. If the calendar is already past, the tile says so.",
+    ],
+    admin: [
+      "Event days use IST. Re-upload the NSE 1-month calendar when Index Risk is empty but last upload is old. Weight stripes: 3%+ high, 1–3% medium, under 1% low.",
+    ],
+  },
+  {
     version: "6.30",
     date: "2026-08-15",
     user: [
