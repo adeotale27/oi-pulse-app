@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
+import { INDEX_CHIP_CAP } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
 
 function fmtNum(v, dp = 2) {
