@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.24",
+    date: "2026-08-15",
+    user: [
+      "Desk is lighter after Kite login — charts should stop hanging on Cloudflare 520/524. Analytics script (PostHog) is gone.",
+    ],
+    admin: [
+      "Token save schedules the F&O dump in the background (no inline instruments + poll). /expiries does not dump Kite. Spot WS is last snapshot only. Background indices sequential + 3min cache. sc.ecombullet.com is not ours; aaisnamkeen.com 520/524 is origin timeout.",
+    ],
+  },
+  {
     version: "6.23",
     date: "2026-08-15",
     user: [

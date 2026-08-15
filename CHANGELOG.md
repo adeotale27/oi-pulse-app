@@ -1,5 +1,15 @@
 # Changelog
 
+## V6.24 — 2026-08-15
+
+Cut origin load after Kite login; drop PostHog; sequential OI warm-cache.
+
+- `sc.ecombullet.com/api/dashboard/totalusers` is **not** this app (other tab / extension / Emergent). Production Axios 520/524 on `aaisnamkeen.com/api/...` **is** this desk behind Cloudflare when origin is slow
+- Publisher token save no longer dumps Kite instruments or polls on that request — F&O dump + expiry seed run in the background
+- `GET /expiries/{index}` no longer reloads the full instrument dump; `/ws/spot` uses last OI snapshot (no per-second Kite LTP)
+- Dashboard fetches the open index first; other names one-at-a-time and skip if cached < ~3 minutes. Overnight brief biases are sequential too
+- Removed PostHog snippet + CSP hosts (session recording was extra browser/network load)
+
 ## V6.23 — 2026-08-15
 
 Fix desk crash: `INDEX_STEP is not defined`.

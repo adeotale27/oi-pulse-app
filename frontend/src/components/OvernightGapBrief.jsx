@@ -306,26 +306,25 @@ export default function OvernightGapBrief({
     if (!active || minimized || !indices?.length) return;
     setLoading(true);
     try {
-      const rows = await Promise.all(
-        indices.map(async (idx) => {
-          try {
-            const data = await fetchOIChange(idx, 15, { also: "session" });
-            const sessPrev = data?.also_windows?.session?.previous;
-            const bias = sessionBiasFromSnapshots(data?.current, sessPrev);
-            return {
-              index: idx,
-              bias,
-              minutes: data?.also_windows?.session?.minutes ?? null,
-              price: data?.current?.price ?? null,
-              atm: data?.current?.atm ?? null,
-              pcr: data?.current?.pcr ?? null,
-              expiry: data?.current?.expiry ?? null,
-            };
-          } catch {
-            return { index: idx, bias: null, minutes: null, price: null };
-          }
-        }),
-      );
+      const rows = [];
+      for (const idx of indices) {
+        try {
+          const data = await fetchOIChange(idx, 15, { also: "session" });
+          const sessPrev = data?.also_windows?.session?.previous;
+          const bias = sessionBiasFromSnapshots(data?.current, sessPrev);
+          rows.push({
+            index: idx,
+            bias,
+            minutes: data?.also_windows?.session?.minutes ?? null,
+            price: data?.current?.price ?? null,
+            atm: data?.current?.atm ?? null,
+            pcr: data?.current?.pcr ?? null,
+            expiry: data?.current?.expiry ?? null,
+          });
+        } catch {
+          rows.push({ index: idx, bias: null, minutes: null, price: null });
+        }
+      }
       setBiases(rows);
     } finally {
       setLoading(false);

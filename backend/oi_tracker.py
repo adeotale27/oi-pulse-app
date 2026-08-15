@@ -262,6 +262,7 @@ class OITracker:
         # Track which IST trading date we already purged prior-day alerts for.
         self._alerts_purged_for: Optional[str] = None
         self._fno_preload_task: Optional[asyncio.Task] = None
+        self._instruments_lock = asyncio.Lock()
 
     def ensure_index_slots(self, ids: List[str]) -> None:
         for idx in ids:
@@ -624,27 +625,12 @@ class OITracker:
         self.kite_user_id = uid or self.kite_user_id
         self.kite_maintenance = None
         self.offline_sticky = False
-        try:
-            if self.kite_service:
-                self.kite_service.reload_instruments(force=True)
-                self._instruments_loaded_at = datetime.now(timezone.utc)
-        except Exception as e:
-            logger.warning("instruments reload after set_credentials failed: %s", e)
-        self.schedule_fno_preload(force=False)
-        try:
-            await self.seed_default_expiries()
-        except Exception as e:
-            logger.warning("seed_default_expiries after set_credentials failed: %s", e)
-        # Browser-independent: keep the market-day poller running once creds are live.
+        # Never dump Kite instruments on this request — Cloudflare 520/524s if we do.
+        self.schedule_fno_preload(force=True)
         try:
             await self.start()
         except Exception as e:
             logger.warning("tracker.start after set_credentials failed: %s", e)
-        if self.oi_session_open():
-            try:
-                asyncio.create_task(self._poll_once())
-            except Exception:
-                pass
 
     async def set_mode(self, mode: str):
         # Supported modes: 'kite' (live) and 'offline' (no live polling).
@@ -661,11 +647,6 @@ class OITracker:
                 await self.start()
             except Exception as e:
                 logger.warning("tracker.start after set_mode(kite) failed: %s", e)
-            if self.oi_session_open():
-                try:
-                    asyncio.create_task(self._poll_once())
-                except Exception:
-                    pass
 
     def _get_service(self):
         # Only return Kite service when in LIVE mode. Do not return a mock/demo
@@ -730,6 +711,10 @@ class OITracker:
             n = await self.preload_fno_dump(force=force)
             if n:
                 logger.info("F&O underlyings cache ready (%s names)", n)
+            try:
+                await self.seed_default_expiries(force_roll=True)
+            except Exception as e:
+                logger.warning("seed after F&O preload failed: %s", e)
         except Exception as e:
             logger.warning("F&O preload failed: %s", e)
 
@@ -761,29 +746,28 @@ class OITracker:
         """Reload Kite instruments at most once per IST trading day (expiry roll)."""
         if self.mode != "kite" or not self.kite_service:
             return
-        now = datetime.now(timezone.utc)
-        loaded = self._instruments_loaded_at
-        # Reload if never loaded today (IST calendar day).
-        ist_today = now_ist().date()
-        need = loaded is None
-        if loaded is not None:
+        async with self._instruments_lock:
+            now = datetime.now(timezone.utc)
+            loaded = self._instruments_loaded_at
+            ist_today = now_ist().date()
+            need = loaded is None
+            if loaded is not None:
+                try:
+                    loaded_ist = loaded.astimezone(IST).date() if loaded.tzinfo else loaded.date()
+                    need = loaded_ist < ist_today
+                except Exception:
+                    need = True
+            if not need:
+                await self.seed_default_expiries(force_roll=False)
+                return
             try:
-                loaded_ist = loaded.astimezone(IST).date() if loaded.tzinfo else loaded.date()
-                need = loaded_ist < ist_today
-            except Exception:
-                need = True
-        if not need:
-            # Still roll expiries that went past.
-            await self.seed_default_expiries(force_roll=False)
-            return
-        try:
-            self.kite_service.reload_instruments(force=True)
-            self._instruments_loaded_at = now
-            await self.seed_default_expiries(force_roll=True)
-            await self.persist_fno_underlyings()
-            logger.info("Reloaded Kite instruments + rolled default expiries for %s", ist_today)
-        except Exception as e:
-            logger.warning("ensure_instruments_fresh failed: %s", e)
+                self.kite_service.reload_instruments(force=True)
+                self._instruments_loaded_at = now
+                await self.seed_default_expiries(force_roll=True)
+                await self.persist_fno_underlyings()
+                logger.info("Reloaded Kite instruments + rolled default expiries for %s", ist_today)
+            except Exception as e:
+                logger.warning("ensure_instruments_fresh failed: %s", e)
 
     async def start(self):
         if self.running and self._task is not None and not self._task.done():

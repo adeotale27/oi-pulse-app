@@ -1,8 +1,8 @@
 # OI Pulse — About the Project
 
-OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V6.20**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
+OI Pulse is a live NSE Open Interest dashboard for **NIFTY**, **SENSEX**, and **BANKNIFTY** (**V6.24**). It polls Zerodha Kite Connect, stores strike-level OI snapshots in MongoDB, and surfaces change charts, alerts, sell candidates, straddles, and session replay.
 
-Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Optional desk LLM: **[AI.md](./AI.md)**. Click the logo or **V6.20** in the app for the same About panel.
+Product story (what / why / edge / config): **[README.md](../README.md)**. Versioning: **[VERSIONING.md](./VERSIONING.md)**. Optional desk LLM: **[AI.md](./AI.md)**. Click the logo or **V6.24** in the app for the same About panel.
 
 Stack: **React (CRA/craco) + FastAPI + Motor/MongoDB + Kite Connect**.
 
@@ -77,6 +77,9 @@ Spot and straddle WS endpoints (see `frontend/src/lib/spotWs.js`, `straddleWs.js
 | **MongoDB** | Snapshots, alerts, sessions, credentials vault, settings |
 | **Telegram Bot API** | Optional alert / huge-shift / digest delivery (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) |
 | **yfinance** (optional paths) | Auxiliary market data where configured |
+| **Google Fonts** | Inter in `index.html` (only browser third-party on the desk) |
+
+The browser talks only to **this origin** (`/api`, `/ws`). Failed calls to `https://aaisnamkeen.com/api/...` **are this app** on the production host (Cloudflare 520/524 = origin too slow or crashed). `sc.ecombullet.com` is **not** in this repo — another tab, extension, or Emergent leftover.
 
 No synthetic OI backfill in production Fresh Pull — only real Kite ticks (or empty DB offline).
 

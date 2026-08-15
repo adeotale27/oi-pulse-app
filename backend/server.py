@@ -1210,11 +1210,6 @@ async def get_expiries(index_name: str):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
-    # Best-effort: roll past selections + refresh instruments once/day.
-    try:
-        await tracker.ensure_instruments_fresh()
-    except Exception:
-        pass
     all_dates = tracker.list_expiries(idx)
 
     # Cap to the first 8 nearest unexpired (Kite instrument list can span
@@ -2413,11 +2408,7 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
 
 @api_router.websocket("/ws/spot")
 async def ws_spot(websocket: WebSocket):
-    """Live LTP for every enabled index, in that name's session hours.
-
-    Uses Kite quote (nearest FUT for MCX) — never a full OI snapshot, and never
-    copies NIFTY's print onto GOLD.
-    """
+    """Push last-known LTP from the OI poller. Does not call Kite (avoids 520s)."""
     await websocket.accept()
     try:
         while True:
@@ -2428,41 +2419,22 @@ async def ws_spot(websocket: WebSocket):
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "tickers": [],
             }
-            svc = tracker._get_service() if tracker else None
             for idx in enabled:
-                if idx not in INDEX_CONFIG:
-                    continue
-                tick = None
-                in_sess = index_in_session(idx, cfg=INDEX_CONFIG.get(idx))
-                try:
-                    if svc and in_sess:
-                        tick = await asyncio.to_thread(svc.quote_ltp_safe, idx)
-                except Exception:
-                    tick = None
-                if not tick:
-                    snap = tracker.last_snapshot.get(idx) if tracker else None
-                    if snap and snap.get("price"):
-                        tick = {
-                            "index": idx,
-                            "price": round(float(snap.get("price") or 0.0), 2),
-                            "atm": int(snap.get("atm") or 0),
-                            "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                            "mode": snap.get("mode") or "snapshot",
-                        }
-                if not tick:
+                snap = tracker.last_snapshot.get(idx) if tracker else None
+                if not snap or not snap.get("price"):
                     continue
                 payload["tickers"].append({
                     "index": idx,
-                    "price": round(float(tick.get("price") or 0.0), 2),
-                    "atm": int(tick.get("atm") or 0),
-                    "timestamp": tick.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                    "mode": tick.get("mode") or ("kite" if in_sess else "snapshot"),
+                    "price": round(float(snap.get("price") or 0.0), 2),
+                    "atm": int(snap.get("atm") or 0),
+                    "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                    "mode": snap.get("mode") or "snapshot",
                 })
             if payload["tickers"]:
                 await websocket.send_json(payload)
             elif not live_any:
                 await websocket.send_json({"type": "status", "status": "market_closed"})
-            await asyncio.sleep(1 if live_any else 5)
+            await asyncio.sleep(2 if live_any else 8)
     except WebSocketDisconnect:
         return
 
@@ -5384,7 +5356,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "form-action 'self'; "
             "object-src 'none'; "
             "frame-ancestors 'none'; "
-            "script-src 'self' 'unsafe-inline' https://*.i.posthog.com https://*.posthog.com; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
             "img-src 'self' data: blob: https:; "

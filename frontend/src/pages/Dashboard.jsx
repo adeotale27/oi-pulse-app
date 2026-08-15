@@ -835,10 +835,18 @@ export default function Dashboard() {
         setOiLoading(false);
       }
 
+      // Background tabs: one at a time, skip if we painted them recently.
+      // Parallel BANKNIFTY+SENSEX+NIFTY /expiries + /oi/change stampeded Cloudflare (520/524).
+      const STALE_MS = 180_000;
       const rest = indices.filter((idx) => idx !== active);
-      await Promise.all(rest.map((idx) => ensureExpiryForIndex(idx)));
-      if (gen !== oiReqGenRef.current) return;
-      await Promise.all(rest.map((idx) => fetchOne(idx)));
+      for (const idx of rest) {
+        if (gen !== oiReqGenRef.current) return;
+        const cached = oiCacheRef.current[idx];
+        if (cached?.at && Date.now() - cached.at < STALE_MS) continue;
+        await ensureExpiryForIndex(idx);
+        if (gen !== oiReqGenRef.current) return;
+        await fetchOne(idx);
+      }
     } catch (e) {
       if (gen !== oiReqGenRef.current) return;
       console.error("loadOI failed", e);

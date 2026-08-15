@@ -5,6 +5,8 @@ Daily / after-token F&O dump. The live tracker runs this automatically:
   • on tracker start
   • first OI poll of the IST day (`ensure_instruments_fresh`)
 
+`set_credentials` only schedules this — it does not wait for the dump (keeps Cloudflare from 520/524).
+
 This CLI is optional (ops / debug):
 
     cd backend && python preload_fno.py
