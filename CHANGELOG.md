@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.19 — 2026-08-15
+
+Extra indices fit the existing phone and desktop chrome. Checklist requires phone in the same PR.
+
+- Phone index row stays a 3-slot grid. Four or more names (Gold, Crude, …) use a dropdown in those slots plus the active quote chip — header and sidebar width/height unchanged
+- Header still slides; sidebar still drops down after three chips (`INDEX_CHIP_CAP`)
+- Live ticker on the phone includes every enabled name. Index management stays the same dialog size (scroll inside)
+- DEVELOPMENT.md: phone + do not grow header/sidebar, for every new index and every new desk UI
+
 ## V6.18 — 2026-08-15
 
 Index management works on the phone.

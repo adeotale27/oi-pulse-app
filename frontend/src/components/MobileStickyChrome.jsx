@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 
-import { DESK_IDS, INDEX_SHORT, INDEX_DOT } from "@/lib/universe";
+import { DESK_IDS, INDEX_SHORT, INDEX_DOT, usesIndexOverflow } from "@/lib/universe";
 
 /**
  * Mobile-only sticky context bar.
@@ -115,6 +115,53 @@ export default function MobileStickyChrome({
   if (canMove) tipParts.push("Alt+←/→ to nudge");
   tipParts.push("click to open");
   const tabTitle = tipParts.join(" · ");
+  const many = usesIndexOverflow(list);
+
+  const chip = (idx) => {
+    const active = idx === activeIndex;
+    const q = indexQuotes?.[idx] || {};
+    const raw = q.price ?? (active ? (spotPrices?.[idx] ?? spotPrice) : spotPrices?.[idx]);
+    const spotN = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
+    const spotTxt = spotN != null
+      ? spotN.toLocaleString("en-IN", { maximumFractionDigits: 1, minimumFractionDigits: 0 })
+      : "—";
+    const pct = q.changePct != null && Number.isFinite(Number(q.changePct))
+      ? Number(q.changePct)
+      : null;
+    const pts = q.changePts != null && Number.isFinite(Number(q.changePts))
+      ? Number(q.changePts)
+      : null;
+    const up = (pct ?? pts ?? 0) > 0;
+    const down = (pct ?? pts ?? 0) < 0;
+    const moveCls = up ? "text-emerald-700 dark:text-emerald-300" : down ? "text-rose-700 dark:text-rose-300" : "text-slate-500";
+    return (
+      <button
+        key={idx}
+        type="button"
+        onClick={() => onSelectIndex?.(idx)}
+        data-testid={`mobile-index-${idx}`}
+        className={`min-w-0 rounded-xl border px-1.5 py-1.5 text-left transition-colors ${
+          active
+            ? "border-emerald-400 bg-emerald-50 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40"
+            : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
+        }`}
+      >
+        <div className="flex items-center gap-1 min-w-0">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${INDEX_DOT[idx] || "bg-slate-400"}`} />
+          <span className={`truncate text-[10px] font-bold ${active ? "text-emerald-900 dark:text-emerald-100" : "text-slate-700 dark:text-slate-200"}`}>
+            {INDEX_SHORT[idx] || idx}
+          </span>
+        </div>
+        <div className={`mt-0.5 font-mono-data text-[11px] tabular-nums truncate ${active ? "text-slate-800 dark:text-slate-100" : "text-slate-600 dark:text-slate-300"}`}>
+          {spotTxt}
+        </div>
+        <div className={`font-mono-data text-[9px] tabular-nums leading-tight truncate ${moveCls}`}>
+          {pts != null ? `${pts > 0 ? "+" : ""}${pts.toFixed(Math.abs(pts) >= 100 ? 0 : 1)}` : "—"}
+          {pct != null ? ` ${pct > 0 ? "+" : ""}${pct.toFixed(2)}%` : ""}
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div
@@ -124,55 +171,31 @@ export default function MobileStickyChrome({
       <div className="px-2 py-1.5 space-y-1">
         <div className="flex items-center gap-2">
         <div
-          className="min-w-0 flex-1 grid gap-1"
-          style={{ gridTemplateColumns: `repeat(${Math.max(list.length, 1)}, minmax(0, 1fr))` }}
+          className="min-w-0 flex-1 grid grid-cols-3 gap-1"
           data-testid="mobile-index-switcher"
         >
-          {list.map((idx) => {
-            const active = idx === activeIndex;
-            const q = indexQuotes?.[idx] || {};
-            const raw = q.price ?? (active ? (spotPrices?.[idx] ?? spotPrice) : spotPrices?.[idx]);
-            const spotN = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
-            const spotTxt = spotN != null
-              ? spotN.toLocaleString("en-IN", { maximumFractionDigits: 1, minimumFractionDigits: 0 })
-              : "—";
-            const pct = q.changePct != null && Number.isFinite(Number(q.changePct))
-              ? Number(q.changePct)
-              : null;
-            const pts = q.changePts != null && Number.isFinite(Number(q.changePts))
-              ? Number(q.changePts)
-              : null;
-            const up = (pct ?? pts ?? 0) > 0;
-            const down = (pct ?? pts ?? 0) < 0;
-            const moveCls = up ? "text-emerald-700 dark:text-emerald-300" : down ? "text-rose-700 dark:text-rose-300" : "text-slate-500";
-            return (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => onSelectIndex?.(idx)}
-                data-testid={`mobile-index-${idx}`}
-                className={`min-w-0 rounded-xl border px-1.5 py-1.5 text-left transition-colors ${
-                  active
-                    ? "border-emerald-400 bg-emerald-50 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40"
-                    : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
-                }`}
-              >
-                <div className="flex items-center gap-1 min-w-0">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${INDEX_DOT[idx] || "bg-slate-400"}`} />
-                  <span className={`truncate text-[10px] font-bold ${active ? "text-emerald-900 dark:text-emerald-100" : "text-slate-700 dark:text-slate-200"}`}>
-                    {INDEX_SHORT[idx] || idx}
-                  </span>
-                </div>
-                <div className={`mt-0.5 font-mono-data text-[11px] tabular-nums truncate ${active ? "text-slate-800 dark:text-slate-100" : "text-slate-600 dark:text-slate-300"}`}>
-                  {spotTxt}
-                </div>
-                <div className={`font-mono-data text-[9px] tabular-nums leading-tight truncate ${moveCls}`}>
-                  {pts != null ? `${pts > 0 ? "+" : ""}${pts.toFixed(Math.abs(pts) >= 100 ? 0 : 1)}` : "—"}
-                  {pct != null ? ` ${pct > 0 ? "+" : ""}${pct.toFixed(2)}%` : ""}
-                </div>
-              </button>
-            );
-          })}
+          {many ? (
+            <>
+              <label className="col-span-2 min-w-0">
+                <span className="sr-only">Switch index</span>
+                <select
+                  data-testid="mobile-index-select"
+                  value={activeIndex}
+                  onChange={(e) => onSelectIndex?.(e.target.value)}
+                  className="w-full h-full min-h-0 rounded-xl border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {list.map((idx) => (
+                    <option key={idx} value={idx}>
+                      {INDEX_SHORT[idx] || idx}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {chip(activeIndex)}
+            </>
+          ) : (
+            list.map((idx) => chip(idx))
+          )}
         </div>
         {pnlSlot ? (
           <div className="shrink-0 pl-1.5 border-l border-slate-200 dark:border-slate-700" data-testid="mobile-sticky-pnl">

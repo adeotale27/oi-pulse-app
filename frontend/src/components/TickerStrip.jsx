@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
+import { INDEX_CHIP_CAP } from "@/lib/universe";
 
 function fmtNum(v, dp = 2) {
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -214,7 +215,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     });
   }, [tickers, spotPrices]);
 
-  const many = displayTickers.length > 3;
+  const many = displayTickers.length > INDEX_CHIP_CAP;
   useDragScroll(scrollerRef, many && (isHeader || isRail));
 
   if (loading && !tickers.length) {

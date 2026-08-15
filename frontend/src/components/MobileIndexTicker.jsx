@@ -25,6 +25,7 @@ export default function MobileIndexTicker({
   onSelectIndex,
   spotPrices = {},
   tickers: tickersProp = null,
+  indices = DESK_IDS,
 }) {
   const [tickersLocal, setTickersLocal] = useState([]);
   const [extras, setExtras] = useState({ vix: null, gift_nifty: null, windows: {} });
@@ -83,7 +84,7 @@ export default function MobileIndexTicker({
       pct: giftLast != null ? giftPct : null,
       onClick: () => setGiftOpen(true),
     });
-    const order = DESK_IDS;
+    const order = (Array.isArray(indices) && indices.length) ? indices : DESK_IDS;
     const byIndex = Object.fromEntries((tickers || []).map((t) => [t.index, t]));
     for (const idx of order) {
       const t = byIndex[idx];
@@ -101,7 +102,7 @@ export default function MobileIndexTicker({
       });
     }
     return out;
-  }, [extras, tickers, spotPrices, activeIndex, onSelectIndex]);
+  }, [extras, tickers, spotPrices, activeIndex, onSelectIndex, indices]);
 
   const giftSessions = extras?.windows?.gift?.sessions || GIFT_SESSION_WINDOWS;
   const loop = [...items, ...items];

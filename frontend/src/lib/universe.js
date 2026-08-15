@@ -7,6 +7,13 @@
 
 export const DESK_IDS = ["NIFTY", "SENSEX", "BANKNIFTY"];
 
+/** How many index chips fit the sidebar / phone sticky bar without growing those panes. */
+export const INDEX_CHIP_CAP = 3;
+
+export function usesIndexOverflow(ids) {
+  return (Array.isArray(ids) ? ids.length : 0) > INDEX_CHIP_CAP;
+}
+
 export const ALIASES = {
   BANK: "BANKNIFTY",
   BNF: "BANKNIFTY",

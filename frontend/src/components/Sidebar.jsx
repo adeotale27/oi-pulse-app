@@ -11,7 +11,7 @@ import {
   EXPIRY_LIST_MAX_PX,
 } from "@/lib/tabOrder";
 import StrikeAroundChips from "@/components/StrikeAroundChips";
-import { INDEX_SHORT, INDEX_STEP } from "@/lib/universe";
+import { INDEX_SHORT, INDEX_STEP, usesIndexOverflow } from "@/lib/universe";
 
 const INDEX_THEME = {
   NIFTY: {
@@ -324,7 +324,7 @@ export default function Sidebar({
 
   const step = STRIKE_STEP[activeIndex] || 50;
   const indexList = Array.isArray(indices) ? indices : [];
-  const useIndexDropdown = indexList.length > 3;
+  const useIndexDropdown = usesIndexOverflow(indexList);
 
   const fmtPull = (iso) => {
     if (!iso) return null;
