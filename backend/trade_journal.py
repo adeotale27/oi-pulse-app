@@ -13,7 +13,7 @@ from market_hours import (
     IST,
     eod_lock_time,
 )
-from universe import DESK_IDS
+from universe import DESK_IDS, match_symbol_prefix
 
 # Freeze after the last Positions auto-refresh (Index F&O close + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
@@ -166,7 +166,7 @@ def snapshot_from_positions(
         pnl_v = booked_v if (r.get("exited") or partial) else _num(r.get("pnl"))
         legs.append({
             "tradingsymbol": r.get("tradingsymbol") or r.get("display_name"),
-            "index": _heatmap_index(r),
+            "index": _leg_index_label(r),
             "side": r.get("side"),
             "strike": r.get("strike"),
             "quantity": r.get("quantity"),
@@ -187,8 +187,8 @@ def snapshot_from_positions(
         leg for leg in legs
         if leg.get("exited") or leg.get("partial") or abs(_num(leg.get("realised"))) > 1e-9
     ]
-    index_pnl = _index_pnl_from_legs(legs)
     booked_index_pnl = _index_pnl_from_legs(booked_legs, pnl_key="realised")
+    index_pnl = _index_pnl_from_legs(legs)
     full_exits = sum(1 for r in rows if r.get("exited"))
     doc = {
         "date": day,
@@ -213,15 +213,16 @@ def snapshot_from_positions(
     return doc
 
 
-def should_lock_eod(dt=None, *, live_session: bool = False) -> bool:
+def should_lock_eod(dt=None, *, live_session: bool = False, enabled_indices=None) -> bool:
     """True when the journal should freeze booked P&L for this IST clock.
 
-    Regular sessions lock at 15:45. Muhurat locks at that session's close + 5 min.
-    Unlisted live sessions lock at 20:00.
+    Regular NSE-only desks lock at 15:45. If MCX names are enabled, lock after
+    that commodity's close + 5 min so evening GOLD/CRUDE prints are not dropped.
+    Muhurat locks at that session's close + 5 min. Unlisted live sessions lock at 20:00.
     """
     dt = dt or now_ist()
     if is_trading_day(dt):
-        return dt.time() >= eod_lock_time(dt)
+        return dt.time() >= eod_lock_time(dt, enabled_indices=enabled_indices)
     if live_session:
         return dt.time() >= SPECIAL_SESSION_LOCK_IST
     return False
@@ -262,13 +263,14 @@ def apply_snapshot(
     force_lock: bool = False,
     now=None,
     live_session: bool = False,
+    enabled_indices=None,
 ) -> Optional[Dict[str, Any]]:
     """Fields to $set for P&L. None = leave stored P&L untouched (already locked / empty clobber)."""
     now = now or now_ist()
     existing = existing or {}
     if existing.get("eod_locked"):
         return None
-    lock = bool(force_lock or should_lock_eod(now, live_session=live_session))
+    lock = bool(force_lock or should_lock_eod(now, live_session=live_session, enabled_indices=enabled_indices))
     if snapshot_is_empty(snap):
         if _is_traded(existing) and lock:
             booked = existing.get("booked_pnl")
@@ -531,7 +533,7 @@ def _booked_index_pnl(d: Dict[str, Any]) -> Dict[str, float]:
         return _index_pnl_from_legs(legs, pnl_key="realised")
     ip = d.get("booked_index_pnl")
     if isinstance(ip, dict) and ip:
-        return {str(k).upper(): _num(v) for k, v in ip.items()}
+        return _fold_heatmap_pnl({str(k).upper(): _num(v) for k, v in ip.items()})
     return {}
 
 
@@ -552,12 +554,27 @@ def _num(v) -> float:
         return 0.0
 
 
+def _leg_index_label(leg: Dict[str, Any]) -> str:
+    """Keep the Kite/parsed name on the journal leg (GOLD, FINNIFTY, RELIANCE, …)."""
+    raw = str(leg.get("index") or "").strip().upper()
+    if raw and raw not in ("OTHER", "UNKNOWN"):
+        return raw
+    ts = str(leg.get("tradingsymbol") or leg.get("display_name") or "").strip()
+    prefix = match_symbol_prefix(ts)
+    if prefix:
+        return prefix
+    return raw or "OTHER"
+
+
 def _heatmap_index(leg: Dict[str, Any]) -> str:
-    """Map a position/leg onto NIFTY / SENSEX / BANKNIFTY for the year grid."""
+    """Desk ids stay on the year grid; everything else is OTHER."""
     raw = str(leg.get("index") or "").strip().upper()
     if raw in HEATMAP_INDICES:
         return raw
     ts = str(leg.get("tradingsymbol") or leg.get("display_name") or "").strip()
+    prefix = match_symbol_prefix(ts)
+    if prefix in HEATMAP_INDICES:
+        return prefix
     try:
         from fno_symbol import parse_fno_option_symbol
         parsed = parse_fno_option_symbol(ts)
@@ -571,18 +588,33 @@ def _heatmap_index(leg: Dict[str, Any]) -> str:
     for name in ("BANKNIFTY", "SENSEX", "NIFTY"):
         if compact.startswith(name):
             return name
-    return raw or "OTHER"
+    return "OTHER"
+
+
+def _fold_heatmap_pnl(ip: Dict[str, float]) -> Dict[str, float]:
+    """Desk buckets plus a single OTHER for commodities, stocks, FINNIFTY, etc."""
+    out = {k: 0.0 for k in HEATMAP_INDICES}
+    other = 0.0
+    for k, v in (ip or {}).items():
+        key = str(k).upper()
+        amt = _num(v)
+        if key in HEATMAP_INDICES:
+            out[key] = round(out[key] + amt, 2)
+        else:
+            other += amt
+    out["OTHER"] = round(other, 2)
+    return out
 
 
 def _index_pnl_from_legs(legs: List[Dict[str, Any]], *, pnl_key: str = "pnl") -> Dict[str, float]:
-    out: Dict[str, float] = {}
+    raw: Dict[str, float] = {}
     for leg in legs or []:
         idx = _heatmap_index(leg)
         val = _num(leg.get(pnl_key))
         if pnl_key == "realised" and abs(val) < 1e-9:
             val = _num(leg.get("pnl"))
-        out[idx] = round(out.get(idx, 0.0) + val, 2)
-    return out
+        raw[idx] = round(raw.get(idx, 0.0) + val, 2)
+    return _fold_heatmap_pnl(raw)
 
 
 def _is_traded(d: Dict[str, Any]) -> bool:

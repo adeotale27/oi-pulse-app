@@ -52,7 +52,7 @@ Forbidden: UI importing backend paths; Kite calls from React; duplicating `DESK_
 - Live OI poller defaults to **desk ids** (`universe.DESK_IDS`). Extra underlyings join via `index_registry` Enable.
 - MCX majors are pollable (nearest FUT + MCX hours) but **not** auto-enabled. See [ADR-003](./decisions/ADR-003-mcx-majors.md).
 - Admin settings ticks follow `INDEX_CONFIG` (desk + enabled extras).
-- Adding a new underlying: see [DEVELOPMENT.md](./DEVELOPMENT.md#add-an-underlying).
+- Adding a new underlying: see [DEVELOPMENT.md](./DEVELOPMENT.md#add-an-underlying) (hours, poll, Positions, journal Others, merge to main).
 
 ## Functions
 
@@ -93,7 +93,8 @@ Keep functions doing one job. Giant files (`Dashboard.jsx`, `server.py`, `Positi
 ## Git
 
 - Feature branches `cursor/<short-name>-<suffix>` as the cloud agent requires.
-- One concern per PR. Bump version lockstep on ship. Merge to `main` when the change is finished.
+- One concern per PR. Bump version lockstep on ship.
+- **Always merge finished work to `main`.** A merged PR is the ship. Do not leave a completed change on a feature branch.
 - Rollback: revert the version bump commit; Mongo schema must remain readable by the previous version.
 
 ## Comments

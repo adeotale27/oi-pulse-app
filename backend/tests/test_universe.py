@@ -56,3 +56,17 @@ def test_aliases_and_fno_alt():
     assert parts.index("BANKNIFTY") < parts.index("NIFTY")
     assert "CRUDEOIL" in parts
     assert "FINNIFTY" in parts
+
+
+def test_session_group_and_symbol_prefix():
+    from universe import session_group_for, match_symbol_prefix, catalog_public
+    assert session_group_for("NIFTY") == "nse"
+    assert session_group_for("GOLD") == "mcx_non_agri"
+    assert session_group_for("CRUDEOIL") == "mcx_non_agri"
+    assert session_group_for("UNKNOWNSTOCK", {"segment": "NFO-OPT"}) == "nse"
+    assert session_group_for("COTTON", {"session_group": "mcx_select_agri", "segment": "MCX-OPT"}) == "mcx_select_agri"
+    assert match_symbol_prefix("GOLD26AUG76000CE") == "GOLD"
+    assert match_symbol_prefix("FINNIFTY26AUG25000CE") == "FINNIFTY"
+    assert match_symbol_prefix("RELIANCE26AUG1400CE") is None
+    rows = {r["id"]: r for r in catalog_public()}
+    assert rows["GOLD"]["session_group"] == "mcx_non_agri"

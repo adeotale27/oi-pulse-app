@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.17",
+    date: "2026-08-15",
+    user: [
+      "Trades outside NIFTY / SENSEX / BANKNIFTY (Gold, Crude, other names) stay on Positions and show as Others on the journal year heatmap. Commodity OI, when enabled, polls in that contract’s own hours.",
+    ],
+    admin: [
+      "session_group on the catalog (nse vs MCX non-agri / select agri / agri). Journal lock follows the latest enabled close. DEVELOPMENT.md checklist: hours, poll, Positions, Others, merge to main.",
+    ],
+  },
+  {
     version: "6.16",
     date: "2026-08-15",
     user: [

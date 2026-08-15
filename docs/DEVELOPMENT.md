@@ -52,14 +52,33 @@ Frontend: `yarn build` (CRA). ESLint is present; do not mass-reformat unrelated 
 
 **Preferred:** Admin → **Index management** → search Kite → inspect capabilities → Enable. That writes `index_registry` and `enabled_indices`. The existing poller picks it up.
 
+### Checklist (required for every new index, stock, or commodity)
+
+Copy this into the PR. Do not ship with boxes unchecked.
+
+- [ ] **Session hours researched** — NSE index/stock F&O vs MCX group (non-agri 09:00–23:30 IST in US DST / 23:55 US standard; select agri 21:00; other agri 17:00). Put `session_group` on the catalog row (`nse` / `mcx_non_agri` / `mcx_select_agri` / `mcx_agri`).
+- [ ] **Poll only in those hours** — `index_in_session(id)` must skip the name outside its window. The loop stays alive if *any* enabled name is open (NIFTY must not keep polling after 15:40 just because Gold is live).
+- [ ] **Positions** — Kite `positions()` is the full book. Do not filter to NIFTY/SENSEX/BANKNIFTY. New names must appear as legs.
+- [ ] **Trade journal** — those legs snapshot into the admin journal. Non-desk P&L lands in `booked_index_pnl.OTHER`.
+- [ ] **Year heatmap Others** — Trade Journal year view always has an **Others** row (commodities, FINNIFTY, stocks, anything else).
+- [ ] Catalog lockstep: `backend/universe.py` **and** `frontend/src/lib/universe.js` (quote hint, `session_group`, `pollable`).
+- [ ] Tests: hours (DST vs standard if MCX), symbol prefix, journal OTHER, universe catalog.
+- [ ] Version lockstep per [VERSIONING.md](./VERSIONING.md).
+- [ ] **Merge the PR to `main`.** Finished work does not sit on a feature branch.
+
 Manual/code path (still valid):
 
 1. Add a row to `backend/universe.py` **and** `frontend/src/lib/universe.js` if it needs a quote hint.
 2. MCX majors (CRUDEOIL / GOLD / SILVER / NATURALGAS) are already catalogued — enable via Index management after Kite sync. Minis are separate Kite names.
-3. Tests in `test_universe.py` / `test_index_registry.py`.
+3. Tests in `test_universe.py` / `test_index_registry.py` / `test_market_hours.py` / `test_trade_journal.py`.
 4. Bump version per [VERSIONING.md](./VERSIONING.md).
+5. Open a PR and **merge to main**.
 
-Until step 3, the live desk stays NIFTY / SENSEX / BANKNIFTY. Catalog rows are documentation for the next ship.
+Until Enable, the live desk stays NIFTY / SENSEX / BANKNIFTY. Catalog rows are documentation for the next ship.
+
+## Ship / merge to main
+
+Every finished change: bump version → PR → **merge to `main`**. Do not leave work only on `cursor/…` branches. This is also in [ENGINEERING_RULES.md](./ENGINEERING_RULES.md) and [AGENTS.md](../AGENTS.md).
 
 ## Add an API
 

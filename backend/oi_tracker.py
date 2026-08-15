@@ -38,7 +38,8 @@ from market_hours import (
     default_alert_indices_for_today, is_holiday, is_trading_day,
     session_window_utc, IST,
     is_special_session_day, is_full_holiday, mark_quote_session_live,
-    is_oi_session_open,
+    index_in_session,
+    any_index_in_session,
 )
 import notifier
 class JsonLogFormatter(logging.Formatter):
@@ -446,7 +447,10 @@ class OITracker:
         return False
 
     def oi_session_open(self) -> bool:
-        return FORCE_ALWAYS_POLL or is_oi_session_open(mcx=self.mcx_on_desk())
+        if FORCE_ALWAYS_POLL:
+            return True
+        enabled = self.settings.get("enabled_indices") or []
+        return any_index_in_session(enabled, configs=INDEX_CONFIG)
 
     def request_background_refresh(self, index_name: str, expiry: Optional[str] = None) -> None:
         """Kick a single-flight background Kite refresh without blocking callers.
@@ -460,6 +464,8 @@ class OITracker:
         if self.mode != "kite" or not self.kite_service:
             return
         if not (self.oi_session_open()):
+            return
+        if not index_in_session(idx, cfg=INDEX_CONFIG.get(idx)):
             return
         existing = self._refresh_tasks.get(idx)
         if existing and not existing.done():
@@ -1005,6 +1011,8 @@ class OITracker:
 
         svc = self._get_service()
         enabled = [i for i in self.settings.get("enabled_indices", INDICES) if i in INDEX_CONFIG]
+        if not FORCE_ALWAYS_POLL:
+            enabled = [i for i in enabled if index_in_session(i, cfg=INDEX_CONFIG.get(i))]
         if not enabled:
             self.last_updated_at = datetime.now(timezone.utc).isoformat()
             return

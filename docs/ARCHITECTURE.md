@@ -32,12 +32,12 @@ The desk UI is **index-agnostic** given `enabled_indices` from `/config`. Strike
 | `oi_tracker.py` | Async poll, settings, snapshot write, alerts |
 | `oi_service.py` | Instruments dump → chain quotes → snapshot |
 | `universe.py` | Catalog of underlyings; `desk_index_config()` feeds `INDEX_CONFIG` |
-| `market_hours.py` | NSE session + holidays + Muhurat |
+| `market_hours.py` | NSE + per-`session_group` MCX hours; Muhurat; journal EOD lock |
 | `kite_positions.py` / `user_kite.py` | Publisher vs guest book |
 | `trade_journal.py` | Admin journal snapshots |
 | `notifier.py` | Telegram |
 
-`INDEX_CONFIG` is **derived**, not a second hardcoded map. Adding Gold to the live board is a universe + hours + FUT-spot change, not a new copy of NIFTY.
+`INDEX_CONFIG` is **derived**, not a second hardcoded map. Adding Gold is a universe + `session_group` hours + FUT-spot change, not a new copy of NIFTY.
 
 ## Database
 
