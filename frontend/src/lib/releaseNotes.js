@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.19",
+    date: "2026-08-15",
+    user: [
+      "If Gold or extra names are on the desk, the phone index row stays the same size: pick the name from the dropdown in that row. Header and sidebar do not get bigger.",
+    ],
+    admin: [
+      "INDEX_CHIP_CAP = 3. Phone sticky switcher dropdown when more than three. Checklist: phone in the same PR; do not grow header/sidebar. Index management dialog keeps its original size.",
+    ],
+  },
+  {
     version: "6.18",
     date: "2026-08-15",
     user: [

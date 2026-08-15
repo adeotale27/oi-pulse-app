@@ -61,6 +61,7 @@ Copy this into the PR. Do not ship with boxes unchecked.
 - [ ] **Positions** — Kite `positions()` is the full book. Do not filter to NIFTY/SENSEX/BANKNIFTY. New names must appear as legs.
 - [ ] **Trade journal** — those legs snapshot into the admin journal. Non-desk P&L lands in `booked_index_pnl.OTHER`.
 - [ ] **Year heatmap Others** — Trade Journal year view always has an **Others** row (commodities, FINNIFTY, stocks, anything else).
+- [ ] **Phone + existing chrome** — ship the same control on phone. Fit extra names into the **existing** header / sidebar / sticky index row (`INDEX_CHIP_CAP` = 3: dropdown or slide, do not grow those panes). The phone index picker must be able to select the new name so its OI loads. Do not invent a larger window.
 - [ ] Catalog lockstep: `backend/universe.py` **and** `frontend/src/lib/universe.js` (quote hint, `session_group`, `pollable`).
 - [ ] Tests: hours (DST vs standard if MCX), symbol prefix, journal OTHER, universe catalog.
 - [ ] Version lockstep per [VERSIONING.md](./VERSIONING.md).
@@ -104,6 +105,8 @@ Every finished change: bump version → PR → **merge to `main`**. Do not leave
 
 - `frontend/src/components/Name.jsx`. Data via props or `api`.
 - Index lists: `DESK_IDS` / `normalizeEnabledIndices`, never a new `["NIFTY",…]` literal.
+- **Phone in the same PR.** Mirror the control on the phone chrome (sticky bar, Settings gear, bottom nav). Do not leave it in a desktop-only dropdown.
+- **Do not grow header / sidebar / sticky panes.** Extra items use the existing slot: `INDEX_CHIP_CAP` (3) then dropdown or horizontal slide. Do not invent a larger window.
 
 ## External integration
 

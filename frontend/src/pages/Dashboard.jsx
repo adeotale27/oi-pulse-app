@@ -1801,6 +1801,7 @@ export default function Dashboard() {
       onSelectIndex={setActiveIndex}
       spotPrices={liveSpotPrices}
       tickers={Object.values(tickerQuotes)}
+      indices={enabledIndices.length ? enabledIndices : INDICES}
     />
   ) : null;
 

@@ -20,4 +20,5 @@
 18. Do not rewrite `Dashboard.jsx` / `PositionsPanel.jsx` / `server.py` “for cleanliness”.
 19. Decide from the repo when the behavior is already specified (version bump, universe, auth headers).
 21. After a finished change: bump version, open a PR, **merge to `main`**. Do not leave work only on a feature branch.
-22. New index / stock / commodity: follow the checklist in [DEVELOPMENT.md](./DEVELOPMENT.md#add-an-underlying) — `session_group` hours, poll only in those hours, Positions shows the Kite leg, journal + heatmap **Others**, tests, merge to main.
+22. New index / stock / commodity: follow the checklist in [DEVELOPMENT.md](./DEVELOPMENT.md#add-an-underlying) — `session_group` hours, poll only in those hours, Positions shows the Kite leg, journal + heatmap **Others**, phone chrome, tests, merge to main.
+23. New desk UI: phone in the same PR. Do not grow header/sidebar/sticky chrome — extra indices use `INDEX_CHIP_CAP` (dropdown / slide). Follow [DEVELOPMENT.md](./DEVELOPMENT.md#add-a-ui-component).
