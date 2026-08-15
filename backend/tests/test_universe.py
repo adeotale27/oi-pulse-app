@@ -11,7 +11,10 @@ from universe import (
 )
 
 
-def test_desk_unchanged():
+def test_heatmap_ids_include_mcx_majors():
+    from universe import HEATMAP_IDS
+    assert HEATMAP_IDS[:3] == DESK_IDS
+    assert set(MCX_MAJOR_IDS).issubset(set(HEATMAP_IDS))
     assert DESK_IDS == ("NIFTY", "SENSEX", "BANKNIFTY")
     cfg = desk_index_config()
     assert set(cfg) == set(DESK_IDS)

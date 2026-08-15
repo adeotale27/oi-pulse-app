@@ -25,7 +25,7 @@ assert.equal(out.by_index.NIFTY[7], 21000);
 assert.equal(heatmapIndexFromLeg({ tradingsymbol: "SENSEX26AUG76800CE" }), "SENSEX");
 assert.equal(heatmapIndexFromLeg({ tradingsymbol: "BANKNIFTY26AUG52000PE" }), "BANKNIFTY");
 assert.equal(heatmapIndexFromLeg({ index: "NIFTY", tradingsymbol: "BANKNIFTY26AUG52000PE" }), "NIFTY");
-assert.equal(heatmapIndexFromLeg({ tradingsymbol: "GOLD26AUG76000CE" }), "OTHER");
+assert.equal(heatmapIndexFromLeg({ tradingsymbol: "GOLD26AUG76000CE" }), "GOLD");
 assert.equal(heatmapIndexFromLeg({ tradingsymbol: "FINNIFTY26AUG25000CE" }), "OTHER");
 assert.equal(heatmapIndexFromLeg({ tradingsymbol: "RELIANCE26AUG1400CE" }), "OTHER");
 

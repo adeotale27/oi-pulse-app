@@ -2,6 +2,7 @@ import { useMemo, useState, useRef } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 
 import { DESK_IDS, INDEX_SHORT, INDEX_DOT, usesIndexOverflow } from "@/lib/universe";
+import { pickIndexLtp } from "@/lib/indexQuotes";
 
 /**
  * Mobile-only sticky context bar.
@@ -120,7 +121,7 @@ export default function MobileStickyChrome({
   const chip = (idx) => {
     const active = idx === activeIndex;
     const q = indexQuotes?.[idx] || {};
-    const raw = q.price ?? (active ? (spotPrices?.[idx] ?? spotPrice) : spotPrices?.[idx]);
+    const raw = q.price ?? pickIndexLtp({ idx, live: spotPrices?.[idx] });
     const spotN = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
     const spotTxt = spotN != null
       ? spotN.toLocaleString("en-IN", { maximumFractionDigits: 1, minimumFractionDigits: 0 })

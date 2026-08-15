@@ -204,8 +204,8 @@ function PayoffSvg({
             <stop offset="100%" stopColor="#FCA5A5" stopOpacity="0.12" />
           </linearGradient>
           <linearGradient id={`${gid}-pnlFill`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#059669" stopOpacity="0.14" />
-            <stop offset="100%" stopColor="#059669" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#2563EB" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="#059669" stopOpacity="0.04" />
           </linearGradient>
         </defs>
 
@@ -236,14 +236,14 @@ function PayoffSvg({
         {showTgt ? (
           <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#059669" strokeWidth="1.5" strokeDasharray="4 3" />
         ) : null}
-        <path d={pathOf(expiryPnl)} fill="none" stroke="#64748B" strokeWidth="2.2" />
-        <path d={pathOf(targetPnl)} fill="none" stroke="#059669" strokeWidth="2.5" />
+        <path d={pathOf(expiryPnl)} fill="none" stroke="#059669" strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={pathOf(targetPnl)} fill="none" stroke="#2563EB" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
 
         {active && (
           <g data-testid="payoff-cursor">
             <line x1={active.x} x2={active.x} y1={pad.t} y2={height - pad.b} stroke="#475569" strokeWidth="1.15" strokeDasharray="3 3" opacity="0.7" />
-            <circle cx={active.x} cy={yScale(active.scenario ?? 0)} r="4.5" fill="#059669" stroke="#fff" strokeWidth="1.5" />
-            <circle cx={active.x} cy={yScale(active.expiry ?? 0)} r="3.5" fill="#64748B" stroke="#fff" strokeWidth="1.25" />
+            <circle cx={active.x} cy={yScale(active.scenario ?? 0)} r="4.5" fill="#2563EB" stroke="#fff" strokeWidth="1.5" />
+            <circle cx={active.x} cy={yScale(active.expiry ?? 0)} r="3.5" fill="#059669" stroke="#fff" strokeWidth="1.25" />
           </g>
         )}
 
@@ -274,12 +274,12 @@ function PayoffSvg({
           </div>
           <div className="mt-1 space-y-0.5 font-mono-data text-[12px]">
             <div className="flex justify-between gap-2">
-              <span className="text-slate-500">Expiry</span>
+              <span className="text-emerald-700">Expiry</span>
               <span className={`font-semibold ${active.expiry >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(active.expiry, 0)}</span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-emerald-700">Now / date</span>
-              <span className={`font-semibold ${active.scenario >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(active.scenario, 0)}</span>
+              <span className="text-blue-700">Now / date</span>
+              <span className={`font-semibold ${active.scenario >= 0 ? "text-blue-700" : "text-rose-700"}`}>{fmt(active.scenario, 0)}</span>
             </div>
           </div>
           {typeof onPickSpot === "function" ? (
@@ -820,8 +820,8 @@ export default function PositionsAnalyzeModal({
       {chartMode === "chart" ? (
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
           <div className="flex flex-wrap items-center gap-3 px-3 py-1.5 text-[10px] text-slate-500 border-b border-slate-100">
-            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-emerald-600 inline-block" /> Now / date</span>
-            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-slate-500 inline-block" /> Expiry</span>
+            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-[#2563EB] inline-block" /> Now / date</span>
+            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-[#059669] inline-block" /> Expiry</span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-[#DC2626] inline-block rounded-[2px]" /> Call OI</span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-[#16A34A] inline-block rounded-[2px]" /> Put OI</span>
           </div>
@@ -927,14 +927,14 @@ export default function PositionsAnalyzeModal({
         <div className="bg-[#f7f8fa] w-full h-full min-h-0 overflow-hidden flex flex-col">
           <header className="shrink-0 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)]">
             <div className="flex items-center gap-2 px-2 sm:px-3 h-11">
-              <button type="button" className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-slate-100" onClick={onClose} data-testid="analyze-close" aria-label="Close">
-                <X className="w-5 h-5" />
-              </button>
-              <div className="flex-1 text-center text-[15px] font-semibold text-slate-900">Analyze</div>
+              <div className="flex-1 text-left text-[15px] font-semibold text-slate-900 pl-1">Analyze</div>
               <Button size="sm" variant="ghost" className="h-8 text-[11px]" onClick={resetScenario} data-testid="analyze-reset-scenario">
                 <RotateCcw className="w-3.5 h-3.5 mr-1" />
                 Reset
               </Button>
+              <button type="button" className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-slate-100" onClick={onClose} data-testid="analyze-close" aria-label="Close">
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div className="px-3 pb-2 flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1.5 min-w-0">

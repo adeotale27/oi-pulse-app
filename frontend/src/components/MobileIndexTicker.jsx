@@ -3,6 +3,7 @@ import GiftSessionsModal from "@/components/GiftSessionsModal";
 import { api, fetchExtras, subscribeExtras, unsubscribeExtras } from "@/lib/api";
 import { GIFT_SESSION_WINDOWS } from "@/lib/marketTimes";
 import { DESK_IDS, INDEX_SHORT } from "@/lib/universe";
+import { pickIndexLtp } from "@/lib/indexQuotes";
 
 function fmt(v, dp = 2) {
   if (v == null || !Number.isFinite(Number(v))) return "—";
@@ -88,8 +89,7 @@ export default function MobileIndexTicker({
     const byIndex = Object.fromEntries((tickers || []).map((t) => [t.index, t]));
     for (const idx of order) {
       const t = byIndex[idx];
-      const live = spotPrices[idx];
-      const ltp = live != null && Number(live) !== 0 ? Number(live) : Number(t?.ltp);
+      const ltp = pickIndexLtp({ idx, live: spotPrices[idx], tickerLtp: t?.ltp });
       const prev = Number(t?.prev_close) || 0;
       const chgPct = ltp && prev ? ((ltp - prev) / prev) * 100 : null;
       out.push({

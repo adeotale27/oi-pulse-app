@@ -89,13 +89,13 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
     }
   };
 
-  const enable = async () => {
-    if (!inspect?.id) return;
+  const enable = async (name) => {
+    if (!name) return;
     setBusy(true);
     try {
-      await api.post(`/admin/indices/${encodeURIComponent(inspect.id)}/enable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
-      toast.success(`${inspect.id} enabled — OI poll will include it`);
-      setInspect((p) => (p ? { ...p, enabled: true } : p));
+      await api.post(`/admin/indices/${encodeURIComponent(name)}/enable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
+      toast.success(`${name} enabled — OI poll will include it`);
+      setInspect((p) => (p && p.id === name ? { ...p, enabled: true } : p));
       await loadList();
       onChanged?.();
     } catch (e) {
@@ -131,7 +131,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
             Index management
           </DialogTitle>
           <DialogDescription className="text-[11px] text-slate-500">
-            Discover Kite F&amp;O names, check CE/PE OI, then enable. NIFTY / SENSEX / BANKNIFTY stay as they are.
+            Discover Kite F&amp;O names, then Enable or Disable. NIFTY / SENSEX / BANKNIFTY stay on the desk.
             MCX majors: CRUDEOIL, GOLD, SILVER, NATURALGAS (not the minis). ATM from nearest FUT.
             {syncedAt ? ` Dump ${new Date(syncedAt).toLocaleString("en-IN")}` : ""}
           </DialogDescription>
@@ -157,7 +157,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
           </Button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-3">
+        <div className="flex-1 min-h-0 overflow-auto oi-hover-scroll px-4 py-3 space-y-3">
           <div>
             <div className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mb-1">On the desk</div>
             <div className="space-y-1">
@@ -177,8 +177,8 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
                       Disable
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" className="h-7 text-[11px] text-emerald-700" disabled={busy} onClick={() => openInspect(idx.id)}>
-                      Inspect
+                    <Button size="sm" variant="ghost" className="h-7 text-[11px] text-emerald-700" disabled={busy} onClick={() => enable(idx.id)} data-testid={`index-enable-${idx.id}`}>
+                      Enable
                     </Button>
                   )}
                 </div>
@@ -195,14 +195,14 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
             </div>
             {results.length === 0 ? (
               <div className="space-y-2">
-                <p className="text-[12px] text-slate-400">Search Kite names, or inspect an MCX major:</p>
+                <p className="text-[12px] text-slate-400">Search Kite names, or Enable an MCX major:</p>
                 <div className="flex flex-wrap gap-1.5">
                   {MCX_MAJORS.map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:border-emerald-400 hover:text-emerald-800"
-                      onClick={() => openInspect(m.id)}
+                      onClick={() => enable(m.id)}
                       data-testid={`mcx-major-${m.id}`}
                     >
                       {m.label}
@@ -214,21 +214,28 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
             ) : (
               <div className="space-y-1">
                 {results.map((r) => (
-                  <button
+                  <div
                     key={r.id}
-                    type="button"
-                    className="w-full text-left rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50"
-                    onClick={() => openInspect(r.id)}
-                    data-testid={`index-hit-${r.id}`}
+                    className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5"
                   >
-                    <div className="flex justify-between gap-2">
-                      <span className="text-[13px] font-semibold">{r.id}</span>
-                      <span className="text-[10px] text-slate-400">{r.exchange}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-500">
-                      {r.capabilities?.optionOI ? "OI ✓" : "OI ✕"} · {r.capabilities?.futures ? "FUT ✓" : "FUT ✕"} · {r.expiry_count || 0} expiries
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      className="flex-1 text-left min-w-0"
+                      onClick={() => openInspect(r.id)}
+                      data-testid={`index-hit-${r.id}`}
+                    >
+                      <div className="flex justify-between gap-2">
+                        <span className="text-[13px] font-semibold">{r.id}</span>
+                        <span className="text-[10px] text-slate-400">{r.exchange}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {r.capabilities?.optionOI ? "OI ✓" : "OI ✕"} · {r.capabilities?.futures ? "FUT ✓" : "FUT ✕"} · {r.expiry_count || 0} expiries
+                      </div>
+                    </button>
+                    <Button size="sm" variant="ghost" className="h-7 text-[11px] text-emerald-700 shrink-0" disabled={busy} onClick={() => enable(r.id)}>
+                      Enable
+                    </Button>
+                  </div>
                 ))}
               </div>
             )}
@@ -248,7 +255,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
               {inspect.notes ? <p className="mt-2 text-[11px] text-rose-700">{inspect.notes}</p> : null}
               <div className="mt-3 flex gap-2">
                 {inspect.can_enable_oi && !inspect.enabled ? (
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" disabled={busy} onClick={enable} data-testid="index-enable">
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" disabled={busy} onClick={() => enable(inspect.id)} data-testid="index-enable">
                     Enable index
                   </Button>
                 ) : null}

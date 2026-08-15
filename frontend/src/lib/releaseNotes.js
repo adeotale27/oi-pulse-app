@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.21",
+    date: "2026-08-15",
+    user: [
+      "Gold (and other extras) keep their own price when you select them. Index management is Enable or Disable — one tap. Analyze close is on the right; payoff lines are blue (now) and green (expiry). Header tickers slide without a scrollbar.",
+    ],
+    admin: [
+      "Spot WS uses per-index hours + Kite LTP (nearest FUT for MCX). Daily preload_fno.py fills kite_underlyings. Journal heatmap names MCX majors; Others is FINNIFTY/stocks. Desk AI commodity news follows the selected index.",
+    ],
+  },
+  {
     version: "6.20",
     date: "2026-08-15",
     user: [

@@ -2,19 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
-import { INDEX_CHIP_CAP } from "@/lib/universe";
+import { pickIndexLtp } from "@/lib/indexQuotes";
 
 function fmtNum(v, dp = 2) {
   if (v == null || Number.isNaN(Number(v))) return "—";
   return Number(v).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
-}
-
-function pickLtp(live, rest) {
-  const liveN = live == null ? null : Number(live);
-  if (liveN != null && Number.isFinite(liveN) && liveN !== 0) return liveN;
-  const restN = rest == null ? null : Number(rest);
-  if (restN != null && Number.isFinite(restN) && restN !== 0) return restN;
-  return null;
 }
 
 function fmtLtp(v, dp = 2) {
@@ -207,7 +199,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
 
   const displayTickers = useMemo(() => {
     return tickers.map((t) => {
-      const ltp = pickLtp(spotPrices[t.index], t.ltp);
+      const ltp = pickIndexLtp({ idx: t.index, live: spotPrices[t.index], tickerLtp: t.ltp });
       const prevClose = t.prev_close || (t.ltp && Number(t.ltp) !== 0 ? t.ltp : 0) || 0;
       const change = ltp != null && prevClose ? ltp - prevClose : 0;
       const change_pct = prevClose ? (change / prevClose) * 100 : 0;
@@ -229,7 +221,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     return (
       <div
         ref={scrollerRef}
-        className={`flex flex-nowrap items-center gap-0.5 min-w-0 overflow-x-auto overscroll-x-contain ${many ? "snap-x snap-mandatory [scrollbar-width:thin]" : ""}`}
+        className={`flex flex-nowrap items-center gap-0.5 min-w-0 overflow-x-auto overscroll-x-contain oi-hover-scroll ${many ? "snap-x snap-mandatory" : ""}`}
         data-testid="ticker-strip"
       >
         {displayTickers.map((t) => {
@@ -283,7 +275,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
 
   // Header: sidebar-matching brand tiles (sky / amber / emerald).
   const stripClass = isHeader
-    ? `flex flex-nowrap items-stretch gap-1.5 min-w-0 w-full overflow-x-auto overscroll-x-contain ${many ? "snap-x snap-mandatory [scrollbar-width:thin] cursor-grab" : "max-w-full"}`
+    ? `flex flex-nowrap items-stretch gap-1.5 min-w-0 w-full overflow-x-auto overscroll-x-contain oi-hover-scroll ${many ? "snap-x snap-mandatory cursor-grab" : "max-w-full"}`
     : dense
       ? "grid grid-cols-3 gap-1.5"
       : "grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-stretch";

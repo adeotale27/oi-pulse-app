@@ -28,10 +28,10 @@ CACHE_S = 45.0
 _packs: Dict[str, Dict[str, Any]] = {}
 
 COMMODITY_NEWS_Q = {
-    "GOLD": "Gold+OR+MCX+Gold+OR+bullion",
-    "SILVER": "Silver+OR+MCX+Silver",
-    "CRUDEOIL": "crude+oil+OR+WTI+OR+MCX+crude",
-    "NATURALGAS": "natural+gas+OR+MCX+gas",
+    "GOLD": "Gold+OR+bullion+OR+%22MCX+Gold%22+OR+COMEX+gold+OR+jewellery",
+    "SILVER": "Silver+OR+%22MCX+Silver%22+OR+COMEX+silver",
+    "CRUDEOIL": "crude+oil+OR+WTI+OR+Brent+OR+%22MCX+crude%22",
+    "NATURALGAS": "natural+gas+OR+Henry+Hub+OR+%22MCX+gas%22",
 }
 
 
@@ -487,14 +487,7 @@ async def _mcx_pack(tracker, focus: str) -> Dict[str, Any]:
 async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str] = None) -> Dict[str, Any]:
     now = time.monotonic()
     focus = str(index or "").strip().upper()
-    enabled = []
-    try:
-        enabled = [str(x).upper() for x in ((getattr(tracker, "settings", None) or {}).get("enabled_indices") or [])]
-    except Exception:
-        enabled = []
     mcx = bool(focus) and focus_is_mcx(focus)
-    if tracker is not None:
-        mcx = mcx and focus in enabled
     cache_key = focus if mcx else "NSE"
     hit = _packs.get(cache_key)
     if not force and hit and hit.get("pack") is not None and (now - float(hit.get("at") or 0)) < CACHE_S:

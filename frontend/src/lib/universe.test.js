@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   DESK_IDS,
+  HEATMAP_IDS,
   CATALOG,
   normalizeEnabledIndices,
   normalizeId,
@@ -10,7 +11,8 @@ import {
   usesIndexOverflow,
 } from "./universe.js";
 
-assert.deepEqual(DESK_IDS, ["NIFTY", "SENSEX", "BANKNIFTY"]);
+assert.deepEqual(HEATMAP_IDS.slice(0, 3), DESK_IDS);
+assert.equal(HEATMAP_IDS.includes("GOLD"), true);
 assert.equal(normalizeId("bnf"), "BANKNIFTY");
 assert.equal(normalizeId("CRUDE"), "CRUDEOIL");
 assert.equal(isDeskId("GOLD"), false);

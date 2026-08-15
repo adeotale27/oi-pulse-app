@@ -75,6 +75,7 @@ import { playForAlert } from "@/lib/sounds";
 import { Play, HelpCircle } from "lucide-react";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices } from "@/lib/universe";
+import { pickIndexLtp } from "@/lib/indexQuotes";
 
 const INDICES = DESK_IDS;
 const POLL_OPTIONS = [15000, 30000, 60000];
@@ -312,12 +313,17 @@ export default function Dashboard() {
   const timeframeRef = useRef(timeframe);
   const selectedExpiryRef = useRef(selectedExpiry);
   const enabledIndicesRef = useRef(DESK_IDS);
+  const liveSpotPricesRef = useRef({});
+  const tickerQuotesRef = useRef({});
+  const pendingOiReloadRef = useRef(false);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
   }, [activeIndex]);
   useEffect(() => { timeframeRef.current = timeframe; }, [timeframe]);
   useEffect(() => { selectedExpiryRef.current = selectedExpiry; }, [selectedExpiry]);
+  useEffect(() => { liveSpotPricesRef.current = liveSpotPrices; }, [liveSpotPrices]);
+  useEffect(() => { tickerQuotesRef.current = tickerQuotes; }, [tickerQuotes]);
 
   // Force Sell Candidates panel to recompute every minute so scores stay fresh
   // even if the underlying OI snapshot only ticks every 30s.
@@ -480,13 +486,11 @@ export default function Dashboard() {
       const match = message.tickers.find((ticker) => ticker.index === activeIndexRef.current);
       if (!match) return;
       setCurrent((prevCurrent) => {
-        if (!prevCurrent) return prevCurrent;
+        if (!prevCurrent || prevCurrent.index !== match.index) return prevCurrent;
         return {
           ...prevCurrent,
           price: match.price != null ? match.price : prevCurrent.price,
           atm: match.atm != null ? match.atm : prevCurrent.atm,
-          // Do NOT overwrite OI snapshot timestamp with spot-tick time —
-          // that remounted the chart every tick and made "OI pulled" lag/lie.
         };
       });
     });
@@ -690,6 +694,8 @@ export default function Dashboard() {
 
   const applyOiPayload = useCallback((data, { pulse = true } = {}) => {
     if (!data?.current) return;
+    const idx = String(data.current.index || "").toUpperCase();
+    if (idx && idx !== String(activeIndexRef.current || "").toUpperCase()) return;
     setCurrent(data.current);
     setPrevious(data.previous);
     setHistoryReady(data.history_ready !== false);
@@ -766,7 +772,10 @@ export default function Dashboard() {
   // Poll OI for ALL enabled indices in the background; UI updates only for the active tab.
   const oiInflightRef = useRef(false);
   const loadOI = useCallback(async () => {
-    if (oiInflightRef.current) return; // never stack overlapping multi-index waves
+    if (oiInflightRef.current) {
+      pendingOiReloadRef.current = true;
+      return;
+    }
     const indices = enabledIndicesRef.current?.length ? enabledIndicesRef.current : INDICES;
     const active = activeIndexRef.current;
     // Active tab still waits for its expiry picker to settle (avoids cross-index expiry).
@@ -836,6 +845,10 @@ export default function Dashboard() {
     } finally {
       oiInflightRef.current = false;
       if (gen === oiReqGenRef.current) setOiLoading(false);
+      if (pendingOiReloadRef.current) {
+        pendingOiReloadRef.current = false;
+        loadOI();
+      }
     }
   }, [expiryReady, oiSettings.hugeShiftWindows, ensureExpiryForIndex, applyOiPayload]);
 
@@ -1174,6 +1187,17 @@ export default function Dashboard() {
       applyOiPayload(cached, { pulse: false });
     } else {
       setChangeBundle(null);
+      const live = liveSpotPricesRef.current?.[activeIndex];
+      const tick = tickerQuotesRef.current?.[activeIndex];
+      const price = pickIndexLtp({ idx: activeIndex, live, tickerLtp: tick?.ltp, current: null });
+      setCurrent({
+        index: activeIndex,
+        price: price,
+        atm: null,
+        strikes: [],
+        timestamp: null,
+      });
+      setPrevious(null);
     }
   }, [activeIndex, applyOiPayload]);
 
@@ -1778,12 +1802,14 @@ export default function Dashboard() {
     for (const idx of idxs) {
       const t = tickerQuotes[idx];
       const live = liveSpotPrices?.[idx];
-      const fromLive = live != null && Number.isFinite(Number(live)) ? Number(live) : null;
-      const fromActive = idx === activeIndex && current?.price != null ? Number(current.price) : null;
-      const fromTicker = t?.ltp != null ? Number(t.ltp) : null;
-      const price = fromLive ?? fromActive ?? fromTicker;
+      const price = pickIndexLtp({
+        idx,
+        live,
+        tickerLtp: t?.ltp,
+        current,
+      });
       const prev = Number(t?.prev_close || t?.day_open)
-        || (idx === activeIndex ? Number(current?.prev_close || current?.day_open || 0) : 0);
+        || (current?.index === idx ? Number(current?.prev_close || current?.day_open || 0) : 0);
       const changePts = price != null && prev
         ? price - prev
         : (t?.change != null ? Number(t.change) : null);
@@ -1934,6 +1960,7 @@ export default function Dashboard() {
                 activeIndex={activeIndex}
                 onChangeIndex={setActiveIndex}
                 current={current}
+                spotPrices={liveSpotPrices}
                 strikesAround={strikesAround}
                 onChangeStrikesAround={applyStrikesAround}
                 strikeRange={strikeRange}

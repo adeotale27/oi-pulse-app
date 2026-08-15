@@ -259,10 +259,13 @@ def extra_poll_cfg(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Registry row → INDEX_CONFIG extra. `name` is required by the Kite chain filter."""
     if not doc:
         return None
-    if not doc.get("quote_symbol") or not doc.get("segment"):
-        return None
     uid = str(doc.get("_id") or doc.get("name") or "").upper()
     if not uid:
+        return None
+    quote_kind = str(doc.get("quote_kind") or "index")
+    if not doc.get("segment"):
+        return None
+    if not doc.get("quote_symbol") and quote_kind != "mcx_fut":
         return None
     return {**doc, "name": doc.get("name") or uid}
 

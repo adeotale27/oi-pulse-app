@@ -422,7 +422,7 @@ def test_year_heatmap_infers_index_from_symbol():
 
 
 def test_snapshot_and_heatmap_others_for_non_desk():
-    """GOLD / FINNIFTY / stocks stay on the journal book and fold into Others."""
+    """Enabled MCX majors get their own heatmap row; FINNIFTY/stocks stay Others."""
     snap = snapshot_from_positions(
         {
             "exited_count": 3,
@@ -458,10 +458,12 @@ def test_snapshot_and_heatmap_others_for_non_desk():
         date="2026-08-13",
     )
     assert snap["legs"][0]["index"] == "GOLD"
-    assert snap["booked_index_pnl"]["OTHER"] == 900
+    assert snap["booked_index_pnl"]["GOLD"] == 400
+    assert snap["booked_index_pnl"]["OTHER"] == 500
     assert snap["booked_index_pnl"].get("NIFTY", 0) == 0
     h = year_heatmap([snap], 2026)
-    assert h["other"][7] == 900
+    assert h["by_index"]["GOLD"][7] == 400
+    assert h["other"][7] == 500
     assert h["by_index"]["NIFTY"][7] == 0
     assert h["month_nets"][7] == 900
 
