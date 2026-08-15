@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.12 — 2026-08-15
+
+Instrument universe + engineering docs. Live OI board unchanged (NIFTY / SENSEX / BANKNIFTY).
+
+- One catalog (`backend/universe.py`, `frontend/src/lib/universe.js`) so a later market is not another copy-paste of three names
+- Crude / Gold / Silver / Natural gas are **catalogued, not polled** (Kite MCX has OI; hours and futures-spot are not wired)
+- `/config` adds `universe`. Settings still only tick the three desk indices
+- Docs: ENGINEERING_RULES, ARCHITECTURE, DEVELOPMENT, AI_DEVELOPMENT_RULES, ADR-001. Env examples committed
+
 ## V6.11 — 2026-08-15
 
 Book Analyze is a payoff studio, not a sparse card.

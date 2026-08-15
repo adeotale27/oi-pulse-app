@@ -8,7 +8,9 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Send, Sparkles, BellOff } from "lucide-react";
 
-const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+import { DESK_IDS } from "@/lib/universe";
+
+const INDICES = DESK_IDS;
 const TYPE_ROWS = [
   { key: "oi_reversal", label: "OI reversal alerts", hint: "Backend detects PE/CE % spikes vs N-min ago" },
   { key: "huge_shift", label: "Huge OI shift popup", hint: "Same events that trigger the on-screen popup" },

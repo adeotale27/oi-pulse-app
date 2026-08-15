@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { holidayCellLabel, holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
+import { DESK_IDS, INDEX_SHORT } from "@/lib/universe";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import InfoTip from "@/components/InfoTip";
 
@@ -708,12 +709,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] font-mono-data text-slate-500">
-                        {["NIFTY", "SENSEX", "BANKNIFTY"].map((idx) => {
+                        {DESK_IDS.map((idx) => {
                           const v = Number(by[idx]?.[i] || 0);
                           if (Math.abs(v) < 0.01) return null;
                           return (
                             <span key={idx} className={v >= 0 ? "text-emerald-700" : "text-rose-700"}>
-                              {idx === "BANKNIFTY" ? "BNF" : idx} {compactPnl(v)}
+                              {INDEX_SHORT[idx] || idx} {compactPnl(v)}
                             </span>
                           );
                         })}
@@ -748,7 +749,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     </tr>
                   </thead>
                   <tbody>
-                    {(heat?.indices || ["NIFTY", "SENSEX", "BANKNIFTY"]).map((idx) => (
+                    {(heat?.indices || DESK_IDS).map((idx) => (
                       <tr key={idx}>
                         <td className="p-2 font-semibold text-slate-700">{idx}</td>
                         {(heat?.by_index?.[idx] || Array(12).fill(0)).map((v, i) => (

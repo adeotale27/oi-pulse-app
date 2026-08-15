@@ -73,19 +73,9 @@ import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert } from "@/lib/sounds";
 import { Play, HelpCircle } from "lucide-react";
 
-const INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
-const INDEX_STEP = { NIFTY: 50, SENSEX: 100, BANKNIFTY: 100 };
+import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices } from "@/lib/universe";
 
-/** Keep tracked indices in a stable canonical order (NIFTY → SENSEX → BANKNIFTY). */
-function normalizeEnabledIndices(list) {
-  const set = new Set(
-    (Array.isArray(list) ? list : [])
-      .map((x) => String(x || "").trim().toUpperCase().replace(/\s+/g, ""))
-      .map((x) => (x === "BANKNIFTY" || x === "BANK" ? "BANKNIFTY" : x))
-      .filter((x) => INDICES.includes(x)),
-  );
-  return INDICES.filter((i) => set.has(i));
-}
+const INDICES = DESK_IDS;
 const POLL_OPTIONS = [15000, 30000, 60000];
 const DEFAULT_POLL_MS = 15000;
 const DASHBOARD_PAGES = [
@@ -319,7 +309,7 @@ export default function Dashboard() {
   const expiryByIndexRef = useRef({});    // index -> { list, meta, note, selected }
   const timeframeRef = useRef(timeframe);
   const selectedExpiryRef = useRef(selectedExpiry);
-  const enabledIndicesRef = useRef(["NIFTY", "SENSEX", "BANKNIFTY"]);
+  const enabledIndicesRef = useRef(DESK_IDS);
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;

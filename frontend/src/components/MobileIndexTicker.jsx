@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
 import { api, fetchExtras, subscribeExtras, unsubscribeExtras } from "@/lib/api";
 import { GIFT_SESSION_WINDOWS } from "@/lib/marketTimes";
+import { DESK_IDS, INDEX_SHORT } from "@/lib/universe";
 
 function fmt(v, dp = 2) {
   if (v == null || !Number.isFinite(Number(v))) return "—";
@@ -82,7 +83,7 @@ export default function MobileIndexTicker({
       pct: giftLast != null ? giftPct : null,
       onClick: () => setGiftOpen(true),
     });
-    const order = ["NIFTY", "SENSEX", "BANKNIFTY"];
+    const order = DESK_IDS;
     const byIndex = Object.fromEntries((tickers || []).map((t) => [t.index, t]));
     for (const idx of order) {
       const t = byIndex[idx];
@@ -92,7 +93,7 @@ export default function MobileIndexTicker({
       const chgPct = ltp && prev ? ((ltp - prev) / prev) * 100 : null;
       out.push({
         key: idx,
-        label: idx === "BANKNIFTY" ? "BNF" : idx,
+        label: INDEX_SHORT[idx] || idx,
         price: Number.isFinite(ltp) && ltp ? fmt(ltp, 2) : "—",
         pct: chgPct,
         onClick: () => onSelectIndex?.(idx),

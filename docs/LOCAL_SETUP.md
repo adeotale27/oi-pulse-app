@@ -18,7 +18,7 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create `backend/.env` (never commit secrets):
+Create `backend/.env` from [`backend/.env.example`](../backend/.env.example) (never commit secrets):
 
 ```env
 MONGO_URL=mongodb://127.0.0.1:27017
@@ -68,7 +68,7 @@ cd frontend
 yarn install
 ```
 
-Create `frontend/.env.local`:
+Create `frontend/.env.local` from [`frontend/.env.example`](../frontend/.env.example):
 
 ```env
 REACT_APP_BACKEND_URL=http://localhost:8000

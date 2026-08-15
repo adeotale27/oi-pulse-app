@@ -10,8 +10,9 @@ import {
   SECOND_SESSION_MINUTE,
 } from "@/lib/overnightBrief";
 import { isHoliday, isTradingDayIST, todayIST } from "@/lib/holidays";
+import { DESK_IDS } from "@/lib/universe";
 
-const CARRY_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+const CARRY_INDICES = DESK_IDS;
 
 function parseHmToMinutes(hm, fallbackMin) {
   try {

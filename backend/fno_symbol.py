@@ -6,8 +6,9 @@ import re
 from typing import Any, Optional
 
 from kite_positions import booked_pnl_from_kite_row  # noqa: F401 — canonical impl
+from universe import fno_name_alternation
 
-INDEXES = "NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX|BANKEX"
+INDEXES = fno_name_alternation()
 MON = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
     "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,

@@ -11,7 +11,9 @@ import { Settings2 } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import InfoTip from "@/components/InfoTip";
 
-const ALL_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"];
+import { DESK_IDS } from "@/lib/universe";
+
+const ALL_INDICES = DESK_IDS;
 const HARD_ADMIN_PAGES = new Set([]);
 const DASHBOARD_PAGES = [
   { id: "oi-change", label: "OI Change" },
@@ -57,7 +59,7 @@ export default function SettingsModal({
           threshold_pct: 15,
           compare_minutes: 3,
           cooldown_seconds: 120,
-          enabled_indices: ["NIFTY", "SENSEX", "BANKNIFTY"],
+          enabled_indices: DESK_IDS,
           straddle_enabled_indices: ["NIFTY", "SENSEX"],
           oi_poll_interval_seconds: 15,
           straddle_poll_interval_seconds: 15,

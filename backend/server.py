@@ -23,6 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai
 from oi_service import INDEX_CONFIG
+from universe import catalog_public
 from vrp_service import compute_vrp
 from market_hours import (
     is_market_open, IST, MARKET_OPEN, is_weekend, display_hours, configure_hours,
@@ -2327,6 +2328,7 @@ async def get_config():
         "show_chart_signals": bool(tracker.settings.get("show_chart_signals", False)),
         **resolve_desk_ai(tracker.settings),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
+        "universe": catalog_public(),
         "app_version": APP_VERSION,
         "app_version_label": APP_VERSION_LABEL,
     }

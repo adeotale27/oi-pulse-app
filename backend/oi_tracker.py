@@ -23,6 +23,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 from oi_service import INDEX_CONFIG, KiteService
+from universe import DESK_IDS
 # Import MockService only in development when explicitly enabled so production
 # deployments never accidentally import demo generators.
 try:
@@ -132,7 +133,7 @@ def _decrypt_secret(value: Optional[str]) -> Optional[str]:
 
 
 POLL_INTERVAL_SECONDS = 15
-INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
+INDICES = list(DESK_IDS)
 
 # Data retention: keep ≥96h so Friday's session survives the weekend and
 # is still available Monday pre-open. Long weekends (Fri holiday → Tue) still
@@ -176,7 +177,7 @@ DEFAULT_SETTINGS = {
     "threshold_pct": 15.0,      # % OI change to trigger alert
     "cooldown_seconds": 120,    # per-index alert cooldown
     "compare_minutes": 3,       # compare with snapshot from N minutes ago
-    "enabled_indices": ["NIFTY", "SENSEX", "BANKNIFTY"],  # which indices to poll
+    "enabled_indices": list(DESK_IDS),  # pollable desk underlyings only
     "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
     "straddle_poll_interval_seconds": 15,  # Dense straddle chart samples (FinanceDeft-style)
     "positions_poll_interval_seconds": 30,  # Positions desk auto-refresh (admin)

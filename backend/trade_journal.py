@@ -13,12 +13,13 @@ from market_hours import (
     IST,
     eod_lock_time,
 )
+from universe import DESK_IDS
 
 # Freeze after the last Positions auto-refresh (Index F&O close + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
 # Fallback if special-session close is missing (evening Muhurat).
 SPECIAL_SESSION_LOCK_IST = dtime(20, 0)
-HEATMAP_INDICES = ("NIFTY", "SENSEX", "BANKNIFTY")
+HEATMAP_INDICES = DESK_IDS
 
 MAX_NOTE_CHARS = 8000
 MAX_SCREENSHOTS = 4

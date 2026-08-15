@@ -23,6 +23,7 @@ import {
   positionExpiryISO,
 } from "@/lib/positionPayoff";
 import { dailyThetaRupees, yearsToExpiry } from "@/lib/blackScholes";
+import { DESK_IDS } from "@/lib/universe";
 
 function fmt(v, dp = 0) {
   if (v == null || Number.isNaN(v)) return "—";
@@ -400,7 +401,7 @@ export default function PositionsAnalyzeModal({
   const money = (v, dp = 0) => (privacyMode ? MASK : fmt(v, dp));
   const byIndex = useMemo(() => groupPositionsByIndex(rows), [rows]);
   const indices = useMemo(() => Array.from(byIndex.keys()), [byIndex]);
-  const [activeIndex, setActiveIndex] = useState(indices[0] || "NIFTY");
+  const [activeIndex, setActiveIndex] = useState(indices[0] || DESK_IDS[0]);
   const [expanded, setExpanded] = useState(() => new Set(indices.slice(0, 1)));
   const [selected, setSelected] = useState(() => new Set());
   const [targetFrac, setTargetFrac] = useState(0);

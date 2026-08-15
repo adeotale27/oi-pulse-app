@@ -9,34 +9,12 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
 
+from universe import desk_index_config
+
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------------------------------- #
-# Index configuration
-# --------------------------------------------------------------------------- #
-INDEX_CONFIG = {
-    "NIFTY": {
-        "quote_symbol": "NSE:NIFTY 50",
-        "name": "NIFTY",
-        "step": 50,
-        "segment": "NFO-OPT",
-        "strikes_around_atm": 15,
-    },
-    "SENSEX": {
-        "quote_symbol": "BSE:SENSEX",
-        "name": "SENSEX",
-        "step": 100,
-        "segment": "BFO-OPT",
-        "strikes_around_atm": 15,
-    },
-    "BANKNIFTY": {
-        "quote_symbol": "NSE:NIFTY BANK",
-        "name": "BANKNIFTY",
-        "step": 100,
-        "segment": "NFO-OPT",
-        "strikes_around_atm": 15,
-    },
-}
+# Live OI board — sourced from universe.DESK_IDS (do not add MCX here until pollable).
+INDEX_CONFIG = desk_index_config()
 
 
 # --------------------------------------------------------------------------- #

@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.12",
+    date: "2026-08-15",
+    user: [
+      "Same NIFTY / SENSEX / BANKNIFTY desk. The app is now wired so another market can be added from one catalog — Crude / Gold / Silver / gas are listed for later, not on the ticker yet.",
+    ],
+    admin: [
+      "universe.py / universe.js own desk ids. GET /config.universe is additive. MCX pollable=false until MCX hours + nearest FUT spot. Engineering docs + ADR-001.",
+    ],
+  },
+  {
     version: "6.11",
     date: "2026-08-15",
     user: [

@@ -24,6 +24,7 @@ import {
   sessionBiasFromSnapshots,
   shouldAutoShowBrief,
 } from "@/lib/overnightBrief";
+import { DESK_IDS } from "@/lib/universe";
 
 function isPhone() {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
@@ -111,7 +112,7 @@ function fmtDelta(v) {
  * Phone: chip by default; expanded sheet is full-width at the dock (not over the chart).
  */
 export default function OvernightGapBrief({
-  indices = ["NIFTY", "SENSEX", "BANKNIFTY"],
+  indices = DESK_IDS,
   vix = null,
   activeIndex = null,
 }) {

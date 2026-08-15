@@ -1,17 +1,7 @@
 import { useMemo, useState, useRef } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 
-const INDEX_SHORT = {
-  NIFTY: "NIFTY",
-  SENSEX: "SENSEX",
-  BANKNIFTY: "BNF",
-};
-
-const INDEX_DOT = {
-  NIFTY: "bg-sky-500",
-  SENSEX: "bg-amber-500",
-  BANKNIFTY: "bg-emerald-500",
-};
+import { DESK_IDS, INDEX_SHORT, INDEX_DOT } from "@/lib/universe";
 
 /**
  * Mobile-only sticky context bar.
@@ -22,7 +12,7 @@ const INDEX_DOT = {
  */
 export default function MobileStickyChrome({
   activeIndex,
-  indices = ["NIFTY", "SENSEX", "BANKNIFTY"],
+  indices = DESK_IDS,
   onSelectIndex,
   spotPrice,
   spotPrices = {},

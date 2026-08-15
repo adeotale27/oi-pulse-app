@@ -22,6 +22,10 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 
 Retention: OI / straddle samples default to **96 hours** so Friday’s session survives the weekend and Monday pre-open (`SNAPSHOT_RETENTION_HOURS` / `STRADDLE_RETENTION_HOURS`). Prune also floors at the previous trading day’s open. Weekend / holiday / pre-open APIs resolve `session_anchor_date` (last trading day) for history, straddle, and banners. After configured market close, OI polling stops; **GIFT Nifty** continues on its own schedule.
 
+## Instrument universe
+
+Tracked names live in `backend/universe.py` and `frontend/src/lib/universe.js`. The poller only writes snapshots for **pollable desk** ids (NIFTY, SENSEX, BANKNIFTY). MCX crude / gold / silver / gas are catalogued with `pollable: false` until their session clock and futures spot path exist. `/api/config` includes `universe` (additive). See [decisions/ADR-001-instrument-universe.md](./decisions/ADR-001-instrument-universe.md).
+
 ---
 
 ## Live pipeline
