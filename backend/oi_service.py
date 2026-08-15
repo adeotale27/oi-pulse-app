@@ -23,18 +23,21 @@ def merge_index_config(extra: Optional[Dict[str, Dict[str, Any]]] = None) -> Dic
     INDEX_CONFIG.clear()
     INDEX_CONFIG.update(base)
     for k, cfg in (extra or {}).items():
-        if not cfg or not cfg.get("quote_symbol"):
+        if not cfg:
+            continue
+        quote_kind = cfg.get("quote_kind") or "index"
+        if not cfg.get("quote_symbol") and quote_kind != "mcx_fut":
             continue
         uid = str(k).upper()
         INDEX_CONFIG[uid] = {
-            "quote_symbol": cfg["quote_symbol"],
-            "quote_kind": cfg.get("quote_kind") or "index",
+            "quote_symbol": cfg.get("quote_symbol"),
+            "quote_kind": quote_kind,
             "name": cfg.get("name") or uid,
             "step": int(cfg.get("step") or 50),
             "segment": cfg.get("segment") or "NFO-OPT",
             "strikes_around_atm": int(cfg.get("strikes_around_atm") or 15),
             "calendar": cfg.get("calendar") or "nse",
-            "session_group": cfg.get("session_group") or ("mcx_non_agri" if str(cfg.get("segment") or "").upper().startswith("MCX") or (cfg.get("quote_kind") or "") == "mcx_fut" else "nse"),
+            "session_group": cfg.get("session_group") or ("mcx_non_agri" if str(cfg.get("segment") or "").upper().startswith("MCX") or quote_kind == "mcx_fut" else "nse"),
             "exchange": cfg.get("exchange"),
         }
     return dict(INDEX_CONFIG)
@@ -180,6 +183,26 @@ class KiteService:
         if not blob:
             raise RuntimeError(f"empty quote for {key}")
         return key, float(blob.get("last_price") or 0)
+
+    def quote_ltp_safe(self, index_name: str) -> Optional[Dict[str, Any]]:
+        """LTP only (no option chain). Used by the spot websocket."""
+        cfg = INDEX_CONFIG.get(index_name)
+        if not cfg:
+            return None
+        try:
+            key, ltp = self._quote_ltp(cfg)
+        except Exception as e:
+            logger.warning("quote_ltp_safe %s: %s", index_name, e)
+            return None
+        step = int(cfg.get("step") or 50) or 50
+        atm = int(round(ltp / step) * step) if ltp else 0
+        return {
+            "index": index_name,
+            "price": float(ltp),
+            "atm": atm,
+            "quote_symbol": key,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
 
     def _opt_symbol_at_strike(self, expiry_opt, st, itype: str):
         sub = expiry_opt[expiry_opt["instrument_type"] == itype]

@@ -143,3 +143,10 @@ def test_extra_poll_cfg_fills_name():
     })
     assert row["name"] == "GOLD"
     assert extra_poll_cfg({"_id": "X"}) is None
+    mcx = extra_poll_cfg({
+        "_id": "GOLD",
+        "segment": "MCX-OPT",
+        "quote_kind": "mcx_fut",
+    })
+    assert mcx["name"] == "GOLD"
+    assert mcx.get("quote_symbol") in (None, "")

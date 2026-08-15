@@ -22,5 +22,7 @@ assert.deepEqual(
 );
 assert.equal(openHeatmapRows([{ tradingsymbol: "SENSEX24800PE", index: "", exited: false, quantity: -10 }], "NIFTY").length, 0);
 assert.equal(openHeatmapRows([{ tradingsymbol: "SENSEX24800PE", index: "", exited: false, quantity: -10 }], "SENSEX").length, 1);
+assert.equal(openHeatmapRows([{ tradingsymbol: "GOLD26AUG76000CE", index: "GOLD", exited: false, quantity: -1 }], "GOLD").length, 1);
+assert.equal(openHeatmapRows([{ tradingsymbol: "GOLD26AUG76000CE", index: "GOLD", exited: false, quantity: -1 }], "NIFTY").length, 0);
 
 console.log("positionHeatmap.test.js: ok");

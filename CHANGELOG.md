@@ -1,5 +1,16 @@
 # Changelog
 
+## V6.21 — 2026-08-15
+
+Gold/MCX quotes stay on that name; Enable is one click; Analyze blue/green.
+
+- Selecting GOLD no longer paints NIFTY’s print on the GOLD chip/sidebar. Live ticker and Kite LTP win; OI snapshot price is used only when `current.index` matches
+- Spot websocket quotes every enabled name in its own session hours (nearest MCX FUT) instead of a full NIFTY chain poll
+- Index management: Enable / Disable on the row (no Inspect gate). Daily `backend/preload_fno.py` refreshes the Kite F&O dump
+- Journal / position heatmap: GOLD / CRUDE / SILVER / NG get named rows when booked; Others stays for FINNIFTY and stocks
+- Desk AI Gold news follows the selected commodity even if the enabled-list check lagged
+- Header ticker scrollbar hidden; drag / mouse to slide. Analyze close on the right; now-curve blue, expiry green
+
 ## V6.20 — 2026-08-15
 
 Enable extras end-to-end, Desk AI per selected MCX name, Analyze emerald chrome.

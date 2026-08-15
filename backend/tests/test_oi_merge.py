@@ -14,9 +14,19 @@ def test_merge_extra_without_name_field():
         assert INDEX_CONFIG["GOLD"]["name"] == "GOLD"
         assert INDEX_CONFIG["GOLD"]["session_group"] == "mcx_non_agri"
         assert INDEX_CONFIG["NIFTY"]["quote_symbol"] == "NSE:NIFTY 50"
+        merge_index_config({
+            "SILVER": {
+                "segment": "MCX-OPT",
+                "quote_kind": "mcx_fut",
+                "step": 250,
+            }
+        })
+        assert INDEX_CONFIG["SILVER"]["quote_kind"] == "mcx_fut"
+        assert INDEX_CONFIG["SILVER"]["name"] == "SILVER"
     finally:
         merge_index_config({})
         assert "GOLD" not in INDEX_CONFIG
+        assert "SILVER" not in INDEX_CONFIG
 
 
 def test_option_chain_accepts_mcx_without_opt_suffix():

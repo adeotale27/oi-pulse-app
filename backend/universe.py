@@ -18,6 +18,8 @@ DESK_IDS: Tuple[str, ...] = ("NIFTY", "SENSEX", "BANKNIFTY")
 
 # Kite `name` for the four major MCX option chains (not minis).
 MCX_MAJOR_IDS: Tuple[str, ...] = ("CRUDEOIL", "GOLD", "SILVER", "NATURALGAS")
+# Year heatmap named rows: desk indices plus MCX majors (FINNIFTY/stocks stay Others).
+HEATMAP_IDS: Tuple[str, ...] = DESK_IDS + MCX_MAJOR_IDS
 
 # Aliases that settings / uploads / humans might type.
 ALIASES: Dict[str, str] = {

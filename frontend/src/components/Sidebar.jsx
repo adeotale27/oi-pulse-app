@@ -11,7 +11,7 @@ import {
   EXPIRY_LIST_MAX_PX,
 } from "@/lib/tabOrder";
 import StrikeAroundChips from "@/components/StrikeAroundChips";
-import { INDEX_SHORT, INDEX_STEP, usesIndexOverflow } from "@/lib/universe";
+import { pickIndexLtp } from "@/lib/indexQuotes";
 
 const INDEX_THEME = {
   NIFTY: {
@@ -146,6 +146,7 @@ export default function Sidebar({
   activeIndex,
   onChangeIndex,
   current,
+  spotPrices = {},
   strikesAround,
   onChangeStrikesAround,
   strikeRange,
@@ -162,7 +163,11 @@ export default function Sidebar({
   onCollapse,
   layoutNonce = 0,
 }) {
-  const price = current?.price ?? 0;
+  const price = pickIndexLtp({
+    idx: activeIndex,
+    live: spotPrices?.[activeIndex],
+    current,
+  }) ?? 0;
   // Admin note section state (below the big clock). Publicly visible; editable by admin.
   const [note, setNote] = useState("");
   const [editText, setEditText] = useState("");

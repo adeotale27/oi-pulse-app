@@ -29,6 +29,7 @@ from market_hours import (
     is_market_open, IST, MARKET_OPEN, is_weekend, display_hours, configure_hours,
     session_anchor_date, session_window_utc, previous_trading_day, now_ist,
     is_special_session_day, is_full_holiday, session_poll_bounds,
+    index_in_session, any_index_in_session,
 )
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
@@ -2412,51 +2413,56 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
 
 @api_router.websocket("/ws/spot")
 async def ws_spot(websocket: WebSocket):
-    """WebSocket stream for live spot prices of the main indices.
+    """Live LTP for every enabled index, in that name's session hours.
 
-    Streams the latest live underlying price for NIFTY, SENSEX and BANKNIFTY
-    once per second while the market is open.
+    Uses Kite quote (nearest FUT for MCX) — never a full OI snapshot, and never
+    copies NIFTY's print onto GOLD.
     """
     await websocket.accept()
     try:
         while True:
-            from market_hours import is_market_open as is_market_open_fn
-
-            if not is_market_open_fn(datetime.now(IST)):
-                await websocket.send_json({"type": "status", "status": "market_closed"})
-                await asyncio.sleep(1)
-                continue
-
-            svc = tracker._get_service()
+            enabled = list((tracker.settings.get("enabled_indices") if tracker else None) or INDICES)
+            live_any = any_index_in_session(enabled, configs=INDEX_CONFIG)
             payload = {
                 "type": "spot",
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "tickers": [],
             }
-            for idx in INDICES:
-                snap = None
-                try:
-                    if svc:
-                        snap = await asyncio.to_thread(svc.get_snapshot, idx, tracker.selected_expiry.get(idx))
-                    else:
-                        snap = tracker.last_snapshot.get(idx)
-                except Exception:
-                    snap = None
-                if not snap:
+            svc = tracker._get_service() if tracker else None
+            for idx in enabled:
+                if idx not in INDEX_CONFIG:
                     continue
+                tick = None
+                in_sess = index_in_session(idx, cfg=INDEX_CONFIG.get(idx))
                 try:
-                    payload["tickers"].append({
-                        "index": idx,
-                        "price": round(float(snap.get("price") or 0.0), 2),
-                        "atm": int(snap.get("atm") or 0),
-                        "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                        "mode": snap.get("mode"),
-                    })
+                    if svc and in_sess:
+                        tick = await asyncio.to_thread(svc.quote_ltp_safe, idx)
                 except Exception:
+                    tick = None
+                if not tick:
+                    snap = tracker.last_snapshot.get(idx) if tracker else None
+                    if snap and snap.get("price"):
+                        tick = {
+                            "index": idx,
+                            "price": round(float(snap.get("price") or 0.0), 2),
+                            "atm": int(snap.get("atm") or 0),
+                            "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                            "mode": snap.get("mode") or "snapshot",
+                        }
+                if not tick:
                     continue
+                payload["tickers"].append({
+                    "index": idx,
+                    "price": round(float(tick.get("price") or 0.0), 2),
+                    "atm": int(tick.get("atm") or 0),
+                    "timestamp": tick.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                    "mode": tick.get("mode") or ("kite" if in_sess else "snapshot"),
+                })
             if payload["tickers"]:
                 await websocket.send_json(payload)
-            await asyncio.sleep(1)
+            elif not live_any:
+                await websocket.send_json({"type": "status", "status": "market_closed"})
+            await asyncio.sleep(1 if live_any else 5)
     except WebSocketDisconnect:
         return
 

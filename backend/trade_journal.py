@@ -13,13 +13,13 @@ from market_hours import (
     IST,
     eod_lock_time,
 )
-from universe import DESK_IDS, match_symbol_prefix
+from universe import DESK_IDS, HEATMAP_IDS, match_symbol_prefix
 
 # Freeze after the last Positions auto-refresh (Index F&O close + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
 # Fallback if special-session close is missing (evening Muhurat).
 SPECIAL_SESSION_LOCK_IST = dtime(20, 0)
-HEATMAP_INDICES = DESK_IDS
+HEATMAP_INDICES = HEATMAP_IDS
 
 MAX_NOTE_CHARS = 8000
 MAX_SCREENSHOTS = 4
@@ -567,7 +567,7 @@ def _leg_index_label(leg: Dict[str, Any]) -> str:
 
 
 def _heatmap_index(leg: Dict[str, Any]) -> str:
-    """Desk ids stay on the year grid; everything else is OTHER."""
+    """Named heatmap rows (desk + MCX majors); FINNIFTY/stocks stay OTHER."""
     raw = str(leg.get("index") or "").strip().upper()
     if raw in HEATMAP_INDICES:
         return raw
@@ -585,14 +585,14 @@ def _heatmap_index(leg: Dict[str, Any]) -> str:
         if idx in HEATMAP_INDICES:
             return idx
     compact = ts.upper().replace(" ", "")
-    for name in ("BANKNIFTY", "SENSEX", "NIFTY"):
+    for name in sorted(HEATMAP_INDICES, key=len, reverse=True):
         if compact.startswith(name):
             return name
     return "OTHER"
 
 
 def _fold_heatmap_pnl(ip: Dict[str, float]) -> Dict[str, float]:
-    """Desk buckets plus a single OTHER for commodities, stocks, FINNIFTY, etc."""
+    """Named heatmap buckets plus OTHER for FINNIFTY, stocks, minis, etc."""
     out = {k: 0.0 for k in HEATMAP_INDICES}
     other = 0.0
     for k, v in (ip or {}).items():

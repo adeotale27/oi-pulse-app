@@ -6,6 +6,8 @@
  */
 
 export const DESK_IDS = ["NIFTY", "SENSEX", "BANKNIFTY"];
+export const MCX_MAJOR_IDS = ["CRUDEOIL", "GOLD", "SILVER", "NATURALGAS"];
+export const HEATMAP_IDS = [...DESK_IDS, ...MCX_MAJOR_IDS];
 
 /** How many index chips fit the sidebar / phone sticky bar without growing those panes. */
 export const INDEX_CHIP_CAP = 3;
@@ -130,5 +132,5 @@ export function normalizeEnabledIndices(list) {
 }
 
 export function emptyDeskPnl() {
-  return Object.fromEntries(DESK_IDS.map((i) => [i, 0]));
+  return Object.fromEntries(HEATMAP_IDS.map((i) => [i, 0]));
 }

@@ -1,3 +1,5 @@
+import { matchSymbolPrefix } from "./universe.js";
+
 /** Short strike label so heatmap tiles stay readable (not "SENSEX 14 AUG 24800 PE"). */
 export function heatmapLabel(row) {
   if (!row) return "";
@@ -19,8 +21,7 @@ export function openHeatmapRows(rows = [], activeIndex = null) {
     const idx = String(r?.index || "").toUpperCase();
     if (idx === want) return true;
     if (idx) return false;
-    const name = String(r.display_name || r.tradingsymbol || "").toUpperCase();
-    if (want === "BANKNIFTY") return name.includes("BANKNIFTY") || name.includes("BANK NIFTY");
-    return name.includes(want);
+    const name = String(r.display_name || r.tradingsymbol || "").toUpperCase().replace(/\s+/g, "");
+    return matchSymbolPrefix(name) === want;
   });
 }
