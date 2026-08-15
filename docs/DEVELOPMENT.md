@@ -50,7 +50,7 @@ Frontend: `yarn build` (CRA). ESLint is present; do not mass-reformat unrelated 
 
 ## Add an underlying
 
-**Preferred:** Admin → **Index management** → search Kite → inspect capabilities → Enable. That writes `index_registry` and `enabled_indices`. The existing poller picks it up.
+**Preferred:** Admin → **Index management** (desktop Admin menu, or phone/tablet Settings gear) → search Kite → inspect capabilities → Enable. That writes `index_registry` and `enabled_indices`. The existing poller picks it up.
 
 ### Checklist (required for every new index, stock, or commodity)
 

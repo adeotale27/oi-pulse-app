@@ -338,6 +338,7 @@ export default function SettingsModal({
                   type="button"
                   className="mt-2 text-[11px] font-semibold text-sky-700 hover:underline"
                   onClick={() => {
+                    onOpenChange(false);
                     try { window.dispatchEvent(new CustomEvent("oi-admin-open-indices")); } catch (_) {}
                   }}
                 >

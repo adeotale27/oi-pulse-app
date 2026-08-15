@@ -1114,7 +1114,11 @@ export default function Dashboard() {
       if (!cancelled && e?.detail) setAuthState(e.detail);
     };
     window.addEventListener("oi-admin-auth-state", onState);
-    const onIndices = () => { if (!cancelled) setIndexManagerOpen(true); };
+    const onIndices = () => {
+      if (cancelled) return;
+      setSettingsOpen(false);
+      setIndexManagerOpen(true);
+    };
     window.addEventListener("oi-admin-open-indices", onIndices);
     return () => {
       cancelled = true;
@@ -1868,7 +1872,11 @@ export default function Dashboard() {
         onOpenMorningRefresh={() => { if (authState.is_admin) setMorningRefreshOpen(true); }}
         onOpenTelegramPrefs={() => { if (authState.is_admin) setTelegramPrefsOpen(true); }}
         onOpenSettings={() => { if (authState.is_admin) setSettingsOpen(true); }}
-        onOpenIndexManager={() => { if (authState.is_admin) setIndexManagerOpen(true); }}
+        onOpenIndexManager={() => {
+          if (!authState.is_admin) return;
+          setSettingsOpen(false);
+          setIndexManagerOpen(true);
+        }}
         onOpenJournal={() => { if (authState.is_admin) setJournalOpen(true); }}
         onOpenSounds={() => setSoundsOpen(true)}
         onOpenUpload={() => { if (authState.is_admin) setUploadOpen(true); }}

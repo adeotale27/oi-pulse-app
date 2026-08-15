@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.18",
+    date: "2026-08-15",
+    user: [
+      "Admin can add Gold / Crude / extra indices from the phone: Settings → Index management.",
+    ],
+    admin: [
+      "Phone and tablet admin tools include Index management. The sheet is full-screen on small screens. Discover more from Admin configuration closes settings first.",
+    ],
+  },
+  {
     version: "6.17",
     date: "2026-08-15",
     user: [
