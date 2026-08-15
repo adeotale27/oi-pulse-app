@@ -44,7 +44,7 @@ Kite Connect ──► OITracker (asyncio poll) ──► oi_snapshots
 1. **Poll** — While the market is in session (regular hours or Muhurat / special session, or `FORCE_ALWAYS_POLL`), tracker fetches option chain for each **enabled** index and selected expiry. Kite Connect does not expose a holiday/session-open endpoint; hours come from the NSE calendar plus a live quote last_trade_time check.
 2. **Normalize** — Snapshot includes spot, ATM, PCR, per-strike CE/PE OI, VIX when available, `timestamp` / `created_at`.
 3. **Upsert** — Written to `oi_snapshots` with uniqueness on `(index, expiry, timestamp)`.
-The first JS payload is AuthGate + chart chrome. Positions, journal, straddle, and Index management load when opened. `/auth/state` 520/timeout does not clear the session.
+4. **On demand** — Boot fetches OI for the **open index** only; other chips load when selected. FII/DII and impact fetch when that tile is opened. Positions poll only on the Positions tab. Index management **Search/Sync** loads the Kite name list — login and `/expiries` do not dump `kite.instruments()`. Auth 520/timeout does not sign you out.
 
 ### Change windows
 

@@ -378,10 +378,17 @@ class OITracker:
     def list_expiries(self, index_name: str):
         svc = self._get_service()
         try:
-            return svc.list_expiries(index_name)
+            dates = svc.list_expiries(index_name) if svc else []
         except Exception as e:
             logger.error(f"list_expiries failed: {e}")
-            return []
+            dates = []
+        if dates:
+            return dates
+        snap = (self.last_snapshot or {}).get(index_name) or {}
+        exp = snap.get("expiry")
+        if exp:
+            return [str(exp)[:10]]
+        return []
 
     def set_expiry(self, index_name: str, expiry: Optional[str]):
         self.selected_expiry[index_name] = expiry
@@ -777,6 +784,10 @@ class OITracker:
         logger.info("OI tracker started (browser-independent DB writer)")
 
     async def _seed_expiries_safe(self):
+        # Skip until the poller has a dump — do not kite.instruments() for Index management.
+        svc = self.kite_service
+        if not svc or not getattr(svc, "_loaded", False):
+            return
         try:
             await asyncio.wait_for(self.seed_default_expiries(), timeout=20)
         except Exception as e:

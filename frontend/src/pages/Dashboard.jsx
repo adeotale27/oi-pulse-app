@@ -264,14 +264,14 @@ export default function Dashboard() {
       const stored = localStorage.getItem("rightPanelOpen");
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
-    return false;
+    try { return !window.matchMedia("(max-width: 767px)").matches; } catch { return true; }
   });
   const [infoTilesOpen, setInfoTilesOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("oiInfoTilesOpen");
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
-    return false;
+    return true;
   });
   const [headerRail, setHeaderRail] = useState(() => {
     try {
@@ -349,7 +349,7 @@ export default function Dashboard() {
       console.error("fetchVRP failed", e);
     }
   }, [activeIndex]);
-  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status, delayMs: 20000, immediate: false, dedupeKey: "dash-vrp" });
+  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status, delayMs: 4000, dedupeKey: "dash-vrp" });
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -1147,7 +1147,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 20000 });
+  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 4000 });
 
   useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status", delayMs: 250 });
   useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-oi" });
@@ -1174,7 +1174,7 @@ export default function Dashboard() {
     if (expiryCaughtUp) return;
     loadOI();
   }, [timeframe, activeIndex, selectedExpiry, loadOI]);
-  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 12000 });
+  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 1500 });
   useQuiescentAwarePolling(
     async () => {
       // During market hours always poll + toast — Positions / Straddle / any tab.
@@ -1191,7 +1191,7 @@ export default function Dashboard() {
     },
     5000,
     [loadAlerts, status?.market?.is_market_open],
-    { status, dedupeKey: "dash-alerts", delayMs: 10000 },
+    { status, dedupeKey: "dash-alerts", delayMs: 2500 },
   );
 
   // When index changes, hydrate from warm cache immediately so the chart never goes cold.

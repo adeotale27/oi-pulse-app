@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.28",
+    date: "2026-08-15",
+    user: [
+      "Holiday / FII tiles and the alerts side panel are back on first open. Chart still loads the index you have selected; extra names wait until you switch or Search in Index management.",
+    ],
+    admin: [
+      "kite.instruments() is not run for /expiries or tracker start. Index management Search/Sync remains the dump. Desk chrome defaults restored.",
+    ],
+  },
+  {
     version: "6.27",
     date: "2026-08-15",
     user: [

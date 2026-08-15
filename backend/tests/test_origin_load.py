@@ -41,3 +41,16 @@ def test_ws_spot_does_not_quote_kite():
     src = _fn(SERVER, "ws_spot")
     assert "quote_ltp_safe" not in src
     assert "last_snapshot" in src
+
+
+def test_list_expiries_does_not_dump_kite():
+    oi = (ROOT / "oi_service.py").read_text(encoding="utf-8")
+    i = oi.index("    def list_expiries(")
+    j = oi.find("\n    def ", i + 1)
+    src = oi[i:j]
+    assert "_load_instruments" not in src
+
+
+def test_seed_on_start_skips_unloaded_dump():
+    src = _fn(TRACKER, "_seed_expiries_safe")
+    assert "_loaded" in src

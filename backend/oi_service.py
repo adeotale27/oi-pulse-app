@@ -128,10 +128,8 @@ class KiteService:
         return opt_df
 
     def list_expiries(self, index_name: str):
-        try:
-            self._load_instruments()
-        except Exception as e:
-            logger.error(f"list_expiries load failed: {e}")
+        """Expiry dates from the in-memory dump only — do not fetch a fresh Kite book here."""
+        if not getattr(self, "_loaded", False) or self.instruments_df is None:
             return []
         import pandas as pd
         cfg = INDEX_CONFIG.get(index_name)

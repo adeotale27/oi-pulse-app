@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.28 — 2026-08-15
+
+Keep the desk as it was; only Index-management dump stays off auto-preload.
+
+- Info tiles and desktop right panel default on again. VIX/GIFT, tickers, and alerts return shortly after first paint
+- Open-index OI, chip-switch OI, FII/DII/impact on tile open, Positions-on-tab stay
+- `/expiries` and tracker start no longer call `kite.instruments()`. Search/Sync in Index management still loads names when you ask
+
 ## V6.27 — 2026-08-15
 
 Stop kicking users out when the origin is slow; slim the first JS load.
