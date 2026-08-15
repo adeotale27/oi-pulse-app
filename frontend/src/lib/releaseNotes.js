@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.11",
+    date: "2026-08-15",
+    user: [
+      "Analyze is a payoff studio: legs beside the chart, OI overlay, SD bands, projected P&L, and target/date sliders. On a phone, Chart and Legs are tabs. Add booked P&L if you want closed legs on the curve.",
+    ],
+    admin: [
+      "PositionsAnalyzeModal layout only — computeIndexPayoff math unchanged. Booked offset is closed-leg realised, not a second MTM.",
+    ],
+  },
+  {
     version: "6.10",
     date: "2026-08-15",
     user: [

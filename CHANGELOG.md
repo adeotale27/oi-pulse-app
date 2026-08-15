@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.11 — 2026-08-15
+
+Book Analyze is a payoff studio, not a sparse card.
+
+- Full-screen Analyze: index + spot %, Live P&L, **Add booked P&L**, Chart / Legs on phone
+- Payoff chart with current-price and projected-P&L pills, now vs expiry curves, Call/Put OI at ATM, ±1/2 SD
+- Legs read like a book: B/S badges, `qty × expiry strike CE/PE`, checkbox, Total footer
+- Payoff table plus compact target and date sliders; tap the chart to set the target
+
 ## V6.10 — 2026-08-15
 
 Journal holiday names, Book radar copy, overnight tile, Telegram session wrap, Kite login errors, phone sidebar.
