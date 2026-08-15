@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.14 — 2026-08-15
+
+Index Risk is a normal dashboard page again. Admin configuration compiles.
+
+- Index Risk uses the same Public / Admin ticks as OI Change, Straddle, Positions, and the rest (header Public menu still has a shortcut)
+- The Index Risk tab always shows summary cards and an empty state when there are no upcoming events (it no longer paints a blank board)
+- Admin configuration: restored Alert focus indices JSX (`SettingsModal` parse error on `</section>`)
+
 ## V6.13 — 2026-08-15
 
 Analyze chart uses desk colours. Admin can discover and enable more Kite F&O names without a code change.

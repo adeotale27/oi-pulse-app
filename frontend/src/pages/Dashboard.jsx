@@ -2584,6 +2584,7 @@ export default function Dashboard() {
                         activeIndex={activeIndex}
                         refreshKey={uploadRefreshKey}
                         isAdmin={!!authState.is_admin}
+                        allowDismiss={false}
                       />
                     </TabsContent>
                   )}

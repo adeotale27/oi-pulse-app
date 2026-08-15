@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.14",
+    date: "2026-08-15",
+    user: [
+      "Index Risk shows the event board even when nothing is upcoming. Hide the tab with the same Public / Admin ticks as the other dashboard pages.",
+    ],
+    admin: [
+      "Admin configuration compiles again (Alert focus indices JSX). Index Risk Public/Admin ticks work like every other page. Upload stamps stay admin-only.",
+    ],
+  },
+  {
     version: "6.13",
     date: "2026-08-15",
     user: [

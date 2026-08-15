@@ -130,7 +130,12 @@ function daysLeftText(n) {
   return `${n}d left`;
 }
 
-export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin = false }) {
+export default function EventRiskWidget({
+  activeIndex,
+  refreshKey = 0,
+  isAdmin = false,
+  allowDismiss = true,
+}) {
   const [events, setEvents] = useState([]);
   const [uploadMeta, setUploadMeta] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -202,13 +207,8 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
   );
   const stampsNeedAttention = freshness.some((row) => row.stale);
   const hasUpcoming = upcoming.length > 0;
-  const showWidget = Boolean(err) || hasUpcoming || stampsNeedAttention;
 
-  if (!showWidget) {
-    return null;
-  }
-
-  if (dismissed) {
+  if (allowDismiss && dismissed) {
     return (
       <div
         data-testid="event-risk-widget-dismissed"
@@ -250,6 +250,7 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
           <div className="text-[11px] text-slate-500 dark:text-slate-400">
             {loading ? "Loading…" : err ? <span className="text-rose-500">{err}</span> : `${upcoming.length} upcoming`}
           </div>
+          {allowDismiss ? (
           <button
             type="button"
             data-testid="event-risk-dismiss"
@@ -262,12 +263,13 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
           >
             <X className="w-3.5 h-3.5" />
           </button>
+          ) : null}
         </div>
       </div>
 
       {/* Last-upload stamps only when a file is stale / never uploaded */}
       {isAdmin && stampsNeedAttention && (
-      <div>
+      <div
         className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40"
         data-testid="upload-last-stamps"
       >
@@ -330,9 +332,6 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
       </div>
       )}
 
-      {/* Summary + events only when there is upcoming risk */}
-      {hasUpcoming && (
-      <>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-3 border-b border-slate-100 dark:border-slate-800">
         <SummaryCard icon={TrendingUp} label="Upcoming Results" value={summary.results} tint="rose" />
         <SummaryCard icon={Users} label="Board Meetings" value={summary.board} tint="indigo" />
@@ -394,8 +393,11 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
       {/* Full events tile grid */}
       <div className="p-3">
         {upcoming.length === 0 && !loading && !err && (
-          <p className="text-xs text-slate-500 text-center py-4">
+          <p className="text-xs text-slate-500 text-center py-6" data-testid="event-risk-empty">
             There are no upcoming events for {label}.
+            {isAdmin
+              ? " Upload the NSE event calendar and this index’s constituents in Admin if the list should not be empty."
+              : " The board fills in after the desk uploads the event calendar."}
           </p>
         )}
         {upcoming.length > 0 && (
@@ -457,8 +459,6 @@ export default function EventRiskWidget({ activeIndex, refreshKey = 0, isAdmin =
             </div>
           )}
         </div>
-      )}
-      </>
       )}
     </div>
   );

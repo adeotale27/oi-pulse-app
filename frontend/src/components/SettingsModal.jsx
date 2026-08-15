@@ -345,6 +345,10 @@ export default function SettingsModal({
                 </button>
               ) : null}
             </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block flex items-center gap-1">
+                Alert focus indices (today)
                 <InfoTip title="Weekday alert defaults">
                   Defaults: Mon/Tue/Fri → NIFTY · Wed/Thu → SENSEX (weekly expiry focus).
                   Changing this saves an override for today only — resets to weekday default on the next day.
@@ -584,7 +588,7 @@ export default function SettingsModal({
                       : ALL_PAGE_IDS;
                     const adminOn = adminList.includes(page.id);
                     const hint = page.id === "index-events"
-                      ? "Public tick shows Index Risk to guests. Last-upload stamps stay admin-only."
+                      ? "Same Public / Admin ticks as every other page. Untick Admin to hide it on your desk; untick Public (or the header Public menu) to hide it from guests. Last-upload stamps stay admin-only."
                       : page.id === "positions"
                         ? "Guests see Connect Zerodha for their own book. Charts stay on your publisher token."
                         : page.id === "sell-candidates"
