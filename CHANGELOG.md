@@ -1,5 +1,15 @@
 # Changelog
 
+## V6.20 — 2026-08-15
+
+Enable extras end-to-end, Desk AI per selected MCX name, Analyze emerald chrome.
+
+- Index management Enable: 90s timeout, FastAPI error text (not a blank “Enable failed”), session_group on the registry row. Kite MCX CE/PE labelled `MCX` (not `MCX-OPT`) still load the chain
+- Admin configuration tracked-index ticks include extras already on; saving no longer drops GOLD
+- Header / sidebar / phone picker still use `INDEX_CHIP_CAP` = 3; enabled names appear there after Enable
+- Desk AI: `GET /desk-outside?index=` — Gold selected → Gold news/fut; NIFTY selected → existing cash heavyweight tape
+- Analyze tabs, header, now-curve: emerald like Journal (put/call OI bars stay green/red)
+
 ## V6.19 — 2026-08-15
 
 Extra indices fit the existing phone and desktop chrome. Checklist requires phone in the same PR.

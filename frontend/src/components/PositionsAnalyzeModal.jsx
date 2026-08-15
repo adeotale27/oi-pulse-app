@@ -204,8 +204,8 @@ function PayoffSvg({
             <stop offset="100%" stopColor="#FCA5A5" stopOpacity="0.12" />
           </linearGradient>
           <linearGradient id={`${gid}-pnlFill`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0284c7" stopOpacity="0.14" />
-            <stop offset="100%" stopColor="#0284c7" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#059669" stopOpacity="0.14" />
+            <stop offset="100%" stopColor="#059669" stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
@@ -234,15 +234,15 @@ function PayoffSvg({
 
         <line x1={spotX} x2={spotX} y1={pad.t} y2={height - pad.b} stroke="#0F172A" strokeWidth="1.6" />
         {showTgt ? (
-          <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#0284c7" strokeWidth="1.5" strokeDasharray="4 3" />
+          <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#059669" strokeWidth="1.5" strokeDasharray="4 3" />
         ) : null}
         <path d={pathOf(expiryPnl)} fill="none" stroke="#64748B" strokeWidth="2.2" />
-        <path d={pathOf(targetPnl)} fill="none" stroke="#0284c7" strokeWidth="2.5" />
+        <path d={pathOf(targetPnl)} fill="none" stroke="#059669" strokeWidth="2.5" />
 
         {active && (
           <g data-testid="payoff-cursor">
             <line x1={active.x} x2={active.x} y1={pad.t} y2={height - pad.b} stroke="#475569" strokeWidth="1.15" strokeDasharray="3 3" opacity="0.7" />
-            <circle cx={active.x} cy={yScale(active.scenario ?? 0)} r="4.5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" />
+            <circle cx={active.x} cy={yScale(active.scenario ?? 0)} r="4.5" fill="#059669" stroke="#fff" strokeWidth="1.5" />
             <circle cx={active.x} cy={yScale(active.expiry ?? 0)} r="3.5" fill="#64748B" stroke="#fff" strokeWidth="1.25" />
           </g>
         )}
@@ -278,14 +278,14 @@ function PayoffSvg({
               <span className={`font-semibold ${active.expiry >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(active.expiry, 0)}</span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-sky-700">Now / date</span>
+              <span className="text-emerald-700">Now / date</span>
               <span className={`font-semibold ${active.scenario >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(active.scenario, 0)}</span>
             </div>
           </div>
           {typeof onPickSpot === "function" ? (
             <button
               type="button"
-              className="pointer-events-auto mt-1.5 text-[10px] font-semibold text-sky-700 hover:underline"
+              className="pointer-events-auto mt-1.5 text-[10px] font-semibold text-emerald-700 hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
                 onPickSpot(Math.round(active.spot));
@@ -332,7 +332,7 @@ function CompactSlider({
         <div className="flex items-center gap-2 shrink-0">
           <span className="font-mono-data text-[12px] font-semibold text-slate-900 tabular-nums">{valueLabel}</span>
           {typeof onReset === "function" ? (
-            <button type="button" className="text-[10px] font-semibold text-sky-700 hover:underline" onClick={onReset} disabled={disabled}>
+            <button type="button" className="text-[10px] font-semibold text-emerald-700 hover:underline" onClick={onReset} disabled={disabled}>
               Reset
             </button>
           ) : null}
@@ -373,7 +373,7 @@ function CompactSlider({
               onClick={() => onChange(p.value)}
               className={`h-6 px-2 rounded-full text-[10px] font-semibold border ${
                 Math.abs(value - p.value) <= (step || 1) * 0.6
-                  ? "border-sky-500 bg-sky-50 text-sky-900"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-900"
                   : "border-slate-200 bg-slate-50 text-slate-600"
               }`}
               data-testid={p.testId}
@@ -656,7 +656,7 @@ export default function PositionsAnalyzeModal({
       data-testid={testId}
       onClick={() => setPane(id)}
       className={`h-8 px-3 rounded-full text-[12px] font-semibold ${
-        pane === id ? "bg-sky-600 text-white shadow-sm" : "text-slate-600 bg-white border border-slate-200"
+        pane === id ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 bg-white border border-slate-200"
       }`}
     >
       {label}
@@ -668,7 +668,7 @@ export default function PositionsAnalyzeModal({
       <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
         <span className="text-[10px] uppercase tracking-widest font-semibold text-slate-500">F&amp;O legs</span>
         <div className="flex gap-2">
-          <button type="button" className="text-[10px] font-semibold text-sky-700" onClick={selectAllOpen} data-testid="analyze-select-all">
+          <button type="button" className="text-[10px] font-semibold text-emerald-700" onClick={selectAllOpen} data-testid="analyze-select-all">
             All open
           </button>
           <button type="button" className="text-[10px] text-slate-500" onClick={selectNone} data-testid="analyze-select-none">
@@ -691,7 +691,7 @@ export default function PositionsAnalyzeModal({
                 .filter((l) => selected.has(l.tradingsymbol) && !l.exited)
                 .reduce((a, l) => a + (Number(l.pnl) || 0), 0) + (isActive ? offset : 0);
             return (
-              <div key={idx} className={isActive ? "bg-sky-50/40" : ""}>
+              <div key={idx} className={isActive ? "bg-emerald-50/40" : ""}>
                 <button
                   type="button"
                   onClick={() => toggleExpand(idx)}
@@ -701,7 +701,7 @@ export default function PositionsAnalyzeModal({
                   {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
                   <div className="min-w-0 flex-1">
                     <div className="flex justify-between gap-2">
-                      <span className={`text-[13px] font-bold ${isActive ? "text-sky-900" : "text-slate-800"}`}>{idx}</span>
+                      <span className={`text-[13px] font-bold ${isActive ? "text-emerald-900" : "text-slate-800"}`}>{idx}</span>
                       <span className={`text-[12px] font-mono-data font-semibold ${idxPnl >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
                         {money(idxPnl, 0)}
                       </span>
@@ -714,7 +714,7 @@ export default function PositionsAnalyzeModal({
                 {isOpen && (
                   <div className="pb-1">
                     {!isActive ? (
-                      <button type="button" className="text-[10px] font-semibold text-sky-700 px-3 pb-1" onClick={() => selectIndex(idx)}>
+                      <button type="button" className="text-[10px] font-semibold text-emerald-700 px-3 pb-1" onClick={() => selectIndex(idx)}>
                         Analyze this index
                       </button>
                     ) : null}
@@ -736,12 +736,12 @@ export default function PositionsAnalyzeModal({
                               if (!isActive) selectIndex(idx);
                               toggle(l.tradingsymbol);
                             }}
-                            className="accent-sky-600"
+                            className="accent-emerald-600"
                             data-testid={`analyze-leg-${l.tradingsymbol}`}
                           />
                           <span
                             className={`h-5 w-5 rounded-md text-[10px] font-bold inline-flex items-center justify-center shrink-0 ${
-                              exited ? "bg-slate-100 text-slate-400" : sold ? "bg-[#DC2626] text-white" : "bg-sky-600 text-white"
+                              exited ? "bg-slate-100 text-slate-400" : sold ? "bg-[#DC2626] text-white" : "bg-emerald-600 text-white"
                             }`}
                           >
                             {exited ? "X" : sold ? "S" : "B"}
@@ -791,7 +791,7 @@ export default function PositionsAnalyzeModal({
         <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">
           <button
             type="button"
-            className={`h-7 px-3 rounded-full text-[11px] font-semibold ${chartMode === "chart" ? "bg-sky-600 text-white" : "text-slate-600"}`}
+            className={`h-7 px-3 rounded-full text-[11px] font-semibold ${chartMode === "chart" ? "bg-emerald-600 text-white" : "text-slate-600"}`}
             onClick={() => setChartMode("chart")}
             data-testid="analyze-mode-chart"
           >
@@ -799,7 +799,7 @@ export default function PositionsAnalyzeModal({
           </button>
           <button
             type="button"
-            className={`h-7 px-3 rounded-full text-[11px] font-semibold ${chartMode === "table" ? "bg-sky-600 text-white" : "text-slate-600"}`}
+            className={`h-7 px-3 rounded-full text-[11px] font-semibold ${chartMode === "table" ? "bg-emerald-600 text-white" : "text-slate-600"}`}
             onClick={() => setChartMode("table")}
             data-testid="analyze-mode-table"
           >
@@ -820,7 +820,7 @@ export default function PositionsAnalyzeModal({
       {chartMode === "chart" ? (
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
           <div className="flex flex-wrap items-center gap-3 px-3 py-1.5 text-[10px] text-slate-500 border-b border-slate-100">
-            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-sky-600 inline-block" /> Now / date</span>
+            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-emerald-600 inline-block" /> Now / date</span>
             <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-slate-500 inline-block" /> Expiry</span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-[#DC2626] inline-block rounded-[2px]" /> Call OI</span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-[#16A34A] inline-block rounded-[2px]" /> Put OI</span>
@@ -925,7 +925,7 @@ export default function PositionsAnalyzeModal({
       >
         <DialogTitle className="sr-only">Analyze</DialogTitle>
         <div className="bg-[#f7f8fa] w-full h-full min-h-0 overflow-hidden flex flex-col">
-          <header className="shrink-0 border-b border-slate-200 bg-white">
+          <header className="shrink-0 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)]">
             <div className="flex items-center gap-2 px-2 sm:px-3 h-11">
               <button type="button" className="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-slate-100" onClick={onClose} data-testid="analyze-close" aria-label="Close">
                 <X className="w-5 h-5" />
@@ -938,7 +938,7 @@ export default function PositionsAnalyzeModal({
             </div>
             <div className="px-3 pb-2 flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
-                <LineChart className="w-4 h-4 text-sky-600 shrink-0" />
+                <LineChart className="w-4 h-4 text-emerald-600 shrink-0" />
                 {indices.length > 1 ? (
                   <select
                     className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[13px] font-semibold"

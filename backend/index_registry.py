@@ -255,6 +255,18 @@ def public_registry_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def extra_poll_cfg(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Registry row → INDEX_CONFIG extra. `name` is required by the Kite chain filter."""
+    if not doc:
+        return None
+    if not doc.get("quote_symbol") or not doc.get("segment"):
+        return None
+    uid = str(doc.get("_id") or doc.get("name") or "").upper()
+    if not uid:
+        return None
+    return {**doc, "name": doc.get("name") or uid}
+
+
 def merge_live_index_config(extra: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     from oi_service import merge_index_config
 
@@ -300,8 +312,9 @@ async def bootstrap_registry(db, settings: Optional[Dict[str, Any]] = None) -> L
     async for d in db.index_registry.find({}):
         if d["_id"] in DESK_IDS:
             continue
-        if d.get("quote_symbol") and d.get("segment"):
-            extra_cfg[d["_id"]] = d
+        cfg = extra_poll_cfg(d)
+        if cfg:
+            extra_cfg[d["_id"]] = cfg
     merge_live_index_config(extra_cfg)
     return enabled
 

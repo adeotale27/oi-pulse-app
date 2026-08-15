@@ -52,9 +52,10 @@ export default function SettingsModal({
       .then((r) => {
         const d = r.data || {};
         setSettings(d);
-        if (Array.isArray(d.known_indices) && d.known_indices.length) {
-          setKnownIndices(d.known_indices);
-        }
+        const known = Array.isArray(d.known_indices) ? d.known_indices : [];
+        const enabled = Array.isArray(d.enabled_indices) ? d.enabled_indices : [];
+        const pool = [...new Set([...DESK_IDS, ...known, ...enabled])];
+        if (pool.length) setKnownIndices(pool);
       })
       .catch((e) => {
         setLoadError(e?.response?.data?.detail || e.message || "Failed to load settings");
@@ -94,7 +95,8 @@ export default function SettingsModal({
       }
       cur.delete(idx);
     } else cur.add(idx);
-    setSettings({ ...settings, enabled_indices: knownIndices.filter((i) => cur.has(i)) });
+    const pool = [...new Set([...knownIndices, ...(settings.enabled_indices || [])])];
+    setSettings({ ...settings, enabled_indices: pool.filter((i) => cur.has(i)) });
   };
 
   const toggleAlertIndex = (idx) => {
@@ -336,7 +338,7 @@ export default function SettingsModal({
               {isAdmin ? (
                 <button
                   type="button"
-                  className="mt-2 text-[11px] font-semibold text-sky-700 hover:underline"
+                  className="mt-2 text-[11px] font-semibold text-emerald-700 hover:underline"
                   onClick={() => {
                     onOpenChange(false);
                     try { window.dispatchEvent(new CustomEvent("oi-admin-open-indices")); } catch (_) {}

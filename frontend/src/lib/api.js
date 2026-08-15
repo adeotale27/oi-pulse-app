@@ -19,6 +19,24 @@ export const API = `${BACKEND_URL}/api`;
 // disabling withCredentials is safe.
 export const api = axios.create({ baseURL: API, timeout: 20000, withCredentials: false });
 
+/** FastAPI `detail` can be a string, list of objects, or missing on timeout. */
+export function apiDetail(e, fallback = "Request failed") {
+  const code = e?.code;
+  if (code === "ECONNABORTED" || /timeout/i.test(String(e?.message || ""))) {
+    return "Kite dump took too long — tap Refresh, wait, then Enable again (first load can take a minute)";
+  }
+  const d = e?.response?.data?.detail;
+  if (typeof d === "string" && d.trim()) return d;
+  if (Array.isArray(d)) {
+    const bits = d.map((x) => (typeof x === "string" ? x : x?.msg || x?.detail)).filter(Boolean);
+    if (bits.length) return bits.join("; ");
+  }
+  if (d && typeof d === "object" && d.msg) return String(d.msg);
+  return e?.message || fallback;
+}
+
+export const INDEX_ADMIN_TIMEOUT_MS = 90000;
+
 // Simple deduped helper for the /tickers/extras endpoint so multiple callers
 // won't create duplicate concurrent network requests. Keeps one inflight promise
 // and returns its resolved data to all callers.

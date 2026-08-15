@@ -1,5 +1,6 @@
 from index_registry import (
     capabilities_from_flags,
+    extra_poll_cfg,
     infer_step,
     inspect_underlying,
     summarize_underlyings,
@@ -109,3 +110,36 @@ def test_inspect_fut_only_cannot_enable_oi():
     info = inspect_underlying(rows, "FOOIDX")
     assert info["can_enable_oi"] is False
     assert info["capabilities"]["options"] is False
+
+
+def test_inspect_gold_mcx_segment_without_opt_suffix():
+    rows = [
+        {
+            "name": "GOLD",
+            "instrument_type": "FUT",
+            "strike": 0,
+            "expiry": "2026-08-20",
+            "exchange": "MCX",
+            "segment": "MCX",
+            "tradingsymbol": "GOLD26AUGFUT",
+        },
+        _opt("GOLD", "CE", 100000, "2026-08-20", exch="MCX", seg="MCX"),
+        _opt("GOLD", "PE", 100000, "2026-08-20", exch="MCX", seg="MCX"),
+        _opt("GOLD", "CE", 100500, "2026-08-20", exch="MCX", seg="MCX"),
+        _opt("GOLD", "PE", 100500, "2026-08-20", exch="MCX", seg="MCX"),
+    ]
+    info = inspect_underlying(rows, "GOLD")
+    assert info["can_enable_oi"] is True
+    assert info["config"]["name"] == "GOLD"
+    assert info["config"]["segment"] == "MCX"
+
+
+def test_extra_poll_cfg_fills_name():
+    row = extra_poll_cfg({
+        "_id": "GOLD",
+        "quote_symbol": "MCX:GOLD26AUGFUT",
+        "segment": "MCX-OPT",
+        "quote_kind": "mcx_fut",
+    })
+    assert row["name"] == "GOLD"
+    assert extra_poll_cfg({"_id": "X"}) is None

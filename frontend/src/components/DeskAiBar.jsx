@@ -48,7 +48,7 @@ export default function DeskAiBar({
     try {
       const [st, outRes, evRes, posRes] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
-        api.get("/desk-outside").catch(() => ({ data: null })),
+        api.get("/desk-outside", { params: activeIndex ? { index: activeIndex } : {} }).catch(() => ({ data: null })),
         activeIndex ? api.get(`/events/${activeIndex}`).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
         api.get("/positions").catch(() => ({ data: null })),
       ]);
@@ -61,6 +61,7 @@ export default function DeskAiBar({
         surface: "desk",
         force: !!force,
         skip_llm: !askAi || !force,
+        index: activeIndex || undefined,
         holidays,
         results: events.map((e) => ({
           name: eventDisplayName(e) || e.name,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { api, apiDetail, INDEX_ADMIN_TIMEOUT_MS } from "@/lib/api";
 import { toast } from "sonner";
 import { Layers, Plus, RefreshCw, Search } from "lucide-react";
 
@@ -44,17 +44,20 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
     setInspect(null);
     setResults([]);
     setQ("");
-    loadList().catch((e) => toast.error(e?.response?.data?.detail || "Could not load indices"));
+    loadList().catch((e) => toast.error(apiDetail(e, "Could not load indices")));
   }, [open, loadList]);
 
   const search = async () => {
     setSearching(true);
     try {
-      const { data } = await api.get("/admin/indices/search", { params: { q, limit: 40 } });
+      const { data } = await api.get("/admin/indices/search", {
+        params: { q, limit: 40 },
+        timeout: INDEX_ADMIN_TIMEOUT_MS,
+      });
       setResults(data.results || []);
       if (data.synced_at) setSyncedAt(data.synced_at);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Search failed — is Kite connected?");
+      toast.error(apiDetail(e, "Search failed — is Kite connected?"));
     } finally {
       setSearching(false);
     }
@@ -63,12 +66,12 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
   const sync = async () => {
     setBusy(true);
     try {
-      const { data } = await api.post("/admin/indices/sync");
+      const { data } = await api.post("/admin/indices/sync", null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
       toast.success(`Synced ${data.count || 0} underlyings from Kite`);
       await loadList();
       if (q) await search();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Sync failed");
+      toast.error(apiDetail(e, "Sync failed"));
     } finally {
       setBusy(false);
     }
@@ -77,10 +80,10 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
   const openInspect = async (name) => {
     setBusy(true);
     try {
-      const { data } = await api.get("/admin/indices/inspect", { params: { name } });
+      const { data } = await api.get("/admin/indices/inspect", { params: { name }, timeout: INDEX_ADMIN_TIMEOUT_MS });
       setInspect(data);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Inspect failed");
+      toast.error(apiDetail(e, "Inspect failed"));
     } finally {
       setBusy(false);
     }
@@ -90,13 +93,13 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
     if (!inspect?.id) return;
     setBusy(true);
     try {
-      await api.post(`/admin/indices/${encodeURIComponent(inspect.id)}/enable`);
+      await api.post(`/admin/indices/${encodeURIComponent(inspect.id)}/enable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
       toast.success(`${inspect.id} enabled — OI poll will include it`);
       setInspect((p) => (p ? { ...p, enabled: true } : p));
       await loadList();
       onChanged?.();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Enable failed");
+      toast.error(apiDetail(e, "Enable failed"));
     } finally {
       setBusy(false);
     }
@@ -105,13 +108,13 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
   const disable = async (name) => {
     setBusy(true);
     try {
-      await api.post(`/admin/indices/${encodeURIComponent(name)}/disable`);
+      await api.post(`/admin/indices/${encodeURIComponent(name)}/disable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
       toast.success(`${name} hidden from the desk (history kept)`);
       if (inspect?.id === name) setInspect((p) => (p ? { ...p, enabled: false } : p));
       await loadList();
       onChanged?.();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Disable failed");
+      toast.error(apiDetail(e, "Disable failed"));
     } finally {
       setBusy(false);
     }
@@ -124,7 +127,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
       <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0" data-testid="index-management-modal">
         <DialogHeader className="px-4 py-3 border-b border-slate-200">
           <DialogTitle className="flex items-center gap-2 text-[15px]">
-            <Layers className="w-4 h-4 text-sky-600" />
+            <Layers className="w-4 h-4 text-emerald-600" />
             Index management
           </DialogTitle>
           <DialogDescription className="text-[11px] text-slate-500">
@@ -146,7 +149,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
               data-testid="index-search"
             />
           </div>
-          <Button size="sm" className="h-8 bg-sky-600 hover:bg-sky-700" onClick={search} disabled={searching}>
+          <Button size="sm" className="h-8 bg-emerald-600 hover:bg-emerald-700" onClick={search} disabled={searching}>
             Search
           </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={sync} disabled={busy} title="Refresh Kite dump">
@@ -174,7 +177,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
                       Disable
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" className="h-7 text-[11px] text-sky-700" disabled={busy} onClick={() => openInspect(idx.id)}>
+                    <Button size="sm" variant="ghost" className="h-7 text-[11px] text-emerald-700" disabled={busy} onClick={() => openInspect(idx.id)}>
                       Inspect
                     </Button>
                   )}
@@ -198,7 +201,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
                     <button
                       key={m.id}
                       type="button"
-                      className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:border-sky-400 hover:text-sky-800"
+                      className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:border-emerald-400 hover:text-emerald-800"
                       onClick={() => openInspect(m.id)}
                       data-testid={`mcx-major-${m.id}`}
                     >
@@ -245,7 +248,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
               {inspect.notes ? <p className="mt-2 text-[11px] text-rose-700">{inspect.notes}</p> : null}
               <div className="mt-3 flex gap-2">
                 {inspect.can_enable_oi && !inspect.enabled ? (
-                  <Button size="sm" className="bg-sky-600 hover:bg-sky-700" disabled={busy} onClick={enable} data-testid="index-enable">
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" disabled={busy} onClick={enable} data-testid="index-enable">
                     Enable index
                   </Button>
                 ) : null}

@@ -911,11 +911,14 @@ export default function PositionsPanel({
     let cancelled = false;
     const run = async () => {
       try {
-        const out = await api.get("/desk-outside").catch(() => ({ data: null }));
+        const out = await api.get("/desk-outside", {
+          params: activeIndex ? { index: activeIndex } : {},
+        }).catch(() => ({ data: null }));
         if (!cancelled) setOutside(out.data || null);
         const { data } = await api.post("/desk-guide", {
           surface: "positions",
           skip_llm: !deskAiAsk,
+          index: activeIndex || undefined,
           band: bookVerdict?.band || null,
           adjust: adjustRef.current,
         });
@@ -930,7 +933,7 @@ export default function PositionsPanel({
       cancelled = true;
       clearInterval(id);
     };
-  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band]);
+  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 

@@ -25,7 +25,14 @@ NEWS_FEEDS = (
 UA = "Mozilla/5.0 (compatible; OIPulseDesk/6.00; +https://github.com/adeotale27/oi-pulse-app)"
 CACHE_S = 45.0
 
-_cache: Dict[str, Any] = {"at": 0.0, "pack": None}
+_packs: Dict[str, Dict[str, Any]] = {}
+
+COMMODITY_NEWS_Q = {
+    "GOLD": "Gold+OR+MCX+Gold+OR+bullion",
+    "SILVER": "Silver+OR+MCX+Silver",
+    "CRUDEOIL": "crude+oil+OR+WTI+OR+MCX+crude",
+    "NATURALGAS": "natural+gas+OR+MCX+gas",
+}
 
 
 def _clip(s: Any, n: int = 160) -> str:
@@ -391,11 +398,12 @@ def _briefing_text(lines, *, heavies, quotes, news, source: str = "") -> str:
     return "Upload Nifty 50 / Bank / Sensex constituents in Admin → Upload (Impact Risk) to enable the heavyweight tape."
 
 
-async def _fetch_news() -> List[Dict[str, str]]:
+async def _fetch_news(urls: Optional[Tuple[str, ...]] = None) -> List[Dict[str, str]]:
     items: List[Dict[str, str]] = []
     seen = set()
+    feeds = urls or NEWS_FEEDS
     async with httpx.AsyncClient(timeout=8.0, follow_redirects=True, headers={"User-Agent": UA}) as client:
-        for url in NEWS_FEEDS:
+        for url in feeds:
             try:
                 r = await client.get(url)
                 if r.status_code != 200:
@@ -411,10 +419,91 @@ async def _fetch_news() -> List[Dict[str, str]]:
     return items[:8]
 
 
-async def snapshot(db, tracker=None, *, force: bool = False) -> Dict[str, Any]:
+def focus_is_mcx(uid: str) -> bool:
+    key = str(uid or "").strip().upper()
+    if not key:
+        return False
+    cfg = None
+    try:
+        from oi_service import INDEX_CONFIG
+        cfg = INDEX_CONFIG.get(key)
+    except Exception:
+        cfg = None
+    from universe import session_group_for
+    return session_group_for(key, cfg).startswith("mcx")
+
+
+async def _mcx_pack(tracker, focus: str) -> Dict[str, Any]:
+    """Commodity tape when an enabled MCX name is the active desk index."""
+    q = COMMODITY_NEWS_Q.get(focus, f"{focus}+OR+MCX")
+    url = (
+        "https://news.google.com/rss/search?q="
+        + q
+        + "+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+    )
+    news = await _fetch_news((url,))
+    last = None
+    source = "none"
+    try:
+        from oi_service import INDEX_CONFIG
+        cfg = INDEX_CONFIG.get(focus) or {}
+        svc = getattr(tracker, "kite_service", None) if tracker else None
+        if svc and cfg:
+            key = svc.resolve_quote_symbol(cfg)
+            if key:
+                blob = await asyncio.to_thread(_kite_batch, tracker, [key])
+                raw = (blob or {}).get(key)
+                qte = _quote_from_kite(raw) if isinstance(raw, dict) else None
+                if qte and qte.get("last") is not None:
+                    last = qte["last"]
+                    source = "kite"
+    except Exception as e:
+        logger.warning("mcx desk quote failed %s: %s", focus, e)
+    lines = [f"{focus} desk — cash heavyweights stay on NIFTY / SENSEX / BANKNIFTY."]
+    if last is not None:
+        lines.append(f"{focus} future {last:.2f}.")
+    if news:
+        lines.append(news[0]["title"])
+    briefing = " ".join(lines)
+    return {
+        "ok": True,
+        "focus": focus,
+        "movers": [],
+        "news": news,
+        "breadth": {},
+        "sectors": [],
+        "corporate": [],
+        "events": [],
+        "briefing": briefing,
+        "vix": None,
+        "heavy_count": 0,
+        "quote_source": source,
+        "fut_ltp": last,
+        "at": int(time.time()),
+        "note": f"MCX {focus}: news and futures quote. Switch back to NIFTY for the cash heavyweight tape.",
+    }
+
+
+async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str] = None) -> Dict[str, Any]:
     now = time.monotonic()
-    if not force and _cache["pack"] is not None and (now - float(_cache["at"] or 0)) < CACHE_S:
-        return _cache["pack"]
+    focus = str(index or "").strip().upper()
+    enabled = []
+    try:
+        enabled = [str(x).upper() for x in ((getattr(tracker, "settings", None) or {}).get("enabled_indices") or [])]
+    except Exception:
+        enabled = []
+    mcx = bool(focus) and focus_is_mcx(focus)
+    if tracker is not None:
+        mcx = mcx and focus in enabled
+    cache_key = focus if mcx else "NSE"
+    hit = _packs.get(cache_key)
+    if not force and hit and hit.get("pack") is not None and (now - float(hit.get("at") or 0)) < CACHE_S:
+        return hit["pack"]
+
+    if mcx:
+        pack = await _mcx_pack(tracker, focus)
+        _packs[cache_key] = {"at": now, "pack": pack}
+        return pack
 
     heavies = await _load_heavies(db)
     keys = [kite_key(h["symbol"]) for h in heavies]
@@ -639,6 +728,7 @@ async def snapshot(db, tracker=None, *, force: bool = False) -> Dict[str, Any]:
 
     pack = {
         "ok": True,
+        "focus": "NSE",
         "movers": movers,
         "news": news,
         "breadth": breadth,
@@ -655,11 +745,9 @@ async def snapshot(db, tracker=None, *, force: bool = False) -> Dict[str, Any]:
             else "Upload Nifty 50 / Bank / Sensex constituents in Admin → Upload to enable heavyweight tape."
         ),
     }
-    _cache["at"] = now
-    _cache["pack"] = pack
+    _packs[cache_key] = {"at": now, "pack": pack}
     return pack
 
 
 def reset_cache() -> None:
-    _cache["at"] = 0.0
-    _cache["pack"] = None
+    _packs.clear()

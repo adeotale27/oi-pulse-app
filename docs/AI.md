@@ -30,6 +30,6 @@ There is no chart strip and no Desk AI section in Admin configuration.
 
 ## APIs
 
-- `GET /api/desk-outside` — movers, breadth, sectors, events, briefing (cached ~45s)
+- `GET /api/desk-outside` — optional `?index=GOLD` when that MCX name is **enabled and selected**; otherwise cash heavyweight tape. Cached ~45s.
 - `GET/POST /api/desk-guide` — POST attaches outside tape server-side
 - `POST /api/desk-ai` — signed-in desk user: `desk_ai_show` and `desk_ai_carry`. Radar ticks stay admin-only

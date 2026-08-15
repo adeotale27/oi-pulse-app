@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.20",
+    date: "2026-08-15",
+    user: [
+      "Enable Gold / Crude (and other extras) from Index management without a silent timeout. Charts and Desk AI follow the index you pick. Analyze uses the same emerald chrome as the journal.",
+    ],
+    admin: [
+      "Enable waits up to 90s for the Kite dump and returns the real error. Admin configuration ticks keep extra names (do not drop GOLD on save). Desk AI ?index= for MCX when that name is selected; NSE stays the cash tape. MCX option rows match even if Kite labels them MCX not MCX-OPT.",
+    ],
+  },
+  {
     version: "6.19",
     date: "2026-08-15",
     user: [

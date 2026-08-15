@@ -1,4 +1,14 @@
-from desk_outside import is_material_move, parse_rss_items, score_mover, seller_note, _as_quote, _flags, _priority, _briefing_text
+from desk_outside import (
+    is_material_move,
+    parse_rss_items,
+    score_mover,
+    seller_note,
+    _as_quote,
+    _flags,
+    _priority,
+    _briefing_text,
+    focus_is_mcx,
+)
 
 
 def test_parse_rss_items():
@@ -42,3 +52,22 @@ def test_briefing_does_not_ask_upload_when_constituents_exist():
     quiet = _briefing_text([], heavies=[{"symbol": "RELIANCE"}], quotes={"RELIANCE": {"last": 1}}, news=[], source="kite")
     assert "loaded" in quiet.lower()
     assert "Admin → Upload" not in quiet
+
+
+def test_focus_is_mcx_only_when_that_name_is_on():
+    from oi_service import merge_index_config
+    try:
+        merge_index_config({
+            "GOLD": {
+                "quote_symbol": "MCX:GOLD26AUGFUT",
+                "segment": "MCX-OPT",
+                "quote_kind": "mcx_fut",
+                "step": 100,
+            }
+        })
+        assert focus_is_mcx("GOLD") is True
+        assert focus_is_mcx("NIFTY") is False
+        assert focus_is_mcx("") is False
+        assert focus_is_mcx("FINNIFTY") is False
+    finally:
+        merge_index_config({})

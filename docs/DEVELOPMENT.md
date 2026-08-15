@@ -62,6 +62,8 @@ Copy this into the PR. Do not ship with boxes unchecked.
 - [ ] **Trade journal** — those legs snapshot into the admin journal. Non-desk P&L lands in `booked_index_pnl.OTHER`.
 - [ ] **Year heatmap Others** — Trade Journal year view always has an **Others** row (commodities, FINNIFTY, stocks, anything else).
 - [ ] **Phone + existing chrome** — ship the same control on phone. Fit extra names into the **existing** header / sidebar / sticky index row (`INDEX_CHIP_CAP` = 3: dropdown or slide, do not grow those panes). The phone index picker must be able to select the new name so its OI loads. Do not invent a larger window.
+- [ ] **Enable path** — first Kite dump can exceed 20s; Index management Enable/inspect uses a 90s timeout. Admin configuration ticks must keep extras already enabled (union `known_indices` with `enabled_indices`).
+- [ ] **Desk AI** — if the name is MCX and it is the selected index, Desk AI loads that commodity tape; NSE selection keeps the cash heavyweight tape.
 - [ ] Catalog lockstep: `backend/universe.py` **and** `frontend/src/lib/universe.js` (quote hint, `session_group`, `pollable`).
 - [ ] Tests: hours (DST vs standard if MCX), symbol prefix, journal OTHER, universe catalog.
 - [ ] Version lockstep per [VERSIONING.md](./VERSIONING.md).

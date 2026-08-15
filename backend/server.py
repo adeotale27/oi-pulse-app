@@ -1397,7 +1397,13 @@ async def _kite_instrument_rows():
         svc._load_instruments()
     except Exception as e:
         raise HTTPException(503, f"Kite instruments unavailable: {e}")
-    return svc.instrument_rows()
+    rows = svc.instrument_rows()
+    if not rows:
+        raise HTTPException(
+            400,
+            "Kite instrument dump is empty — tap Refresh, wait for the dump, then Enable again",
+        )
+    return rows
 
 
 @api_router.get("/admin/indices")
@@ -1467,55 +1473,75 @@ async def admin_enable_index(
     request: Request,
     _admin: bool = Depends(require_admin),
 ):
-    from index_registry import inspect_underlying, merge_live_index_config, public_registry_doc, write_audit
+    from index_registry import (
+        extra_poll_cfg,
+        inspect_underlying,
+        merge_live_index_config,
+        public_registry_doc,
+        write_audit,
+    )
     from universe import DESK_IDS
 
     key = name.strip().upper()
-    rows = await _kite_instrument_rows()
-    info = inspect_underlying(rows, key)
-    if not info.get("can_enable_oi") or not info.get("config"):
-        raise HTTPException(400, info.get("notes") or "Cannot enable OI analytics for this instrument")
-    prev = await db.index_registry.find_one({"_id": key})
-    now_iso = datetime.now(timezone.utc).isoformat()
-    cfg = info["config"]
-    doc = {
-        "name": key,
-        "display_name": key,
-        "symbol": key,
-        "exchange": info.get("exchange"),
-        "quote_symbol": cfg["quote_symbol"],
-        "quote_kind": cfg.get("quote_kind") or "index",
-        "segment": cfg["segment"],
-        "step": cfg["step"],
-        "strikes_around_atm": cfg["strikes_around_atm"],
-        "enabled": True,
-        "capabilities": info.get("capabilities"),
-        "updated_at": now_iso,
-        "created_at": (prev or {}).get("created_at") or now_iso,
-    }
-    await db.index_registry.update_one({"_id": key}, {"$set": doc}, upsert=True)
-    extra = {}
-    async for d in db.index_registry.find({}):
-        if d["_id"] in DESK_IDS:
-            continue
-        if d.get("quote_symbol") and d.get("segment"):
-            extra[d["_id"]] = d
-    merge_live_index_config(extra)
-    enabled = list(tracker.settings.get("enabled_indices") or [])
-    if key not in enabled:
-        enabled.append(key)
-    await tracker.save_settings({"enabled_indices": enabled})
-    tracker.ensure_index_slots([key])
     try:
-        if tracker.kite_service:
-            tracker.kite_service.reload_instruments(force=True)
-            await tracker.seed_default_expiries()
+        rows = await _kite_instrument_rows()
+        info = inspect_underlying(rows, key)
+        if not info.get("can_enable_oi") or not info.get("config"):
+            raise HTTPException(400, info.get("notes") or "Cannot enable OI analytics for this instrument")
+        prev = await db.index_registry.find_one({"_id": key})
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cfg = info["config"]
+        doc = {
+            "name": cfg.get("name") or key,
+            "display_name": info.get("display_name") or key,
+            "symbol": key,
+            "exchange": info.get("exchange") or cfg.get("exchange"),
+            "quote_symbol": cfg["quote_symbol"],
+            "quote_kind": cfg.get("quote_kind") or "index",
+            "segment": cfg["segment"],
+            "step": cfg["step"],
+            "strikes_around_atm": cfg["strikes_around_atm"],
+            "calendar": cfg.get("calendar"),
+            "session_group": cfg.get("session_group"),
+            "enabled": True,
+            "capabilities": info.get("capabilities"),
+            "updated_at": now_iso,
+            "created_at": (prev or {}).get("created_at") or now_iso,
+        }
+        await db.index_registry.update_one({"_id": key}, {"$set": doc}, upsert=True)
+        extra = {}
+        async for d in db.index_registry.find({}):
+            if d["_id"] in DESK_IDS:
+                continue
+            cfg_row = extra_poll_cfg(d)
+            if cfg_row:
+                extra[d["_id"]] = cfg_row
+        merge_live_index_config(extra)
+        enabled = list(tracker.settings.get("enabled_indices") or [])
+        if key not in enabled:
+            enabled.append(key)
+        await tracker.save_settings({"enabled_indices": enabled})
+        tracker.ensure_index_slots([key])
+        try:
+            if tracker.kite_service:
+                tracker.kite_service.reload_instruments(force=True)
+                await tracker.seed_default_expiries()
+        except Exception as e:
+            logger.warning("reload after enable %s: %s", key, e)
+        sess = await _admin_from_request(request)
+        try:
+            await write_audit(
+                db, action="index_enable", index=key, admin=(sess or {}).get("username"), prev=prev, new=doc
+            )
+        except Exception:
+            logger.warning("index_enable audit failed for %s", key, exc_info=True)
+        stored = await db.index_registry.find_one({"_id": key})
+        return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning("reload after enable %s: %s", key, e)
-    sess = await _admin_from_request(request)
-    await write_audit(db, action="index_enable", index=key, admin=(sess or {}).get("username"), prev=prev, new=doc)
-    stored = await db.index_registry.find_one({"_id": key})
-    return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled}
+        logger.exception("enable index %s failed", key)
+        raise HTTPException(500, f"Enable failed: {e}")
 
 
 @api_router.post("/admin/indices/{name}/disable")
@@ -5251,6 +5277,7 @@ class DeskGuideIn(BaseModel):
     fii: Optional[Dict[str, Any]] = None
     oi: Optional[List[Any]] = None
     outside: Optional[Dict[str, Any]] = None
+    index: Optional[str] = None
     force: Optional[bool] = False
     skip_llm: Optional[bool] = False
 
@@ -5285,9 +5312,12 @@ async def update_desk_ai(payload: DeskAiToggleIn, role: str = Depends(require_de
 
 
 @api_router.get("/desk-outside")
-async def get_desk_outside(role: str = Depends(require_desk_user)):
-    """Heavyweight cash movers + news. Not the OI chain."""
-    return await desk_outside_svc.snapshot(db, tracker)
+async def get_desk_outside(
+    index: Optional[str] = Query(None),
+    role: str = Depends(require_desk_user),
+):
+    """Heavyweight cash movers + news. MCX tape only when that name is selected."""
+    return await desk_outside_svc.snapshot(db, tracker, index=index)
 
 
 @api_router.get("/desk-guide")
@@ -5312,7 +5342,7 @@ async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_us
     if surface == "carry":
         payload["skip_llm"] = True
     try:
-        outside = await desk_outside_svc.snapshot(db, tracker)
+        outside = await desk_outside_svc.snapshot(db, tracker, index=payload.get("index"))
         if surface == "carry":
             payload["outside"] = desk_guide_svc.carry_outside(outside)
         else:

@@ -23,7 +23,7 @@ def merge_index_config(extra: Optional[Dict[str, Dict[str, Any]]] = None) -> Dic
     INDEX_CONFIG.clear()
     INDEX_CONFIG.update(base)
     for k, cfg in (extra or {}).items():
-        if not cfg or not cfg.get("quote_symbol") or not cfg.get("name"):
+        if not cfg or not cfg.get("quote_symbol"):
             continue
         uid = str(k).upper()
         INDEX_CONFIG[uid] = {
@@ -35,6 +35,7 @@ def merge_index_config(extra: Optional[Dict[str, Dict[str, Any]]] = None) -> Dic
             "strikes_around_atm": int(cfg.get("strikes_around_atm") or 15),
             "calendar": cfg.get("calendar") or "nse",
             "session_group": cfg.get("session_group") or ("mcx_non_agri" if str(cfg.get("segment") or "").upper().startswith("MCX") or (cfg.get("quote_kind") or "") == "mcx_fut" else "nse"),
+            "exchange": cfg.get("exchange"),
         }
     return dict(INDEX_CONFIG)
 
@@ -98,6 +99,31 @@ class KiteService:
             self._loaded = False
         self._load_instruments()
 
+    def _option_chain_df(self, cfg: Dict[str, Any]):
+        """CE/PE rows for a Kite name. Segment match is preferred, not required.
+
+        MCX dumps sometimes label options MCX vs MCX-OPT — a hard segment
+        filter left GOLD/CRUDE chains empty after Enable.
+        """
+        if self.instruments_df is None or not cfg:
+            return None
+        name = cfg.get("name")
+        if not name:
+            return None
+        opt_df = self.instruments_df[self.instruments_df["name"] == name].copy()
+        if opt_df.empty:
+            return opt_df
+        if "instrument_type" in opt_df.columns:
+            typed = opt_df[opt_df["instrument_type"].isin(["CE", "PE"])]
+            if not typed.empty:
+                opt_df = typed
+        seg = str(cfg.get("segment") or "").strip()
+        if seg and "segment" in opt_df.columns:
+            by_seg = opt_df[opt_df["segment"] == seg]
+            if not by_seg.empty:
+                opt_df = by_seg
+        return opt_df
+
     def list_expiries(self, index_name: str):
         try:
             self._load_instruments()
@@ -108,10 +134,9 @@ class KiteService:
         cfg = INDEX_CONFIG.get(index_name)
         if not cfg:
             return []
-        opt_df = self.instruments_df[
-            (self.instruments_df["name"] == cfg["name"])
-            & (self.instruments_df["segment"] == cfg["segment"])
-        ]
+        opt_df = self._option_chain_df(cfg)
+        if opt_df is None or opt_df.empty:
+            return []
         expiries = sorted({str(pd.to_datetime(x).date()) for x in opt_df["expiry"].unique()})
         return expiries
 
@@ -179,7 +204,10 @@ class KiteService:
             logger.error(f"[get_snapshot:{index_name}] load_instruments failed: {type(e).__name__}: {e}")
             return None
 
-        cfg = INDEX_CONFIG[index_name]
+        cfg = INDEX_CONFIG.get(index_name)
+        if not cfg:
+            logger.error(f"[get_snapshot:{index_name}] not in INDEX_CONFIG")
+            return None
         ltp: float = 0.0
         try:
             _key, ltp = self._quote_ltp(cfg)
@@ -193,11 +221,8 @@ class KiteService:
         strikes = [atm + i * step for i in range(-n, n + 1)]
 
         import pandas as pd
-        opt_df = self.instruments_df[
-            (self.instruments_df["name"] == cfg["name"])
-            & (self.instruments_df["segment"] == cfg["segment"])
-        ].copy()
-        if opt_df.empty:
+        opt_df = self._option_chain_df(cfg)
+        if opt_df is None or opt_df.empty:
             logger.error(f"[get_snapshot:{index_name}] no option rows found in instruments_df for name={cfg['name']} segment={cfg['segment']}")
             return None
         opt_df["expiry"] = pd.to_datetime(opt_df["expiry"])
