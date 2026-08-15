@@ -86,5 +86,5 @@ NIFTY / SENSEX / BANKNIFTY migrate into `index_registry` on tracker start. Enabl
 Admin → Index management (also Admin configuration → Discover more). APIs are `/api/admin/indices*` (admin token required).
 
 - One poller, many underlyings via `universe` — [decisions/ADR-001-instrument-universe.md](./decisions/ADR-001-instrument-universe.md).
-- NSE hours gate the poller today. MCX evening hours are **not** on that clock; do not enable MCX `pollable` until a calendar exists.
+- MCX majors: nearest-FUT ATM + 09:00–23:30 IST when enabled — [decisions/ADR-003-mcx-majors.md](./decisions/ADR-003-mcx-majors.md).
 - Publisher OI vs guest book split is a product invariant.

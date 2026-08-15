@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from universe import DESK_IDS, desk_index_config, get as universe_get
+from universe import DESK_IDS, MCX_MAJOR_IDS, desk_index_config, get as universe_get, nearest_fut_quote_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -174,27 +174,47 @@ def inspect_underlying(rows: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
             break
     urow = universe_get(key)
     step = int(urow["step"]) if urow and urow.get("step") else infer_step(strikes, 50)
+    quote_kind = (urow or {}).get("quote_kind") or "index"
     quote = (urow or {}).get("quote_symbol") or QUOTE_HINTS.get(key)
-    if not quote and fut:
-        f0 = fut[0]
-        quote = f"{f0.get('exchange')}:{f0.get('tradingsymbol')}"
+    if quote_kind == "mcx_fut" or (not quote and fut):
+        live_fut = nearest_fut_quote_symbol(related, key)
+        if live_fut:
+            quote = live_fut
+            quote_kind = "mcx_fut"
+        elif not quote and fut:
+            f0 = fut[0]
+            quote = f"{f0.get('exchange')}:{f0.get('tradingsymbol')}"
+            quote_kind = "mcx_fut"
     has_opt = bool(ce) and bool(pe)
     caps = capabilities_from_flags(live_price=bool(quote), futures=bool(fut), options=has_opt)
     cfg = None
     if has_opt and quote:
         cfg = {
             "quote_symbol": quote,
+            "quote_kind": quote_kind,
             "name": key,
             "step": step,
             "segment": opt_seg or (urow or {}).get("segment") or "NFO-OPT",
             "strikes_around_atm": int((urow or {}).get("strikes_around_atm") or 15),
         }
+    notes = None
+    hint = None
+    if not caps["optionOI"]:
+        notes = "OI analytics need listed CE and PE. This name has no option chain in the Kite dump."
+    elif quote_kind == "mcx_fut":
+        hint = (
+            f"Kite name {key} on MCX (majors: {', '.join(MCX_MAJOR_IDS)}; "
+            "minis CRUDEOILM / GOLDM / SILVERM / NATGASMINI are separate). "
+            f"No cash spot — ATM from nearest FUT {quote or '—'}. "
+            "Hours ~09:00–23:30 IST. Publisher Kite needs the commodity segment."
+        )
     return {
         "id": key,
         "name": key,
-        "display_name": key,
+        "display_name": (urow or {}).get("label") or key,
         "exchange": exch,
         "quote_symbol": quote,
+        "quote_kind": quote_kind,
         "segment": opt_seg,
         "step": step,
         "expiries": expiries[:24],
@@ -204,9 +224,8 @@ def inspect_underlying(rows: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
         "capabilities": caps,
         "config": cfg,
         "can_enable_oi": bool(cfg) and caps["optionOI"],
-        "notes": None
-        if caps["optionOI"]
-        else "OI analytics need listed CE and PE. This name has no option chain in the Kite dump.",
+        "notes": notes,
+        "hint": hint,
     }
 
 
@@ -221,6 +240,7 @@ def public_registry_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         "symbol": doc.get("symbol"),
         "exchange": doc.get("exchange"),
         "quote_symbol": doc.get("quote_symbol"),
+        "quote_kind": doc.get("quote_kind"),
         "segment": doc.get("segment"),
         "step": doc.get("step"),
         "enabled": bool(doc.get("enabled")),

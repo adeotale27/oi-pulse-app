@@ -60,6 +60,40 @@ def test_summarize_and_inspect_finnifty():
     assert info["step"] == 100
 
 
+def test_inspect_crudeoil_nearest_fut():
+    rows = [
+        {
+            "name": "CRUDEOIL",
+            "instrument_type": "FUT",
+            "strike": 0,
+            "expiry": "2099-01-20",
+            "exchange": "MCX",
+            "segment": "MCX-FUT",
+            "tradingsymbol": "CRUDEOIL99JANFUT",
+        },
+        {
+            "name": "CRUDEOIL",
+            "instrument_type": "FUT",
+            "strike": 0,
+            "expiry": "2099-02-19",
+            "exchange": "MCX",
+            "segment": "MCX-FUT",
+            "tradingsymbol": "CRUDEOIL99FEBFUT",
+        },
+        _opt("CRUDEOIL", "CE", 5400, "2026-08-17", exch="MCX", seg="MCX-OPT"),
+        _opt("CRUDEOIL", "PE", 5400, "2026-08-17", exch="MCX", seg="MCX-OPT"),
+        _opt("CRUDEOIL", "CE", 5450, "2026-08-17", exch="MCX", seg="MCX-OPT"),
+        _opt("CRUDEOIL", "PE", 5450, "2026-08-17", exch="MCX", seg="MCX-OPT"),
+    ]
+    info = inspect_underlying(rows, "CRUDEOIL")
+    assert info["can_enable_oi"] is True
+    assert info["quote_kind"] == "mcx_fut"
+    assert info["config"]["segment"] == "MCX-OPT"
+    assert info["config"]["quote_symbol"] == "MCX:CRUDEOIL99JANFUT"
+    assert "CRUDEOIL" in (info.get("hint") or "")
+    assert info["step"] == 50
+
+
 def test_inspect_fut_only_cannot_enable_oi():
     rows = [
         {

@@ -9,11 +9,11 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
 
-from universe import desk_index_config
+from universe import desk_index_config, nearest_fut_quote_symbol
 
 logger = logging.getLogger(__name__)
 
-# Live OI board — sourced from universe.DESK_IDS (do not add MCX here until pollable).
+# Live OI board — desk ids. Extra MCX/F&O names merge in via index_registry.
 INDEX_CONFIG = desk_index_config()
 
 
@@ -28,6 +28,7 @@ def merge_index_config(extra: Optional[Dict[str, Dict[str, Any]]] = None) -> Dic
         uid = str(k).upper()
         INDEX_CONFIG[uid] = {
             "quote_symbol": cfg["quote_symbol"],
+            "quote_kind": cfg.get("quote_kind") or "index",
             "name": cfg.get("name") or uid,
             "step": int(cfg.get("step") or 50),
             "segment": cfg.get("segment") or "NFO-OPT",
@@ -66,9 +67,14 @@ class KiteService:
         import pandas as pd
         insts = self.kite.instruments()
         self.instruments_df = pd.DataFrame(insts)
-        # index tokens
+        # index tokens (cash/index quotes only — MCX uses nearest FUT at snapshot time)
         for idx_key, cfg in INDEX_CONFIG.items():
-            idx_sym = cfg["quote_symbol"].split(":")[-1]
+            if (cfg.get("quote_kind") or "index") == "mcx_fut":
+                continue
+            qsym = cfg.get("quote_symbol") or ""
+            idx_sym = qsym.split(":")[-1]
+            if not idx_sym:
+                continue
             row = self.instruments_df[self.instruments_df["tradingsymbol"] == idx_sym]
             if not row.empty:
                 token = int(row.iloc[0]["instrument_token"])
@@ -122,6 +128,48 @@ class KiteService:
         except Exception:
             return float(self._vix_cache or 0.0)
 
+    def resolve_quote_symbol(self, cfg: Dict[str, Any]) -> Optional[str]:
+        """Cash/index quote, or nearest MCX FUT (rolls each poll)."""
+        if (cfg.get("quote_kind") or "index") != "mcx_fut":
+            return cfg.get("quote_symbol")
+        self._load_instruments()
+        rows = []
+        if self.instruments_df is not None:
+            fut = self.instruments_df[
+                (self.instruments_df["name"] == cfg["name"])
+                & (self.instruments_df["instrument_type"] == "FUT")
+            ]
+            rows = fut.to_dict("records")
+        return nearest_fut_quote_symbol(rows, cfg["name"]) or cfg.get("quote_symbol")
+
+    def _quote_ltp(self, cfg: Dict[str, Any]) -> tuple:
+        key = self.resolve_quote_symbol(cfg)
+        if not key:
+            raise RuntimeError("no quote symbol")
+        q = self.kite.quote(key)
+        blob = q.get(key) if isinstance(q, dict) else None
+        if not blob and isinstance(q, dict) and len(q) == 1:
+            blob = next(iter(q.values()))
+        if not blob:
+            raise RuntimeError(f"empty quote for {key}")
+        return key, float(blob.get("last_price") or 0)
+
+    def _opt_symbol_at_strike(self, expiry_opt, st, itype: str):
+        sub = expiry_opt[expiry_opt["instrument_type"] == itype]
+        if sub.empty:
+            return None
+        exact = sub[sub["strike"] == st]
+        if not exact.empty:
+            return exact.iloc[0]["tradingsymbol"]
+        try:
+            diffs = (sub["strike"].astype(float) - float(st)).abs()
+            i = diffs.idxmin()
+            if float(diffs.loc[i]) <= 1e-6:
+                return sub.loc[i]["tradingsymbol"]
+        except Exception:
+            pass
+        return None
+
     def get_snapshot(self, index_name: str, expiry: Optional[str] = None) -> Optional[Dict[str, Any]]:
         try:
             self._load_instruments()
@@ -132,10 +180,9 @@ class KiteService:
         cfg = INDEX_CONFIG[index_name]
         ltp: float = 0.0
         try:
-            q = self.kite.quote(cfg["quote_symbol"])
-            ltp = q[cfg["quote_symbol"]]["last_price"]
+            _key, ltp = self._quote_ltp(cfg)
         except Exception as e:
-            logger.error(f"[get_snapshot:{index_name}] index quote failed for {cfg['quote_symbol']}: {type(e).__name__}: {e}")
+            logger.error(f"[get_snapshot:{index_name}] index quote failed for {cfg.get('quote_symbol')}: {type(e).__name__}: {e}")
             return None
 
         step = cfg["step"]
@@ -168,12 +215,12 @@ class KiteService:
 
         ce_syms, pe_syms = {}, {}
         for st in strikes:
-            ce = expiry_opt[(expiry_opt["strike"] == st) & (expiry_opt["instrument_type"] == "CE")]
-            pe = expiry_opt[(expiry_opt["strike"] == st) & (expiry_opt["instrument_type"] == "PE")]
-            if not ce.empty:
-                ce_syms[st] = ce.iloc[0]["tradingsymbol"]
-            if not pe.empty:
-                pe_syms[st] = pe.iloc[0]["tradingsymbol"]
+            ce_sym = self._opt_symbol_at_strike(expiry_opt, st, "CE")
+            pe_sym = self._opt_symbol_at_strike(expiry_opt, st, "PE")
+            if ce_sym:
+                ce_syms[st] = ce_sym
+            if pe_sym:
+                pe_syms[st] = pe_sym
 
         all_syms = list(ce_syms.values()) + list(pe_syms.values())
         tokens = [self.instrument_token_map[s] for s in all_syms if s in self.instrument_token_map]
@@ -249,8 +296,7 @@ class KiteService:
 
         cfg = INDEX_CONFIG[index_name]
         try:
-            q = self.kite.quote(cfg["quote_symbol"])
-            ltp = float(q[cfg["quote_symbol"]]["last_price"])
+            _key, ltp = self._quote_ltp(cfg)
         except Exception as e:
             logger.error(f"[atm_straddle:{index_name}] index quote failed: {e}")
             return None

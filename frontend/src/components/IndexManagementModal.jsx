@@ -6,6 +6,13 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Layers, Plus, RefreshCw, Search } from "lucide-react";
 
+const MCX_MAJORS = [
+  { id: "CRUDEOIL", label: "Crude oil" },
+  { id: "GOLD", label: "Gold" },
+  { id: "SILVER", label: "Silver" },
+  { id: "NATURALGAS", label: "Nat. gas" },
+];
+
 function Cap({ ok, label }) {
   return (
     <div className="flex items-center justify-between text-[12px] py-0.5">
@@ -122,6 +129,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
           </DialogTitle>
           <DialogDescription className="text-[11px] text-slate-500">
             Discover Kite F&amp;O names, check CE/PE OI, then enable. NIFTY / SENSEX / BANKNIFTY stay as they are.
+            MCX majors: CRUDEOIL, GOLD, SILVER, NATURALGAS (not the minis). ATM from nearest FUT.
             {syncedAt ? ` Dump ${new Date(syncedAt).toLocaleString("en-IN")}` : ""}
           </DialogDescription>
         </DialogHeader>
@@ -183,7 +191,23 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
               </span>
             </div>
             {results.length === 0 ? (
-              <p className="text-[12px] text-slate-400">Search Kite names (FINNIFTY, MIDCPNIFTY, CRUDEOIL…).</p>
+              <div className="space-y-2">
+                <p className="text-[12px] text-slate-400">Search Kite names, or inspect an MCX major:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {MCX_MAJORS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:border-sky-400 hover:text-sky-800"
+                      onClick={() => openInspect(m.id)}
+                      data-testid={`mcx-major-${m.id}`}
+                    >
+                      {m.label}
+                      <span className="ml-1 text-[10px] font-mono text-slate-400">{m.id}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="space-y-1">
                 {results.map((r) => (
@@ -217,6 +241,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
               <Cap ok={caps.futures} label="Futures" />
               <Cap ok={caps.options} label="Options" />
               <Cap ok={caps.optionOI} label="OI analytics" />
+              {inspect.hint ? <p className="mt-2 text-[11px] text-slate-600 leading-snug">{inspect.hint}</p> : null}
               {inspect.notes ? <p className="mt-2 text-[11px] text-rose-700">{inspect.notes}</p> : null}
               <div className="mt-3 flex gap-2">
                 {inspect.can_enable_oi && !inspect.enabled ? (

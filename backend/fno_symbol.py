@@ -9,6 +9,16 @@ from kite_positions import booked_pnl_from_kite_row  # noqa: F401 — canonical 
 from universe import fno_name_alternation
 
 INDEXES = fno_name_alternation()
+_MCX_OPT_NAMES = "|".join(
+    sorted(
+        (
+            "CRUDEOILM", "CRUDEOIL", "NATURALGASM", "NATURALGAS", "NATGASMINI",
+            "SILVERMIC", "SILVERM", "GOLDPETAL", "GOLDM", "GOLD", "SILVER",
+        ),
+        key=len,
+        reverse=True,
+    )
+)
 MON = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
     "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
@@ -24,6 +34,11 @@ _WEEKLY_MMM = re.compile(
 _MONTHLY = re.compile(
     rf"^(?P<idx>{INDEXES})(?P<yy>\d{{2}})(?P<mon>[A-Z]{{3}})"
     rf"(?P<strike>\d{{4,6}})(?P<side>CE|PE)$"
+)
+# MCX options often use 2–3 digit strikes (NATURALGAS25AUG250CE).
+_MCX_MONTHLY = re.compile(
+    rf"^(?P<idx>{_MCX_OPT_NAMES})(?P<yy>\d{{2}})(?P<mon>[A-Z]{{3}})"
+    rf"(?P<strike>\d{{2,6}})(?P<side>CE|PE)$"
 )
 # Compact weekly: NIFTY2681123050CE (yy + month digit + dd + strike)
 _COMPACT = re.compile(
@@ -119,6 +134,24 @@ def parse_fno_option_symbol(ts: str) -> Optional[dict[str, Any]]:
         }
 
     m = _MONTHLY.match(ts)
+    if m:
+        mon = m.group("mon")
+        if mon not in MON:
+            return None
+        yyyy = 2000 + int(m.group("yy"))
+        month = MON[mon]
+        return {
+            "index": m.group("idx"),
+            "strike": int(m.group("strike")),
+            "side": m.group("side"),
+            "expiry_code": mon,
+            "expiry_yy": m.group("yy"),
+            "expiry_day": None,
+            "expiry_iso": _last_thursday(yyyy, month),
+            "expiry_kind": "monthly",
+        }
+
+    m = _MCX_MONTHLY.match(ts)
     if m:
         mon = m.group("mon")
         if mon not in MON:

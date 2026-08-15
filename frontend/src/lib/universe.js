@@ -2,7 +2,7 @@
  * Instrument universe — keep lockstep with backend/universe.py.
  *
  * DESK_IDS = live OI board (NIFTY / SENSEX / BANKNIFTY).
- * CATALOG also lists MCX names that are NOT pollable until session + FUT spot land.
+ * CATALOG lists MCX majors (pollable once enabled). ATM = nearest FUT.
  */
 
 export const DESK_IDS = ["NIFTY", "SENSEX", "BANKNIFTY"];
@@ -17,14 +17,34 @@ export const ALIASES = {
   NATGAS: "NATURALGAS",
 };
 
-export const INDEX_STEP = { NIFTY: 50, SENSEX: 100, BANKNIFTY: 100 };
+export const INDEX_STEP = {
+  NIFTY: 50,
+  SENSEX: 100,
+  BANKNIFTY: 100,
+  CRUDEOIL: 50,
+  GOLD: 100,
+  SILVER: 250,
+  NATURALGAS: 1,
+};
 
-export const INDEX_SHORT = { NIFTY: "NIFTY", SENSEX: "SENSEX", BANKNIFTY: "BNF" };
+export const INDEX_SHORT = {
+  NIFTY: "NIFTY",
+  SENSEX: "SENSEX",
+  BANKNIFTY: "BNF",
+  CRUDEOIL: "CRUDE",
+  GOLD: "GOLD",
+  SILVER: "SILVER",
+  NATURALGAS: "NG",
+};
 
 export const INDEX_DOT = {
   NIFTY: "bg-sky-500",
   SENSEX: "bg-amber-500",
   BANKNIFTY: "bg-emerald-500",
+  CRUDEOIL: "bg-slate-600",
+  GOLD: "bg-yellow-500",
+  SILVER: "bg-zinc-400",
+  NATURALGAS: "bg-cyan-600",
 };
 
 /** Prefixes longest-first so BANKNIFTY wins over NIFTY. */
@@ -50,10 +70,10 @@ export const CATALOG = [
   { id: "NIFTY", pollable: true, calendar: "nse", exchange: "NFO", kite_name: "NIFTY", quote_kind: "index" },
   { id: "SENSEX", pollable: true, calendar: "nse", exchange: "BFO", kite_name: "SENSEX", quote_kind: "index" },
   { id: "BANKNIFTY", pollable: true, calendar: "nse", exchange: "NFO", kite_name: "BANKNIFTY", quote_kind: "index" },
-  { id: "CRUDEOIL", pollable: false, calendar: "mcx", exchange: "MCX", kite_name: "CRUDEOIL", quote_kind: "mcx_fut" },
-  { id: "GOLD", pollable: false, calendar: "mcx", exchange: "MCX", kite_name: "GOLD", quote_kind: "mcx_fut" },
-  { id: "SILVER", pollable: false, calendar: "mcx", exchange: "MCX", kite_name: "SILVER", quote_kind: "mcx_fut" },
-  { id: "NATURALGAS", pollable: false, calendar: "mcx", exchange: "MCX", kite_name: "NATURALGAS", quote_kind: "mcx_fut" },
+  { id: "CRUDEOIL", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "CRUDEOIL", quote_kind: "mcx_fut" },
+  { id: "GOLD", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "GOLD", quote_kind: "mcx_fut" },
+  { id: "SILVER", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "SILVER", quote_kind: "mcx_fut" },
+  { id: "NATURALGAS", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "NATURALGAS", quote_kind: "mcx_fut" },
 ];
 
 export function normalizeId(raw) {

@@ -239,6 +239,33 @@ def is_market_open(dt: datetime = None) -> bool:
     return start <= t <= end
 
 
+# MCX energy / bullion: 09:00–23:30 IST (poll one minute past close).
+MCX_POLL_OPEN = dtime(9, 0)
+MCX_POLL_CLOSE = dtime(23, 31)
+
+
+def is_mcx_hours(dt: datetime = None) -> bool:
+    """True inside the MCX evening window on an NSE trading day."""
+    dt = dt or now_ist()
+    if quote_session_is_live() and not is_weekend(dt):
+        t = dt.time()
+        return MCX_POLL_OPEN <= t <= MCX_POLL_CLOSE
+    if is_special_session_day(dt) and is_trading_day(dt):
+        start, end = session_poll_bounds(dt)
+        return start <= dt.time() <= end
+    if not is_trading_day(dt):
+        return False
+    t = dt.time()
+    return MCX_POLL_OPEN <= t <= MCX_POLL_CLOSE
+
+
+def is_oi_session_open(dt: datetime = None, *, mcx: bool = False) -> bool:
+    """NSE cash/F&O hours, plus MCX evening when a commodity is on the desk."""
+    if is_market_open(dt):
+        return True
+    return bool(mcx) and is_mcx_hours(dt)
+
+
 def previous_trading_day(dt: datetime = None) -> date:
     """Most recent NSE trading day strictly before `dt` (IST date)."""
     dt = dt or now_ist()
