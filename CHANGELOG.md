@@ -1,5 +1,11 @@
 # Changelog
 
+## V6.23 — 2026-08-15
+
+Fix desk crash: `INDEX_STEP is not defined`.
+
+- Restore Sidebar imports (`INDEX_STEP`, `INDEX_SHORT`, `usesIndexOverflow`) and TickerStrip `INDEX_CHIP_CAP` dropped in V6.21
+
 ## V6.22 — 2026-08-15
 
 F&O Index-management dump loads itself after every publisher token.

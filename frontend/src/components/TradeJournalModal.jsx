@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import { holidayCellLabel, holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
-import { DESK_IDS, HEATMAP_IDS, INDEX_SHORT } from "@/lib/universe";
+import { HEATMAP_IDS, INDEX_SHORT } from "@/lib/universe";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import InfoTip from "@/components/InfoTip";
 
@@ -749,7 +749,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     </tr>
                   </thead>
                   <tbody>
-                    {(heat?.indices || DESK_IDS).filter((idx) => idx !== "OTHER").map((idx) => (
+                    {(heat?.indices || HEATMAP_IDS).filter((idx) => idx !== "OTHER").map((idx) => (
                       <tr key={idx}>
                         <td className="p-2 font-semibold text-slate-700">{idx}</td>
                         {(heat?.by_index?.[idx] || Array(12).fill(0)).map((v, i) => (

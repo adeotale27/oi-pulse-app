@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.23",
+    date: "2026-08-15",
+    user: [
+      "Desk loads again after the Gold-price fix — sidebar index chips no longer crash.",
+    ],
+    admin: [
+      "Sidebar/TickerStrip universe imports restored (INDEX_STEP / INDEX_CHIP_CAP).",
+    ],
+  },
+  {
     version: "6.22",
     date: "2026-08-15",
     user: [

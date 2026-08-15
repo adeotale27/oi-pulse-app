@@ -11,6 +11,7 @@ import {
   EXPIRY_LIST_MAX_PX,
 } from "@/lib/tabOrder";
 import StrikeAroundChips from "@/components/StrikeAroundChips";
+import { INDEX_SHORT, INDEX_STEP, usesIndexOverflow } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
 
 const INDEX_THEME = {
