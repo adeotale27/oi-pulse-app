@@ -188,6 +188,15 @@ def test_should_lock_eod_at_1545_on_weekday():
     assert should_lock_eod(sunday) is False
 
 
+def test_should_lock_eod_waits_for_mcx_when_gold_enabled():
+    ist = timezone(timedelta(hours=5, minutes=30))
+    eve = datetime(2026, 8, 13, 16, 0, tzinfo=ist)
+    late = datetime(2026, 8, 13, 23, 35, tzinfo=ist)
+    assert should_lock_eod(eve) is True
+    assert should_lock_eod(eve, enabled_indices=["NIFTY", "GOLD"]) is False
+    assert should_lock_eod(late, enabled_indices=["NIFTY", "GOLD"]) is True
+
+
 def test_weekend_journal_autos_are_not_trading_days():
     assert iso_is_trading_day("2026-08-14") is True
     assert iso_is_trading_day("2026-08-15") is False
@@ -410,6 +419,51 @@ def test_year_heatmap_infers_index_from_symbol():
     assert h["by_index"]["SENSEX"][7] == 21000
     assert h["month_nets"][7] == 23100
     assert h["other"][7] == 0
+
+
+def test_snapshot_and_heatmap_others_for_non_desk():
+    """GOLD / FINNIFTY / stocks stay on the journal book and fold into Others."""
+    snap = snapshot_from_positions(
+        {
+            "exited_count": 3,
+            "pnl_today": {"open": 0, "exited": 900, "booked": 900, "total": 900},
+            "positions": [
+                {
+                    "tradingsymbol": "GOLD26AUG76000CE",
+                    "index": "GOLD",
+                    "quantity": 0,
+                    "exited": True,
+                    "booked_pnl": 400,
+                    "realised": 400,
+                    "pnl": 400,
+                },
+                {
+                    "tradingsymbol": "FINNIFTY26AUG25000CE",
+                    "quantity": 0,
+                    "exited": True,
+                    "booked_pnl": 300,
+                    "realised": 300,
+                    "pnl": 300,
+                },
+                {
+                    "tradingsymbol": "RELIANCE26AUG1400CE",
+                    "quantity": 0,
+                    "exited": True,
+                    "booked_pnl": 200,
+                    "realised": 200,
+                    "pnl": 200,
+                },
+            ],
+        },
+        date="2026-08-13",
+    )
+    assert snap["legs"][0]["index"] == "GOLD"
+    assert snap["booked_index_pnl"]["OTHER"] == 900
+    assert snap["booked_index_pnl"].get("NIFTY", 0) == 0
+    h = year_heatmap([snap], 2026)
+    assert h["other"][7] == 900
+    assert h["by_index"]["NIFTY"][7] == 0
+    assert h["month_nets"][7] == 900
 
 
 def test_snapshot_fills_index_from_tradingsymbol():

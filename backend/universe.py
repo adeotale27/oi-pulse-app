@@ -2,8 +2,9 @@
 
 Desk ids (NIFTY / SENSEX / BANKNIFTY) stay on the OI board by default.
 MCX majors (CRUDEOIL, GOLD, SILVER, NATURALGAS) are pollable: ATM from the
-nearest MCX FUT, session 09:00–23:30 IST. They are **not** auto-enabled —
-Admin → Index management inspects the Kite dump and ticks them on.
+nearest MCX FUT. Each name has a ``session_group`` so OI polls only in that
+contract's hours (non-agri 09:00–23:30 IST in US DST, 23:55 otherwise).
+They are **not** auto-enabled — Admin → Index management ticks them on.
 
 Keep this file aligned with ``frontend/src/lib/universe.js``.
 """
@@ -55,6 +56,7 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 50,
         "strikes_around_atm": 15,
         "calendar": "nse",
+        "session_group": "nse",
         "pollable": True,
         "dot": "sky",
     },
@@ -70,6 +72,7 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 100,
         "strikes_around_atm": 15,
         "calendar": "nse",
+        "session_group": "nse",
         "pollable": True,
         "dot": "amber",
     },
@@ -85,6 +88,7 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 100,
         "strikes_around_atm": 15,
         "calendar": "nse",
+        "session_group": "nse",
         "pollable": True,
         "dot": "emerald",
     },
@@ -101,9 +105,10 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 50,
         "strikes_around_atm": 12,
         "calendar": "mcx",
+        "session_group": "mcx_non_agri",
         "pollable": True,
         "dot": "slate",
-        "notes": "Kite name CRUDEOIL (not CRUDEOILM). Cash-settled. ATM from nearest MCX FUT. Hours ~09:00–23:30 IST.",
+        "notes": "Kite name CRUDEOIL (not CRUDEOILM). Cash-settled. ATM from nearest MCX FUT. Non-agri hours 09:00–23:30 IST (US DST) / 23:55 (US standard).",
     },
     {
         "id": "GOLD",
@@ -117,9 +122,10 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 100,
         "strikes_around_atm": 12,
         "calendar": "mcx",
+        "session_group": "mcx_non_agri",
         "pollable": True,
         "dot": "amber",
-        "notes": "Kite name GOLD (not GOLDM / GOLDPETAL). Physical FUT — dump drops the contract at tender. ATM from nearest remaining FUT.",
+        "notes": "Kite name GOLD (not GOLDM / GOLDPETAL). Physical FUT — dump drops the contract at tender. ATM from nearest remaining FUT. Same non-agri MCX clock as Crude.",
     },
     {
         "id": "SILVER",
@@ -133,9 +139,10 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 250,
         "strikes_around_atm": 12,
         "calendar": "mcx",
+        "session_group": "mcx_non_agri",
         "pollable": True,
         "dot": "slate",
-        "notes": "Kite name SILVER (not SILVERM / SILVERMIC). Physical FUT. ATM from nearest MCX FUT.",
+        "notes": "Kite name SILVER (not SILVERM / SILVERMIC). Physical FUT. ATM from nearest MCX FUT. Non-agri MCX clock.",
     },
     {
         "id": "NATURALGAS",
@@ -149,9 +156,10 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 1,
         "strikes_around_atm": 12,
         "calendar": "mcx",
+        "session_group": "mcx_non_agri",
         "pollable": True,
         "dot": "sky",
-        "notes": "Kite name NATURALGAS (not NATGASMINI). Strikes are often 3-digit. ATM from nearest MCX FUT.",
+        "notes": "Kite name NATURALGAS (not NATGASMINI). Strikes are often 3-digit. ATM from nearest MCX FUT. Non-agri MCX clock.",
     },
 )
 
@@ -199,6 +207,8 @@ def desk_index_config() -> Dict[str, Dict[str, Any]]:
             "step": row["step"],
             "segment": row["segment"],
             "strikes_around_atm": row["strikes_around_atm"],
+            "calendar": row.get("calendar") or "nse",
+            "session_group": row.get("session_group") or "nse",
         }
     return out
 
@@ -207,7 +217,7 @@ def catalog_public() -> List[Dict[str, Any]]:
     """Safe JSON for /config — no secrets, includes future MCX rows."""
     keys = (
         "id", "label", "short", "kite_name", "quote_symbol", "quote_kind",
-        "exchange", "segment", "step", "calendar", "pollable",
+        "exchange", "segment", "step", "calendar", "session_group", "pollable",
     )
     return [{k: row.get(k) for k in keys} for row in _CATALOG]
 
@@ -299,4 +309,38 @@ def is_mcx_cfg(cfg: Optional[Dict[str, Any]]) -> bool:
         return True
     if str(cfg.get("calendar") or "").lower() == "mcx":
         return True
+    group = str(cfg.get("session_group") or "").lower()
+    if group.startswith("mcx"):
+        return True
     return str(cfg.get("segment") or "").upper().startswith("MCX")
+
+
+def session_group_for(uid: str, cfg: Optional[Dict[str, Any]] = None) -> str:
+    """Poll-hours bucket for an underlying.
+
+    nse — index / stock F&O (admin NSE hours, close 15:40).
+    mcx_non_agri — GOLD, SILVER, CRUDEOIL, NATURALGAS, base metals (09:00–23:30/23:55).
+    mcx_select_agri — Cotton, CPO, Kapas (09:00–21:00).
+    mcx_agri — remaining agri (09:00–17:00).
+    """
+    row = get(uid) or {}
+    for src in (row, cfg or {}):
+        g = str(src.get("session_group") or "").strip().lower()
+        if g:
+            return g
+    if is_mcx_cfg(cfg) or is_mcx_cfg(row):
+        return "mcx_non_agri"
+    return "nse"
+
+
+def match_symbol_prefix(tradingsymbol: str) -> Optional[str]:
+    """Longest Kite name prefix on a tradingsymbol (BANKNIFTY before NIFTY)."""
+    ts = str(tradingsymbol or "").upper().replace(" ", "")
+    if not ts:
+        return None
+    for name in fno_name_alternation().split("|"):
+        if name and ts.startswith(name):
+            if name == "NIFTY" and ts.startswith("NIFTYBANK"):
+                return "BANKNIFTY"
+            return name
+    return None

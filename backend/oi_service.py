@@ -33,6 +33,8 @@ def merge_index_config(extra: Optional[Dict[str, Dict[str, Any]]] = None) -> Dic
             "step": int(cfg.get("step") or 50),
             "segment": cfg.get("segment") or "NFO-OPT",
             "strikes_around_atm": int(cfg.get("strikes_around_atm") or 15),
+            "calendar": cfg.get("calendar") or "nse",
+            "session_group": cfg.get("session_group") or ("mcx_non_agri" if str(cfg.get("segment") or "").upper().startswith("MCX") or (cfg.get("quote_kind") or "") == "mcx_fut" else "nse"),
         }
     return dict(INDEX_CONFIG)
 

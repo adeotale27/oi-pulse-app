@@ -24,7 +24,7 @@ export function heatmapIndexFromLeg(leg) {
   const ts = String(leg?.tradingsymbol || leg?.display_name || "").toUpperCase().replace(/\s+/g, "");
   const fromTs = matchSymbolPrefix(ts);
   if (fromTs && DESK_IDS.includes(fromTs)) return fromTs;
-  return raw || fromTs || "OTHER";
+  return "OTHER";
 }
 
 function bookedIndexPnl(doc) {

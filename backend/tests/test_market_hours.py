@@ -81,3 +81,31 @@ def test_mcx_evening_hours_not_nse_cash():
     assert is_oi_session_open(eve, mcx=True) is True
     assert is_mcx_hours(_d(2026, 8, 15, 20, 0)) is False  # Saturday
     assert is_oi_session_open(_d(2026, 8, 14, 10, 0), mcx=True) is True
+
+
+def test_per_index_hours_nse_stops_mcx_continues():
+    from market_hours import index_in_session, any_index_in_session, us_dst_active, eod_lock_time
+
+    eve = _d(2026, 8, 14, 20, 0)
+    assert index_in_session("NIFTY", eve) is False
+    assert index_in_session("GOLD", eve) is True
+    assert index_in_session("CRUDEOIL", eve) is True
+    assert any_index_in_session(["NIFTY", "SENSEX"], eve) is False
+    assert any_index_in_session(["NIFTY", "GOLD"], eve) is True
+    assert us_dst_active(eve.date()) is True
+    assert eod_lock_time(eve, ["NIFTY"]) == dtime(15, 45)
+    assert eod_lock_time(eve, ["NIFTY", "GOLD"]) == dtime(23, 35)
+
+
+def test_mcx_non_agri_close_follows_us_dst():
+    from market_hours import mcx_non_agri_display_close, session_poll_bounds_for_group, index_in_session
+
+    dst = _d(2026, 8, 14, 23, 40)
+    std = _d(2026, 11, 6, 23, 40)  # after first Sunday Nov 2026 (1 Nov)
+    assert mcx_non_agri_display_close(dst) == dtime(23, 30)
+    assert mcx_non_agri_display_close(std) == dtime(23, 55)
+    _o, poll_std = session_poll_bounds_for_group("mcx_non_agri", std)
+    assert poll_std == dtime(23, 56)
+    assert index_in_session("GOLD", _d(2026, 11, 6, 23, 50)) is True
+    assert index_in_session("GOLD", _d(2026, 8, 14, 23, 50)) is False
+    assert index_in_session("GOLD", _d(2026, 8, 15, 20, 0)) is False  # Saturday

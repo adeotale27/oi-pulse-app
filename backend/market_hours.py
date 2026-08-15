@@ -12,7 +12,7 @@ Holiday list must stay in sync with frontend/src/lib/holidays.js
 (official NSE circular dates).
 """
 from datetime import datetime, timedelta, time as dtime, timezone, date
-from typing import Optional, Tuple, Set
+from typing import Iterable, Optional, Tuple, Set
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -214,10 +214,17 @@ def session_poll_bounds(dt: datetime) -> Tuple[dtime, dtime]:
     return _POLL_OPEN, _POLL_CLOSE
 
 
-def eod_lock_time(dt: datetime) -> dtime:
-    """When Positions/journal should freeze booked P&L (close + 5 min)."""
-    _open, close = session_display_bounds(dt)
-    return _shift_dtime(close, 5)
+def eod_lock_time(dt: datetime, enabled_indices: Optional[Iterable[str]] = None) -> dtime:
+    """When Positions/journal should freeze booked P&L (latest enabled close + 5 min)."""
+    closes = [session_display_bounds(dt)[1]]
+    for uid in enabled_indices or []:
+        group = _session_group(uid)
+        if group == "nse":
+            continue
+        _open, close = session_display_bounds_for_group(group, dt)
+        closes.append(close)
+    latest = max(closes)
+    return _shift_dtime(latest, 5)
 
 
 def is_market_open(dt: datetime = None) -> bool:
@@ -239,28 +246,116 @@ def is_market_open(dt: datetime = None) -> bool:
     return start <= t <= end
 
 
-# MCX energy / bullion: 09:00–23:30 IST (poll one minute past close).
+# MCX non-agri (GOLD, SILVER, CRUDEOIL, NATURALGAS, base metals).
+# MCX/TRD/068/2026: 09:00 IST open; close 23:30 while US DST, 23:55 otherwise.
+# Poll one minute past display close (same pattern as NSE).
 MCX_POLL_OPEN = dtime(9, 0)
+MCX_NON_AGRI_CLOSE_DST = dtime(23, 30)
+MCX_NON_AGRI_CLOSE_STD = dtime(23, 55)
+MCX_SELECT_AGRI_CLOSE = dtime(21, 0)  # Cotton, CPO, Kapas
+MCX_AGRI_CLOSE = dtime(17, 0)
+# Back-compat alias: DST close + 1 minute (August tests).
 MCX_POLL_CLOSE = dtime(23, 31)
 
 
-def is_mcx_hours(dt: datetime = None) -> bool:
-    """True inside the MCX evening window on an NSE trading day."""
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
+    """nth weekday in month (Mon=0 … Sun=6)."""
+    d = date(year, month, 1)
+    delta = (weekday - d.weekday()) % 7
+    first = d + timedelta(days=delta)
+    return first + timedelta(weeks=n - 1)
+
+
+def us_dst_active(d: date) -> bool:
+    """US DST: 2nd Sunday March → 1st Sunday November (MCX evening close follows this)."""
+    start = _nth_weekday(d.year, 3, 6, 2)
+    end = _nth_weekday(d.year, 11, 6, 1)
+    return start <= d < end
+
+
+def mcx_non_agri_display_close(dt: datetime) -> dtime:
+    return MCX_NON_AGRI_CLOSE_DST if us_dst_active(dt.date()) else MCX_NON_AGRI_CLOSE_STD
+
+
+def _session_group(uid: str, cfg: Optional[dict] = None) -> str:
+    try:
+        from universe import session_group_for
+        return session_group_for(uid, cfg)
+    except Exception:
+        return "nse"
+
+
+def session_display_bounds_for_group(group: str, dt: datetime) -> Tuple[dtime, dtime]:
+    g = str(group or "nse").lower()
+    if g == "mcx_non_agri":
+        return dtime(9, 0), mcx_non_agri_display_close(dt)
+    if g == "mcx_select_agri":
+        return dtime(9, 0), MCX_SELECT_AGRI_CLOSE
+    if g == "mcx_agri":
+        return dtime(9, 0), MCX_AGRI_CLOSE
+    return session_display_bounds(dt)
+
+
+def session_poll_bounds_for_group(group: str, dt: datetime) -> Tuple[dtime, dtime]:
+    g = str(group or "nse").lower()
+    if g.startswith("mcx"):
+        disp_open, disp_close = session_display_bounds_for_group(g, dt)
+        return disp_open, _shift_dtime(disp_close, 1)
+    return session_poll_bounds(dt)
+
+
+def index_in_session(uid: str, dt: datetime = None, *, cfg: Optional[dict] = None) -> bool:
+    """True when this underlying should be polled (its own hours, not the whole desk)."""
     dt = dt or now_ist()
+    group = _session_group(uid, cfg)
+    start, end = session_poll_bounds_for_group(group, dt)
+    t = dt.time()
+    if group == "nse":
+        return is_market_open(dt)
     if quote_session_is_live() and not is_weekend(dt):
-        t = dt.time()
-        return MCX_POLL_OPEN <= t <= MCX_POLL_CLOSE
-    if is_special_session_day(dt) and is_trading_day(dt):
-        start, end = session_poll_bounds(dt)
-        return start <= dt.time() <= end
+        return start <= t <= end
     if not is_trading_day(dt):
         return False
+    return start <= t <= end
+
+
+def any_index_in_session(
+    ids: Optional[Iterable[str]] = None,
+    dt: datetime = None,
+    *,
+    configs: Optional[dict] = None,
+) -> bool:
+    dt = dt or now_ist()
+    names = list(ids or [])
+    if not names:
+        return is_market_open(dt)
+    cfgs = configs or {}
+    return any(index_in_session(uid, dt, cfg=cfgs.get(uid)) for uid in names)
+
+
+def is_mcx_hours(dt: datetime = None) -> bool:
+    """True inside the MCX non-agri window on an NSE trading day."""
+    dt = dt or now_ist()
+    start, end = session_poll_bounds_for_group("mcx_non_agri", dt)
     t = dt.time()
-    return MCX_POLL_OPEN <= t <= MCX_POLL_CLOSE
+    if quote_session_is_live() and not is_weekend(dt):
+        return start <= t <= end
+    if not is_trading_day(dt):
+        return False
+    return start <= t <= end
 
 
-def is_oi_session_open(dt: datetime = None, *, mcx: bool = False) -> bool:
-    """NSE cash/F&O hours, plus MCX evening when a commodity is on the desk."""
+def is_oi_session_open(
+    dt: datetime = None,
+    *,
+    mcx: bool = False,
+    enabled_indices: Optional[Iterable[str]] = None,
+    configs: Optional[dict] = None,
+) -> bool:
+    """True if any enabled underlying is in its poll window."""
+    dt = dt or now_ist()
+    if enabled_indices is not None:
+        return any_index_in_session(enabled_indices, dt, configs=configs)
     if is_market_open(dt):
         return True
     return bool(mcx) and is_mcx_hours(dt)

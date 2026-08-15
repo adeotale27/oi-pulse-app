@@ -196,6 +196,10 @@ def inspect_underlying(rows: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
             "step": step,
             "segment": opt_seg or (urow or {}).get("segment") or "NFO-OPT",
             "strikes_around_atm": int((urow or {}).get("strikes_around_atm") or 15),
+            "calendar": (urow or {}).get("calendar") or ("mcx" if quote_kind == "mcx_fut" else "nse"),
+            "session_group": (urow or {}).get("session_group") or (
+                "mcx_non_agri" if quote_kind == "mcx_fut" else "nse"
+            ),
         }
     notes = None
     hint = None
@@ -206,7 +210,9 @@ def inspect_underlying(rows: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
             f"Kite name {key} on MCX (majors: {', '.join(MCX_MAJOR_IDS)}; "
             "minis CRUDEOILM / GOLDM / SILVERM / NATGASMINI are separate). "
             f"No cash spot — ATM from nearest FUT {quote or '—'}. "
-            "Hours ~09:00–23:30 IST. Publisher Kite needs the commodity segment."
+            "Poll in this name's session_group hours (non-agri 09:00–23:30 IST in US DST, "
+            "23:55 otherwise; select agri 21:00; other agri 17:00). "
+            "Publisher Kite needs the commodity segment."
         )
     return {
         "id": key,

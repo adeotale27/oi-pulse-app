@@ -720,7 +720,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         })}
                         {Math.abs(Number(heat?.other?.[i] || 0)) >= 0.01 ? (
                           <span className={Number(heat.other[i]) >= 0 ? "text-emerald-700" : "text-rose-700"}>
-                            Other {compactPnl(heat.other[i])}
+                            Others {compactPnl(heat.other[i])}
                           </span>
                         ) : null}
                         <span className="text-slate-400">{days}d</span>
@@ -749,7 +749,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     </tr>
                   </thead>
                   <tbody>
-                    {(heat?.indices || DESK_IDS).map((idx) => (
+                    {(heat?.indices || DESK_IDS).filter((idx) => idx !== "OTHER").map((idx) => (
                       <tr key={idx}>
                         <td className="p-2 font-semibold text-slate-700">{idx}</td>
                         {(heat?.by_index?.[idx] || Array(12).fill(0)).map((v, i) => (
@@ -759,16 +759,14 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         ))}
                       </tr>
                     ))}
-                    {Array.isArray(heat?.other) && heat.other.some((v) => Math.abs(Number(v) || 0) >= 0.01) ? (
-                      <tr>
-                        <td className="p-2 font-semibold text-slate-500">Other</td>
-                        {(heat.other || Array(12).fill(0)).map((v, i) => (
-                          <td key={i} className={`p-1.5 text-center font-mono-data font-semibold ${heatCell(v, heatMax)}`}>
-                            {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : compactPnl(v))}
-                          </td>
-                        ))}
-                      </tr>
-                    ) : null}
+                    <tr data-testid="journal-heatmap-others">
+                      <td className="p-2 font-semibold text-slate-500">Others</td>
+                      {(heat.other || Array(12).fill(0)).map((v, i) => (
+                        <td key={i} className={`p-1.5 text-center font-mono-data font-semibold ${heatCell(v, heatMax)}`}>
+                          {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : compactPnl(v))}
+                        </td>
+                      ))}
+                    </tr>
                     <tr className="border-t border-slate-100">
                       <td className="p-2 font-semibold">Month</td>
                       {(heat?.month_nets || Array(12).fill(0)).map((v, i) => (

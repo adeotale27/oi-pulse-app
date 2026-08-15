@@ -19,4 +19,5 @@
 17. Inspect `oi_service.get_snapshot` before inventing a new chain fetcher.
 18. Do not rewrite `Dashboard.jsx` / `PositionsPanel.jsx` / `server.py` “for cleanliness”.
 19. Decide from the repo when the behavior is already specified (version bump, universe, auth headers).
-20. Ask the human only when the change alters product behavior (new market on the desk, new poll hours, breaking API, destructive Mongo).
+21. After a finished change: bump version, open a PR, **merge to `main`**. Do not leave work only on a feature branch.
+22. New index / stock / commodity: follow the checklist in [DEVELOPMENT.md](./DEVELOPMENT.md#add-an-underlying) — `session_group` hours, poll only in those hours, Positions shows the Kite leg, journal + heatmap **Others**, tests, merge to main.

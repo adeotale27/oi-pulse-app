@@ -21,6 +21,8 @@ assert.equal(matchSymbolPrefix("BANKNIFTY26AUG52000PE"), "BANKNIFTY");
 assert.equal(matchSymbolPrefix("CRUDEOIL26AUG6500CE"), "CRUDEOIL");
 assert.equal(matchSymbolPrefix("NIFTY26AUG24800CE"), "NIFTY");
 assert.equal(CATALOG.find((c) => c.id === "CRUDEOIL").pollable, true);
+assert.equal(CATALOG.find((c) => c.id === "GOLD").session_group, "mcx_non_agri");
+assert.equal(CATALOG.find((c) => c.id === "NIFTY").session_group, "nse");
 assert.equal(isDeskId("CRUDEOIL"), false);
 
 console.log("universe.test.js: ok");

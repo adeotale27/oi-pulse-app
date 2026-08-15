@@ -4134,6 +4134,7 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         parse_fno_option_symbol,
     )
     from kite_positions import merge_kite_net_day
+    from universe import match_symbol_prefix
 
     # Net quantity is authoritative for open vs exited. Day rows only enrich
     # buy/sell stats — never resurrect a flat net as an open leg.
@@ -4157,11 +4158,16 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         buy_qty = int(p.get("buy_quantity", 0) or 0)
         sell_qty = int(p.get("sell_quantity", 0) or 0)
         # Skip untouched / empty rows. Keep same-day exits (flat but traded today).
+        # Never drop GOLD / CRUDE / stocks / FINNIFTY — Kite net+day is the full book.
         if qty == 0 and buy_qty == 0 and sell_qty == 0:
             continue
         exited = qty == 0 and (buy_qty > 0 or sell_qty > 0)
         ts = p.get("tradingsymbol", "")
         parsed = parse_fno_option_symbol(ts) or {}
+        if not parsed.get("index"):
+            prefix = match_symbol_prefix(ts)
+            if prefix:
+                parsed = {**parsed, "index": prefix}
         buy_price = float(p.get("buy_price", 0) or 0)
         sell_price = float(p.get("sell_price", 0) or 0)
         avg = float(p.get("average_price", 0) or 0)
@@ -4362,6 +4368,13 @@ _journal_live_probe: tuple[float, bool, str] = (0.0, False, "")
 _last_special_journal_snap_mono = 0.0
 
 
+def _journal_enabled_indices():
+    if tracker is None:
+        from universe import DESK_IDS
+        return list(DESK_IDS)
+    return list(tracker.settings.get("enabled_indices") or [])
+
+
 async def _kite_day_charges(kite) -> Dict[str, Any]:
     """Virtual contract-note totals for today — stored on the journal doc only."""
     from kite_charges import (
@@ -4524,6 +4537,7 @@ async def _snapshot_trade_journal(
             journal.apply_charges(snap, charges)
         fields = journal.apply_snapshot(
             existing, snap, force_lock=force_lock, now=now, live_session=live_session,
+            enabled_indices=_journal_enabled_indices(),
         )
         if not fields:
             return
@@ -4565,6 +4579,7 @@ async def _journal_eod_lock_loop() -> None:
             t = now.time()
             start, end = session_poll_bounds(now)
             in_special_window = start <= t <= end
+            enabled = _journal_enabled_indices()
             if special and (live or in_special_window or is_special_session_day(now)):
                 if time.monotonic() - _last_special_journal_snap_mono >= 60:
                     try:
@@ -4574,7 +4589,16 @@ async def _journal_eod_lock_loop() -> None:
                     except Exception as e:
                         log.warning("journal special-session snapshot failed: %s", e)
 
-            if not journal.should_lock_eod(now, live_session=live):
+            # Keep the book while MCX (or any later close) is still printing.
+            if not journal.should_lock_eod(now, live_session=live, enabled_indices=enabled):
+                if calendar_session and tracker is not None and tracker.oi_session_open():
+                    if time.monotonic() - _last_special_journal_snap_mono >= 60:
+                        try:
+                            mid = await get_positions(None, "admin")
+                            await _snapshot_trade_journal(mid, live_session=live)
+                            _last_special_journal_snap_mono = time.monotonic()
+                        except Exception as e:
+                            log.warning("journal in-session snapshot failed: %s", e)
                 continue
             if locked_for == day:
                 continue

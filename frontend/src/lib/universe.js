@@ -67,13 +67,13 @@ const PREFIXES = [
 ];
 
 export const CATALOG = [
-  { id: "NIFTY", pollable: true, calendar: "nse", exchange: "NFO", kite_name: "NIFTY", quote_kind: "index" },
-  { id: "SENSEX", pollable: true, calendar: "nse", exchange: "BFO", kite_name: "SENSEX", quote_kind: "index" },
-  { id: "BANKNIFTY", pollable: true, calendar: "nse", exchange: "NFO", kite_name: "BANKNIFTY", quote_kind: "index" },
-  { id: "CRUDEOIL", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "CRUDEOIL", quote_kind: "mcx_fut" },
-  { id: "GOLD", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "GOLD", quote_kind: "mcx_fut" },
-  { id: "SILVER", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "SILVER", quote_kind: "mcx_fut" },
-  { id: "NATURALGAS", pollable: true, calendar: "mcx", exchange: "MCX", kite_name: "NATURALGAS", quote_kind: "mcx_fut" },
+  { id: "NIFTY", pollable: true, calendar: "nse", session_group: "nse", exchange: "NFO", kite_name: "NIFTY", quote_kind: "index" },
+  { id: "SENSEX", pollable: true, calendar: "nse", session_group: "nse", exchange: "BFO", kite_name: "SENSEX", quote_kind: "index" },
+  { id: "BANKNIFTY", pollable: true, calendar: "nse", session_group: "nse", exchange: "NFO", kite_name: "BANKNIFTY", quote_kind: "index" },
+  { id: "CRUDEOIL", pollable: true, calendar: "mcx", session_group: "mcx_non_agri", exchange: "MCX", kite_name: "CRUDEOIL", quote_kind: "mcx_fut" },
+  { id: "GOLD", pollable: true, calendar: "mcx", session_group: "mcx_non_agri", exchange: "MCX", kite_name: "GOLD", quote_kind: "mcx_fut" },
+  { id: "SILVER", pollable: true, calendar: "mcx", session_group: "mcx_non_agri", exchange: "MCX", kite_name: "SILVER", quote_kind: "mcx_fut" },
+  { id: "NATURALGAS", pollable: true, calendar: "mcx", session_group: "mcx_non_agri", exchange: "MCX", kite_name: "NATURALGAS", quote_kind: "mcx_fut" },
 ];
 
 export function normalizeId(raw) {

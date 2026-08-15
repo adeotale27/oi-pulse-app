@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.17 — 2026-08-15
+
+Journal Others, per-commodity poll hours, and a ship-to-main checklist.
+
+- Positions still lists every Kite net/day leg (Gold, Crude, FINNIFTY, stocks). Those books land in the admin journal; the year heatmap always has an **Others** row
+- Each catalog name has a `session_group`. NSE stops polling at 15:40; MCX non-agri (GOLD, SILVER, CRUDEOIL, NATURALGAS) polls 09:00–23:30 IST in US DST and until 23:55 otherwise. Select agri 21:00 / other agri 17:00 when those names are added
+- Journal freeze waits for the latest enabled close + 5 minutes so evening commodity exits are not dropped
+- Checklist in DEVELOPMENT.md: hours, poll, Positions, journal Others, tests, **merge to main**
+
 ## V6.16 — 2026-08-15
 
 Kite login link works again. Extra indices do not crowd the sidebar or header.
