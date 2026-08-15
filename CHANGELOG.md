@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.13 — 2026-08-15
+
+Analyze chart uses desk colours. Admin can discover and enable more Kite F&O names without a code change.
+
+- Payoff chart: Put `#16A34A`, Call `#DC2626`, now-curve sky-600, expiry slate — same language as OI Change
+- `index_registry` bootstraps NIFTY / SENSEX / BANKNIFTY. Admin → Index management searches the Kite dump, inspects CE/PE/OI, enable/disable (history kept)
+- Enabled names share the existing OI poller / OI Change / straddle / strike table pipeline
+- MCX still only polls during NSE cash hours until a commodity session clock exists
+
 ## V6.12 — 2026-08-15
 
 Instrument universe + engineering docs. Live OI board unchanged (NIFTY / SENSEX / BANKNIFTY).

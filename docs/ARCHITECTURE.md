@@ -67,7 +67,23 @@ Admin password → `admin_sessions` → `X-Admin-Token`. Remember-me IP-bound. G
 
 Process + Mongo + static frontend. Hours and poll cadence are admin settings. See [HOSTING.md](./HOSTING.md), [LOCAL_SETUP.md](./LOCAL_SETUP.md).
 
-## Decisions
+```
+Admin Index Management
+        ↓
+Kite instruments dump (daily) → kite_underlyings
+        ↓
+Inspect CE/PE/FUT + quote → capability profile
+        ↓
+index_registry (enabled)
+        ↓
+INDEX_CONFIG + settings.enabled_indices
+        ↓
+OITracker poll → oi_snapshots → OI Change / OI / Straddle / …
+```
+
+NIFTY / SENSEX / BANKNIFTY migrate into `index_registry` on tracker start. Enabling FINNIFTY (etc.) uses the **same** `get_snapshot` pipeline. Do not add a second OI service.
+
+Admin → Index management (also Admin configuration → Discover more). APIs are `/api/admin/indices*` (admin token required).
 
 - One poller, many underlyings via `universe` — [decisions/ADR-001-instrument-universe.md](./decisions/ADR-001-instrument-universe.md).
 - NSE hours gate the poller today. MCX evening hours are **not** on that clock; do not enable MCX `pollable` until a calendar exists.

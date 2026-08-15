@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import DeskAiConfigMenu from "@/components/DeskAiConfigMenu";
@@ -132,6 +132,7 @@ export default function Header({
   onOpenMorningRefresh: _onOpenMorningRefresh, // kept for API compat; token refresh via Kite API
   onOpenTelegramPrefs,
   onOpenSettings,
+  onOpenIndexManager,
   onOpenJournal,
   onDownloadCsv,
   onOpenSounds,
@@ -874,6 +875,13 @@ export default function Header({
                 >
                   <Settings2 className="w-4 h-4" />
                   Admin configuration
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-index-manager"
+                  onSelect={(e) => { e.preventDefault(); onOpenIndexManager?.(); }}
+                >
+                  <Layers className="w-4 h-4" />
+                  Index management
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">

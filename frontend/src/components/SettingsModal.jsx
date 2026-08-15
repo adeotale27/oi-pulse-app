@@ -39,6 +39,7 @@ export default function SettingsModal({
   isAdmin = false,
 }) {
   const [settings, setSettings] = useState(null);
+  const [knownIndices, setKnownIndices] = useState(DESK_IDS);
   const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -51,6 +52,9 @@ export default function SettingsModal({
       .then((r) => {
         const d = r.data || {};
         setSettings(d);
+        if (Array.isArray(d.known_indices) && d.known_indices.length) {
+          setKnownIndices(d.known_indices);
+        }
       })
       .catch((e) => {
         setLoadError(e?.response?.data?.detail || e.message || "Failed to load settings");
@@ -90,7 +94,7 @@ export default function SettingsModal({
       }
       cur.delete(idx);
     } else cur.add(idx);
-    setSettings({ ...settings, enabled_indices: ALL_INDICES.filter((i) => cur.has(i)) });
+    setSettings({ ...settings, enabled_indices: knownIndices.filter((i) => cur.has(i)) });
   };
 
   const toggleAlertIndex = (idx) => {
@@ -315,7 +319,7 @@ export default function SettingsModal({
                 Tracked indices (polled every cycle)
               </Label>
               <div className="space-y-1.5">
-                {ALL_INDICES.map((idx) => (
+                {knownIndices.map((idx) => (
                   <label
                     key={idx}
                     className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
@@ -329,11 +333,18 @@ export default function SettingsModal({
                   </label>
                 ))}
               </div>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  className="mt-2 text-[11px] font-semibold text-sky-700 hover:underline"
+                  onClick={() => {
+                    try { window.dispatchEvent(new CustomEvent("oi-admin-open-indices")); } catch (_) {}
+                  }}
+                >
+                  Discover more indices from Kite…
+                </button>
+              ) : null}
             </div>
-
-            <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block flex items-center gap-1">
-                Alert focus indices (today)
                 <InfoTip title="Weekday alert defaults">
                   Defaults: Mon/Tue/Fri → NIFTY · Wed/Thu → SENSEX (weekly expiry focus).
                   Changing this saves an override for today only — resets to weekday default on the next day.
@@ -346,7 +357,7 @@ export default function SettingsModal({
                   : "Using weekday default — edit to override for today"}
               </div>
               <div className="space-y-1.5">
-                {ALL_INDICES.map((idx) => (
+                {knownIndices.map((idx) => (
                   <label
                     key={`alert-${idx}`}
                     className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
@@ -536,7 +547,7 @@ export default function SettingsModal({
                     Straddle Data — Tracked Indices
                   </Label>
                   <div className="space-y-1.5">
-                    {ALL_INDICES.map((idx) => (
+                    {knownIndices.map((idx) => (
                       <label
                         key={idx}
                         className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
@@ -805,7 +816,7 @@ export default function SettingsModal({
                 Lot sizes
               </Label>
               <div className="grid grid-cols-3 gap-2">
-                {ALL_INDICES.map((idx) => (
+                {knownIndices.map((idx) => (
                   <div key={idx} className="flex flex-col">
                     <span className="text-[10px] text-slate-500 mb-0.5">{idx}</span>
                     <Input

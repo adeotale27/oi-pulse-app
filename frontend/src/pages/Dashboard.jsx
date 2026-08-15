@@ -19,6 +19,7 @@ import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
 import TelegramPrefsModal from "@/components/TelegramPrefsModal";
 import SettingsModal from "@/components/SettingsModal";
+import IndexManagementModal from "@/components/IndexManagementModal";
 import TradeJournalModal from "@/components/TradeJournalModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import SentimentBar from "@/components/SentimentBar";
@@ -209,6 +210,7 @@ export default function Dashboard() {
   const [morningRefreshOpen, setMorningRefreshOpen] = useState(false);
   const [telegramPrefsOpen, setTelegramPrefsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [indexManagerOpen, setIndexManagerOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -638,6 +640,7 @@ export default function Dashboard() {
   const [expiryReady, setExpiryReady] = useState(false);
   const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
   const [enabledIndices, setEnabledIndices] = useState(INDICES);
+  const [indexMeta, setIndexMeta] = useState({});
   // Admin Alert Settings focus — OI toasts/sounds only for these indices.
   // null = not loaded yet → do not client-suppress (backend /alerts already scopes).
   // A hardcoded ["NIFTY"] default used to swallow SENSEX-focus days while still
@@ -1064,6 +1067,9 @@ export default function Dashboard() {
       if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
         setEnabledIndices(d.enabled_indices);
       }
+      if (d.indices && typeof d.indices === "object") {
+        setIndexMeta(d.indices);
+      }
       if (Array.isArray(d.alert_enabled_indices) && d.alert_enabled_indices.length) {
         setAlertEnabledIndices(d.alert_enabled_indices);
       }
@@ -1108,10 +1114,13 @@ export default function Dashboard() {
       if (!cancelled && e?.detail) setAuthState(e.detail);
     };
     window.addEventListener("oi-admin-auth-state", onState);
+    const onIndices = () => { if (!cancelled) setIndexManagerOpen(true); };
+    window.addEventListener("oi-admin-open-indices", onIndices);
     return () => {
       cancelled = true;
       clearInterval(id);
       window.removeEventListener("oi-admin-auth-state", onState);
+      window.removeEventListener("oi-admin-open-indices", onIndices);
     };
   }, []);
 
@@ -1859,6 +1868,7 @@ export default function Dashboard() {
         onOpenMorningRefresh={() => { if (authState.is_admin) setMorningRefreshOpen(true); }}
         onOpenTelegramPrefs={() => { if (authState.is_admin) setTelegramPrefsOpen(true); }}
         onOpenSettings={() => { if (authState.is_admin) setSettingsOpen(true); }}
+        onOpenIndexManager={() => { if (authState.is_admin) setIndexManagerOpen(true); }}
         onOpenJournal={() => { if (authState.is_admin) setJournalOpen(true); }}
         onOpenSounds={() => setSoundsOpen(true)}
         onOpenUpload={() => { if (authState.is_admin) setUploadOpen(true); }}
@@ -2456,7 +2466,7 @@ export default function Dashboard() {
                       indexName={activeIndex}
                       vixNow={current?.vix || status?.vix}
                       vixOpen={vixSessionOpen}
-                      step={INDEX_STEP[activeIndex] || 50}
+                      step={indexMeta[activeIndex]?.step || INDEX_STEP[activeIndex] || 50}
                       vrp={vrp}
                       lastComputedAt={scTick}
                     />
@@ -2499,7 +2509,7 @@ export default function Dashboard() {
                       oiSettings={oiSettings}
                       activeIndex={activeIndex}
                       expiry={selectedExpiry}
-                      step={INDEX_STEP[activeIndex] || 50}
+                      step={indexMeta[activeIndex]?.step || INDEX_STEP[activeIndex] || 50}
                       vrp={vrp}
                       expiriesMeta={expiriesMeta}
                       onPinNearestWeekly={handleChangeExpiry}
@@ -2644,7 +2654,7 @@ export default function Dashboard() {
                       vixNow={current?.vix || status?.vix}
                       vixOpen={vixSessionOpen}
                       vrp={vrp}
-                      indexStep={INDEX_STEP[activeIndex] || 50}
+                      indexStep={indexMeta[activeIndex]?.step || INDEX_STEP[activeIndex] || 50}
                       expiriesMeta={expiriesMeta}
                       onPinNearestWeekly={handleChangeExpiry}
                       positionsPollMs={positionsPollMs}
@@ -2808,6 +2818,21 @@ export default function Dashboard() {
         shift={hugeShift}
         onClose={dismissHugeShift}
         onReplayAtMoment={replayHugeShiftMoment}
+      />
+
+      <IndexManagementModal
+        open={indexManagerOpen}
+        onOpenChange={setIndexManagerOpen}
+        onChanged={() => {
+          fetchSettings();
+          api.get("/config").then((r) => {
+            const d = r.data || {};
+            if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
+              setEnabledIndices(d.enabled_indices);
+            }
+            if (d.indices && typeof d.indices === "object") setIndexMeta(d.indices);
+          }).catch(() => {});
+        }}
       />
 
       <SoundSettingsModal open={soundsOpen} onOpenChange={setSoundsOpen} />

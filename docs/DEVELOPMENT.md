@@ -50,15 +50,14 @@ Frontend: `yarn build` (CRA). ESLint is present; do not mass-reformat unrelated 
 
 ## Add an underlying
 
-1. Add a row to `backend/universe.py` **and** `frontend/src/lib/universe.js`.
-2. Keep `pollable: False` until:
-   - Spot path works (index quote **or** nearest FUT from the instruments dump).
-   - Session calendar matches the exchange (NSE vs MCX hours/holidays).
-   - Strike step is confirmed from listed strikes, not a guess.
-3. Only then set `pollable: True` so it appears in `desk_index_config()` / Admin ticks.
-4. Extend `market_hours` (or a sibling calendar) — **do not** reuse NSE 09:15–15:40 for MCX.
-5. Tests in `test_universe.py` + `universe.test.js`.
-6. Bump version per [VERSIONING.md](./VERSIONING.md).
+**Preferred:** Admin → **Index management** → search Kite → inspect capabilities → Enable. That writes `index_registry` and `enabled_indices`. The existing poller picks it up.
+
+Manual/code path (still valid):
+
+1. Add a row to `backend/universe.py` **and** `frontend/src/lib/universe.js` if it needs a quote hint.
+2. Keep `pollable: False` in the static catalog until hours match (MCX).
+3. Tests in `test_universe.py` / `test_index_registry.py`.
+4. Bump version per [VERSIONING.md](./VERSIONING.md).
 
 Until step 3, the live desk stays NIFTY / SENSEX / BANKNIFTY. Catalog rows are documentation for the next ship.
 

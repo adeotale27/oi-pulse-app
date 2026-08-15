@@ -20,7 +20,7 @@ import logging
 import os
 from collections import Counter
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from oi_service import INDEX_CONFIG, KiteService
 from universe import DESK_IDS
@@ -260,6 +260,15 @@ class OITracker:
         # Track which IST trading date we already purged prior-day alerts for.
         self._alerts_purged_for: Optional[str] = None
 
+    def ensure_index_slots(self, ids: List[str]) -> None:
+        for idx in ids:
+            if not idx:
+                continue
+            self.selected_expiry.setdefault(idx, None)
+            if idx not in self._refresh_locks:
+                self._refresh_locks[idx] = asyncio.Lock()
+            self._refresh_tasks.setdefault(idx, None)
+
     async def load_settings(self):
         doc = await self.db.settings.find_one({"_id": "alerts"})
         if doc:
@@ -280,6 +289,13 @@ class OITracker:
         # Apply market hours + weekday alert defaults
         self._apply_market_hours()
         self._refresh_alert_indices_for_today()
+        try:
+            from index_registry import bootstrap_registry
+
+            await bootstrap_registry(self.db, self.settings)
+            self.ensure_index_slots(list(INDEX_CONFIG.keys()))
+        except Exception as e:
+            logger.warning("index registry bootstrap failed: %s", e)
 
     def _apply_market_hours(self):
         try:
@@ -425,7 +441,7 @@ class OITracker:
         per index at a time; additional callers reuse the same task.
         """
         idx = index_name.upper()
-        if idx not in INDICES:
+        if idx not in INDEX_CONFIG:
             return
         if self.mode != "kite" or not self.kite_service:
             return
@@ -647,7 +663,7 @@ class OITracker:
         today = now_ist().date()
         enabled = self.settings.get("enabled_indices", INDICES)
         for idx in enabled:
-            if idx not in INDICES:
+            if idx not in INDEX_CONFIG:
                 continue
             current = self.selected_expiry.get(idx)
             need = force_roll or not current
@@ -699,6 +715,14 @@ class OITracker:
             self.kite_service.reload_instruments(force=True)
             self._instruments_loaded_at = now
             await self.seed_default_expiries(force_roll=True)
+            try:
+                from index_registry import persist_underlyings, summarize_underlyings
+
+                rows = self.kite_service.instrument_rows()
+                summaries = summarize_underlyings(rows, q="", limit=None)
+                await persist_underlyings(self.db, summaries)
+            except Exception as e:
+                logger.warning("kite_underlyings sync failed: %s", e)
             logger.info("Reloaded Kite instruments + rolled default expiries for %s", ist_today)
         except Exception as e:
             logger.warning("ensure_instruments_fresh failed: %s", e)
@@ -966,7 +990,7 @@ class OITracker:
             logger.warning("ensure_instruments_fresh in poll: %s", e)
 
         svc = self._get_service()
-        enabled = [i for i in self.settings.get("enabled_indices", INDICES) if i in INDICES]
+        enabled = [i for i in self.settings.get("enabled_indices", INDICES) if i in INDEX_CONFIG]
         if not enabled:
             self.last_updated_at = datetime.now(timezone.utc).isoformat()
             return

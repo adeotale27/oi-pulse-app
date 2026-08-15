@@ -7,6 +7,9 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | Collection | Purpose |
 |------------|---------|
 | `oi_snapshots` | Strike-level OI ticks per index/expiry/timestamp (unique compound index) |
+| `index_registry` | Admin-enabled underlyings (bootstrap NIFTY/SENSEX/BANKNIFTY). Disable hides from the desk; snapshots stay |
+| `kite_underlyings` | Compact search cache from the daily Kite instruments dump |
+| `admin_audit` | Admin enable/disable (and similar) with previous/new state |
 | `alerts` | Server-side OI reversal / pressure alerts |
 | `straddle_samples` | ATM straddle time series |
 | `credentials` | Encrypted Kite API key/secret/token vault (`_id: kite`) |

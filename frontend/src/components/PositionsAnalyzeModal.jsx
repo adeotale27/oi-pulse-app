@@ -155,7 +155,7 @@ function PayoffSvg({
   return (
     <div className="relative" data-testid="payoff-chart-wrap">
       <div
-        className="pointer-events-none absolute z-[2] -translate-x-1/2 rounded-full bg-slate-950 text-white text-[10px] font-semibold px-2.5 py-0.5 shadow-md whitespace-nowrap"
+        className="pointer-events-none absolute z-[2] -translate-x-1/2 rounded-full bg-slate-800 text-white text-[10px] font-semibold px-2.5 py-0.5 shadow-sm whitespace-nowrap"
         style={{ left: `${(spotX / width) * 100}%`, top: 2 }}
       >
         Current {Number(spot).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
@@ -196,16 +196,16 @@ function PayoffSvg({
       >
         <defs>
           <linearGradient id={`${gid}-oiPut`} x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#10b981" stopOpacity="0.06" />
+            <stop offset="0%" stopColor="#16A34A" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="#86EFAC" stopOpacity="0.12" />
           </linearGradient>
           <linearGradient id={`${gid}-oiCall`} x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.06" />
+            <stop offset="0%" stopColor="#DC2626" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#FCA5A5" stopOpacity="0.12" />
           </linearGradient>
           <linearGradient id={`${gid}-pnlFill`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0f766e" stopOpacity="0.16" />
-            <stop offset="100%" stopColor="#0f766e" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#0284c7" stopOpacity="0.14" />
+            <stop offset="100%" stopColor="#0284c7" stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
@@ -221,29 +221,29 @@ function PayoffSvg({
         })}
 
         <path d={areaNow} fill={`url(#${gid}-pnlFill)`} />
-        <line x1={pad.l} x2={width - pad.r} y1={zeroY} y2={zeroY} stroke="#cbd5e1" strokeWidth="1" />
+        <line x1={pad.l} x2={width - pad.r} y1={zeroY} y2={zeroY} stroke="#94A3B8" strokeWidth="1" />
 
         {sdLines.map((d) => (
           <g key={d.label}>
-            <line x1={xScale(d.x)} x2={xScale(d.x)} y1={pad.t} y2={height - pad.b} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 5" />
+            <line x1={xScale(d.x)} x2={xScale(d.x)} y1={pad.t} y2={height - pad.b} stroke="#CBD5E1" strokeWidth="1" strokeDasharray="3 5" />
             <text x={xScale(d.x)} y={pad.t + 11} fill="#64748b" textAnchor="middle" style={{ fontSize: 9, fontWeight: 600 }}>
               {d.label}
             </text>
           </g>
         ))}
 
-        <line x1={spotX} x2={spotX} y1={pad.t} y2={height - pad.b} stroke="#10b981" strokeWidth="2" />
+        <line x1={spotX} x2={spotX} y1={pad.t} y2={height - pad.b} stroke="#0F172A" strokeWidth="1.6" />
         {showTgt ? (
-          <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#0369a1" strokeWidth="1.5" strokeDasharray="4 3" />
+          <line x1={tgtX} x2={tgtX} y1={pad.t} y2={height - pad.b} stroke="#0284c7" strokeWidth="1.5" strokeDasharray="4 3" />
         ) : null}
-        <path d={pathOf(expiryPnl)} fill="none" stroke="#e11d48" strokeWidth="2.4" />
-        <path d={pathOf(targetPnl)} fill="none" stroke="#2563eb" strokeWidth="2.5" />
+        <path d={pathOf(expiryPnl)} fill="none" stroke="#64748B" strokeWidth="2.2" />
+        <path d={pathOf(targetPnl)} fill="none" stroke="#0284c7" strokeWidth="2.5" />
 
         {active && (
           <g data-testid="payoff-cursor">
-            <line x1={active.x} x2={active.x} y1={pad.t} y2={height - pad.b} stroke="#0f172a" strokeWidth="1.15" strokeDasharray="3 3" opacity="0.5" />
-            <circle cx={active.x} cy={yScale(active.scenario ?? 0)} r="4.5" fill="#2563eb" stroke="#fff" strokeWidth="1.5" />
-            <circle cx={active.x} cy={yScale(active.expiry ?? 0)} r="3.5" fill="#e11d48" stroke="#fff" strokeWidth="1.25" />
+            <line x1={active.x} x2={active.x} y1={pad.t} y2={height - pad.b} stroke="#475569" strokeWidth="1.15" strokeDasharray="3 3" opacity="0.7" />
+            <circle cx={active.x} cy={yScale(active.scenario ?? 0)} r="4.5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" />
+            <circle cx={active.x} cy={yScale(active.expiry ?? 0)} r="3.5" fill="#64748B" stroke="#fff" strokeWidth="1.25" />
           </g>
         )}
 
@@ -274,11 +274,11 @@ function PayoffSvg({
           </div>
           <div className="mt-1 space-y-0.5 font-mono-data text-[12px]">
             <div className="flex justify-between gap-2">
-              <span className="text-rose-600">Expiry</span>
+              <span className="text-slate-500">Expiry</span>
               <span className={`font-semibold ${active.expiry >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(active.expiry, 0)}</span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-blue-600">Now / date</span>
+              <span className="text-sky-700">Now / date</span>
               <span className={`font-semibold ${active.scenario >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{fmt(active.scenario, 0)}</span>
             </div>
           </div>
@@ -741,7 +741,7 @@ export default function PositionsAnalyzeModal({
                           />
                           <span
                             className={`h-5 w-5 rounded-md text-[10px] font-bold inline-flex items-center justify-center shrink-0 ${
-                              exited ? "bg-slate-100 text-slate-400" : sold ? "bg-rose-500 text-white" : "bg-sky-500 text-white"
+                              exited ? "bg-slate-100 text-slate-400" : sold ? "bg-[#DC2626] text-white" : "bg-sky-600 text-white"
                             }`}
                           >
                             {exited ? "X" : sold ? "S" : "B"}
@@ -809,10 +809,10 @@ export default function PositionsAnalyzeModal({
         <div className="text-[11px] text-slate-500" data-testid="analyze-oi-summary">
           OI at {oiTot.atm != null ? oiTot.atm.toLocaleString("en-IN") : "—"}
           <span className="ml-2 inline-flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> Call {fmtLakh(oiTot.ce)}
+            <span className="h-1.5 w-1.5 rounded-full bg-[#DC2626]" /> Call {fmtLakh(oiTot.ce)}
           </span>
           <span className="ml-2 inline-flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Put {fmtLakh(oiTot.pe)}
+            <span className="h-1.5 w-1.5 rounded-full bg-[#16A34A]" /> Put {fmtLakh(oiTot.pe)}
           </span>
         </div>
       </div>
@@ -820,10 +820,10 @@ export default function PositionsAnalyzeModal({
       {chartMode === "chart" ? (
         <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
           <div className="flex flex-wrap items-center gap-3 px-3 py-1.5 text-[10px] text-slate-500 border-b border-slate-100">
-            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-600 inline-block" /> Now / date</span>
-            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-rose-600 inline-block" /> Expiry</span>
-            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-rose-300 inline-block rounded-[2px]" /> Call OI</span>
-            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-emerald-300 inline-block rounded-[2px]" /> Put OI</span>
+            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-sky-600 inline-block" /> Now / date</span>
+            <span className="inline-flex items-center gap-1"><span className="h-0.5 w-4 bg-slate-500 inline-block" /> Expiry</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-[#DC2626] inline-block rounded-[2px]" /> Call OI</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 bg-[#16A34A] inline-block rounded-[2px]" /> Put OI</span>
           </div>
           <div className="px-1 sm:px-2 pb-1">
             <PayoffSvg

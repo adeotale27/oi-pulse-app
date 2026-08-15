@@ -17,6 +17,25 @@ logger = logging.getLogger(__name__)
 INDEX_CONFIG = desk_index_config()
 
 
+def merge_index_config(extra: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Dict[str, Any]]:
+    """Keep desk defaults; add extra pollable underlyings from the registry."""
+    base = desk_index_config()
+    INDEX_CONFIG.clear()
+    INDEX_CONFIG.update(base)
+    for k, cfg in (extra or {}).items():
+        if not cfg or not cfg.get("quote_symbol") or not cfg.get("name"):
+            continue
+        uid = str(k).upper()
+        INDEX_CONFIG[uid] = {
+            "quote_symbol": cfg["quote_symbol"],
+            "name": cfg.get("name") or uid,
+            "step": int(cfg.get("step") or 50),
+            "segment": cfg.get("segment") or "NFO-OPT",
+            "strikes_around_atm": int(cfg.get("strikes_around_atm") or 15),
+        }
+    return dict(INDEX_CONFIG)
+
+
 # --------------------------------------------------------------------------- #
 # Kite (real broker) service
 # --------------------------------------------------------------------------- #
@@ -34,6 +53,12 @@ class KiteService:
         self._vix_cache: Optional[float] = None
         self._vix_cached_at: float = 0.0
         self._vix_ttl_seconds: float = 12.0
+
+    def instrument_rows(self) -> List[Dict[str, Any]]:
+        self._load_instruments()
+        if self.instruments_df is None:
+            return []
+        return self.instruments_df.to_dict("records")
 
     def _load_instruments(self):
         if self._loaded:
@@ -72,7 +97,9 @@ class KiteService:
             logger.error(f"list_expiries load failed: {e}")
             return []
         import pandas as pd
-        cfg = INDEX_CONFIG[index_name]
+        cfg = INDEX_CONFIG.get(index_name)
+        if not cfg:
+            return []
         opt_df = self.instruments_df[
             (self.instruments_df["name"] == cfg["name"])
             & (self.instruments_df["segment"] == cfg["segment"])

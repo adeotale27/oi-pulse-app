@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.13",
+    date: "2026-08-15",
+    user: [
+      "Analyze payoff colours match the OI desk (green puts, red calls, sky now-curve). NIFTY / SENSEX / BANKNIFTY unchanged.",
+    ],
+    admin: [
+      "Admin menu → Index management: search Kite F&O names, inspect options/OI, enable. Same poller as the three desk indices. Disable hides the ticker and keeps Mongo history.",
+    ],
+  },
+  {
     version: "6.12",
     date: "2026-08-15",
     user: [

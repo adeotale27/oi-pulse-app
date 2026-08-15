@@ -13,8 +13,8 @@ assert.equal(normalizeId("CRUDE"), "CRUDEOIL");
 assert.equal(isDeskId("GOLD"), false);
 assert.equal(isDeskId("NIFTY"), true);
 assert.deepEqual(
-  normalizeEnabledIndices(["BANKNIFTY", "GOLD", "nifty", "BANK"]),
-  ["NIFTY", "BANKNIFTY"],
+  normalizeEnabledIndices(["BANKNIFTY", "GOLD", "nifty", "BANK", "FINNIFTY"]),
+  ["NIFTY", "BANKNIFTY", "GOLD", "FINNIFTY"],
 );
 assert.equal(matchSymbolPrefix("BANKNIFTY26AUG52000PE"), "BANKNIFTY");
 assert.equal(matchSymbolPrefix("CRUDEOIL26AUG6500CE"), "CRUDEOIL");

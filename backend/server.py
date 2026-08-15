@@ -1304,6 +1304,7 @@ async def get_settings():
         pass
     data = dict(tracker.settings or {})
     data.pop("_id", None)
+    data["known_indices"] = list(INDEX_CONFIG.keys())
     return data
 
 
@@ -1367,7 +1368,187 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if v < 30 or v > 24 * 60:
             raise HTTPException(400, "admin_session_ttl_minutes must be between 30 and 1440")
         patch["admin_session_ttl_minutes"] = v
-    return await tracker.save_settings(patch)
+    out = await tracker.save_settings(patch)
+    if "enabled_indices" in patch:
+        try:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            wanted = set(patch["enabled_indices"])
+            async for d in db.index_registry.find({}):
+                en = d["_id"] in wanted
+                if bool(d.get("enabled")) != en:
+                    await db.index_registry.update_one(
+                        {"_id": d["_id"]},
+                        {"$set": {"enabled": en, "updated_at": now_iso}},
+                    )
+        except Exception:
+            logger.warning("index_registry enabled sync from settings failed", exc_info=True)
+    return out
+
+
+class IndexEnableIn(BaseModel):
+    name: Optional[str] = None
+
+
+async def _kite_instrument_rows():
+    svc = tracker.kite_service if tracker else None
+    if not svc:
+        raise HTTPException(503, "Connect Kite to discover instruments")
+    try:
+        svc._load_instruments()
+    except Exception as e:
+        raise HTTPException(503, f"Kite instruments unavailable: {e}")
+    return svc.instrument_rows()
+
+
+@api_router.get("/admin/indices")
+async def admin_list_indices(_admin: bool = Depends(require_admin)):
+    from index_registry import bootstrap_registry, public_registry_doc
+
+    await bootstrap_registry(db, tracker.settings if tracker else None)
+    docs = []
+    async for d in db.index_registry.find({}).sort("_id", 1):
+        docs.append(public_registry_doc(d))
+    meta = await db.kite_underlyings_meta.find_one({"_id": "sync"})
+    return {
+        "indices": docs,
+        "enabled": tracker.settings.get("enabled_indices") if tracker else [],
+        "synced_at": (meta or {}).get("synced_at"),
+        "known": list(INDEX_CONFIG.keys()),
+    }
+
+
+@api_router.post("/admin/indices/sync")
+async def admin_sync_instruments(_admin: bool = Depends(require_admin)):
+    from index_registry import persist_underlyings, summarize_underlyings
+
+    rows = await _kite_instrument_rows()
+    summaries = summarize_underlyings(rows, q="", limit=None)
+    n = await persist_underlyings(db, summaries)
+    return {"ok": True, "count": n}
+
+
+@api_router.get("/admin/indices/search")
+async def admin_search_indices(
+    q: str = "",
+    limit: int = 40,
+    _admin: bool = Depends(require_admin),
+):
+    from index_registry import persist_underlyings, search_cached, summarize_underlyings
+
+    cached, synced_at = await search_cached(db, q, limit)
+    if cached:
+        return {"results": cached, "synced_at": synced_at, "source": "cache"}
+    rows = await _kite_instrument_rows()
+    summaries = summarize_underlyings(rows, q=q, limit=limit)
+    try:
+        all_sum = summarize_underlyings(rows, q="", limit=None)
+        await persist_underlyings(db, all_sum)
+    except Exception:
+        pass
+    return {"results": summaries, "synced_at": None, "source": "kite"}
+
+
+@api_router.get("/admin/indices/inspect")
+async def admin_inspect_index(name: str, _admin: bool = Depends(require_admin)):
+    from index_registry import inspect_underlying
+
+    if not (name or "").strip():
+        raise HTTPException(400, "name required")
+    rows = await _kite_instrument_rows()
+    info = inspect_underlying(rows, name)
+    existing = await db.index_registry.find_one({"_id": info["id"]})
+    info["enabled"] = bool(existing and existing.get("enabled"))
+    return info
+
+
+@api_router.post("/admin/indices/{name}/enable")
+async def admin_enable_index(
+    name: str,
+    request: Request,
+    _admin: bool = Depends(require_admin),
+):
+    from index_registry import inspect_underlying, merge_live_index_config, public_registry_doc, write_audit
+    from universe import DESK_IDS
+
+    key = name.strip().upper()
+    rows = await _kite_instrument_rows()
+    info = inspect_underlying(rows, key)
+    if not info.get("can_enable_oi") or not info.get("config"):
+        raise HTTPException(400, info.get("notes") or "Cannot enable OI analytics for this instrument")
+    prev = await db.index_registry.find_one({"_id": key})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cfg = info["config"]
+    doc = {
+        "name": key,
+        "display_name": key,
+        "symbol": key,
+        "exchange": info.get("exchange"),
+        "quote_symbol": cfg["quote_symbol"],
+        "segment": cfg["segment"],
+        "step": cfg["step"],
+        "strikes_around_atm": cfg["strikes_around_atm"],
+        "enabled": True,
+        "capabilities": info.get("capabilities"),
+        "updated_at": now_iso,
+        "created_at": (prev or {}).get("created_at") or now_iso,
+    }
+    await db.index_registry.update_one({"_id": key}, {"$set": doc}, upsert=True)
+    extra = {}
+    async for d in db.index_registry.find({}):
+        if d["_id"] in DESK_IDS:
+            continue
+        if d.get("quote_symbol") and d.get("segment"):
+            extra[d["_id"]] = d
+    merge_live_index_config(extra)
+    enabled = list(tracker.settings.get("enabled_indices") or [])
+    if key not in enabled:
+        enabled.append(key)
+    await tracker.save_settings({"enabled_indices": enabled})
+    tracker.ensure_index_slots([key])
+    try:
+        if tracker.kite_service:
+            tracker.kite_service.reload_instruments(force=True)
+            await tracker.seed_default_expiries()
+    except Exception as e:
+        logger.warning("reload after enable %s: %s", key, e)
+    sess = await _admin_from_request(request)
+    await write_audit(db, action="index_enable", index=key, admin=(sess or {}).get("username"), prev=prev, new=doc)
+    stored = await db.index_registry.find_one({"_id": key})
+    return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled}
+
+
+@api_router.post("/admin/indices/{name}/disable")
+async def admin_disable_index(
+    name: str,
+    request: Request,
+    _admin: bool = Depends(require_admin),
+):
+    from index_registry import public_registry_doc, write_audit
+    from universe import DESK_IDS
+
+    key = name.strip().upper()
+    enabled = [i for i in (tracker.settings.get("enabled_indices") or []) if i != key]
+    if not enabled:
+        raise HTTPException(400, "Keep at least one tracked index")
+    prev = await db.index_registry.find_one({"_id": key})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.index_registry.update_one(
+        {"_id": key},
+        {"$set": {"enabled": False, "updated_at": now_iso}},
+        upsert=True,
+    )
+    await tracker.save_settings({"enabled_indices": enabled})
+    sess = await _admin_from_request(request)
+    stored = await db.index_registry.find_one({"_id": key})
+    await write_audit(
+        db,
+        action="index_disable",
+        index=key,
+        admin=(sess or {}).get("username"),
+        prev=prev,
+        new=stored,
+    )
+    return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled, "desk": key in DESK_IDS}
 
 
 def _session_open_utc_for_anchor(anchor: datetime) -> datetime:
@@ -2329,6 +2510,7 @@ async def get_config():
         **resolve_desk_ai(tracker.settings),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "universe": catalog_public(),
+        "known_indices": list(INDEX_CONFIG.keys()),
         "app_version": APP_VERSION,
         "app_version_label": APP_VERSION_LABEL,
     }

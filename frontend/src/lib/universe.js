@@ -83,14 +83,23 @@ export function matchSymbolPrefix(tradingsymbol) {
   return null;
 }
 
-/** Keep tracked desk indices in canonical order. Drops unknown / not-yet-pollable ids. */
+/** Keep desk ids first; retain any extra ids the backend enabled. */
 export function normalizeEnabledIndices(list) {
-  const set = new Set(
-    (Array.isArray(list) ? list : [])
-      .map((x) => normalizeId(x))
-      .filter((x) => DESK_IDS.includes(x)),
-  );
-  return DESK_IDS.filter((i) => set.has(i));
+  const raw = (Array.isArray(list) ? list : [])
+    .map((x) => normalizeId(x))
+    .filter(Boolean);
+  const set = new Set(raw);
+  const desk = DESK_IDS.filter((i) => set.has(i));
+  const extra = raw.filter((i) => !DESK_IDS.includes(i));
+  const seen = new Set(desk);
+  const rest = [];
+  for (const i of extra) {
+    if (!seen.has(i)) {
+      seen.add(i);
+      rest.push(i);
+    }
+  }
+  return [...desk, ...rest];
 }
 
 export function emptyDeskPnl() {
