@@ -11,7 +11,7 @@ import { Settings2 } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import InfoTip from "@/components/InfoTip";
 
-import { DESK_IDS } from "@/lib/universe";
+import { DESK_IDS, MCX_DESK_AVAILABLE, isMcxMajorId } from "@/lib/universe";
 
 const ALL_INDICES = DESK_IDS;
 const HARD_ADMIN_PAGES = new Set([]);
@@ -54,7 +54,8 @@ export default function SettingsModal({
         setSettings(d);
         const known = Array.isArray(d.known_indices) ? d.known_indices : [];
         const enabled = Array.isArray(d.enabled_indices) ? d.enabled_indices : [];
-        const pool = [...new Set([...DESK_IDS, ...known, ...enabled])];
+        const pool = [...new Set([...DESK_IDS, ...known, ...enabled])]
+          .filter((i) => MCX_DESK_AVAILABLE || !isMcxMajorId(i));
         if (pool.length) setKnownIndices(pool);
       })
       .catch((e) => {

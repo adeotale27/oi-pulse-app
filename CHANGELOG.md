@@ -1,5 +1,16 @@
 # Changelog
 
+## V6.29 — 2026-08-15
+
+Stop last-session OI toasts when NSE is closed; keep info tiles and tabs stable.
+
+- Alerts toast only while NSE cash/F&O is open (`is_market_open`). Closed / weekend last-session change no longer pops toasts
+- Next holiday and next event open an in-place dropdown (do not jump to Positions or the first dashboard tab)
+- FII/DII and impact tiles fetch as soon as they are on screen, not only after a click
+- Straddle and other tabs no longer blank the whole desk (removed page-level lazy Suspense; boot splash uses the desk background)
+- Expiry picker uses the last snapshot when the Kite dump is not loaded
+- MCX majors are paused: hidden from Index management / settings ticks, stripped from the poll list, Enable rejected
+
 ## V6.28 — 2026-08-15
 
 Keep the desk as it was; only Index-management dump stays off auto-preload.

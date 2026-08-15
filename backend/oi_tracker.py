@@ -40,6 +40,7 @@ from market_hours import (
     is_special_session_day, is_full_holiday, mark_quote_session_live,
     index_in_session,
     any_index_in_session,
+    is_market_open,
 )
 import notifier
 class JsonLogFormatter(logging.Formatter):
@@ -300,6 +301,29 @@ class OITracker:
             self.ensure_index_slots(list(INDEX_CONFIG.keys()))
         except Exception as e:
             logger.warning("index registry bootstrap failed: %s", e)
+        await self._pause_mcx_on_desk()
+
+    async def _pause_mcx_on_desk(self):
+        """Drop MCX majors from the live poll list while MCX_DESK_AVAILABLE is false."""
+        try:
+            from universe import MCX_DESK_AVAILABLE, without_paused_mcx
+            if MCX_DESK_AVAILABLE:
+                return
+            enabled = list(self.settings.get("enabled_indices") or [])
+            stripped = without_paused_mcx(enabled, INDEX_CONFIG)
+            if stripped == enabled:
+                return
+            if not stripped:
+                stripped = list(INDICES)
+            self.settings["enabled_indices"] = stripped
+            await self.db.settings.update_one(
+                {"_id": "alerts"},
+                {"$set": {"enabled_indices": stripped}},
+                upsert=True,
+            )
+            logger.info("MCX desk paused — enabled_indices now %s", stripped)
+        except Exception as e:
+            logger.warning("pause MCX on desk failed: %s", e)
 
     def _apply_market_hours(self):
         try:
@@ -446,6 +470,9 @@ class OITracker:
         return max(90, self.poll_interval_seconds() * 3)
 
     def mcx_on_desk(self) -> bool:
+        from universe import MCX_DESK_AVAILABLE
+        if not MCX_DESK_AVAILABLE:
+            return False
         enabled = self.settings.get("enabled_indices") or []
         for i in enabled:
             cfg = INDEX_CONFIG.get(i) or {}
@@ -1042,6 +1069,11 @@ class OITracker:
 
         svc = self._get_service()
         enabled = [i for i in self.settings.get("enabled_indices", INDICES) if i in INDEX_CONFIG]
+        try:
+            from universe import without_paused_mcx
+            enabled = without_paused_mcx(enabled, INDEX_CONFIG)
+        except Exception:
+            pass
         if not FORCE_ALWAYS_POLL:
             enabled = [i for i in enabled if index_in_session(i, cfg=INDEX_CONFIG.get(i))]
         if not enabled:
@@ -1301,7 +1333,7 @@ class OITracker:
         stale-data alerts from firing during pre-open / post-close / weekend / holiday
         windows — the user was seeing bullish/bearish alerts long after 3:30 PM.
         """
-        if not (self.oi_session_open()):
+        if not is_market_open():
             return
         # Weekday alert focus (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu) unless overridden today.
         self._refresh_alert_indices_for_today()

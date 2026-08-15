@@ -50,7 +50,7 @@ Forbidden: UI importing backend paths; Kite calls from React; duplicating `DESK_
 ## Instrument universe
 
 - Live OI poller defaults to **desk ids** (`universe.DESK_IDS`). Extra underlyings join via `index_registry` Enable.
-- MCX majors are pollable (nearest FUT + MCX hours) but **not** auto-enabled. See [ADR-003](./decisions/ADR-003-mcx-majors.md).
+- MCX majors are pollable (nearest FUT + MCX hours) but **not auto-enabled**, and the live desk currently **pauses** them (`MCX_DESK_AVAILABLE = False`) so they stay off poll/UI until that flag is turned back on. See [ADR-003](./decisions/ADR-003-mcx-majors.md).
 - Admin settings ticks follow `INDEX_CONFIG` (desk + enabled extras).
 - Adding a new underlying: see [DEVELOPMENT.md](./DEVELOPMENT.md#add-an-underlying) (hours, poll, Positions, journal Others, phone chrome, merge to main). Extra names must fit the existing 3-chip header/sidebar/phone row (`INDEX_CHIP_CAP`).
 

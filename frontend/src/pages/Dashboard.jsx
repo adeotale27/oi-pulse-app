@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
@@ -23,27 +23,26 @@ import MobileStickyChrome from "@/components/MobileStickyChrome";
 import MobileIndexTicker from "@/components/MobileIndexTicker";
 import ActivityFeed from "@/components/ActivityFeed";
 import BuildupTable from "@/components/BuildupTable";
-
-const AdminUploadAdvisor = lazy(() => import("@/components/AdminUploadAdvisor"));
-const OvernightGapBrief = lazy(() => import("@/components/OvernightGapBrief"));
-const DeskAiMobileSheet = lazy(() => import("@/components/DeskAiMobileSheet"));
-const WriterDefenseMap = lazy(() => import("@/components/WriterDefenseMap"));
-const CredentialsModal = lazy(() => import("@/components/CredentialsModal"));
-const MorningRefreshModal = lazy(() => import("@/components/MorningRefreshModal"));
-const TelegramPrefsModal = lazy(() => import("@/components/TelegramPrefsModal"));
-const SettingsModal = lazy(() => import("@/components/SettingsModal"));
-const IndexManagementModal = lazy(() => import("@/components/IndexManagementModal"));
-const TradeJournalModal = lazy(() => import("@/components/TradeJournalModal"));
-const ReplayScrubber = lazy(() => import("@/components/ReplayScrubber"));
-const HolidaysTab = lazy(() => import("@/components/HolidaysTab"));
-const PositionsPanel = lazy(() => import("@/components/PositionsPanel"));
-const SoundSettingsModal = lazy(() => import("@/components/SoundSettingsModal"));
-const UploadModal = lazy(() => import("@/components/UploadModal"));
-const EventRiskWidget = lazy(() => import("@/components/EventRiskWidget"));
-const StraddleChart = lazy(() => import("@/components/StraddleChart"));
-const CasPanel = lazy(() => import("@/components/CasPanel"));
-const SellCandidatesPanel = lazy(() => import("@/components/SellCandidatesPanel"));
-const RightPanel = lazy(() => import("@/components/RightPanel"));
+import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
+import OvernightGapBrief from "@/components/OvernightGapBrief";
+import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
+import WriterDefenseMap from "@/components/WriterDefenseMap";
+import CredentialsModal from "@/components/CredentialsModal";
+import MorningRefreshModal from "@/components/MorningRefreshModal";
+import TelegramPrefsModal from "@/components/TelegramPrefsModal";
+import SettingsModal from "@/components/SettingsModal";
+import IndexManagementModal from "@/components/IndexManagementModal";
+import TradeJournalModal from "@/components/TradeJournalModal";
+import ReplayScrubber from "@/components/ReplayScrubber";
+import HolidaysTab from "@/components/HolidaysTab";
+import PositionsPanel from "@/components/PositionsPanel";
+import SoundSettingsModal from "@/components/SoundSettingsModal";
+import UploadModal from "@/components/UploadModal";
+import EventRiskWidget from "@/components/EventRiskWidget";
+import StraddleChart from "@/components/StraddleChart";
+import CasPanel from "@/components/CasPanel";
+import SellCandidatesPanel from "@/components/SellCandidatesPanel";
+import RightPanel from "@/components/RightPanel";
 import {
   loadTabOrder,
   saveTabOrder,
@@ -64,7 +63,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
-import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute } from "@/lib/marketTimes";
+import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive } from "@/lib/marketTimes";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
@@ -605,8 +604,12 @@ export default function Dashboard() {
     });
   }, []);
 
-  const openHolidaysTab = useCallback(() => setActiveTab("holidays"), []);
-  const openIndexEventsTab = useCallback(() => setActiveTab("index-events"), []);
+  const openHolidaysTab = useCallback(() => {
+    if (tabOn("holidays")) setActiveTab("holidays");
+  }, [tabOn]);
+  const openIndexEventsTab = useCallback(() => {
+    if (tabOn("index-events")) setActiveTab("index-events");
+  }, [tabOn]);
   const showImpactTile = tabOn("index-events");
 
   // Dark mode -> toggle html.dark class + persist
@@ -847,7 +850,31 @@ export default function Dashboard() {
       if (active) {
         const first = await fetchOne(active);
         if (gen !== oiReqGenRef.current) return;
-        if (first.ok && first.data) applyOiPayload(first.data, { pulse: true });
+        if (first.ok && first.data) {
+          applyOiPayload(first.data, { pulse: true });
+          const snapExp = first.data.current?.expiry;
+          if (snapExp) {
+            const iso = String(snapExp).slice(0, 10);
+            const cachedExp = expiryByIndexRef.current[active];
+            if (!cachedExp?.list?.length) {
+              const entry = {
+                list: [iso],
+                meta: [{ date: iso, tag: "W", type: "weekly", label: iso }],
+                note: null,
+                selected: iso,
+                fetched: false,
+                asOf: istToday(),
+              };
+              expiryByIndexRef.current[active] = entry;
+              if (active === activeIndexRef.current) {
+                setExpiries(entry.list);
+                setExpiriesMeta(entry.meta);
+                setSelectedExpiry(iso);
+                setExpiryReady(true);
+              }
+            }
+          }
+        }
         setOiLoading(false);
         ensureExpiryForIndex(active).catch(() => {});
       }
@@ -903,6 +930,8 @@ export default function Dashboard() {
     }
   };
 
+  const nseLive = nseCashSessionLive(status);
+
   // Poll alerts — toast/sound for new backend alerts regardless of which
   // dashboard tab is open (Positions, Straddle, etc.). Backend /alerts already
   // filters by admin alert-focus indices; do not re-filter here or a stale
@@ -923,6 +952,11 @@ export default function Dashboard() {
       const newestId = list[0].created_at;
       if (lastAlertIdRef.current === null) {
         // First non-empty hydrate — seed cursor only, no historical toasts.
+        lastAlertIdRef.current = newestId;
+        return;
+      }
+      // NSE cash/F&O closed (or status not in yet): keep the list, never toast last-session spikes.
+      if (!nseLive || isMarketQuiescent(status)) {
         lastAlertIdRef.current = newestId;
         return;
       }
@@ -962,7 +996,7 @@ export default function Dashboard() {
     } catch (e) {
       console.error("loadAlerts failed", e);
     }
-  }, [push]);
+  }, [push, nseLive, status]);
 
   const loadTickers = useCallback(async () => {
     try {
@@ -976,12 +1010,6 @@ export default function Dashboard() {
       console.error("loadTickers failed", e);
     }
   }, []);
-
-  // Keep Alerts UI visibility in a ref so the poller does not remount on tab switches.
-  const alertViewRef = useRef({ activeTab, rightPanelView, showRightPanel });
-  useEffect(() => {
-    alertViewRef.current = { activeTab, rightPanelView, showRightPanel };
-  }, [activeTab, rightPanelView, showRightPanel]);
 
   // ---- Straddle + Positions poll intervals (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(15000); // dense chart default 15s
@@ -1177,17 +1205,7 @@ export default function Dashboard() {
   useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 1500 });
   useQuiescentAwarePolling(
     async () => {
-      // During market hours always poll + toast — Positions / Straddle / any tab.
-      // Off-hours only refresh when the Alerts UI is open (avoid idle spam).
-      const marketClosed = status?.market?.is_market_open === false;
-      if (!marketClosed) {
-        await loadAlerts();
-        return;
-      }
-      const v = alertViewRef.current;
-      const viewingAlerts =
-        v.activeTab === "alerts" || (v.showRightPanel && v.rightPanelView === "alerts");
-      if (viewingAlerts) await loadAlerts();
+      await loadAlerts();
     },
     5000,
     [loadAlerts, status?.market?.is_market_open],
@@ -1477,9 +1495,8 @@ export default function Dashboard() {
     // Update "last pull change" every time new data arrives so the UI can show
     // both when data was pulled and the OI change seen at that pull.
     setLastPullChange({ ce: changeSummary.ce, pe: changeSummary.pe, at: lastPulledAt, timeframeLabel });
-    // Fire local alert ONLY when the market is currently open — no more stale
-    // bullish / bearish toasts after 3:30 PM IST.
-    if (status?.market && status.market.is_market_open === false) return;
+    // Fire local alert ONLY while NSE cash/F&O is open — last-session OI must not toast.
+    if (!nseCashSessionLive(status) || isMarketQuiescent(status)) return;
     // Admin Alert Settings: only alert for selected indices (OI may still load others).
     if (!indexInAlertFocus(activeIndex)) return;
     // Fire local alert if intensity crosses threshold and cooldown has elapsed.
@@ -1850,7 +1867,6 @@ export default function Dashboard() {
   ) : null;
 
   return (
-    <Suspense fallback={<div className="flex min-h-[100dvh] items-center justify-center text-sm text-slate-400">Loading desk…</div>}>
     <div className="oi-shell relative h-[100dvh] max-h-[100dvh] flex flex-col overflow-hidden overscroll-none">
       {authState.is_guest && (
         <GuestBanner
@@ -1929,8 +1945,8 @@ export default function Dashboard() {
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
         notifEnabled={notifEnabled}
         onToggleNotif={handleToggleNotif}
-        onOpenHolidays={() => setActiveTab("holidays")}
-        onOpenEvents={() => setActiveTab("holidays")}
+        onOpenHolidays={openHolidaysTab}
+        onOpenEvents={openHolidaysTab}
         vixSessionOpen={vixSessionOpen}
         activeIndex={activeIndex}
         onSelectIndex={setActiveIndex}
@@ -2895,7 +2911,6 @@ export default function Dashboard() {
         onUploaded={() => setUploadRefreshKey((k) => k + 1)}
       />
     </div>
-    </Suspense>
   );
 }
 

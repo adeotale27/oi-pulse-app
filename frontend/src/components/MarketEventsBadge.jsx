@@ -31,14 +31,22 @@ export default function MarketEventsBadge({ onClick }) {
   const tileBase =
     "w-full min-h-[58px] h-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 flex flex-col justify-between";
 
+  const toggle = (e) => {
+    e?.stopPropagation?.();
+    setOpen((v) => {
+      if (!v) place();
+      return !v;
+    });
+  };
+
   if (!primary) {
     return (
       <div className="relative w-full h-full" data-testid="events-badge-wrap">
         <div
           role="button"
           tabIndex={0}
-          onClick={() => onClick?.()}
-          onKeyDown={(e) => { if (e.key === "Enter") onClick?.(); }}
+          onClick={toggle}
+          onKeyDown={(e) => { if (e.key === "Enter") toggle(e); }}
           data-testid="events-badge"
           className={`${tileBase} cursor-pointer border-slate-200 bg-white text-slate-600`}
         >
@@ -47,7 +55,7 @@ export default function MarketEventsBadge({ onClick }) {
             Next Event
           </div>
           <div className="text-xs font-semibold leading-snug">There are no upcoming events</div>
-          <div className="text-[10px] leading-tight opacity-60">Tap to open calendar</div>
+          <div className="text-[10px] leading-tight opacity-60">Tap for the event list</div>
         </div>
       </div>
     );
@@ -69,17 +77,6 @@ export default function MarketEventsBadge({ onClick }) {
   // Dropdown list = upcoming events beyond the primary, capped 8.
   const extras = upcoming.filter((e) => !(e.date === primary.date && e.name === primary.name)).slice(0, 8);
 
-  const toggle = () => {
-    if (!extras.length) {
-      onClick?.();
-      return;
-    }
-    setOpen((v) => {
-      if (!v) place();
-      return !v;
-    });
-  };
-
   return (
     <div className={`relative w-full h-full overflow-visible ${open ? "z-40" : "z-10"}`} data-testid="events-badge-wrap">
       <div
@@ -87,7 +84,7 @@ export default function MarketEventsBadge({ onClick }) {
         role="button"
         tabIndex={0}
         onClick={toggle}
-        onKeyDown={(e) => { if (e.key === "Enter") toggle(); }}
+        onKeyDown={(e) => { if (e.key === "Enter") toggle(e); }}
         data-testid="events-badge"
         className={`${tileBase} cursor-pointer ${cls}`}
         title={`${primary.name} — ${formatDatePretty(primary.date)}`}
@@ -97,12 +94,10 @@ export default function MarketEventsBadge({ onClick }) {
         <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
           {urgent ? <AlertTriangle className="w-3 h-3" /> : <CalendarClock className="w-3 h-3" />}
           Next Event · {rel}
-          {extras.length > 0 && (
-            <span className="ml-auto inline-flex items-center gap-0.5 opacity-70">
-              +{extras.length}
-              <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
-            </span>
-          )}
+          <span className="ml-auto inline-flex items-center gap-0.5 opacity-70">
+            {extras.length > 0 ? `+${extras.length}` : null}
+            <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+          </span>
         </div>
         <div className="text-xs font-semibold leading-tight truncate" data-testid="events-badge-name">
           {primary.name}
@@ -112,20 +107,21 @@ export default function MarketEventsBadge({ onClick }) {
         </div>
       </div>
 
-      {open && extras.length > 0 && typeof document !== "undefined" && createPortal(
+      {open && typeof document !== "undefined" && createPortal(
         <div
           ref={panelRef}
           data-testid="events-dropdown"
           role="menu"
           className="fixed w-72 rounded-md border border-slate-200 bg-white shadow-xl z-[240] max-h-96 overflow-y-auto"
           style={{ top: pos.top, left: pos.left }}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="px-3 py-2 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 flex items-center justify-between">
             <span>Upcoming market-moving events</span>
             <button type="button" className="text-slate-400 hover:text-slate-800" onClick={close}>✕</button>
           </div>
           <div className="divide-y divide-slate-100">
-            {extras.map((e) => (
+            {[primary, ...extras].map((e) => (
               <div key={e.date + e.name} data-testid="events-dropdown-item" className="px-3 py-2 flex items-start gap-2 hover:bg-slate-50">
                 <span className={`text-[9px] uppercase font-semibold px-1.5 py-0.5 rounded-sm border ${eventBadgeTone(e.type)}`}>{e.type}</span>
                 <div className="flex-1 min-w-0">
@@ -136,16 +132,18 @@ export default function MarketEventsBadge({ onClick }) {
               </div>
             ))}
           </div>
+          {typeof onClick === "function" && (
           <div className="px-3 py-2 border-t border-slate-100 text-right">
             <button
               type="button"
               className="text-[10px] text-sky-600 hover:underline"
-              onClick={() => { close(); onClick?.(); }}
+              onClick={() => { close(); onClick(); }}
               data-testid="events-dropdown-more"
             >
               See full calendar →
             </button>
           </div>
+          )}
         </div>,
         document.body,
       )}

@@ -9,7 +9,10 @@ import {
   isDeskId,
   INDEX_CHIP_CAP,
   usesIndexOverflow,
+  MCX_DESK_AVAILABLE,
 } from "./universe.js";
+
+assert.equal(MCX_DESK_AVAILABLE, false);
 
 assert.deepEqual(HEATMAP_IDS.slice(0, 3), DESK_IDS);
 assert.equal(HEATMAP_IDS.includes("GOLD"), true);
@@ -19,7 +22,7 @@ assert.equal(isDeskId("GOLD"), false);
 assert.equal(isDeskId("NIFTY"), true);
 assert.deepEqual(
   normalizeEnabledIndices(["BANKNIFTY", "GOLD", "nifty", "BANK", "FINNIFTY"]),
-  ["NIFTY", "BANKNIFTY", "GOLD", "FINNIFTY"],
+  ["NIFTY", "BANKNIFTY", "FINNIFTY"],
 );
 assert.equal(matchSymbolPrefix("BANKNIFTY26AUG52000PE"), "BANKNIFTY");
 assert.equal(matchSymbolPrefix("CRUDEOIL26AUG6500CE"), "CRUDEOIL");

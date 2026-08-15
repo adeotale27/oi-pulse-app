@@ -567,7 +567,9 @@ export default function Sidebar({
             );
           })}
           {(!orderedExpiries || orderedExpiries.length === 0) && (
-            <p className="text-[11px] text-slate-400 italic pl-1">Loading expiries…</p>
+            <p className="text-[11px] text-slate-400 italic pl-1">
+              {expiriesNote || "No expiries yet — last session expiry appears when the snapshot loads"}
+            </p>
           )}
         </div>
         <button

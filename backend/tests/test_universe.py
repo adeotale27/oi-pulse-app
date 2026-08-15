@@ -24,7 +24,12 @@ def test_heatmap_ids_include_mcx_majors():
     assert cfg["BANKNIFTY"]["quote_symbol"] == "NSE:NIFTY BANK"
 
 
-def test_mcx_majors_pollable_not_on_desk():
+def test_mcx_desk_paused_strips_majors():
+    from universe import MCX_DESK_AVAILABLE, without_paused_mcx, is_paused_mcx
+    assert MCX_DESK_AVAILABLE is False
+    assert is_paused_mcx("GOLD") is True
+    assert is_paused_mcx("NIFTY") is False
+    assert without_paused_mcx(["NIFTY", "GOLD", "BANKNIFTY", "CRUDEOIL"]) == ["NIFTY", "BANKNIFTY"]
     for uid in MCX_MAJOR_IDS:
         assert is_pollable(uid) is True
         assert uid not in DESK_IDS

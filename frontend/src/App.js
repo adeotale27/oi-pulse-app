@@ -12,8 +12,8 @@ const AboutAppModal = lazy(() => import("@/components/AboutAppModal"));
 
 function BootFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#061018]">
-      <div className="text-sm text-slate-400">Loading desk…</div>
+    <div className="flex min-h-screen items-center justify-center bg-[var(--oi-shell,#f3f8fb)]">
+      <div className="text-sm text-slate-500">Loading desk…</div>
     </div>
   );
 }

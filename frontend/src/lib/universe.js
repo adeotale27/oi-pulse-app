@@ -7,7 +7,13 @@
 
 export const DESK_IDS = ["NIFTY", "SENSEX", "BANKNIFTY"];
 export const MCX_MAJOR_IDS = ["CRUDEOIL", "GOLD", "SILVER", "NATURALGAS"];
+/** Pause MCX majors on the OI desk (catalog stays; Enable is off). */
+export const MCX_DESK_AVAILABLE = false;
 export const HEATMAP_IDS = [...DESK_IDS, ...MCX_MAJOR_IDS];
+
+export function isMcxMajorId(id) {
+  return MCX_MAJOR_IDS.includes(String(id || "").toUpperCase());
+}
 
 /** How many index chips fit the sidebar / phone sticky bar without growing those panes. */
 export const INDEX_CHIP_CAP = 3;
@@ -116,7 +122,8 @@ export function matchSymbolPrefix(tradingsymbol) {
 export function normalizeEnabledIndices(list) {
   const raw = (Array.isArray(list) ? list : [])
     .map((x) => normalizeId(x))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((i) => MCX_DESK_AVAILABLE || !MCX_MAJOR_IDS.includes(i));
   const set = new Set(raw);
   const desk = DESK_IDS.filter((i) => set.has(i));
   const extra = raw.filter((i) => !DESK_IDS.includes(i));

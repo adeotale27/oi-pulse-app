@@ -1216,17 +1216,37 @@ async def get_expiries(index_name: str):
     # multiple years of monthlies which drowns the UI).
     from datetime import date as _date, datetime as _datetime
     today = now_ist().date()
-    parsed = []
+    parsed_all = []
     for d in all_dates:
         try:
-            parsed.append(
+            parsed_all.append(
                 _datetime.fromisoformat(d).date()
                 if "T" in str(d)
                 else _date.fromisoformat(str(d)[:10])
             )
         except Exception:
             continue
-    parsed = sorted({p for p in parsed if p >= today})[:8]
+    parsed = sorted({p for p in parsed_all if p >= today})[:8]
+    if not parsed:
+        snap = (tracker.last_snapshot or {}).get(idx) or {}
+        snap_exp = snap.get("expiry")
+        if not snap_exp:
+            try:
+                doc = await db.oi_snapshots.find_one(
+                    {"index": idx},
+                    sort=[("timestamp", -1)],
+                    projection={"expiry": 1, "_id": 0},
+                )
+                snap_exp = (doc or {}).get("expiry")
+            except Exception:
+                snap_exp = None
+        if snap_exp:
+            try:
+                parsed = [_date.fromisoformat(str(snap_exp)[:10])]
+            except Exception:
+                parsed = []
+        elif parsed_all:
+            parsed = sorted(set(parsed_all))[-1:]
     dates = [p.isoformat() for p in parsed]
 
     # Annotate each date as weekly / monthly. Heuristic: an expiry is "monthly"
@@ -1300,7 +1320,14 @@ async def get_settings():
         pass
     data = dict(tracker.settings or {})
     data.pop("_id", None)
-    data["known_indices"] = list(INDEX_CONFIG.keys())
+    try:
+        from universe import MCX_DESK_AVAILABLE, without_paused_mcx
+        known = list(INDEX_CONFIG.keys())
+        data["known_indices"] = known if MCX_DESK_AVAILABLE else without_paused_mcx(known, INDEX_CONFIG)
+        if "enabled_indices" in data:
+            data["enabled_indices"] = without_paused_mcx(data["enabled_indices"], INDEX_CONFIG)
+    except Exception:
+        data["known_indices"] = list(INDEX_CONFIG.keys())
     return data
 
 
@@ -1308,6 +1335,13 @@ async def get_settings():
 async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_admin)):
     patch = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "enabled_indices" in patch:
+        if not patch["enabled_indices"]:
+            raise HTTPException(400, "At least one tracked index is required")
+        try:
+            from universe import without_paused_mcx
+            patch["enabled_indices"] = without_paused_mcx(patch["enabled_indices"], INDEX_CONFIG)
+        except Exception:
+            pass
         if not patch["enabled_indices"]:
             raise HTTPException(400, "At least one tracked index is required")
         for i in patch["enabled_indices"]:
@@ -1409,7 +1443,14 @@ async def admin_list_indices(_admin: bool = Depends(require_admin)):
     await bootstrap_registry(db, tracker.settings if tracker else None)
     docs = []
     async for d in db.index_registry.find({}).sort("_id", 1):
-        docs.append(public_registry_doc(d))
+        row = public_registry_doc(d)
+        try:
+            from universe import is_paused_mcx
+            if is_paused_mcx(row.get("id") or d.get("_id"), row):
+                continue
+        except Exception:
+            pass
+        docs.append(row)
     meta = await db.kite_underlyings_meta.find_one({"_id": "sync"})
     return {
         "indices": docs,
@@ -1476,12 +1517,14 @@ async def admin_enable_index(
         public_registry_doc,
         write_audit,
     )
-    from universe import DESK_IDS
+    from universe import DESK_IDS, is_paused_mcx
 
     key = name.strip().upper()
     try:
         rows = await _kite_instrument_rows()
         info = inspect_underlying(rows, key)
+        if is_paused_mcx(key, (info or {}).get("config")):
+            raise HTTPException(400, "MCX majors are paused on this desk")
         if not info.get("can_enable_oi") or not info.get("config"):
             raise HTTPException(400, info.get("notes") or "Cannot enable OI analytics for this instrument")
         prev = await db.index_registry.find_one({"_id": key})

@@ -74,7 +74,7 @@ Copy this into the PR. Do not ship with boxes unchecked.
 Manual/code path (still valid):
 
 1. Add a row to `backend/universe.py` **and** `frontend/src/lib/universe.js` if it needs a quote hint.
-2. MCX majors (CRUDEOIL / GOLD / SILVER / NATURALGAS) are already catalogued — enable via Index management after Kite sync. Minis are separate Kite names.
+2. MCX majors (CRUDEOIL / GOLD / SILVER / NATURALGAS) are catalogued but **paused on the live desk** (`MCX_DESK_AVAILABLE`). Do not Enable them until that flag is restored.
 3. Tests in `test_universe.py` / `test_index_registry.py` / `test_market_hours.py` / `test_trade_journal.py`.
 4. Bump version per [VERSIONING.md](./VERSIONING.md).
 5. Open a PR and **merge to main**.

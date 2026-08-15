@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.29",
+    date: "2026-08-15",
+    user: [
+      "Closed-market OI no longer fires toasts. Holiday and event tiles open a list on the tile. FII/DII fills without a click. Switching to Straddle (and other pages) no longer flashes a black screen.",
+    ],
+    admin: [
+      "MCX majors are paused off the desk (no Enable shortcuts, no poll). NSE-only hours gate backend alert eval. /expiries falls back to last snapshot.",
+    ],
+  },
+  {
     version: "6.28",
     date: "2026-08-15",
     user: [

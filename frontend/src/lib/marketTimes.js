@@ -134,6 +134,11 @@ export function isPositionsAutoRefreshOn(now = new Date()) {
 // either a Date-like value (uses local IST weekend calculation) OR a server
 // status object (as returned by /api/status) which may include `market.is_market_open`
 // and an optional `holidays` array of ISO dates.
+/** True only when the server says NSE cash/F&O is printing. Missing status ≠ live. */
+export function nseCashSessionLive(status) {
+  return status?.market?.is_market_open === true;
+}
+
 export function isMarketQuiescent(maybeStatusOrDate = undefined) {
   // Prefer live hours from status when present.
   if (maybeStatusOrDate && typeof maybeStatusOrDate === "object" && (maybeStatusOrDate.market || maybeStatusOrDate.holidays)) {

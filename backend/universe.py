@@ -18,6 +18,8 @@ DESK_IDS: Tuple[str, ...] = ("NIFTY", "SENSEX", "BANKNIFTY")
 
 # Kite `name` for the four major MCX option chains (not minis).
 MCX_MAJOR_IDS: Tuple[str, ...] = ("CRUDEOIL", "GOLD", "SILVER", "NATURALGAS")
+# Pause MCX majors on the live desk (catalog + journal heatmap names stay).
+MCX_DESK_AVAILABLE: bool = False
 # Year heatmap named rows: desk indices plus MCX majors (FINNIFTY/stocks stay Others).
 HEATMAP_IDS: Tuple[str, ...] = DESK_IDS + MCX_MAJOR_IDS
 
@@ -302,6 +304,35 @@ def nearest_fut_quote_symbol(rows: Iterable[Dict[str, Any]], name: str, today: O
         expired.sort(key=lambda x: x[0], reverse=True)
         return expired[0][1]
     return None
+
+
+def is_mcx_major_id(uid: Any) -> bool:
+    key = normalize_id(uid)
+    return key in MCX_MAJOR_IDS
+
+
+def is_paused_mcx(uid: Any, cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """True when MCX desk is off and this id is a commodity major / MCX cfg."""
+    if MCX_DESK_AVAILABLE:
+        return False
+    if is_mcx_major_id(uid):
+        return True
+    return is_mcx_cfg(cfg) or is_mcx_cfg(get(uid) if uid else None)
+
+
+def without_paused_mcx(ids: Optional[Iterable[str]], configs: Optional[dict] = None) -> List[str]:
+    cfgs = configs or {}
+    out: List[str] = []
+    seen = set()
+    for raw in ids or []:
+        key = normalize_id(raw) or str(raw).strip().upper()
+        if not key or key in seen:
+            continue
+        if is_paused_mcx(key, cfgs.get(key)):
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
 
 
 def is_mcx_cfg(cfg: Optional[Dict[str, Any]]) -> bool:

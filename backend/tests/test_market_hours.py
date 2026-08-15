@@ -64,6 +64,12 @@ def test_full_holidays_are_closed_for_journal_and_oi():
 def test_weekend_never_journal_session():
     assert is_journal_session_day(_d(2026, 8, 15)) is False
     assert is_journal_session_day(_d(2026, 8, 16)) is False
+    assert is_market_open(_d(2026, 8, 15, 20, 30)) is False
+    mark_quote_session_live(True)
+    try:
+        assert is_market_open(_d(2026, 8, 15, 20, 30)) is False
+    finally:
+        mark_quote_session_live(False)
 
 
 def test_regular_weekday_is_both():

@@ -39,7 +39,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
   });
 
   useEffect(() => {
-    if (!open || !activeIndex) return undefined;
+    if (!activeIndex) return undefined;
 
     let cancelled = false;
 
@@ -55,7 +55,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
     return () => {
       cancelled = true;
     };
-  }, [activeIndex, open]);
+  }, [activeIndex]);
 
   // High-impact = Quarterly Results or Board Meeting
   const impactful = useMemo(() => {

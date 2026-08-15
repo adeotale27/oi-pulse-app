@@ -96,11 +96,10 @@ export default function FiiDiiBadge({ isAdmin = false }) {
   }, []);
 
   useEffect(() => {
-    if (!open) return undefined;
     load();
     const id = setInterval(load, 5 * 60_000);
     return () => clearInterval(id);
-  }, [open, load]);
+  }, [load]);
 
   const data = snap?.data;
   const segments = data?.segments || {};
@@ -212,7 +211,7 @@ export default function FiiDiiBadge({ isAdmin = false }) {
           </>
         ) : (
           <>
-            <div className="text-xs font-semibold leading-snug">Awaiting evening update</div>
+            <div className="text-xs font-semibold leading-snug">{snap ? "Awaiting evening update" : "Loading FII / DII"}</div>
             <div className="text-[10px] opacity-60">NSE Capital Market · ~19:31 IST</div>
           </>
         )}

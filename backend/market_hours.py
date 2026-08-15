@@ -234,6 +234,9 @@ def is_market_open(dt: datetime = None) -> bool:
     last_trade_time (set by the OI tracker) covers unlisted / shifted Muhurat.
     """
     dt = dt or now_ist()
+    # Stale Kite last_trade_time must not keep the cash session "open" on Sat/Sun.
+    if is_weekend(dt) and not (is_special_session_day(dt) and quote_session_is_live()):
+        return False
     if quote_session_is_live():
         return True
     t = dt.time()

@@ -36,7 +36,7 @@ export default function InfoTilesRow({
     const all = [
       {
         id: "holiday",
-        node: <HolidayBadge onClick={onOpenHolidays} />,
+        node: <HolidayBadge onOpenCalendar={onOpenHolidays} />,
       },
       {
         id: "fii-dii",
