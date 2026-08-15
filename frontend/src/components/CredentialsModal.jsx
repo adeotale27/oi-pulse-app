@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { KeyRound, ExternalLink, X, ShieldCheck, LogOut } from "lucide-react";
-import { safeHttpUrl } from "@/lib/safeUrl";
+import { friendlyKiteConnectError, extractRequestToken, httpErrorDetail } from "@/lib/kiteConnectError";
 
 /** Masked vault field with clear (×) — never hydrates plaintext secret from the server. */
 function VaultSecretField({
@@ -177,8 +177,14 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
       }
       setSaving(true);
       try {
+        const req = extractRequestToken(requestToken);
+        if (!req) {
+          toast.error("Paste the request_token from the Kite login redirect URL");
+          setSaving(false);
+          return;
+        }
         if (keyStored && secretStored && !apiKey.trim() && !apiSecret.trim()) {
-          const r = await refreshKiteSession(requestToken.trim());
+          const r = await refreshKiteSession(req);
           toast.success(`LIVE mode active. Kite user: ${r.user_id || "ok"}`);
           onSaved?.();
           onOpenChange(false);
@@ -189,7 +195,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
           const r = await api.post("/kite/generate-session", {
             api_key: apiKey.trim(),
             api_secret: apiSecret.trim(),
-            request_token: requestToken.trim(),
+            request_token: req,
             remember: true,
           });
           toast.success(`LIVE mode active. Kite user: ${r.data.user_id}`);
@@ -201,7 +207,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
         }
         if ((keyStored || apiKey.trim()) && (secretStored || apiSecret.trim())) {
           await persistKeySecretIfTyped();
-          const r = await refreshKiteSession(requestToken.trim());
+          const r = await refreshKiteSession(req);
           toast.success(`LIVE mode active. Kite user: ${r.user_id || "ok"}`);
           onSaved?.();
           onOpenChange(false);
@@ -209,7 +215,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
         }
         toast.error("Enter API key and API secret (or keep the saved vault values)");
       } catch (e) {
-        toast.error(e?.response?.data?.detail || "Token generation failed");
+        toast.error(friendlyKiteConnectError(httpErrorDetail(e) || "Token generation failed"));
       } finally {
         setSaving(false);
       }
@@ -326,10 +332,13 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
                   data-testid="input-request-token"
                   value={requestToken}
                   onChange={(e) => setRequestToken(e.target.value)}
-                  placeholder="from the ?request_token=… URL after login"
+                  placeholder="paste request_token or the whole Kite URL"
                   className="font-mono-data mt-1"
                   autoComplete="off"
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  The code works only once and expires in a few minutes. Paste the full redirect URL if that is easier.
+                </p>
               </div>
               <button
                 type="button"

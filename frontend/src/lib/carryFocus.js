@@ -33,15 +33,15 @@ export function writerBiasLine(row) {
   if (b.bullish) {
     return {
       index: idx,
-      text: "PE OI built — support; CE shorts sit better than PE shorts",
-      short: "CE shorts OK",
+      text: "PE OI built — support; sold calls sit better than sold puts",
+      short: "Calls sit better",
       comfortable: "CE",
     };
   }
   return {
     index: idx,
-    text: "CE OI built — resistance; PE shorts sit better than CE shorts",
-    short: "PE shorts OK",
+    text: "CE OI built — resistance; sold puts sit better than sold calls",
+    short: "Puts sit better",
     comfortable: "PE",
   };
 }
@@ -190,14 +190,14 @@ export function sellerCarryAdvice({ band, holidayAdvice, vix, giftPct, focusCoun
   const g = giftPct != null && Number.isFinite(Number(giftPct)) ? Number(giftPct) : null;
   const bits = [];
   if (band === "DO_NOT_CARRY") {
-    bits.push("Do not hold unhedged short premium through the gap. Cut or make it defined-risk before the next open.");
+    bits.push("Do not hold unhedged premium through the gap. Cut or make it defined-risk before the next open.");
   } else if (band === "REDUCE") {
-    bits.push("Carry only the shorts that session OI still supports. Hedge or reduce the index that is working against you.");
+    bits.push("Hold only the sold options that session OI still supports. Hedge or reduce the index that is working against you.");
   } else {
-    bits.push("Calendar and session OI look carry-able if shorts stay hedged and not too close to spot.");
+    bits.push("Calendar and session OI look holdable overnight if the book stays hedged and not too close to spot.");
   }
   if (holidayAdvice) bits.push(holidayAdvice);
-  else if (v != null && v >= 18) bits.push(`India VIX ${v.toFixed(1)} — size the gap, do not add naked shorts.`);
+  else if (v != null && v >= 18) bits.push(`India VIX ${v.toFixed(1)} — size the gap, do not add naked sold premium.`);
   else if (g != null && Math.abs(g) >= 0.35) {
     bits.push(`GIFT ${g >= 0 ? "+" : ""}${g.toFixed(2)}% into the open — expect a gap vs cash.`);
   } else if (focusCount === 0 && band === "CARRY_OK") {

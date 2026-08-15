@@ -177,20 +177,47 @@ def fmt_lakh(v: float) -> str:
 
 
 def _classify_shift(side: str, direction: str) -> tuple:
-    """
-    Return (bias, signal_text, emoji_prefix)
-    * PE build  → BUY  (support being written)
-    * CE unwind → BUY  (resistance being lifted)
-    * CE build  → SELL (resistance being written)
-    * PE unwind → SELL (support being removed)
-    """
+    """Return (bias, meaning) for an OI build/unwind. No position advice."""
     bullish = (side == "PE" and direction == "build") or (side == "CE" and direction == "unwind")
     bearish = (side == "CE" and direction == "build") or (side == "PE" and direction == "unwind")
     if bullish:
-        return ("BULLISH", "BUY BUY BUY", "🟢🟢🟢")
+        return (
+            "Support / bid",
+            "Puts building or calls covering — spot has a bid underneath. Watch whether that strike holds.",
+        )
     if bearish:
-        return ("BEARISH", "SELL SELL SELL", "🔴🔴🔴")
-    return ("NEUTRAL", "watch", "🟡")
+        return (
+            "Resistance / offer",
+            "Calls building or puts covering — supply overhead. Watch whether spot is rejected there.",
+        )
+    return ("Watch", "OI moved; read the ladder on the desk for the exact strikes.")
+
+
+def format_huge_shift_html(shift: dict, *, is_major: bool) -> str:
+    idx = shift.get("index", "?")
+    side = shift.get("side", "?")
+    value = shift.get("value", 0) or 0
+    direction = shift.get("direction", "build")
+    window = shift.get("window", "?")
+    price = shift.get("price")
+    atm = shift.get("atm")
+    contributing = (shift.get("contributing") or [])[:5]
+    bias, meaning = _classify_shift(side, direction)
+    banner = "🚨 <b>MAJOR OI SHIFT</b>\n" if is_major else "⚡ <b>OI SHIFT</b>\n"
+    contrib_lines = "\n".join(
+        f"• {c.get('strike')}: CE {fmt_lakh(c.get('ce_delta', 0))}  ·  PE {fmt_lakh(c.get('pe_delta', 0))}"
+        for c in contributing
+        if isinstance(c, dict) and "quantity" not in c and "tradingsymbol" not in c
+    )
+    return (
+        f"{banner}"
+        f"<b>{idx}</b> · {side} {direction.upper()} in last <b>{window} min</b> → <b>{fmt_lakh(value)}</b>\n"
+        f"Read: <b>{bias}</b>\n"
+        f"{meaning}\n"
+        f"Spot: <b>{price if price is not None else '—'}</b>  ·  ATM: <b>{atm if atm is not None else '—'}</b>\n"
+        f"{contrib_lines}\n"
+        f"<i>Open the OI chart on the desk. We never send your book.</i>"
+    )
 
 
 # ---------------- Send primitive ----------------
@@ -289,70 +316,79 @@ async def alert_oi_spike(alert: dict):
 
 
 async def alert_huge_shift(shift: dict):
-    """Called from frontend when the HugeShiftModal fires. Forwards the same data to Telegram."""
+    """Forward a huge OI shift. Never include the user's book/positions."""
     idx = shift.get("index", "?")
-    side = shift.get("side", "?")             # 'CE' or 'PE'
     value = shift.get("value", 0) or 0
-    direction = shift.get("direction", "build")   # 'build' or 'unwind'
-    window = shift.get("window", "?")
-    price = shift.get("price")
-    atm = shift.get("atm")
-    contributing = (shift.get("contributing") or [])[:5]
-
     prefs = await _load_prefs()
     major_threshold = float(prefs.get("major_abs_threshold", 20_000_000))
     is_major = abs(value) >= major_threshold
-
     if not await _should_send("huge_shift", index=idx, is_major=is_major):
         return
-
-    bias, signal_text, prefix = _classify_shift(side, direction)
-
-    banner = ""
-    if is_major:
-        banner = f"{prefix} <b>{signal_text}</b> · MAJOR SHIFT {prefix}\n"
-
-    contrib_lines = "\n".join(
-        f"• {c['strike']}: CE {fmt_lakh(c.get('ce_delta', 0))}  ·  PE {fmt_lakh(c.get('pe_delta', 0))}"
-        for c in contributing
-    )
-
-    text = (
-        f"{banner}"
-        f"{'🚨' if is_major else '⚡'} <b>HUGE OI SHIFT · {idx}</b>\n"
-        f"{side} {direction.upper()} in last <b>{window} min</b> → <b>{fmt_lakh(value)}</b>\n"
-        f"Signal: <b>{bias}</b>\n"
-        f"Price: <b>{price if price is not None else '—'}</b>  |  ATM: <b>{atm if atm is not None else '—'}</b>\n"
-        f"{contrib_lines}"
-    )
-    # Dedupe per (index, window, side, direction) for 2 min so we don't spam
-    key = f"huge:{idx}:{window}:{side}:{direction}"
+    text = format_huge_shift_html(shift, is_major=is_major)
+    key = f"huge:{idx}:{shift.get('window')}:{shift.get('side')}:{shift.get('direction')}"
     await send_message(text, dedupe_key=key, cooldown_seconds=120)
+
+
+def next_session_notes(now: Optional[datetime] = None) -> list:
+    """Holidays / session notes for the next open. No positions."""
+    from market_hours import now_ist, is_trading_day, is_full_holiday, NSE_SPECIAL_SESSIONS, NSE_HOLIDAYS
+    dt = now or datetime.now(IST)
+    notes = []
+    d = (dt + timedelta(days=1)).date()
+    guard = 0
+    while guard < 10:
+        guard += 1
+        probe = datetime(d.year, d.month, d.day, 12, 0, tzinfo=IST)
+        iso = d.isoformat()
+        if iso in NSE_SPECIAL_SESSIONS:
+            name = (NSE_SPECIAL_SESSIONS.get(iso) or {}).get("name") or "Muhurat"
+            notes.append(f"Special session {iso}: {name}")
+        if is_trading_day(probe):
+            notes.insert(0, f"Next session: {d.strftime('%a %d %b %Y')}")
+            break
+        if is_full_holiday(probe) or iso in NSE_HOLIDAYS:
+            notes.append(f"Market closed {iso} (NSE holiday)")
+        elif probe.weekday() >= 5:
+            notes.append(f"Weekend {iso}")
+        d = d + timedelta(days=1)
+    return notes[:6]
+
+
+def format_eod_html(digest: dict, *, next_notes: Optional[list] = None) -> str:
+    date = digest.get("date", "?")
+    total = digest.get("alerts_total", 0)
+    lines = [
+        f"📋 <b>OI Pulse · session wrap {date}</b>",
+        "Sent ~15:15 IST (cash F&O continuous close). Index F&O still prints until 15:40.",
+        f"OI alerts today: <b>{total}</b>",
+        "",
+    ]
+    for row in digest.get("indices") or []:
+        idx = row.get("index", "?")
+        lines.append(f"<b>{idx}</b>  close {row.get('closing_price', '—')}  ·  ATM {row.get('atm', '—')}  ·  alerts {row.get('total_alerts', 0)}")
+        tb = row.get("top_bullish")
+        tbe = row.get("top_bearish")
+        if tb:
+            lines.append(f"  Support print: strike {tb.get('strike', '?')} PE {tb.get('pe_pct', 0):+.1f}%")
+        if tbe:
+            lines.append(f"  Resistance print: strike {tbe.get('strike', '?')} CE {tbe.get('ce_pct', 0):+.1f}%")
+    notes = next_notes if next_notes is not None else next_session_notes()
+    if notes:
+        lines.append("")
+        lines.append("<b>Into the next session</b>")
+        for n in notes:
+            lines.append(f"• {n}")
+    lines.append("")
+    lines.append("<i>Chart is on the desk. We never send positions or P&L.</i>")
+    return "\n".join(lines)
 
 
 async def send_daily_digest(digest: dict):
     if not await _should_send("daily_digest"):
         return False
     date = digest.get("date", "?")
-    total = digest.get("alerts_total", 0)
-    lines = [f"📊 <b>OI-Pulse Daily Digest — {date}</b>", f"Total alerts: <b>{total}</b>", ""]
-    prefs = await _load_prefs()
-    idx_prefs = prefs.get("indices", {}) or {}
-    for row in digest.get("indices", []):
-        idx = row.get("index", "?")
-        if not idx_prefs.get(idx, True):
-            continue
-        lines.append(f"<b>{idx}</b>")
-        lines.append(f"Close: {row.get('closing_price', '—')}  |  ATM: {row.get('atm', '—')}")
-        lines.append(f"Alerts today: {row.get('total_alerts', 0)}")
-        tb = row.get("top_bullish")
-        tbe = row.get("top_bearish")
-        if tb:
-            lines.append(f"🟢 Top bullish: strike {tb.get('strike','?')} PE {tb.get('pe_pct',0):+.1f}%")
-        if tbe:
-            lines.append(f"🔴 Top bearish: strike {tbe.get('strike','?')} CE {tbe.get('ce_pct',0):+.1f}%")
-        lines.append("")
-    return await send_message("\n".join(lines).strip(), dedupe_key=f"digest:{date}", cooldown_seconds=86400)
+    text = format_eod_html(digest)
+    return await send_message(text, dedupe_key=f"digest:{date}", cooldown_seconds=86400)
 
 
 async def send_test_message() -> bool:

@@ -495,12 +495,12 @@ export default function OvernightGapBrief({
 
   const bandLabel =
     verdict.band === "DO_NOT_CARRY"
-      ? "Do not carry shorts"
+      ? "Do not hold overnight"
       : verdict.band === "REDUCE"
-        ? "Reduce / hedge shorts"
-        : "Carry shorts (sized)";
+        ? "Reduce overnight size"
+        : "Overnight hold is sized";
 
-  const title = "Carry shorts overnight?";
+  const title = "Hold overnight?";
   const dockHint = snapDockFromClientX(
     (leftPx ?? 12) + 80,
     typeof window !== "undefined" ? window.innerWidth : 1200,
@@ -541,7 +541,7 @@ export default function OvernightGapBrief({
         <Moon className={iconOnly ? "w-5 h-5" : "w-3.5 h-3.5"} />
         {!iconOnly && (
           <>
-            <span>Carry shorts</span>
+            <span>Overnight</span>
             <span className="opacity-70 font-mono-data">{verdict.score}/100</span>
             <Maximize2 className="w-3.5 h-3.5 opacity-70" />
           </>

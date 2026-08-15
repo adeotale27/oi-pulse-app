@@ -73,7 +73,7 @@ export default function OiRiskMeter({
           </div>
         </div>
         <div>
-          <div className="text-[9px] uppercase tracking-wider opacity-70">To short</div>
+          <div className="text-[9px] uppercase tracking-wider opacity-70">Nearest sold</div>
           <div className="font-mono-data text-sm font-bold" data-testid="oi-risk-dist">
             {risk.distPct == null ? "—" : `${risk.distPct.toFixed(2)}%`}
           </div>

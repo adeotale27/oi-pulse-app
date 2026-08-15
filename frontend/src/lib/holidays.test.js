@@ -60,4 +60,16 @@ assert.equal(holidayShortName(undefined), "Holiday");
 assert.equal(holidayShortName({ name: "Ganesh Chaturthi" }), "Ganesh Chaturthi");
 assert.equal(holidayShortName({ name: "Id-Ul-Fitr (Ramzan Id)" }), "Id-Ul-Fitr");
 
+function holidayCellLabel(h, { muhurat = false } = {}) {
+  if (muhurat || (typeof h === "object" && h && h.session === "muhurat")) return "Muh.";
+  const full = holidayShortName(h, "Closed");
+  const first = full.split(/[/,]/)[0].trim();
+  if (first.length <= 14) return first;
+  return `${first.slice(0, 10)}…`;
+}
+assert.notEqual(holidayCellLabel({ name: "Balipratipada" }), "Holi");
+assert.equal(holidayCellLabel({ name: "Balipratipada" }), "Balipratipada");
+assert.equal(holidayCellLabel({ name: "Diwali Laxmi Pujan* (Muhurat trading)", session: "muhurat" }), "Muh.");
+assert.ok(holidayCellLabel({ name: "Prakash Gurpurb Sri Guru Nanak Dev" }).startsWith("Prakash"));
+
 console.log("holidays.test.js ok");

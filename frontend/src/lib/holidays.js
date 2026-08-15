@@ -86,6 +86,15 @@ export function holidayShortName(h, fallback = "Holiday") {
   return s.replace(/\s*\(.*$/, "");
 }
 
+/** Tight calendar cell — never the word "Holi" (that is a March festival). */
+export function holidayCellLabel(h, { muhurat = false } = {}) {
+  if (muhurat || (typeof h === "object" && h && h.session === "muhurat")) return "Muh.";
+  const full = holidayShortName(h, "Closed");
+  const first = full.split(/[/,]/)[0].trim();
+  if (first.length <= 14) return first;
+  return `${first.slice(0, 10)}…`;
+}
+
 /** True for weekday IST dates with a cash/F&O session, including Muhurat. */
 export function isTradingDayIST(iso = toIST(new Date())) {
   const wd = weekdayIST(iso);

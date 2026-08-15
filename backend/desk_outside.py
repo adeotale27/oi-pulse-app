@@ -322,7 +322,7 @@ async def _load_heavies(db) -> List[Dict[str, Any]]:
     for idx, n in TOP_N.items():
         try:
             docs = await db.index_constituents.find(
-                {"index": idx},
+                {"index": {"$in": [idx, idx.lower(), idx.title()]}},
                 {"_id": 0, "symbol": 1, "company_name": 1, "weightage": 1, "index": 1, "industry": 1},
             ).sort("weightage", -1).to_list(length=n)
         except Exception as e:
@@ -340,7 +340,55 @@ async def _load_heavies(db) -> List[Dict[str, Any]]:
                 "industry": _clip(d.get("industry"), 32),
                 "index": idx,
             })
+    if heavies:
+        return heavies
+    try:
+        docs = await db.index_constituents.find(
+            {},
+            {"_id": 0, "symbol": 1, "company_name": 1, "weightage": 1, "index": 1, "industry": 1},
+        ).sort("weightage", -1).to_list(length=80)
+    except Exception as e:
+        logger.warning("constituents fallback read: %s", e)
+        docs = []
+    for d in docs or []:
+        sym = str(d.get("symbol") or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        raw_idx = str(d.get("index") or "NIFTY").upper().replace(" ", "")
+        idx = "BANKNIFTY" if "BANK" in raw_idx else ("SENSEX" if "SENSEX" in raw_idx else "NIFTY")
+        heavies.append({
+            "symbol": sym,
+            "name": _clip(d.get("company_name"), 40),
+            "weightage": d.get("weightage"),
+            "industry": _clip(d.get("industry"), 32),
+            "index": idx,
+        })
     return heavies
+
+
+def _briefing_text(lines, *, heavies, quotes, news, source: str = "") -> str:
+    """Desk copy: never ask for an upload that is already on file."""
+    joined = " ".join(str(x) for x in (lines or []) if x).strip()
+    if joined:
+        return joined
+    n_h = len(heavies or [])
+    n_q = len(quotes or {})
+    n_news = len(news or [])
+    if n_h and n_q:
+        extra = f" {n_news} wire{'s' if n_news != 1 else ''}." if n_news else ""
+        return (
+            f"Constituents are loaded ({n_h} names, {source or 'quotes'} live). "
+            f"No material cash move vs OI right now.{extra}"
+        )
+    if n_h and not n_q:
+        return (
+            f"Constituents are on file ({n_h} names). Waiting for live cash quotes "
+            "(Kite token or Yahoo). This is not an upload problem."
+        )
+    if n_news:
+        return "Wires are live. Upload Nifty 50 / Bank / Sensex constituents in Admin → Upload to score heavyweights."
+    return "Upload Nifty 50 / Bank / Sensex constituents in Admin → Upload (Impact Risk) to enable the heavyweight tape."
 
 
 async def _fetch_news() -> List[Dict[str, str]]:
@@ -587,11 +635,7 @@ async def snapshot(db, tracker=None, *, force: bool = False) -> Dict[str, Any]:
         lines.append("Heavyweights: " + ", ".join(
             f"{m['symbol']} {m['pct']:+.1f}%" if m.get("pct") is not None else m["symbol"] for m in movers[:5]
         ))
-    briefing = " ".join(lines) if lines else (
-        "No material outside-the-OI events scored yet (need live quotes + uploaded constituents)."
-        if heavies else
-        "Upload Nifty 50 / Bank / Sensex constituents in Admin → Upload (Impact Risk) to enable the heavyweight tape."
-    )
+    briefing = _briefing_text(lines, heavies=heavies, quotes=quotes, news=news, source=source)
 
     pack = {
         "ok": True,

@@ -411,7 +411,7 @@ export default function Header({
   return (
     <header
       data-testid="dashboard-header"
-      className={`oi-header w-full relative z-20 ${headerRail ? "oi-header-slim" : "oi-header-desk"}`}
+      className={`oi-header w-full relative z-50 ${headerRail ? "oi-header-slim" : "oi-header-desk"}`}
       data-density={headerRail ? "slim" : "desk"}
     >
       <GiftSessionsModal open={giftModalOpen} onOpenChange={setGiftModalOpen} windows={giftSessions} serverIst={extras?.server_time_ist} />

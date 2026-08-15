@@ -28,19 +28,19 @@ assert.match(
 
 const pe = writerBiasLine({ index: "NIFTY", bias: { bullish: true, pct: 40 } });
 assert.equal(pe.comfortable, "CE");
-assert.equal(pe.short, "CE shorts OK");
+assert.equal(pe.short, "Calls sit better");
 assert.match(pe.text, /PE OI/);
 
 const ce = writerBiasLine({ index: "SENSEX", bias: { bullish: false, pct: 30 } });
 assert.equal(ce.comfortable, "PE");
-assert.equal(ce.short, "PE shorts OK");
+assert.equal(ce.short, "Puts sit better");
 
 const vix = vixCarryPoints(19.2);
 assert.equal(vix.pts, 18);
 
 const advice = sellerCarryAdvice({ band: "REDUCE", vix: 19, giftPct: -0.09, focusCount: 2 });
 assert.match(advice, /session OI/);
-assert.match(sellerCarryAdvice({ band: "DO_NOT_CARRY" }), /unhedged short/);
+assert.match(sellerCarryAdvice({ band: "DO_NOT_CARRY" }), /unhedged premium/);
 
 const book = summarizeBook([
   { index: "NIFTY", side: "CE", quantity: -75, exited: false },

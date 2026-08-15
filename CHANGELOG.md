@@ -1,5 +1,17 @@
 # Changelog
 
+## V6.10 — 2026-08-15
+
+Journal holiday names, Book radar copy, overnight tile, Telegram session wrap, Kite login errors, phone sidebar.
+
+- Journal phone cells show the real holiday name (not “Holi”). Muhurat stays Muhurat even on a weekend listing
+- Book radar no longer asks to upload constituents when they are already on file
+- Overnight risk tile matches the other insight tiles. “Carry shorts” is now **Hold overnight?** / **Overnight**
+- Phone sidebar starts below the header so OI Pulse and the version stay visible
+- Telegram: readable huge-OI notes; session wrap at **15:15 IST** with next-session calendar. Never the book
+- Kite token: paste the whole login URL; checksum vs already-used tokens get a plain-language error
+- First OI load paints the open index before the other two
+
 ## V6.09 — 2026-08-14
 
 Journal next-month crash, year heatmap index rows, phone brand.

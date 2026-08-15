@@ -835,6 +835,7 @@ class OITracker:
             try:
                 poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
                 await self._refresh_quote_session_flag()
+                await self._maybe_eod_telegram()
                 if FORCE_ALWAYS_POLL or is_market_open():
                     if not was_open:
                         logger.info("Market OPEN — starting continuous OI / straddle polling (browser-independent).")
@@ -857,13 +858,6 @@ class OITracker:
                     if was_open:
                         logger.info("Market CLOSED — pausing polling.")
                         await notifier.alert_market_close()
-                        # Build and send daily digest right after close (only when market
-                        # was open just now, i.e. real end-of-session).
-                        try:
-                            digest = await self.build_daily_digest()
-                            await notifier.send_daily_digest(digest)
-                        except Exception as e:
-                            logger.warning(f"daily digest failed: {e}")
                         was_open = False
                     # opportunistic pre-market check: warn if kite creds seem stale
                     await self._premarket_check()
@@ -875,6 +869,26 @@ class OITracker:
                 self.last_error = str(e)
                 await notifier.alert_tracker_error(str(e))
                 await asyncio.sleep(max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS))))
+
+    async def _maybe_eod_telegram(self):
+        """One session wrap at 15:15 IST: OI recap + next-session calendar. Never the book."""
+        try:
+            dt = now_ist()
+            if dt.hour != 15 or dt.minute < 15:
+                return
+            if dt.weekday() >= 5:
+                return
+            from market_hours import is_full_holiday
+            if is_full_holiday(dt):
+                return
+            key = dt.date().isoformat()
+            if getattr(self, "_eod_tg_for", None) == key:
+                return
+            self._eod_tg_for = key
+            digest = await self.build_daily_digest()
+            await notifier.send_daily_digest(digest)
+        except Exception as e:
+            logger.warning("eod telegram failed: %s", e)
 
     async def _purge_prior_session_alerts(self):
         """On a new trading day open, drop alerts from prior sessions.

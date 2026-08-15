@@ -15,7 +15,7 @@ const TYPE_ROWS = [
   { key: "huge_shift_major_only", label: "…but only MAJOR shifts (≥ threshold below)", hint: "Filters out small shifts", nested: true },
   { key: "market_open", label: "Market open ping", hint: "One message at 9:00 AM IST" },
   { key: "market_close", label: "Market close ping", hint: "One message at configured market close (default 15:40 IST)" },
-  { key: "daily_digest", label: "Daily digest at 3:30 PM", hint: "Total alerts + biggest reversals + closing OI" },
+  { key: "daily_digest", label: "Session wrap at 3:15 PM IST", hint: "OI recap + next-session holidays/events. Never your positions." },
   { key: "kite_token", label: "Kite token issue", hint: "8:45 AM check-in if daily token has expired" },
   { key: "tracker_errors", label: "Tracker errors / stops", hint: "Critical — recommended ON" },
 ];
@@ -123,10 +123,11 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="w-4 h-4" />
-            Telegram Preferences
+            Telegram desk alerts
           </DialogTitle>
           <DialogDescription>
-            Pick exactly what you want to receive. Change any time — takes effect on the next alert.
+            Huge OI shifts and a 15:15 IST session wrap (next-session calendar). We never send your book.
+            Change any time — takes effect on the next alert.
             {status && !status.configured && (
               <span className="block mt-1 text-rose-600">
                 Bot not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in backend/.env.

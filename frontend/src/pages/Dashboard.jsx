@@ -789,10 +789,7 @@ export default function Dashboard() {
     const minutes = resolveMinutes(timeframeRef.current);
 
     try {
-      // Prefetch expiries for every enabled index (cheap + cached after first hit).
-      await Promise.all(indices.map((idx) => ensureExpiryForIndex(idx)));
-
-      const fetches = indices.map(async (idx) => {
+      const fetchOne = async (idx) => {
         const exp =
           idx === active
             ? (selectedExpiryRef.current || expiryByIndexRef.current[idx]?.selected || undefined)
@@ -824,15 +821,22 @@ export default function Dashboard() {
           console.error(`loadOI(${idx}) failed`, e);
           return { idx, ok: false };
         }
-      });
+      };
 
-      const results = await Promise.all(fetches);
-      if (gen !== oiReqGenRef.current) return;
-
-      const activeRow = results.find((r) => r.ok && r.idx === activeIndexRef.current);
-      if (activeRow?.data) {
-        applyOiPayload(activeRow.data, { pulse: true });
+      // Paint the open index first — waiting on every expiry was the slow first load.
+      if (active) {
+        await ensureExpiryForIndex(active);
+        if (gen !== oiReqGenRef.current) return;
+        const first = await fetchOne(active);
+        if (gen !== oiReqGenRef.current) return;
+        if (first.ok && first.data) applyOiPayload(first.data, { pulse: true });
+        setOiLoading(false);
       }
+
+      const rest = indices.filter((idx) => idx !== active);
+      await Promise.all(rest.map((idx) => ensureExpiryForIndex(idx)));
+      if (gen !== oiReqGenRef.current) return;
+      await Promise.all(rest.map((idx) => fetchOne(idx)));
     } catch (e) {
       if (gen !== oiReqGenRef.current) return;
       console.error("loadOI failed", e);
@@ -1910,12 +1914,12 @@ export default function Dashboard() {
           <>
             <button
               type="button"
-              className="md:hidden fixed inset-0 z-[45] bg-slate-950/50 backdrop-blur-[2px]"
+              className="md:hidden fixed top-[4.75rem] bottom-0 left-0 right-0 z-[35] bg-slate-950/50 backdrop-blur-[2px]"
               aria-label="Close sidebar"
               data-testid="sidebar-mobile-backdrop"
               onClick={() => setCompact(true)}
             />
-            <div className="fixed md:static z-50 md:z-auto inset-y-0 left-0 w-[min(18rem,88vw)] md:w-auto max-w-[90vw] md:max-w-none shadow-2xl md:shadow-none overflow-y-auto">
+            <div className="fixed md:static z-40 md:z-auto top-[4.75rem] bottom-0 left-0 md:inset-auto w-[min(18rem,88vw)] md:w-auto max-w-[90vw] md:max-w-none shadow-2xl md:shadow-none overflow-y-auto" data-testid="sidebar-mobile-sheet">
               <Sidebar
                 indices={enabledIndices.length ? enabledIndices : INDICES}
                 activeIndex={activeIndex}

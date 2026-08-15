@@ -21,7 +21,7 @@ import {
   deleteJournalScreenshot,
 } from "@/lib/api";
 import { toast } from "sonner";
-import { holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
+import { holidayCellLabel, holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import InfoTip from "@/components/InfoTip";
@@ -527,9 +527,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       const session = isJournalSessionDayIST(c.iso);
                       const special = isSpecialSessionIST(c.iso) && session;
                       const holiday = isHoliday(c.iso);
-                      const closedHoliday = Boolean(holiday && !special);
+                      const muhuratDay = Boolean(holiday && holiday.session === "muhurat");
+                      const closedHoliday = Boolean(holiday && !muhuratDay);
                       const showBook = traded && session;
-                      const tone = showBook ? cellClasses(pnl, true, maxAbs) : special
+                      const tone = showBook ? cellClasses(pnl, true, maxAbs) : (special || muhuratDay)
                         ? { box: "bg-violet-50 border-violet-300 text-violet-900", amt: "text-violet-900", invert: false }
                         : closedHoliday
                         ? { box: "bg-amber-50 border-amber-300 text-amber-900", amt: "text-amber-900", invert: false }
@@ -566,10 +567,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               <div className={`text-[11px] font-bold font-mono-data leading-tight truncate ${tone.amt}`}>
                                 {privacy ? "··" : compactPnl(pnl)}
                               </div>
-                            ) : special ? (
+                            ) : special || muhuratDay ? (
                               <div className="text-[9px] leading-tight text-violet-800 truncate" title={holidayShortName(holiday, "Muhurat")}>Muh.</div>
                             ) : closedHoliday ? (
-                              <div className="text-[9px] leading-tight text-amber-800 truncate" title={holidayShortName(holiday)}>Holi</div>
+                              <div className="text-[9px] leading-tight text-amber-800 truncate" title={holidayShortName(holiday)}>
+                                {holidayCellLabel(holiday)}
+                              </div>
                             ) : !session ? (
                               <div className="text-[9px] text-slate-400">—</div>
                             ) : (
@@ -597,9 +600,9 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                                 <div className={`text-[10px] font-semibold ${tone.invert ? "text-white/90" : "text-slate-600"}`}>{wr}</div>
                               ) : null}
                             </>
-                          ) : special ? (
+                          ) : special || muhuratDay ? (
                             <div className="text-[12px] text-violet-800 mt-3 leading-tight font-medium" title={holidayShortName(holiday, "Muhurat")}>
-                              Muhurat
+                              {session ? "Muhurat" : "Muhurat · weekend"}
                               <div className="text-[11px] font-normal mt-0.5">
                                 {holidayShortName(holiday, "Special session")}
                               </div>

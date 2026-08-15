@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.10",
+    date: "2026-08-15",
+    user: [
+      "Journal holidays show their real names (not “Holi”). Overnight hold wording is no longer “carry shorts”. Phone sidebar stays under the OI Pulse header. Telegram session wrap at 15:15 IST — never your book.",
+    ],
+    admin: [
+      "Book radar copy respects uploaded constituents. Kite request_token can be pasted as a full URL; checksum vs used-token errors are separate. OI first-load paints the active index first. Telegram digest moved from market close to 15:15 IST.",
+    ],
+  },
+  {
     version: "6.09",
     date: "2026-08-14",
     user: [
