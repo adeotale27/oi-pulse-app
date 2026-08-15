@@ -261,6 +261,7 @@ class OITracker:
         self._refresh_tasks: Dict[str, Optional[asyncio.Task]] = {i: None for i in INDICES}
         # Track which IST trading date we already purged prior-day alerts for.
         self._alerts_purged_for: Optional[str] = None
+        self._fno_preload_task: Optional[asyncio.Task] = None
 
     def ensure_index_slots(self, ids: List[str]) -> None:
         for idx in ids:
@@ -629,6 +630,7 @@ class OITracker:
                 self._instruments_loaded_at = datetime.now(timezone.utc)
         except Exception as e:
             logger.warning("instruments reload after set_credentials failed: %s", e)
+        self.schedule_fno_preload(force=False)
         try:
             await self.seed_default_expiries()
         except Exception as e:
@@ -712,6 +714,49 @@ class OITracker:
             except Exception as e:
                 logger.warning("seed_default_expiries(%s) failed: %s", idx, e)
 
+    def schedule_fno_preload(self, *, force: bool = False) -> None:
+        """Background Kite dump → kite_underlyings. Safe to call after every token save."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = self._fno_preload_task
+        if task is not None and not task.done():
+            return
+        self._fno_preload_task = loop.create_task(self._run_fno_preload(force=force))
+
+    async def _run_fno_preload(self, *, force: bool = False) -> None:
+        try:
+            n = await self.preload_fno_dump(force=force)
+            if n:
+                logger.info("F&O underlyings cache ready (%s names)", n)
+        except Exception as e:
+            logger.warning("F&O preload failed: %s", e)
+
+    async def persist_fno_underlyings(self) -> int:
+        """Write Index-management cache from the in-memory Kite dump (no extra Kite call)."""
+        if not self.kite_service:
+            return 0
+        from index_registry import persist_underlyings, summarize_underlyings
+
+        rows = self.kite_service.instrument_rows() or []
+        if not rows:
+            return 0
+        summaries = summarize_underlyings(rows, q="", limit=None)
+        n = await persist_underlyings(self.db, summaries)
+        logger.info("preloaded %s F&O underlyings (%s instruments)", n, len(rows))
+        return n
+
+    async def preload_fno_dump(self, *, force: bool = False) -> int:
+        """Reload the Kite instrument dump when needed, then persist kite_underlyings."""
+        if self.mode != "kite" or not self.kite_service:
+            return 0
+        loaded = getattr(self.kite_service, "instruments_df", None)
+        if force or loaded is None:
+            await asyncio.to_thread(self.kite_service.reload_instruments, True)
+            self._instruments_loaded_at = datetime.now(timezone.utc)
+        return await self.persist_fno_underlyings()
+
     async def ensure_instruments_fresh(self) -> None:
         """Reload Kite instruments at most once per IST trading day (expiry roll)."""
         if self.mode != "kite" or not self.kite_service:
@@ -735,14 +780,7 @@ class OITracker:
             self.kite_service.reload_instruments(force=True)
             self._instruments_loaded_at = now
             await self.seed_default_expiries(force_roll=True)
-            try:
-                from index_registry import persist_underlyings, summarize_underlyings
-
-                rows = self.kite_service.instrument_rows()
-                summaries = summarize_underlyings(rows, q="", limit=None)
-                await persist_underlyings(self.db, summaries)
-            except Exception as e:
-                logger.warning("kite_underlyings sync failed: %s", e)
+            await self.persist_fno_underlyings()
             logger.info("Reloaded Kite instruments + rolled default expiries for %s", ist_today)
         except Exception as e:
             logger.warning("ensure_instruments_fresh failed: %s", e)
@@ -754,6 +792,7 @@ class OITracker:
         self._task = asyncio.create_task(self._loop())
         # Expiry seed hits kite.instruments() (huge) — never block API bind / k8s ready.
         asyncio.create_task(self._seed_expiries_safe())
+        self.schedule_fno_preload(force=False)
         logger.info("OI tracker started (browser-independent DB writer)")
 
     async def _seed_expiries_safe(self):

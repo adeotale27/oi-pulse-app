@@ -52,7 +52,7 @@ Frontend: `yarn build` (CRA). ESLint is present; do not mass-reformat unrelated 
 
 **Preferred:** Admin → **Index management** (desktop Admin menu, or phone/tablet Settings gear) → search Kite → Enable / Disable. That writes `index_registry` and `enabled_indices`. The existing poller picks it up.
 
-Daily F&O dump (Index management search cache): `cd backend && python preload_fno.py` after the publisher token is live. The tracker also syncs on first IST poll of the day.
+Daily F&O dump (Index management search cache) runs **automatically** after every publisher Kite token save, on tracker start, and on the first IST poll of the day. Optional CLI: `cd backend && python preload_fno.py`.
 
 ### Checklist (required for every new index, stock, or commodity)
 

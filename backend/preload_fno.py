@@ -1,12 +1,13 @@
 """
-Daily preload: Kite F&O instrument dump → `kite_underlyings` for Index management.
+Daily / after-token F&O dump. The live tracker runs this automatically:
 
-Run once per trading morning after the publisher token is live:
+  • every publisher token save (`set_credentials`)
+  • on tracker start
+  • first OI poll of the IST day (`ensure_instruments_fresh`)
+
+This CLI is optional (ops / debug):
 
     cd backend && python preload_fno.py
-
-Safe to re-run. Does not enable extra indices. The live tracker also syncs
-this dump on first poll of the IST day (`ensure_instruments_fresh`).
 """
 from __future__ import annotations
 
@@ -23,7 +24,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 async def main() -> int:
-    from index_registry import persist_underlyings, summarize_underlyings
     from oi_tracker import OITracker
 
     mongo = os.environ.get("MONGO_URL")
@@ -36,17 +36,12 @@ async def main() -> int:
     db = client[db_name]
     tracker = OITracker(db)
     await tracker.load_credentials()
-    svc = tracker.kite_service
-    if not svc:
-        n = await db.kite_underlyings.count_documents({})
-        print("No Kite credentials — cannot refresh dump. Cached underlyings:", n)
-        return 0 if n else 2
-
-    await asyncio.to_thread(svc.reload_instruments, True)
-    rows = svc.instrument_rows() or []
-    summaries = summarize_underlyings(rows, q="", limit=None)
-    n = await persist_underlyings(db, summaries)
-    print(f"preloaded {n} F&O underlyings ({len(rows)} Kite instruments)")
+    n = await tracker.preload_fno_dump(force=True)
+    if not tracker.kite_service:
+        cached = await db.kite_underlyings.count_documents({})
+        print("No Kite credentials — cannot refresh dump. Cached underlyings:", cached)
+        return 0 if cached else 2
+    print(f"preloaded {n} F&O underlyings")
     return 0
 
 
