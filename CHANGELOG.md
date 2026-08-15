@@ -1,5 +1,12 @@
 # Changelog
 
+## V6.22 — 2026-08-15
+
+F&O Index-management dump loads itself after every publisher token.
+
+- Saving a Kite access token (credentials / daily login) reloads instruments and writes `kite_underlyings` in the background — no manual `preload_fno.py`
+- Same cache refresh on tracker start and the first IST poll of the day. The CLI remains optional for ops
+
 ## V6.21 — 2026-08-15
 
 Gold/MCX quotes stay on that name; Enable is one click; Analyze blue/green.

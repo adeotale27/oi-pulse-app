@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.22",
+    date: "2026-08-15",
+    user: [
+      "Adding or refreshing the publisher Kite token now loads the F&O name list for Index management by itself.",
+    ],
+    admin: [
+      "kite_underlyings syncs after set_credentials, on tracker start, and first IST poll. preload_fno.py is optional.",
+    ],
+  },
+  {
     version: "6.21",
     date: "2026-08-15",
     user: [
