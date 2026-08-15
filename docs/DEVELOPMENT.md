@@ -52,7 +52,7 @@ Frontend: `yarn build` (CRA). ESLint is present; do not mass-reformat unrelated 
 
 **Preferred:** Admin → **Index management** (desktop Admin menu, or phone/tablet Settings gear) → search Kite → Enable / Disable. That writes `index_registry` and `enabled_indices`. The existing poller picks it up.
 
-Daily F&O dump (Index management search cache) is **scheduled in the background** after every publisher Kite token save (the credentials request itself does not dump instruments — that was causing Cloudflare 520/524). Same dump on tracker start and the first IST poll of the day. Optional CLI: `cd backend && python preload_fno.py`.
+Daily F&O dump for Index management is **not** auto-run after token save. Search or Sync in Index management loads the Kite name list on demand. Optional CLI: `cd backend && python preload_fno.py`.
 
 ### Checklist (required for every new index, stock, or commodity)
 

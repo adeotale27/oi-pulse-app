@@ -290,6 +290,7 @@ export default function PositionsPanel({
   positionsPollMs = 30000,
   onOpenKite,
   hasKiteCredentials = null,
+  pollEnabled = true,
   deskAiShow = false,
   deskAiAsk = true,
   deskAiPositions = false,
@@ -508,7 +509,7 @@ export default function PositionsPanel({
   const catchupDoneRef = useRef(false);
 
   useEffect(() => {
-    if (!kiteReady) return undefined;
+    if (!kiteReady || !pollEnabled) return undefined;
     load();
     loadBrokerage();
     const mins0 = istMinutesOfDay();
@@ -548,7 +549,7 @@ export default function PositionsPanel({
       clearInterval(catchId);
       clearInterval(chargesId);
     };
-  }, [kiteReady, load, loadBrokerage, pollMs]);
+  }, [kiteReady, pollEnabled, load, loadBrokerage, pollMs]);
 
   useEffect(() => {
     if (!kiteReady || !journalPositionsRefreshOn()) return undefined;

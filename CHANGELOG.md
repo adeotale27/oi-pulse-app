@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.26 — 2026-08-15
+
+Stop auto-preload. Load F&O names and extra desk data when you ask for them.
+
+- No Kite F&O dump after token save or tracker start. Index management **Search** or **Sync** fills the name list
+- Dashboard only fetches the **open** index OI. Other indices load when you switch to them
+- Positions, FII/DII, impact events, Desk AI, VIX/GIFT, tickers wait until that panel is open or well after first paint (was a 520 stampede)
+
 ## V6.25 — 2026-08-15
 
 Paint the desk first, then fill data step by step.

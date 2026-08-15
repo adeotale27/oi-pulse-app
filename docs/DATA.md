@@ -44,7 +44,7 @@ Kite Connect ──► OITracker (asyncio poll) ──► oi_snapshots
 1. **Poll** — While the market is in session (regular hours or Muhurat / special session, or `FORCE_ALWAYS_POLL`), tracker fetches option chain for each **enabled** index and selected expiry. Kite Connect does not expose a holiday/session-open endpoint; hours come from the NSE calendar plus a live quote last_trade_time check.
 2. **Normalize** — Snapshot includes spot, ATM, PCR, per-strike CE/PE OI, VIX when available, `timestamp` / `created_at`.
 3. **Upsert** — Written to `oi_snapshots` with uniqueness on `(index, expiry, timestamp)`.
-4. **Warm cache** — Shell + open-index `/oi/.../change` paint first (no wait on `/expiries`). Other names, VIX/GIFT, tickers, alerts, positions P&L, and sidebar note fill **after short delays**, one request at a time. Skip a name if its cache tick is younger than ~3 minutes. Publisher token save **schedules** the Kite F&O dump in the background. `GET /expiries/{index}` is in-memory only. `/ws/spot` is last OI LTP (connects ~0.6s after mount).
+4. **On demand** — The open index `/oi/.../change` is the only boot fetch for OI. Other names load when you switch to them. F&O search cache fills when Admin **searches or Syncs** in Index management (no auto-dump after Kite login). Info tiles (FII/DII, impact events) load when opened. `GET /expiries/{index}` is in-memory only. `/ws/spot` is last OI LTP.
 
 ### Change windows
 

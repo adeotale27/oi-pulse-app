@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.26",
+    date: "2026-08-15",
+    user: [
+      "The board no longer preloads everything at once. Open an index, a tile, or Index management Search when you need that data.",
+    ],
+    admin: [
+      "F&O dump is on Search/Sync only. Positions tab no longer polls while hidden. FII/DII and impact tiles fetch on open.",
+    ],
+  },
+  {
     version: "6.25",
     date: "2026-08-15",
     user: [

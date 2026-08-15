@@ -1,13 +1,8 @@
 """
-Daily / after-token F&O dump. The live tracker runs this automatically:
+Optional CLI to fill Index-management search cache from Kite.
 
-  • every publisher token save (`set_credentials`)
-  • on tracker start
-  • first OI poll of the IST day (`ensure_instruments_fresh`)
-
-`set_credentials` only schedules this — it does not wait for the dump (keeps Cloudflare from 520/524).
-
-This CLI is optional (ops / debug):
+The live desk does **not** auto-dump after token save. Search / Sync in
+Index management loads underlyings on demand.
 
     cd backend && python preload_fno.py
 """

@@ -96,10 +96,11 @@ export default function FiiDiiBadge({ isAdmin = false }) {
   }, []);
 
   useEffect(() => {
+    if (!open) return undefined;
     load();
     const id = setInterval(load, 5 * 60_000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [open, load]);
 
   const data = snap?.data;
   const segments = data?.segments || {};

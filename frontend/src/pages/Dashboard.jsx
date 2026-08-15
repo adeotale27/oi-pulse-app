@@ -351,7 +351,7 @@ export default function Dashboard() {
       console.error("fetchVRP failed", e);
     }
   }, [activeIndex]);
-  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status, delayMs: 1600, dedupeKey: "dash-vrp" });
+  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status, delayMs: 20000, immediate: false, dedupeKey: "dash-vrp" });
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -799,9 +799,7 @@ export default function Dashboard() {
       pendingOiReloadRef.current = true;
       return;
     }
-    const indices = enabledIndicesRef.current?.length ? enabledIndicesRef.current : INDICES;
     const active = activeIndexRef.current;
-    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const gen = ++oiReqGenRef.current;
     oiInflightRef.current = true;
@@ -847,26 +845,13 @@ export default function Dashboard() {
         }
       };
 
-      // Paint the open chain first from last snapshot — do not wait on /expiries.
+      // Active index only — other names load when the user switches to them.
       if (active) {
         const first = await fetchOne(active);
         if (gen !== oiReqGenRef.current) return;
         if (first.ok && first.data) applyOiPayload(first.data, { pulse: true });
         setOiLoading(false);
         ensureExpiryForIndex(active).catch(() => {});
-      }
-
-      const STALE_MS = 180_000;
-      const rest = indices.filter((idx) => idx !== active);
-      if (rest.length) await wait(400);
-      for (const idx of rest) {
-        if (gen !== oiReqGenRef.current) return;
-        const cached = oiCacheRef.current[idx];
-        if (cached?.at && Date.now() - cached.at < STALE_MS) continue;
-        await ensureExpiryForIndex(idx);
-        if (gen !== oiReqGenRef.current) return;
-        await fetchOne(idx);
-        await wait(220);
       }
     } catch (e) {
       if (gen !== oiReqGenRef.current) return;
@@ -1164,7 +1149,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 2500 });
+  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 20000 });
 
   useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status", delayMs: 250 });
   useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-oi" });
@@ -1191,7 +1176,7 @@ export default function Dashboard() {
     if (expiryCaughtUp) return;
     loadOI();
   }, [timeframe, activeIndex, selectedExpiry, loadOI]);
-  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 900 });
+  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 12000 });
   useQuiescentAwarePolling(
     async () => {
       // During market hours always poll + toast — Positions / Straddle / any tab.
@@ -1208,7 +1193,7 @@ export default function Dashboard() {
     },
     5000,
     [loadAlerts, status?.market?.is_market_open],
-    { status, dedupeKey: "dash-alerts", delayMs: 2200 },
+    { status, dedupeKey: "dash-alerts", delayMs: 10000 },
   );
 
   // When index changes, hydrate from warm cache immediately so the chart never goes cold.
@@ -2586,6 +2571,7 @@ export default function Dashboard() {
                       onPinNearestWeekly={handleChangeExpiry}
                       positionsPollMs={positionsPollMs}
                       onOpenKite={openKiteCreds}
+                      pollEnabled={activeTab === "positions"}
                       deskAiShow={deskAiShow}
                       deskAiAsk
                       deskAiPositions={deskAiPositions}

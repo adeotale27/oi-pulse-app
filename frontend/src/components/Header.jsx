@@ -89,7 +89,7 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
     status,
     allowDuringQuiescent: true,
     dedupeKey: "header-today-pnl",
-    delayMs: 2800,
+    delayMs: 45000,
   });
 
   if (!enabled) return null;
@@ -310,7 +310,7 @@ export default function Header({
         return next;
       });
     };
-    const unsub = subscribeExtras(onExtras, { immediate: true, pollMs: 30_000, delayMs: 1200 });
+    const unsub = subscribeExtras(onExtras, { immediate: true, pollMs: 30_000, delayMs: 12000 });
     return () => { alive = false; unsub(); };
   }, []);
 

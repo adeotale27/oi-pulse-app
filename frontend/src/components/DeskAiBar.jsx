@@ -81,11 +81,11 @@ export default function DeskAiBar({
   }, [activeIndex, visible, askAi, variant]);
 
   useEffect(() => {
-    if (!visible) return undefined;
+    if (!visible || !open) return undefined;
     run(false);
     const id = setInterval(() => run(false), 45 * 1000);
     return () => clearInterval(id);
-  }, [run, visible]);
+  }, [run, visible, open]);
 
   useEffect(() => {
     if (variant !== "strip") return undefined;

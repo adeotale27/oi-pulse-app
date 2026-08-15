@@ -266,7 +266,7 @@ export default function OvernightGapBrief({
       setGift(data?.gift_nifty || null);
       if (data?.vix != null) setVixLive(data.vix);
     };
-    return subscribeExtras(onExtras);
+    return subscribeExtras(onExtras, { delayMs: 20000 });
   }, []);
 
   const ist = useMemo(() => getISTParts(now), [now]);
@@ -306,8 +306,9 @@ export default function OvernightGapBrief({
     if (!active || minimized || !indices?.length) return;
     setLoading(true);
     try {
+      const names = activeIndex ? [activeIndex] : (indices || []).slice(0, 1);
       const rows = [];
-      for (const idx of indices) {
+      for (const idx of names) {
         try {
           const data = await fetchOIChange(idx, 15, { also: "session" });
           const sessPrev = data?.also_windows?.session?.previous;
@@ -329,22 +330,19 @@ export default function OvernightGapBrief({
     } finally {
       setLoading(false);
     }
-  }, [active, minimized, indices]);
+  }, [active, minimized, indices, activeIndex]);
 
   const loadIndexImpacts = useCallback(async () => {
-    if (!active || minimized || !indices?.length) return;
-    const packs = await Promise.all(
-      indices.map(async (idx) => {
-        try {
-          const { data } = await api.get(`/events/${idx}`);
-          return { index: idx, events: data?.events || [] };
-        } catch {
-          return { index: idx, events: [] };
-        }
-      }),
-    );
-    setIndexImpacts(packs);
-  }, [active, minimized, indices]);
+    if (!active || minimized) return;
+    const idx = activeIndex || (indices || [])[0];
+    if (!idx) return;
+    try {
+      const { data } = await api.get(`/events/${idx}`);
+      setIndexImpacts([{ index: idx, events: data?.events || [] }]);
+    } catch {
+      setIndexImpacts([{ index: idx, events: [] }]);
+    }
+  }, [active, minimized, indices, activeIndex]);
 
   useEffect(() => {
     const t = setTimeout(() => { loadBiases(); }, 3000);
@@ -368,25 +366,24 @@ export default function OvernightGapBrief({
 
   useEffect(() => {
     if (!active || minimized) return undefined;
-    const t = setTimeout(loadBook, 3600);
-    const id = setInterval(loadBook, 60_000);
-    return () => {
-      clearTimeout(t);
-      clearInterval(id);
-    };
+    const t = setTimeout(loadBook, 20000);
+    return () => clearTimeout(t);
   }, [loadBook, active, minimized]);
 
   useEffect(() => {
+    if (!active || minimized) return undefined;
     let cancelled = false;
-    api.get("/settings")
-      .then((r) => {
-        if (cancelled || typeof r.data?.desk_ai_carry !== "boolean") return;
-        setCarryAi(r.data.desk_ai_carry);
-        writeCarryAi(r.data.desk_ai_carry);
-      })
-      .catch(() => { /* keep local */ });
-    return () => { cancelled = true; };
-  }, []);
+    const t = setTimeout(() => {
+      api.get("/settings")
+        .then((r) => {
+          if (cancelled || typeof r.data?.desk_ai_carry !== "boolean") return;
+          setCarryAi(r.data.desk_ai_carry);
+          writeCarryAi(r.data.desk_ai_carry);
+        })
+        .catch(() => { /* keep local */ });
+    }, 20000);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [active, minimized]);
 
   const toggleCarryAi = (on) => {
     setCarryAi(!!on);

@@ -19,7 +19,12 @@ def test_set_credentials_does_not_dump_or_poll_inline():
     src = _fn(TRACKER, "set_credentials")
     assert "reload_instruments" not in src
     assert "_poll_once" not in src
-    assert "schedule_fno_preload" in src
+    assert "schedule_fno_preload" not in src
+
+
+def test_start_does_not_auto_preload_fno():
+    src = _fn(TRACKER, "start")
+    assert "schedule_fno_preload" not in src
 
 
 def test_set_mode_does_not_extra_poll():

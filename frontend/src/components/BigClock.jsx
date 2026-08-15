@@ -25,16 +25,15 @@ function parseHmToMinutes(hm, fallbackMin) {
 }
 
 async function fetchIndexImpactPacks() {
-  const packs = await Promise.all(
-    CARRY_INDICES.map(async (idx) => {
-      try {
-        const { data } = await api.get(`/events/${idx}`);
-        return { index: idx, events: data?.events || [] };
-      } catch {
-        return { index: idx, events: [] };
-      }
-    }),
-  );
+  const packs = [];
+  for (const idx of CARRY_INDICES) {
+    try {
+      const { data } = await api.get(`/events/${idx}`);
+      packs.push({ index: idx, events: data?.events || [] });
+    } catch {
+      packs.push({ index: idx, events: [] });
+    }
+  }
   return packs;
 }
 

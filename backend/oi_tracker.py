@@ -625,8 +625,7 @@ class OITracker:
         self.kite_user_id = uid or self.kite_user_id
         self.kite_maintenance = None
         self.offline_sticky = False
-        # Never dump Kite instruments on this request — Cloudflare 520/524s if we do.
-        self.schedule_fno_preload(force=True)
+        # Do not dump F&O here — Index management search/sync loads it on demand.
         try:
             await self.start()
         except Exception as e:
@@ -764,7 +763,6 @@ class OITracker:
                 self.kite_service.reload_instruments(force=True)
                 self._instruments_loaded_at = now
                 await self.seed_default_expiries(force_roll=True)
-                await self.persist_fno_underlyings()
                 logger.info("Reloaded Kite instruments + rolled default expiries for %s", ist_today)
             except Exception as e:
                 logger.warning("ensure_instruments_fresh failed: %s", e)
@@ -776,7 +774,6 @@ class OITracker:
         self._task = asyncio.create_task(self._loop())
         # Expiry seed hits kite.instruments() (huge) — never block API bind / k8s ready.
         asyncio.create_task(self._seed_expiries_safe())
-        self.schedule_fno_preload(force=False)
         logger.info("OI tracker started (browser-independent DB writer)")
 
     async def _seed_expiries_safe(self):

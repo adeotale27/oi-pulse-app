@@ -41,16 +41,19 @@ export default function AdminUploadAdvisor({
   useEffect(() => {
     if (!isAdmin) return undefined;
     let cancelled = false;
-    api
-      .get("/upload/meta")
-      .then((r) => {
-        if (!cancelled) setMeta(r.data || null);
-      })
-      .catch(() => {
-        if (!cancelled) setMeta(null);
-      });
+    const t = setTimeout(() => {
+      api
+        .get("/upload/meta")
+        .then((r) => {
+          if (!cancelled) setMeta(r.data || null);
+        })
+        .catch(() => {
+          if (!cancelled) setMeta(null);
+        });
+    }, 45000);
     return () => {
       cancelled = true;
+      clearTimeout(t);
     };
   }, [isAdmin, refreshKey]);
 
