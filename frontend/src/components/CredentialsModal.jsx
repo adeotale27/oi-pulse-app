@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { KeyRound, ExternalLink, X, ShieldCheck, LogOut } from "lucide-react";
 import { friendlyKiteConnectError, extractRequestToken, httpErrorDetail } from "@/lib/kiteConnectError";
+import { safeHttpUrl } from "@/lib/safeUrl";
 
 /** Masked vault field with clear (×) — never hydrates plaintext secret from the server. */
 function VaultSecretField({
@@ -158,12 +159,22 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
         v = await persistKeySecretIfTyped();
         toast.success("API key / secret saved encrypted");
       }
+      if (!v?.login_url) {
+        v = await kiteVaultStatus();
+        setVault(v);
+        setKeyStored(!!v?.has_api_key);
+        setSecretStored(!!v?.has_api_secret);
+      }
       const url = safeHttpUrl(v?.login_url);
       if (!url) {
         toast.error("Save an API key first, then click login");
         return;
       }
-      window.open(url, "_blank", "noopener,noreferrer");
+      const w = window.open(url, "_blank", "noopener,noreferrer");
+      if (!w) {
+        try { await navigator.clipboard.writeText(url); } catch { /* noop */ }
+        toast.error("Popup blocked. Kite login URL copied — paste it in a new tab.");
+      }
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Could not open Kite login");
     }
@@ -340,14 +351,20 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
                   The code works only once and expires in a few minutes. Paste the full redirect URL if that is easier.
                 </p>
               </div>
-              <button
-                type="button"
+              <a
+                href={safeHttpUrl(vault?.login_url) || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
                 data-testid="link-kite-login"
-                onClick={openKiteLogin}
+                onClick={(e) => {
+                  const href = safeHttpUrl(vault?.login_url);
+                  if (href && !apiKey.trim() && !apiSecret.trim()) return;
+                  openKiteLogin(e);
+                }}
                 className="text-xs text-sky-700 hover:text-sky-900 inline-flex items-center gap-1 hover:underline"
               >
                 1) Click here to login and get request_token <ExternalLink className="w-3 h-3" />
-              </button>
+              </a>
               {keyStored && secretStored ? (
                 <p className="text-[11px] text-slate-500">
                   Key &amp; secret are vaulted — login opens with your saved API key. Paste request_token, then Save &amp; Go Live.

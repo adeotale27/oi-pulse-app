@@ -628,7 +628,7 @@ export default function Header({
         </div>
 
         {/* Index tiles — always allow horizontal scroll so BANKNIFTY is not clipped */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 justify-start overflow-x-auto items-stretch">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 pl-2 border-l border-slate-200 dark:border-slate-700 justify-start overflow-hidden items-stretch">
           <TickerStrip
             layout={headerRail ? "rail" : "header"}
             activeIndex={activeIndex}

@@ -11,6 +11,7 @@ import {
   EXPIRY_LIST_MAX_PX,
 } from "@/lib/tabOrder";
 import StrikeAroundChips from "@/components/StrikeAroundChips";
+import { INDEX_SHORT, INDEX_STEP } from "@/lib/universe";
 
 const INDEX_THEME = {
   NIFTY: {
@@ -31,6 +32,30 @@ const INDEX_THEME = {
     idleCls:     "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-800 border-teal-100 hover:from-emerald-100 hover:to-emerald-100",
     dot:         "bg-emerald-500",
   },
+  CRUDEOIL: {
+    label: "CRUDE",
+    activeCls:   "bg-gradient-to-br from-slate-600 to-zinc-700 text-white border-slate-600 shadow-md shadow-slate-500/20",
+    idleCls:     "bg-gradient-to-br from-slate-50 to-zinc-100 text-slate-800 border-slate-200 hover:from-slate-100",
+    dot:         "bg-slate-600",
+  },
+  GOLD: {
+    label: "GOLD",
+    activeCls:   "bg-gradient-to-br from-yellow-500 to-amber-600 text-white border-yellow-500 shadow-md shadow-yellow-500/20",
+    idleCls:     "bg-gradient-to-br from-yellow-50 to-amber-50 text-amber-900 border-yellow-200 hover:from-yellow-100",
+    dot:         "bg-yellow-500",
+  },
+  SILVER: {
+    label: "SILVER",
+    activeCls:   "bg-gradient-to-br from-zinc-500 to-slate-600 text-white border-zinc-500 shadow-md shadow-zinc-500/20",
+    idleCls:     "bg-gradient-to-br from-zinc-50 to-slate-100 text-zinc-800 border-zinc-200 hover:from-zinc-100",
+    dot:         "bg-zinc-400",
+  },
+  NATURALGAS: {
+    label: "NG",
+    activeCls:   "bg-gradient-to-br from-cyan-600 to-sky-700 text-white border-cyan-600 shadow-md shadow-cyan-500/20",
+    idleCls:     "bg-gradient-to-br from-cyan-50 to-sky-50 text-cyan-900 border-cyan-200 hover:from-cyan-100",
+    dot:         "bg-cyan-600",
+  },
 };
 
 /**
@@ -38,11 +63,7 @@ const INDEX_THEME = {
  *   • NIFTY: 50 pts per ± click
  *   • SENSEX / BANKNIFTY: 100 pts per ± click
  */
-const STRIKE_STEP = {
-  NIFTY: 50,
-  SENSEX: 100,
-  BANKNIFTY: 100,
-};
+const STRIKE_STEP = INDEX_STEP;
 
 function snapToStep(value, step) {
   const n = Number(value);
@@ -302,6 +323,8 @@ export default function Sidebar({
   }, [selectedExpiry, expiryDatesKey, expiryListHeight, activeIndex, layoutNonce]);
 
   const step = STRIKE_STEP[activeIndex] || 50;
+  const indexList = Array.isArray(indices) ? indices : [];
+  const useIndexDropdown = indexList.length > 3;
 
   const fmtPull = (iso) => {
     if (!iso) return null;
@@ -346,8 +369,48 @@ export default function Sidebar({
             </button>
           )}
         </div>
+        {useIndexDropdown ? (
+          <div className="mt-2 space-y-1.5" data-testid="sidebar-index-dropdown">
+            <label className="block">
+              <span className="sr-only">Switch index</span>
+              <select
+                data-testid="sidebar-index-select"
+                value={activeIndex}
+                onChange={(e) => onChangeIndex(e.target.value)}
+                className="w-full h-9 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-[12px] font-semibold px-2 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              >
+                {indexList.map((idx) => (
+                  <option key={idx} value={idx}>
+                    {INDEX_THEME[idx]?.label || INDEX_SHORT[idx] || idx}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(() => {
+              const idx = activeIndex;
+              const theme = INDEX_THEME[idx] || INDEX_THEME.NIFTY;
+              const pulled = lastUpdatedByIndex?.[idx];
+              const age = ageSec(pulled);
+              const fresh = age != null && age <= 90;
+              const stale = marketOpen && age != null && age > 120;
+              return (
+                <div
+                  className={`rounded-md border-2 py-1.5 px-2 ${theme.activeCls}`}
+                  data-testid={`btn-index-${idx}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold">{theme.label}</span>
+                    <span className={`text-[9px] font-mono ${fresh ? "text-white/90" : stale ? "text-amber-100" : "text-white/75"}`}>
+                      {pulled ? fmtPull(pulled) : "—"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ) : (
         <div className="mt-2 grid grid-cols-3 gap-1.5">
-          {indices.map((idx) => {
+          {indexList.map((idx) => {
             const active = idx === activeIndex;
             const theme = INDEX_THEME[idx] || INDEX_THEME.NIFTY;
             const pulled = lastUpdatedByIndex?.[idx];
@@ -404,6 +467,7 @@ export default function Sidebar({
             );
           })}
         </div>
+        )}
         <div className="mt-1.5 text-[9px] text-slate-400">
           Last OI pull (IST) · green = warm cache
         </div>

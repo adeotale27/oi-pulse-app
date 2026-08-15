@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
@@ -102,7 +102,58 @@ const INDEX_STYLE = {
   },
 };
 
-/** Header tiles: brand gradients like sidebar; only %/points stay green/red when idle. */
+function useDragScroll(ref, enabled) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return undefined;
+    let dragging = false;
+    let moved = false;
+    let startX = 0;
+    let startScroll = 0;
+    const onDown = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      dragging = true;
+      moved = false;
+      startX = e.clientX;
+      startScroll = el.scrollLeft;
+      try { el.setPointerCapture(e.pointerId); } catch { /* noop */ }
+      el.style.cursor = "grabbing";
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      if (Math.abs(dx) > 4) moved = true;
+      el.scrollLeft = startScroll - dx;
+    };
+    const onUp = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      el.style.cursor = enabled ? "grab" : "";
+      if (moved) {
+        e.preventDefault();
+        const block = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          el.removeEventListener("click", block, true);
+        };
+        el.addEventListener("click", block, true);
+      }
+    };
+    el.style.cursor = "grab";
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+    return () => {
+      el.style.cursor = "";
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+    };
+  }, [ref, enabled]);
+}
+
 function headerTileTone(indexKey, up, flat, isActive) {
   const s = INDEX_STYLE[indexKey] || INDEX_STYLE.NIFTY;
   if (isActive) {
@@ -124,6 +175,7 @@ function headerTileTone(indexKey, up, flat, isActive) {
 export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default" }) {
   const [tickers, setTickers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const scrollerRef = useRef(null);
   const isHeader = layout === "header";
   const isRail = layout === "rail";
 
@@ -162,6 +214,9 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     });
   }, [tickers, spotPrices]);
 
+  const many = displayTickers.length > 3;
+  useDragScroll(scrollerRef, many && (isHeader || isRail));
+
   if (loading && !tickers.length) {
     return (
       <div className="flex items-center gap-2 text-[10px] text-slate-400 py-1">Loading tickers…</div>
@@ -171,7 +226,11 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
   // Slim status-rail: Sensibull-style quote — NAME arrow PRICE chg (pct%)
   if (isRail) {
     return (
-      <div className="flex flex-nowrap items-center gap-0.5 min-w-0 overflow-x-auto" data-testid="ticker-strip">
+      <div
+        ref={scrollerRef}
+        className={`flex flex-nowrap items-center gap-0.5 min-w-0 overflow-x-auto overscroll-x-contain ${many ? "snap-x snap-mandatory [scrollbar-width:thin]" : ""}`}
+        data-testid="ticker-strip"
+      >
         {displayTickers.map((t) => {
           const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
           const up = t.change > 0;
@@ -188,7 +247,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               onClick={() => onSelectIndex?.(t.index)}
               data-testid={`ticker-${t.index}`}
               title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
-              className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${
+              className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
                 isActive
                   ? `${s.selectedBorder} border-2 bg-white shadow-sm dark:bg-slate-900`
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
@@ -223,13 +282,13 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
 
   // Header: sidebar-matching brand tiles (sky / amber / emerald).
   const stripClass = isHeader
-    ? "flex flex-nowrap items-stretch gap-1.5 min-w-0 w-auto max-w-full overflow-x-auto"
+    ? `flex flex-nowrap items-stretch gap-1.5 min-w-0 w-full overflow-x-auto overscroll-x-contain ${many ? "snap-x snap-mandatory [scrollbar-width:thin] cursor-grab" : "max-w-full"}`
     : dense
       ? "grid grid-cols-3 gap-1.5"
       : "grid grid-cols-1 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-stretch";
 
   return (
-    <div className={stripClass} data-testid="ticker-strip">
+    <div ref={isHeader ? scrollerRef : undefined} className={stripClass} data-testid="ticker-strip">
       {displayTickers.map((t) => {
         const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
         const up = t.change > 0;
@@ -259,7 +318,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             data-testid={`ticker-${t.index}`}
             className={`text-left rounded-md border-2 ${tones.shell} ${
               isHeader
-                ? "px-2 py-1.5 shrink-0 min-w-[7.25rem] max-w-[11rem]"
+                ? `px-2 py-1.5 shrink-0 ${many ? "min-w-[6.5rem] max-w-[9.5rem] snap-start" : "min-w-[7.25rem] max-w-[11rem]"}`
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"

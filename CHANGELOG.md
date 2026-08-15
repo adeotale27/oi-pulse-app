@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.16 — 2026-08-15
+
+Kite login link works again. Extra indices do not crowd the sidebar or header.
+
+- Credentials modal: `safeHttpUrl` was missing — “Could not open Kite login” on the request_token link. Login is a real link when the key is vaulted
+- Sidebar: three indices stay as chips; more than three uses a dropdown so expiry / ATM layout does not shift
+- Header tickers: more than three slide horizontally (drag / scroll), slightly tighter tiles
+
 ## V6.15 — 2026-08-15
 
 MCX majors can sit on the OI desk. Kite names are CRUDEOIL, GOLD, SILVER, NATURALGAS (not the minis).

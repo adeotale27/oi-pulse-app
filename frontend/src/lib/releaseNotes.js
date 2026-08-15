@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.16",
+    date: "2026-08-15",
+    user: [
+      "Kite login from credentials works again. If Gold / Crude / more names are on the desk, the sidebar becomes a dropdown and the header tickers slide instead of crowding.",
+    ],
+    admin: [
+      "CredentialsModal imported safeHttpUrl (ReferenceError was the toast). Index switcher: ≤3 chips, >3 select. Header ticker drag-scroll when more than three quotes.",
+    ],
+  },
+  {
     version: "6.15",
     date: "2026-08-15",
     user: [
