@@ -1,5 +1,12 @@
 # Changelog
 
+## V6.18 — 2026-08-15
+
+Index management works on the phone.
+
+- Admin Settings (gear) on phone and tablet now has **Index management** next to Admin configuration — same search / inspect / enable as desktop
+- The add-index sheet is full-screen on small screens with larger tap targets. Discover more from Admin configuration closes that modal first so the sheet is usable
+
 ## V6.17 — 2026-08-15
 
 Journal Others, per-commodity poll hours, and a ship-to-main checklist.

@@ -121,7 +121,10 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0" data-testid="index-management-modal">
+      <DialogContent
+        className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 sm:rounded-lg max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none"
+        data-testid="index-management-modal"
+      >
         <DialogHeader className="px-4 py-3 border-b border-slate-200">
           <DialogTitle className="flex items-center gap-2 text-[15px]">
             <Layers className="w-4 h-4 text-sky-600" />
@@ -135,10 +138,10 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
         </DialogHeader>
 
         <div className="px-4 py-2 flex gap-2 border-b border-slate-100">
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-w-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
             <Input
-              className="h-8 pl-7 text-[13px]"
+              className="h-10 md:h-8 pl-7 text-[13px]"
               placeholder="Search indices…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -146,15 +149,15 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
               data-testid="index-search"
             />
           </div>
-          <Button size="sm" className="h-8 bg-sky-600 hover:bg-sky-700" onClick={search} disabled={searching}>
+          <Button size="sm" className="h-10 md:h-8 bg-sky-600 hover:bg-sky-700" onClick={search} disabled={searching}>
             Search
           </Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={sync} disabled={busy} title="Refresh Kite dump">
+          <Button size="sm" variant="outline" className="h-10 md:h-8 px-3" onClick={sync} disabled={busy} title="Refresh Kite dump">
             <RefreshCw className="w-3.5 h-3.5" />
           </Button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-3">
+        <div className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-3 max-md:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           <div>
             <div className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mb-1">On the desk</div>
             <div className="space-y-1">
@@ -170,11 +173,11 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
                     </div>
                   </button>
                   {idx.enabled ? (
-                    <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={busy} onClick={() => disable(idx.id)}>
+                    <Button size="sm" variant="ghost" className="h-9 md:h-7 text-[12px] md:text-[11px]" disabled={busy} onClick={() => disable(idx.id)}>
                       Disable
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" className="h-7 text-[11px] text-sky-700" disabled={busy} onClick={() => openInspect(idx.id)}>
+                    <Button size="sm" variant="ghost" className="h-9 md:h-7 text-[12px] md:text-[11px] text-sky-700" disabled={busy} onClick={() => openInspect(idx.id)}>
                       Inspect
                     </Button>
                   )}
@@ -198,7 +201,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
                     <button
                       key={m.id}
                       type="button"
-                      className="h-7 px-2 rounded-md border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:border-sky-400 hover:text-sky-800"
+                      className="h-9 md:h-7 px-2.5 rounded-md border border-slate-200 bg-white text-[12px] md:text-[11px] font-semibold text-slate-700 hover:border-sky-400 hover:text-sky-800"
                       onClick={() => openInspect(m.id)}
                       data-testid={`mcx-major-${m.id}`}
                     >

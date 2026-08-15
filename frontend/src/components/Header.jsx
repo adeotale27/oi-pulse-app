@@ -570,6 +570,16 @@ export default function Header({
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
           </Button>
+          <Button
+            data-testid="btn-mobile-index-manager"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={() => { setMobileToolsOpen(false); onOpenIndexManager?.(); }}
+          >
+            <Layers className="w-4 h-4 mr-1.5" />
+            Index management
+          </Button>
           <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
             <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
@@ -1021,6 +1031,16 @@ export default function Header({
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
+          </Button>
+          <Button
+            data-testid="btn-tablet-index-manager"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={() => { setMobileToolsOpen(false); onOpenIndexManager?.(); }}
+          >
+            <Layers className="w-4 h-4 mr-1.5" />
+            Index management
           </Button>
           <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
