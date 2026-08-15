@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.25",
+    date: "2026-08-15",
+    user: [
+      "The board opens faster: the chart fills first, then the other indices and extras catch up in the background.",
+    ],
+    admin: [
+      "Progressive boot: OI without waiting on /expiries; staggered extras/alerts/tickers/positions; AuthGate shares auth state so Header/Dashboard do not all hit /auth/state at t=0.",
+    ],
+  },
+  {
     version: "6.24",
     date: "2026-08-15",
     user: [

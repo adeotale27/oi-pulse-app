@@ -92,6 +92,10 @@ export default function AuthGate({ children }) {
         // Re-fetch so is_guest is true with the new header token.
         const { data: again } = await api.get("/auth/state");
         setState({ loading: false, ...again });
+        try {
+          window.__oi_last_auth_state = again;
+          window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: again }));
+        } catch (_) { /* noop */ }
         return;
       }
 
@@ -105,6 +109,10 @@ export default function AuthGate({ children }) {
         setGuestName((prev) => prev || data.suggested_guest_name);
       }
       setState({ loading: false, ...data });
+      try {
+        window.__oi_last_auth_state = data;
+        window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: data }));
+      } catch (_) { /* noop */ }
     } catch (_) {
       setState({ loading: false, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false });
     }

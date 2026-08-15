@@ -89,6 +89,7 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
     status,
     allowDuringQuiescent: true,
     dedupeKey: "header-today-pnl",
+    delayMs: 2800,
   });
 
   if (!enabled) return null;
@@ -199,9 +200,10 @@ export default function Header({
       }
     };
     useQuiescentAwarePolling(load, 60_000, [assumedAdmin], {
-      immediate: !assumedAdmin,
+      immediate: false,
       allowDuringQuiescent: true,
       dedupeKey: "header-auth",
+      delayMs: 10000,
     });
     useEffect(() => {
       const onState = (e) => apply(e?.detail);
@@ -308,7 +310,7 @@ export default function Header({
         return next;
       });
     };
-    const unsub = subscribeExtras(onExtras, { immediate: true, pollMs: 30_000 });
+    const unsub = subscribeExtras(onExtras, { immediate: true, pollMs: 30_000, delayMs: 1200 });
     return () => { alive = false; unsub(); };
   }, []);
 

@@ -202,7 +202,13 @@ export default function Dashboard() {
   const [current, setCurrent] = useState(null);
   const [previous, setPrevious] = useState(null);
   const [status, setStatus] = useState(null);
-  const [authState, setAuthState] = useState({ is_admin: false, is_guest: false, guest_name: null, admin_display_name: null });
+  const [authState, setAuthState] = useState(() => {
+    try {
+      const last = typeof window !== "undefined" ? window.__oi_last_auth_state : null;
+      if (last && typeof last === "object") return last;
+    } catch (_) { /* noop */ }
+    return { is_admin: false, is_guest: false, guest_name: null, admin_display_name: null };
+  });
   const [alerts, setAlerts] = useState([]);
   const [dataStatus, setDataStatus] = useState(null);
   const [strikesAround, setStrikesAround] = useState(loadStrikesAround);
@@ -310,6 +316,7 @@ export default function Dashboard() {
   // Warm cache for ALL enabled indices so switching NIFTY ↔ SENSEX is instant.
   const oiCacheRef = useRef({});          // index -> last /change payload
   const expiryByIndexRef = useRef({});    // index -> { list, meta, note, selected }
+  const expiryInflightRef = useRef({});   // index -> Promise coalescing parallel /expiries
   const timeframeRef = useRef(timeframe);
   const selectedExpiryRef = useRef(selectedExpiry);
   const enabledIndicesRef = useRef(DESK_IDS);
@@ -344,7 +351,7 @@ export default function Dashboard() {
       console.error("fetchVRP failed", e);
     }
   }, [activeIndex]);
-  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status });
+  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status, delayMs: 1600, dedupeKey: "dash-vrp" });
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -474,9 +481,11 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // Connect WebSocket (spot). The WS wrapper will itself defer connects
-    // during quiescent periods and auto-reconnect on reopen.
-    const conn = connectSpotWS((message) => {
+    let stopped = false;
+    let conn;
+    const t = setTimeout(() => {
+      if (stopped) return;
+      conn = connectSpotWS((message) => {
       if (message?.type !== "spot" || !Array.isArray(message.tickers)) return;
       const nextPrices = {};
       message.tickers.forEach((ticker) => {
@@ -494,7 +503,12 @@ export default function Dashboard() {
         };
       });
     });
-    return () => conn.stop();
+    }, 600);
+    return () => {
+      stopped = true;
+      clearTimeout(t);
+      try { conn?.stop(); } catch (_) { /* noop */ }
+    };
   }, [status]);
 
   const tabOn = useCallback(
@@ -736,6 +750,10 @@ export default function Dashboard() {
     if (!force && !selectedPast && !selectedMissing && !staleDay && (cached?.selected || cached?.fetched)) {
       return cached;
     }
+    if (!force && expiryInflightRef.current[idx]) {
+      return expiryInflightRef.current[idx];
+    }
+    const job = (async () => {
     try {
       const r = await api.get(`/expiries/${idx}`);
       const list = r.data.expiries || [];
@@ -766,7 +784,12 @@ export default function Dashboard() {
       const entry = { list: [], meta: [], note: null, selected: null, fetched: true, asOf: today };
       expiryByIndexRef.current[idx] = entry;
       return entry;
+    } finally {
+      delete expiryInflightRef.current[idx];
     }
+    })();
+    expiryInflightRef.current[idx] = job;
+    return job;
   }, [istToday]);
 
   // Poll OI for ALL enabled indices in the background; UI updates only for the active tab.
@@ -778,8 +801,7 @@ export default function Dashboard() {
     }
     const indices = enabledIndicesRef.current?.length ? enabledIndicesRef.current : INDICES;
     const active = activeIndexRef.current;
-    // Active tab still waits for its expiry picker to settle (avoids cross-index expiry).
-    if (active && !expiryReady && !expiryByIndexRef.current[active]?.selected) return;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const gen = ++oiReqGenRef.current;
     oiInflightRef.current = true;
@@ -808,7 +830,7 @@ export default function Dashboard() {
             available_history_minutes: data.available_history_minutes,
             data_status: data.data_status,
             also_windows: data.also_windows || {},
-            expiry: exp || null,
+            expiry: exp || data.current?.expiry || null,
             at: Date.now(),
           };
           if (data.current?.timestamp) {
@@ -825,20 +847,18 @@ export default function Dashboard() {
         }
       };
 
-      // Paint the open index first — waiting on every expiry was the slow first load.
+      // Paint the open chain first from last snapshot — do not wait on /expiries.
       if (active) {
-        await ensureExpiryForIndex(active);
-        if (gen !== oiReqGenRef.current) return;
         const first = await fetchOne(active);
         if (gen !== oiReqGenRef.current) return;
         if (first.ok && first.data) applyOiPayload(first.data, { pulse: true });
         setOiLoading(false);
+        ensureExpiryForIndex(active).catch(() => {});
       }
 
-      // Background tabs: one at a time, skip if we painted them recently.
-      // Parallel BANKNIFTY+SENSEX+NIFTY /expiries + /oi/change stampeded Cloudflare (520/524).
       const STALE_MS = 180_000;
       const rest = indices.filter((idx) => idx !== active);
+      if (rest.length) await wait(400);
       for (const idx of rest) {
         if (gen !== oiReqGenRef.current) return;
         const cached = oiCacheRef.current[idx];
@@ -846,6 +866,7 @@ export default function Dashboard() {
         await ensureExpiryForIndex(idx);
         if (gen !== oiReqGenRef.current) return;
         await fetchOne(idx);
+        await wait(220);
       }
     } catch (e) {
       if (gen !== oiReqGenRef.current) return;
@@ -858,7 +879,7 @@ export default function Dashboard() {
         loadOI();
       }
     }
-  }, [expiryReady, oiSettings.hugeShiftWindows, ensureExpiryForIndex, applyOiPayload]);
+  }, [oiSettings.hugeShiftWindows, ensureExpiryForIndex, applyOiPayload]);
 
   // Load expiries for the active index (hydrate from warm cache when available).
   useEffect(() => {
@@ -983,18 +1004,7 @@ export default function Dashboard() {
   const [straddlePollMs, setStraddlePollMs] = useState(15000); // dense chart default 15s
   const [positionsPollMs, setPositionsPollMs] = useState(30000);
 
-  // Prefetch expiries for every enabled index once settings land (keeps SENSEX warm on NIFTY tab).
-  useEffect(() => {
-    const indices = enabledIndices.length ? enabledIndices : INDICES;
-    let cancelled = false;
-    (async () => {
-      for (const idx of indices) {
-        if (cancelled) return;
-        await ensureExpiryForIndex(idx);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [enabledIndices, ensureExpiryForIndex]);
+  // Other expiries fill after first OI paint inside loadOI (do not stampede /expiries here).
 
   const applyDeskAi = useCallback((d) => {
     if (!d) return;
@@ -1116,7 +1126,7 @@ export default function Dashboard() {
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, [applyDeskAi]);
 
-  // Auth state — once on mount + every 60s (broadcast so Header/Sidebar don't re-poll).
+  // Auth state — AuthGate already fetched; listen, then refresh later (no boot stampede).
   useEffect(() => {
     let cancelled = false;
     const refreshAuth = async () => {
@@ -1129,12 +1139,16 @@ export default function Dashboard() {
         } catch (_) { /* noop */ }
       } catch (_) { /* ignore */ }
     };
-    refreshAuth();
-    const id = setInterval(refreshAuth, 60_000);
     const onState = (e) => {
       if (!cancelled && e?.detail) setAuthState(e.detail);
     };
     window.addEventListener("oi-admin-auth-state", onState);
+    try {
+      const last = window.__oi_last_auth_state;
+      if (last) setAuthState(last);
+    } catch (_) { /* noop */ }
+    const boot = setTimeout(refreshAuth, 8000);
+    const id = setInterval(refreshAuth, 60_000);
     const onIndices = () => {
       if (cancelled) return;
       setSettingsOpen(false);
@@ -1143,28 +1157,41 @@ export default function Dashboard() {
     window.addEventListener("oi-admin-open-indices", onIndices);
     return () => {
       cancelled = true;
+      clearTimeout(boot);
       clearInterval(id);
       window.removeEventListener("oi-admin-auth-state", onState);
       window.removeEventListener("oi-admin-open-indices", onIndices);
     };
   }, []);
 
-  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings" });
+  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 2500 });
 
-  useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status" });
-  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open, expiryReady], { status, dedupeKey: "dash-oi" });
+  useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status", delayMs: 250 });
+  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-oi" });
   // Force an IMMEDIATE refetch whenever the user picks a different timeframe,
-  // index, or expiry. `useQuiescentAwarePolling` only fires the callback on
-  // the FIRST mount, so without this the chart would wait up to `pollMs`
-  // (15 s by default) before showing the new selection's data.
-  const oiCtxRef = useRef({ timeframe, activeIndex, selectedExpiry, expiryReady });
+  // index, or expiry. Skip the first mount (poller already loads) and skip when
+  // the expiry picker merely catches up to a snapshot we already painted.
+  const oiCtxRef = useRef({ timeframe, activeIndex, selectedExpiry });
+  const oiUserChangeReadyRef = useRef(false);
   useEffect(() => {
+    if (!oiUserChangeReadyRef.current) {
+      oiUserChangeReadyRef.current = true;
+      oiCtxRef.current = { timeframe, activeIndex, selectedExpiry };
+      return;
+    }
     const prev = oiCtxRef.current;
-    if (prev.timeframe === timeframe && prev.activeIndex === activeIndex && prev.selectedExpiry === selectedExpiry && prev.expiryReady === expiryReady) return;
-    oiCtxRef.current = { timeframe, activeIndex, selectedExpiry, expiryReady };
-    if (expiryReady) loadOI();
-  }, [timeframe, activeIndex, selectedExpiry, expiryReady, loadOI]);
-  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers" });
+    if (prev.timeframe === timeframe && prev.activeIndex === activeIndex && prev.selectedExpiry === selectedExpiry) return;
+    const cached = oiCacheRef.current[activeIndex];
+    const expiryCaughtUp =
+      prev.timeframe === timeframe
+      && prev.activeIndex === activeIndex
+      && selectedExpiry
+      && (cached?.expiry === selectedExpiry || cached?.current?.expiry === selectedExpiry);
+    oiCtxRef.current = { timeframe, activeIndex, selectedExpiry };
+    if (expiryCaughtUp) return;
+    loadOI();
+  }, [timeframe, activeIndex, selectedExpiry, loadOI]);
+  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 900 });
   useQuiescentAwarePolling(
     async () => {
       // During market hours always poll + toast — Positions / Straddle / any tab.
@@ -1181,7 +1208,7 @@ export default function Dashboard() {
     },
     5000,
     [loadAlerts, status?.market?.is_market_open],
-    { status, dedupeKey: "dash-alerts" },
+    { status, dedupeKey: "dash-alerts", delayMs: 2200 },
   );
 
   // When index changes, hydrate from warm cache immediately so the chart never goes cold.

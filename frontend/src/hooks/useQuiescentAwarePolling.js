@@ -7,7 +7,7 @@ import { isMarketQuiescent } from "@/lib/marketTimes";
 // - deps: dependency array for effect
 // - options: { status: optionalServerStatus, immediate: true, allowDuringQuiescent: false }
 export default function useQuiescentAwarePolling(callback, ms, deps = [], options = {}) {
-  const { status = undefined, immediate = true, allowDuringQuiescent = false, dedupeKey = null } = options;
+  const { status = undefined, immediate = true, allowDuringQuiescent = false, dedupeKey = null, delayMs = 0 } = options;
   const mountedRef = useRef(false);
 
   const runRef = useRef(false);
@@ -21,6 +21,7 @@ export default function useQuiescentAwarePolling(callback, ms, deps = [], option
   useEffect(() => {
     let cancelled = false;
     let id = null;
+    let delayId = null;
     let isPrimaryOwner = false;
 
     // simple global dedupe map on window to avoid duplicate pollers (e.g., React Strict double-mount)
@@ -62,6 +63,7 @@ export default function useQuiescentAwarePolling(callback, ms, deps = [], option
     // helper cleanup that always decrements dedupe map before exit
     const makeCleanup = (localId) => () => {
       cancelled = true;
+      if (delayId) clearTimeout(delayId);
       if (localId) clearInterval(localId);
       if (dedupeKey && map) {
         map[dedupeKey] = Math.max(0, (map[dedupeKey] || 1) - 1);
@@ -79,9 +81,11 @@ export default function useQuiescentAwarePolling(callback, ms, deps = [], option
         // Only the primary owner should perform the immediate run to avoid duplicates
         if (!dedupeKey || isPrimaryOwner) {
           if (process.env.NODE_ENV !== 'production') {
-            try { console.debug(`[useQuiescentAwarePolling#${instanceId}] immediate run (primary=${isPrimaryOwner})`); } catch (_) {}
+            try { console.debug(`[useQuiescentAwarePolling#${instanceId}] immediate run (primary=${isPrimaryOwner}) delayMs=${delayMs}`); } catch (_) {}
           }
-          run();
+          const kick = () => { if (!cancelled) run(); };
+          if (delayMs > 0) delayId = setTimeout(kick, delayMs);
+          else kick();
           mountedRef.current = true;
         } else {
           if (process.env.NODE_ENV !== 'production') {
@@ -126,5 +130,5 @@ export default function useQuiescentAwarePolling(callback, ms, deps = [], option
     // Depend on market-open flag only — full `status` object identity changes
     // every status poll and was recreating intervals unnecessarily.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, ms, status?.market?.is_market_open, immediate, allowDuringQuiescent, dedupeKey]);
+  }, [...deps, ms, status?.market?.is_market_open, immediate, allowDuringQuiescent, dedupeKey, delayMs]);
 }

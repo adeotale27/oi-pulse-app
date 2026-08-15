@@ -252,7 +252,7 @@ export default function Sidebar({
         if (alive) setLoadingNote(false);
       }
     };
-    load();
+    const boot = setTimeout(load, 1500);
     const onState = (e) => {
       if (!alive) return;
       const data = e?.detail;
@@ -262,8 +262,15 @@ export default function Sidebar({
       }
     };
     window.addEventListener("oi-admin-auth-state", onState);
+    try {
+      const last = window.__oi_last_auth_state;
+      if (last && typeof last.is_admin === "boolean") {
+        setIsAdmin(Boolean(last.is_admin) && !last.is_guest);
+      }
+    } catch (_) { /* noop */ }
     return () => {
       alive = false;
+      clearTimeout(boot);
       window.removeEventListener("oi-admin-auth-state", onState);
     };
   }, []);

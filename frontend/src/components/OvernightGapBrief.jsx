@@ -347,11 +347,13 @@ export default function OvernightGapBrief({
   }, [active, minimized, indices]);
 
   useEffect(() => {
-    loadBiases();
+    const t = setTimeout(() => { loadBiases(); }, 3000);
+    return () => clearTimeout(t);
   }, [loadBiases]);
 
   useEffect(() => {
-    loadIndexImpacts();
+    const t = setTimeout(() => { loadIndexImpacts(); }, 3400);
+    return () => clearTimeout(t);
   }, [loadIndexImpacts]);
 
   const loadBook = useCallback(async () => {
@@ -365,10 +367,13 @@ export default function OvernightGapBrief({
   }, [active, minimized]);
 
   useEffect(() => {
-    loadBook();
     if (!active || minimized) return undefined;
+    const t = setTimeout(loadBook, 3600);
     const id = setInterval(loadBook, 60_000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(t);
+      clearInterval(id);
+    };
   }, [loadBook, active, minimized]);
 
   useEffect(() => {

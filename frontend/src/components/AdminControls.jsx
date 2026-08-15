@@ -110,6 +110,7 @@ export default function AdminControls({
     immediate: true,
     allowDuringQuiescent: true,
     dedupeKey: "admin-controls-auth-state",
+    delayMs: 700,
   });
 
   useEffect(() => {

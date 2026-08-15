@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.25 — 2026-08-15
+
+Paint the desk first, then fill data step by step.
+
+- Open-index OI loads immediately (no wait on expiry list). Other indices, VIX/GIFT, tickers, alerts, Today P&L, and sidebar note follow with short delays
+- Dropped duplicate boot calls: prefetch-all expiries, second OI fetch when the expiry picker catches up, stacked `/auth/state` on mount
+- Re-checked V6.24 origin cuts: token save still background-only, `/expiries` still no Kite dump, `/ws/spot` still snapshot-only, PostHog still gone
+
 ## V6.24 — 2026-08-15
 
 Cut origin load after Kite login; drop PostHog; sequential OI warm-cache.

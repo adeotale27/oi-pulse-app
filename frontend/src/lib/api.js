@@ -135,10 +135,15 @@ function __stopExtrasPoller() {
 
 // Public: subscribe to extras updates. Returns an unsubscribe function.
 export function subscribeExtras(cb, options = {}) {
-  const { immediate = true, pollMs = __extrasPollMs } = options || {};
+  const { immediate = true, pollMs = __extrasPollMs, delayMs = 0 } = options || {};
   __extrasSubscribers.add(cb);
-  // start poller with requested ms if not running
-  __startExtrasPoller(pollMs);
+  if (delayMs > 0 && !__extrasPollerId) {
+    setTimeout(() => {
+      if (__extrasSubscribers.size) __startExtrasPoller(pollMs);
+    }, delayMs);
+  } else {
+    __startExtrasPoller(pollMs);
+  }
   // if we have cached data, immediately notify
   if (immediate && __extrasCache && __extrasCache.data) {
     try { cb(__extrasCache.data, { source: 'cache' }); } catch (_) {}
