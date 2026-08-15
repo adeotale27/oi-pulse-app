@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.14",
+    date: "2026-08-15",
+    user: [
+      "Crude oil, Gold, Silver, and Natural gas can join the OI board when the desk enables them. Same charts as NIFTY — price comes from the nearest MCX future.",
+    ],
+    admin: [
+      "Index management: Kite names CRUDEOIL / GOLD / SILVER / NATURALGAS (not CRUDEOILM / GOLDM / SILVERM / NATGASMINI). Enable is opt-in. Evening poll 09:00–23:30 IST. Commodity segment required on the publisher Kite login.",
+    ],
+  },
+  {
     version: "6.13",
     date: "2026-08-15",
     user: [

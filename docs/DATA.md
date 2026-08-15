@@ -27,7 +27,7 @@ Retention: OI / straddle samples default to **96 hours** so Friday’s session s
 
 ## Instrument universe
 
-Tracked names live in `backend/universe.py` and `frontend/src/lib/universe.js`. The poller only writes snapshots for **pollable desk** ids (NIFTY, SENSEX, BANKNIFTY). MCX crude / gold / silver / gas are catalogued with `pollable: false` until their session clock and futures spot path exist. `/api/config` includes `universe` (additive). See [decisions/ADR-001-instrument-universe.md](./decisions/ADR-001-instrument-universe.md).
+Tracked names live in `backend/universe.py` and `frontend/src/lib/universe.js`. Default poller ids are **NIFTY / SENSEX / BANKNIFTY**. MCX majors **CRUDEOIL, GOLD, SILVER, NATURALGAS** are pollable (ATM = nearest FUT, hours 09:00–23:30 IST) once Admin enables them in Index management. They are not on by default. `/api/config` includes `universe`. See [ADR-001](./decisions/ADR-001-instrument-universe.md) and [ADR-003](./decisions/ADR-003-mcx-majors.md).
 
 ---
 

@@ -34,3 +34,18 @@ def test_sensex():
 
 def test_non_option():
     assert parse_fno_option_symbol("NIFTY25AUGFUT") is None
+
+
+def test_mcx_naturalgas_three_digit_strike():
+    p = parse_fno_option_symbol("NATURALGAS26AUG250CE")
+    assert p is not None
+    assert p["index"] == "NATURALGAS"
+    assert p["strike"] == 250
+    assert p["side"] == "CE"
+
+
+def test_mcx_crude_monthly():
+    p = parse_fno_option_symbol("CRUDEOIL26AUG5400PE")
+    assert p is not None
+    assert p["index"] == "CRUDEOIL"
+    assert p["strike"] == 5400

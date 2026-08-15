@@ -34,10 +34,11 @@ try:
 except Exception:
     MockService = None
 from market_hours import (
-    is_market_open, market_status, now_ist, configure_hours,
+    market_status, now_ist, configure_hours,
     default_alert_indices_for_today, is_holiday, is_trading_day,
     session_window_utc, IST,
     is_special_session_day, is_full_holiday, mark_quote_session_live,
+    is_oi_session_open,
 )
 import notifier
 class JsonLogFormatter(logging.Formatter):
@@ -434,6 +435,19 @@ class OITracker:
         """
         return max(90, self.poll_interval_seconds() * 3)
 
+    def mcx_on_desk(self) -> bool:
+        enabled = self.settings.get("enabled_indices") or []
+        for i in enabled:
+            cfg = INDEX_CONFIG.get(i) or {}
+            if (cfg.get("quote_kind") or "") == "mcx_fut":
+                return True
+            if str(cfg.get("segment") or "").upper().startswith("MCX"):
+                return True
+        return False
+
+    def oi_session_open(self) -> bool:
+        return FORCE_ALWAYS_POLL or is_oi_session_open(mcx=self.mcx_on_desk())
+
     def request_background_refresh(self, index_name: str, expiry: Optional[str] = None) -> None:
         """Kick a single-flight background Kite refresh without blocking callers.
 
@@ -445,7 +459,7 @@ class OITracker:
             return
         if self.mode != "kite" or not self.kite_service:
             return
-        if not (FORCE_ALWAYS_POLL or is_market_open()):
+        if not (self.oi_session_open()):
             return
         existing = self._refresh_tasks.get(idx)
         if existing and not existing.done():
@@ -618,7 +632,7 @@ class OITracker:
             await self.start()
         except Exception as e:
             logger.warning("tracker.start after set_credentials failed: %s", e)
-        if FORCE_ALWAYS_POLL or is_market_open():
+        if self.oi_session_open():
             try:
                 asyncio.create_task(self._poll_once())
             except Exception:
@@ -639,7 +653,7 @@ class OITracker:
                 await self.start()
             except Exception as e:
                 logger.warning("tracker.start after set_mode(kite) failed: %s", e)
-            if FORCE_ALWAYS_POLL or is_market_open():
+            if self.oi_session_open():
                 try:
                     asyncio.create_task(self._poll_once())
                 except Exception:
@@ -762,7 +776,7 @@ class OITracker:
         if self.mode != "kite" or not self.kite_service:
             return
         await self._refresh_quote_session_flag()
-        if not (FORCE_ALWAYS_POLL or is_market_open()):
+        if not (self.oi_session_open()):
             return
 
         if not self.running or self._task is None or self._task.done():
@@ -861,7 +875,7 @@ class OITracker:
                 poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
                 await self._refresh_quote_session_flag()
                 await self._maybe_eod_telegram()
-                if FORCE_ALWAYS_POLL or is_market_open():
+                if self.oi_session_open():
                     if not was_open:
                         logger.info("Market OPEN — starting continuous OI / straddle polling (browser-independent).")
                         await notifier.alert_market_open()
@@ -876,7 +890,7 @@ class OITracker:
                     await asyncio.sleep(self._seconds_until_next_poll_boundary(poll_interval_seconds))
                     if not self.running:
                         break
-                    if not (FORCE_ALWAYS_POLL or is_market_open()):
+                    if not (self.oi_session_open()):
                         continue
                     await self._poll_once()
                 else:
@@ -1248,7 +1262,7 @@ class OITracker:
         stale-data alerts from firing during pre-open / post-close / weekend / holiday
         windows — the user was seeing bullish/bearish alerts long after 3:30 PM.
         """
-        if not (FORCE_ALWAYS_POLL or is_market_open()):
+        if not (self.oi_session_open()):
             return
         # Weekday alert focus (NIFTY Mon/Tue/Fri, SENSEX Wed/Thu) unless overridden today.
         self._refresh_alert_indices_for_today()
@@ -1426,7 +1440,7 @@ class OITracker:
             "kite_maintenance": maint,
             "poll_interval_seconds": poll_interval_seconds,
             "stale_after_seconds": self.stale_after_seconds(),
-            "market": ms,
+            "market": {**ms, "oi_session_open": self.oi_session_open(), "mcx_on_desk": self.mcx_on_desk()},
             "telegram_configured": notifier.is_configured(),
             "retention_hours": SNAPSHOT_RETENTION_HOURS,
             "always_poll": FORCE_ALWAYS_POLL,

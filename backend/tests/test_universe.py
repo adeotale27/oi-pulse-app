@@ -1,11 +1,13 @@
 from universe import (
     DESK_IDS,
+    MCX_MAJOR_IDS,
     desk_index_config,
     is_pollable,
     normalize_id,
     order_desk,
     fno_name_alternation,
     catalog_public,
+    nearest_fut_quote_symbol,
 )
 
 
@@ -19,12 +21,27 @@ def test_desk_unchanged():
     assert cfg["BANKNIFTY"]["quote_symbol"] == "NSE:NIFTY BANK"
 
 
-def test_mcx_catalog_not_pollable():
-    for uid in ("CRUDEOIL", "GOLD", "SILVER", "NATURALGAS"):
-        assert is_pollable(uid) is False
+def test_mcx_majors_pollable_not_on_desk():
+    for uid in MCX_MAJOR_IDS:
+        assert is_pollable(uid) is True
+        assert uid not in DESK_IDS
     assert is_pollable("NIFTY") is True
     ids = {row["id"] for row in catalog_public()}
-    assert {"CRUDEOIL", "GOLD", "SILVER", "NATURALGAS"}.issubset(ids)
+    assert set(MCX_MAJOR_IDS).issubset(ids)
+    assert set(desk_index_config()) == set(DESK_IDS)
+
+
+def test_nearest_fut_picks_unexpired():
+    rows = [
+        {"name": "CRUDEOIL", "instrument_type": "FUT", "expiry": "2026-07-20", "exchange": "MCX", "tradingsymbol": "CRUDEOIL26JULFUT"},
+        {"name": "CRUDEOIL", "instrument_type": "FUT", "expiry": "2026-08-19", "exchange": "MCX", "tradingsymbol": "CRUDEOIL26AUGFUT"},
+        {"name": "CRUDEOIL", "instrument_type": "FUT", "expiry": "2026-09-18", "exchange": "MCX", "tradingsymbol": "CRUDEOIL26SEPFUT"},
+        {"name": "CRUDEOILM", "instrument_type": "FUT", "expiry": "2026-08-19", "exchange": "MCX", "tradingsymbol": "CRUDEOILM26AUGFUT"},
+    ]
+    from datetime import date
+    assert nearest_fut_quote_symbol(rows, "CRUDEOIL", today=date(2026, 8, 15)) == "MCX:CRUDEOIL26AUGFUT"
+    assert nearest_fut_quote_symbol(rows, "CRUDEOIL", today=date(2026, 8, 20)) == "MCX:CRUDEOIL26SEPFUT"
+    assert nearest_fut_quote_symbol(rows, "CRUDE", today=date(2026, 8, 15)) == "MCX:CRUDEOIL26AUGFUT"
 
 
 def test_order_desk_drops_future():

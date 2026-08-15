@@ -449,7 +449,7 @@ async def _straddle_sampler():
             if not enabled:
                 enabled = STRADDLE_INDICES
 
-            if is_market_open() and tracker:
+            if tracker.oi_session_open() and tracker:
                 svc = tracker._get_service() if hasattr(tracker, "_get_service") else None
                 for idx in enabled:
                     if idx not in INDEX_CONFIG:
@@ -1159,7 +1159,7 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
     snap = tracker.last_snapshot.get(idx)
     # if expiry mismatch or no snap, fetch on-demand (only when market is open)
     if not snap or (expiry and snap.get("expiry") != expiry):
-        if not is_market_open():
+        if not tracker.oi_session_open():
             # Market closed → serve latest from DB, don't hit Kite.
             doc = await db.oi_snapshots.find_one(
                 {"index": idx, **({"expiry": expiry} if expiry else {})},
@@ -1484,6 +1484,7 @@ async def admin_enable_index(
         "symbol": key,
         "exchange": info.get("exchange"),
         "quote_symbol": cfg["quote_symbol"],
+        "quote_kind": cfg.get("quote_kind") or "index",
         "segment": cfg["segment"],
         "step": cfg["step"],
         "strikes_around_atm": cfg["strikes_around_atm"],
@@ -1713,7 +1714,7 @@ async def get_oi_change(
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
 
-    market_is_open = is_market_open()
+    market_is_open = tracker.oi_session_open() if tracker else is_market_open()
     current = tracker.last_snapshot.get(idx) if tracker else None
 
     # Expiry filter only — never call set_expiry from GET.
@@ -1850,7 +1851,7 @@ async def get_history(index_name: str, minutes: int = Query(60, ge=1, le=1440)):
         raise HTTPException(404, "Unknown index")
 
     now_utc = datetime.now(timezone.utc)
-    market_open = is_market_open()
+    market_open = tracker.oi_session_open() if tracker else is_market_open()
 
     if market_open:
         cutoff = (now_utc - timedelta(minutes=minutes)).isoformat()
@@ -2219,7 +2220,7 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
         query["expiry"] = expiry
     # Only apply a rolling wall-clock minutes filter while the market is open.
     # On weekends/holidays/post-close, return the full last-session samples.
-    if minutes is not None and minutes < 24 * 60 and is_market_open():
+    if minutes is not None and minutes < 24 * 60 and tracker.oi_session_open():
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
         query["created_at"] = {"$gte": cutoff}
     docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=(minutes * 120) if minutes else 5000)
@@ -3524,11 +3525,31 @@ async def get_tickers():
     today's movement at a glance across all three main indices.
     Falls back to last DB snapshot when Kite isn't connected."""
     result = []
+    from universe import DESK_IDS, get as universe_get
     symbols = [
         ("NIFTY",     "NSE:NIFTY 50",   "NIFTY 50"),
         ("SENSEX",    "BSE:SENSEX",     "SENSEX"),
         ("BANKNIFTY", "NSE:NIFTY BANK", "BANK NIFTY"),
     ]
+    enabled = list((tracker.settings.get("enabled_indices") if tracker else None) or DESK_IDS)
+    seen = {s[0] for s in symbols}
+    for uid in enabled:
+        if uid in seen:
+            continue
+        cfg = INDEX_CONFIG.get(uid)
+        if not cfg:
+            continue
+        u = universe_get(uid) or {}
+        qsym = cfg.get("quote_symbol")
+        if tracker.kite_service:
+            try:
+                qsym = tracker.kite_service.resolve_quote_symbol(cfg) or qsym
+            except Exception:
+                pass
+        if not qsym:
+            continue
+        symbols.append((uid, qsym, u.get("label") or uid))
+        seen.add(uid)
     if tracker.mode == "kite" and tracker.kite_service:
         try:
             kite = tracker.kite_service.kite
@@ -3729,7 +3750,7 @@ async def admin_refresh_day(
 
     # 3) Immediate live poll for ALL enabled indices when market is open — skipped if
     #    step 2 already performed the kite live pull (avoids double Kite quotes).
-    if is_market_open():
+    if tracker.oi_session_open():
         if tracker.mode == "kite" and tracker.kite_service and not live_pulled:
             try:
                 svc = tracker._get_service()

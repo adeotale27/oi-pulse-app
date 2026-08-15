@@ -49,9 +49,9 @@ Forbidden: UI importing backend paths; Kite calls from React; duplicating `DESK_
 
 ## Instrument universe
 
-- Live OI poller accepts **pollable desk ids only** (`universe.DESK_IDS`).
-- Catalog may list MCX / stocks **before** they are wired. `pollable: false` until session hours + spot quote path exist.
-- Admin settings must not offer non-pollable ids.
+- Live OI poller defaults to **desk ids** (`universe.DESK_IDS`). Extra underlyings join via `index_registry` Enable.
+- MCX majors are pollable (nearest FUT + MCX hours) but **not** auto-enabled. See [ADR-003](./decisions/ADR-003-mcx-majors.md).
+- Admin settings ticks follow `INDEX_CONFIG` (desk + enabled extras).
 - Adding a new underlying: see [DEVELOPMENT.md](./DEVELOPMENT.md#add-an-underlying).
 
 ## Functions

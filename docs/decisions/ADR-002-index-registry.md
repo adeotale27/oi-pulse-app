@@ -17,4 +17,4 @@ Disable sets `enabled: false` and removes from the poll list. Snapshots are neve
 
 ## Consequences
 
-MCX names can be enabled but still follow NSE poll hours. Commodity session clocks remain a follow-up.
+MCX majors can be enabled (nearest FUT + evening hours). See [ADR-003](./ADR-003-mcx-majors.md).

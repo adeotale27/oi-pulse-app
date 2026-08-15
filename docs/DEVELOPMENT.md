@@ -55,7 +55,7 @@ Frontend: `yarn build` (CRA). ESLint is present; do not mass-reformat unrelated 
 Manual/code path (still valid):
 
 1. Add a row to `backend/universe.py` **and** `frontend/src/lib/universe.js` if it needs a quote hint.
-2. Keep `pollable: False` in the static catalog until hours match (MCX).
+2. MCX majors (CRUDEOIL / GOLD / SILVER / NATURALGAS) are already catalogued — enable via Index management after Kite sync. Minis are separate Kite names.
 3. Tests in `test_universe.py` / `test_index_registry.py`.
 4. Bump version per [VERSIONING.md](./VERSIONING.md).
 

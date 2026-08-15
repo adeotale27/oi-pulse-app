@@ -12,8 +12,8 @@
 10. Update docs when architecture or the catalog changes.
 11. Keep diffs small. Bump version lockstep when shipping ([VERSIONING.md](./VERSIONING.md)).
 12. Run the nearest pytest / `node *.test.js`. Do not claim a full rewrite of `server.py` was required for a catalog change.
-13. Check regressions: enabled indices still NIFTY/SENSEX/BANKNIFTY; settings still reject unknown ids; MCX stays `pollable: false` until explicitly implemented.
-14. Prefer incremental changes. Do not enable Crude/Gold/Silver/NG polling as a surprise.
+13. Check regressions: default enabled indices still NIFTY/SENSEX/BANKNIFTY; settings still reject unknown ids; MCX majors stay off until Admin enables them.
+14. Prefer incremental changes. Do not enable Crude/Gold/Silver/NG polling as a surprise (admin Enable is the switch).
 15. No temporary hacks (fake spot, NSE hours for MCX, hardcoded tokens).
 16. Significant choices → `docs/decisions/ADR-NNN-*.md`.
 17. Inspect `oi_service.get_snapshot` before inventing a new chain fetcher.

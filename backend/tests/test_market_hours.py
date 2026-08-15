@@ -70,3 +70,14 @@ def test_regular_weekday_is_both():
     fri = _d(2026, 8, 14)
     assert is_trading_day(fri) is True
     assert is_journal_session_day(fri) is True
+
+
+def test_mcx_evening_hours_not_nse_cash():
+    from market_hours import is_mcx_hours, is_oi_session_open
+    eve = _d(2026, 8, 14, 20, 0)
+    assert is_market_open(eve) is False
+    assert is_mcx_hours(eve) is True
+    assert is_oi_session_open(eve, mcx=False) is False
+    assert is_oi_session_open(eve, mcx=True) is True
+    assert is_mcx_hours(_d(2026, 8, 15, 20, 0)) is False  # Saturday
+    assert is_oi_session_open(_d(2026, 8, 14, 10, 0), mcx=True) is True

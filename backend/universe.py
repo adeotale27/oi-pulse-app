@@ -1,18 +1,22 @@
 """Instrument universe — one catalog for desk indices and future underlyings.
 
-The live OI poller only accepts **desk** (pollable) ids. Catalog entries with
-``pollable=False`` are documentation + future wiring (MCX crude / metals / gas).
-Do not add a catalog id to ``enabled_indices`` until its session calendar and
-spot quote path are implemented.
+Desk ids (NIFTY / SENSEX / BANKNIFTY) stay on the OI board by default.
+MCX majors (CRUDEOIL, GOLD, SILVER, NATURALGAS) are pollable: ATM from the
+nearest MCX FUT, session 09:00–23:30 IST. They are **not** auto-enabled —
+Admin → Index management inspects the Kite dump and ticks them on.
 
 Keep this file aligned with ``frontend/src/lib/universe.js``.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import date, datetime
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 # Desk OI board today (NFO / BFO cash-session indices).
 DESK_IDS: Tuple[str, ...] = ("NIFTY", "SENSEX", "BANKNIFTY")
+
+# Kite `name` for the four major MCX option chains (not minis).
+MCX_MAJOR_IDS: Tuple[str, ...] = ("CRUDEOIL", "GOLD", "SILVER", "NATURALGAS")
 
 # Aliases that settings / uploads / humans might type.
 ALIASES: Dict[str, str] = {
@@ -84,7 +88,7 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "pollable": True,
         "dot": "emerald",
     },
-    # --- MCX (catalog only until session hours + nearest-FUT spot are wired) ---
+    # Kite `name` on MCX (majors, not minis). ATM = nearest FUT last_price.
     {
         "id": "CRUDEOIL",
         "label": "Crude oil",
@@ -97,9 +101,9 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 50,
         "strikes_around_atm": 12,
         "calendar": "mcx",
-        "pollable": False,
+        "pollable": True,
         "dot": "slate",
-        "notes": "No Kite spot. ATM from nearest MCX FUT. Options often expire before FUT. Hours ~09:00–23:30 IST.",
+        "notes": "Kite name CRUDEOIL (not CRUDEOILM). Cash-settled. ATM from nearest MCX FUT. Hours ~09:00–23:30 IST.",
     },
     {
         "id": "GOLD",
@@ -113,9 +117,9 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 100,
         "strikes_around_atm": 12,
         "calendar": "mcx",
-        "pollable": False,
-        "dot": "slate",
-        "notes": "Physical FUT (Zerodha stops before tender). Options CE/PE on MCX-OPT. No Kite spot.",
+        "pollable": True,
+        "dot": "amber",
+        "notes": "Kite name GOLD (not GOLDM / GOLDPETAL). Physical FUT — dump drops the contract at tender. ATM from nearest remaining FUT.",
     },
     {
         "id": "SILVER",
@@ -129,9 +133,9 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 250,
         "strikes_around_atm": 12,
         "calendar": "mcx",
-        "pollable": False,
+        "pollable": True,
         "dot": "slate",
-        "notes": "Physical FUT. Same Kite quote.oi path as index options once FUT spot is resolved.",
+        "notes": "Kite name SILVER (not SILVERM / SILVERMIC). Physical FUT. ATM from nearest MCX FUT.",
     },
     {
         "id": "NATURALGAS",
@@ -145,9 +149,9 @@ _CATALOG: Tuple[Dict[str, Any], ...] = (
         "step": 1,
         "strikes_around_atm": 12,
         "calendar": "mcx",
-        "pollable": False,
-        "dot": "slate",
-        "notes": "Strikes can be 3-digit; F&O symbol parser is still 4–6 digit index-style.",
+        "pollable": True,
+        "dot": "sky",
+        "notes": "Kite name NATURALGAS (not NATGASMINI). Strikes are often 3-digit. ATM from nearest MCX FUT.",
     },
 )
 
@@ -190,6 +194,7 @@ def desk_index_config() -> Dict[str, Dict[str, Any]]:
         row = _BY_ID[uid]
         out[uid] = {
             "quote_symbol": row["quote_symbol"],
+            "quote_kind": row.get("quote_kind") or "index",
             "name": row["kite_name"],
             "step": row["step"],
             "segment": row["segment"],
@@ -230,3 +235,68 @@ def fno_name_alternation() -> str:
             uniq.append(n)
     uniq.sort(key=len, reverse=True)
     return "|".join(uniq)
+
+
+def expiry_date(raw: Any) -> Optional[date]:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, datetime):
+        return raw.date()
+    if isinstance(raw, date):
+        return raw
+    s = str(raw).strip()[:10]
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def ist_today() -> date:
+    from datetime import timezone, timedelta
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist).date()
+
+
+def nearest_fut_quote_symbol(rows: Iterable[Dict[str, Any]], name: str, today: Optional[date] = None) -> Optional[str]:
+    """Return ``EXCHANGE:TRADINGSYMBOL`` for the nearest unexpired FUT.
+
+    Falls back to the latest expired FUT still in the dump (Gold tender).
+    """
+    key = normalize_id(name) or str(name or "").strip().upper()
+    today = today or ist_today()
+    live: List[Tuple[date, str]] = []
+    expired: List[Tuple[date, str]] = []
+    for row in rows or []:
+        if str(row.get("name") or "").strip().upper() != key:
+            continue
+        if str(row.get("instrument_type") or "").upper() != "FUT":
+            continue
+        ts = str(row.get("tradingsymbol") or "").strip()
+        if not ts:
+            continue
+        exch = str(row.get("exchange") or "MCX").strip().upper() or "MCX"
+        exp = expiry_date(row.get("expiry"))
+        if not exp:
+            continue
+        quote = f"{exch}:{ts}"
+        if exp >= today:
+            live.append((exp, quote))
+        else:
+            expired.append((exp, quote))
+    if live:
+        live.sort(key=lambda x: x[0])
+        return live[0][1]
+    if expired:
+        expired.sort(key=lambda x: x[0], reverse=True)
+        return expired[0][1]
+    return None
+
+
+def is_mcx_cfg(cfg: Optional[Dict[str, Any]]) -> bool:
+    if not cfg:
+        return False
+    if cfg.get("quote_kind") == "mcx_fut":
+        return True
+    if str(cfg.get("calendar") or "").lower() == "mcx":
+        return True
+    return str(cfg.get("segment") or "").upper().startswith("MCX")

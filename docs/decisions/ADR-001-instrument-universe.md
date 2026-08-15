@@ -12,7 +12,7 @@ Hardcoded triples block safe extension. A naïve “add GOLD to INDICES” would
 
 1. Single catalog: `backend/universe.py` + `frontend/src/lib/universe.js`.
 2. **Desk / pollable** ids stay the three cash indices. `INDEX_CONFIG` is generated from that set.
-3. MCX names live in the catalog with `pollable: False` until a dedicated session calendar and nearest-futures spot path exist.
+3. MCX majors live in the catalog with `pollable: True` and `quote_kind: mcx_fut`. They join the live board only after Admin Enable ([ADR-003](./ADR-003-mcx-majors.md)).
 4. `/config` exposes additive `universe` for agents and future Admin UI; settings still only tick desk ids.
 5. F&O symbol parser name list is generated (longest first) so book legs on FINNIFTY / CRUDEOIL still parse when possible.
 

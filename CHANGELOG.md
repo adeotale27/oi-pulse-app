@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.14 — 2026-08-15
+
+MCX majors can sit on the OI desk. Kite names are CRUDEOIL, GOLD, SILVER, NATURALGAS (not the minis).
+
+- ATM / header LTP from the **nearest MCX FUT** (rolls; Gold tender drops the front month)
+- When a commodity is enabled, OI polls **09:00–23:30 IST** on NSE trading days. Cash indices still close 15:40
+- Admin → Index management: Crude / Gold / Silver / Nat. gas shortcuts. Enable is opt-in — default board stays NIFTY / SENSEX / BANKNIFTY
+- Publisher Kite needs the commodity segment. Same `get_snapshot` pipeline as the three desk indices
+
 ## V6.13 — 2026-08-15
 
 Analyze chart uses desk colours. Admin can discover and enable more Kite F&O names without a code change.
