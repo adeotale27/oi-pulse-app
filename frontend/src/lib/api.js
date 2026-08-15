@@ -1,4 +1,5 @@
 import axios from "axios";
+import { shouldWipeTokensOn401 } from "@/lib/authBoot";
 
 // Backend URL resolution:
 // 1. Use REACT_APP_BACKEND_URL if provided at build time (Emergent preview).
@@ -267,15 +268,13 @@ api.interceptors.response.use(
   (err) => {
     if (err?.response?.status === 401) {
       const url = String(err?.config?.url || "");
-      // Don't wipe remember token on remember-login failure — caller handles that.
-      const isRememberAttempt = url.includes("/auth/remember-login");
+      if (!shouldWipeTokensOn401(url)) {
+        return Promise.reject(err);
+      }
       try {
         clearAdminAuth({ clearRemember: false });
         clearGuestAuth();
       } catch (_) { /* ignore */ }
-      if (isRememberAttempt) {
-        // leave oi_admin_remember_token; AuthGate may soft-retry or user re-logins
-      }
     }
     return Promise.reject(err);
   },

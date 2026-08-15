@@ -1,20 +1,30 @@
 import "@/App.css";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Dashboard from "@/pages/Dashboard";
-import AdminLogin from "@/pages/AdminLogin";
-import KiteCallback from "@/pages/KiteCallback";
 import AuthGate from "@/components/AuthGate";
-import AboutAppModal from "@/components/AboutAppModal";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
+
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
+const KiteCallback = lazy(() => import("@/pages/KiteCallback"));
+const AboutAppModal = lazy(() => import("@/components/AboutAppModal"));
+
+function BootFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#061018]">
+      <div className="text-sm text-slate-400">Loading desk…</div>
+    </div>
+  );
+}
 
 function App() {
   return (
     <div className="App">
       <ErrorBoundary>
       <BrowserRouter>
+        <Suspense fallback={<BootFallback />}>
         <Routes>
-          {/* Dedicated admin login page — bypasses guest flow entirely. */}
           <Route path="/admin" element={<AdminLogin />} />
           <Route
             path="/kite-callback"
@@ -24,7 +34,6 @@ function App() {
               </AuthGate>
             }
           />
-          {/* Everything else goes through AuthGate + Dashboard. */}
           <Route
             path="/*"
             element={
@@ -34,9 +43,12 @@ function App() {
             }
           />
         </Routes>
+        </Suspense>
       </BrowserRouter>
       </ErrorBoundary>
-      <AboutAppModal />
+      <Suspense fallback={null}>
+        <AboutAppModal />
+      </Suspense>
       <Toaster position="top-right" richColors closeButton />
     </div>
   );

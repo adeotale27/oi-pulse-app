@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.27",
+    date: "2026-08-15",
+    user: [
+      "If the desk is slow to start you stay signed in — you are not thrown to login. The first screen is lighter; Positions and journal load when you open them.",
+    ],
+    admin: [
+      "AuthGate keeps tokens on 520/timeout. Axios only clears session on real auth 401s. Dashboard/code-split heavy tabs. /auth/state skips alert-index refresh.",
+    ],
+  },
+  {
     version: "6.26",
     date: "2026-08-15",
     user: [

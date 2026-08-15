@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
@@ -6,43 +6,44 @@ import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import GuestBanner from "@/components/GuestBanner";
 import MarketStatusBanner from "@/components/MarketStatusBanner";
-import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import DeskStatusRail from "@/components/DeskStatusRail";
 import DataTruthStrip from "@/components/DataTruthStrip";
-import OvernightGapBrief from "@/components/OvernightGapBrief";
-import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
-import WriterDefenseMap from "@/components/WriterDefenseMap";
 import KiteTokenBanner from "@/components/KiteTokenBanner";
 import KiteMaintenanceBanner from "@/components/KiteMaintenanceBanner";
 import StrikeTable from "@/components/StrikeTable";
-import CredentialsModal from "@/components/CredentialsModal";
-import MorningRefreshModal from "@/components/MorningRefreshModal";
-import TelegramPrefsModal from "@/components/TelegramPrefsModal";
-import SettingsModal from "@/components/SettingsModal";
-import IndexManagementModal from "@/components/IndexManagementModal";
-import TradeJournalModal from "@/components/TradeJournalModal";
-import ReplayScrubber from "@/components/ReplayScrubber";
 import SentimentBar from "@/components/SentimentBar";
 import HugeShiftModal from "@/components/HugeShiftModal";
-import ActivityFeed from "@/components/ActivityFeed";
-import HolidaysTab from "@/components/HolidaysTab";
-import BuildupTable from "@/components/BuildupTable";
-import PositionsPanel from "@/components/PositionsPanel";
-import RightPanel from "@/components/RightPanel";
 import OverflowTabBar from "@/components/OverflowTabBar";
-import SoundSettingsModal from "@/components/SoundSettingsModal";
-import UploadModal from "@/components/UploadModal";
-import EventRiskWidget from "@/components/EventRiskWidget";
-import StraddleChart from "@/components/StraddleChart";
-import CasPanel from "@/components/CasPanel";
-import MobileStickyChrome from "@/components/MobileStickyChrome";
-import MobileIndexTicker from "@/components/MobileIndexTicker";
-import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import SuggestionBox from "@/components/SuggestionBox";
 import InfoTip from "@/components/InfoTip";
 import InfoTilesRow, { DEFAULT_TILE_IDS } from "@/components/InfoTilesRow";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import StrikeAroundChips from "@/components/StrikeAroundChips";
+import MobileStickyChrome from "@/components/MobileStickyChrome";
+import MobileIndexTicker from "@/components/MobileIndexTicker";
+import ActivityFeed from "@/components/ActivityFeed";
+import BuildupTable from "@/components/BuildupTable";
+
+const AdminUploadAdvisor = lazy(() => import("@/components/AdminUploadAdvisor"));
+const OvernightGapBrief = lazy(() => import("@/components/OvernightGapBrief"));
+const DeskAiMobileSheet = lazy(() => import("@/components/DeskAiMobileSheet"));
+const WriterDefenseMap = lazy(() => import("@/components/WriterDefenseMap"));
+const CredentialsModal = lazy(() => import("@/components/CredentialsModal"));
+const MorningRefreshModal = lazy(() => import("@/components/MorningRefreshModal"));
+const TelegramPrefsModal = lazy(() => import("@/components/TelegramPrefsModal"));
+const SettingsModal = lazy(() => import("@/components/SettingsModal"));
+const IndexManagementModal = lazy(() => import("@/components/IndexManagementModal"));
+const TradeJournalModal = lazy(() => import("@/components/TradeJournalModal"));
+const ReplayScrubber = lazy(() => import("@/components/ReplayScrubber"));
+const HolidaysTab = lazy(() => import("@/components/HolidaysTab"));
+const PositionsPanel = lazy(() => import("@/components/PositionsPanel"));
+const SoundSettingsModal = lazy(() => import("@/components/SoundSettingsModal"));
+const UploadModal = lazy(() => import("@/components/UploadModal"));
+const EventRiskWidget = lazy(() => import("@/components/EventRiskWidget"));
+const StraddleChart = lazy(() => import("@/components/StraddleChart"));
+const CasPanel = lazy(() => import("@/components/CasPanel"));
+const SellCandidatesPanel = lazy(() => import("@/components/SellCandidatesPanel"));
+const RightPanel = lazy(() => import("@/components/RightPanel"));
 import {
   loadTabOrder,
   saveTabOrder,
@@ -55,7 +56,7 @@ import {
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight, Play, HelpCircle } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -72,7 +73,6 @@ import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert } from "@/lib/sounds";
-import { Play, HelpCircle } from "lucide-react";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
@@ -264,16 +264,14 @@ export default function Dashboard() {
       const stored = localStorage.getItem("rightPanelOpen");
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
-    // Phones: keep chart full-width — side panel was crushing the layout.
-    // Align with Tailwind md (min-width: 768px) → phone is max-width: 767px.
-    try { return !window.matchMedia("(max-width: 767px)").matches; } catch { return true; }
+    return false;
   });
   const [infoTilesOpen, setInfoTilesOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("oiInfoTilesOpen");
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
-    return true;
+    return false;
   });
   const [headerRail, setHeaderRail] = useState(() => {
     try {
@@ -1852,6 +1850,7 @@ export default function Dashboard() {
   ) : null;
 
   return (
+    <Suspense fallback={<div className="flex min-h-[100dvh] items-center justify-center text-sm text-slate-400">Loading desk…</div>}>
     <div className="oi-shell relative h-[100dvh] max-h-[100dvh] flex flex-col overflow-hidden overscroll-none">
       {authState.is_guest && (
         <GuestBanner
@@ -2548,11 +2547,7 @@ export default function Dashboard() {
                   )}
 
                   {(tabOn("positions")) && (
-                    <TabsContent
-                      value="positions"
-                      className="mt-0 data-[state=inactive]:hidden"
-                      forceMount
-                    >
+                    <TabsContent value="positions" className="mt-0">
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
                       isKiteMode={authState.is_admin ? kiteLiveConnected : true}
@@ -2900,6 +2895,7 @@ export default function Dashboard() {
         onUploaded={() => setUploadRefreshKey((k) => k + 1)}
       />
     </div>
+    </Suspense>
   );
 }
 

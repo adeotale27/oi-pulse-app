@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.27 — 2026-08-15
+
+Stop kicking users out when the origin is slow; slim the first JS load.
+
+- Cloudflare 520/524/timeout on `/auth/state` no longer treats you as logged out. Session tokens stay; Retry if the desk is busy
+- 401 on OI/positions does not wipe the login. Positions/journal/straddle load as separate chunks when you open them
+- Dropped unused React Query wrapper and StrictMode double-mount. Auth/state no longer refreshes alert indices on every poll
+
 ## V6.26 — 2026-08-15
 
 Stop auto-preload. Load F&O names and extra desk data when you ask for them.

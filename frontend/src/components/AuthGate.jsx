@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession } from "@/lib/api";
+import { isTransientHttpError, storedDeskSession, sleep } from "@/lib/authBoot";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,20 +59,38 @@ export default function AuthGate({ children }) {
       })();
       if (rememberTok && !hasSessionAdmin) {
         try {
-          const { data: rem } = await api.post("/auth/remember-login", { remember_token: rememberTok });
+          const { data: rem } = await api.post("/auth/remember-login", { remember_token: rememberTok }, { timeout: 8000 });
           if (rem?.token) {
             persistAdminSession(rem.token);
           }
         } catch (err) {
           // Soft IP/UA mismatch or expired — only drop token on hard expiry/invalid
+          if (isTransientHttpError(err)) {
+            /* origin busy — keep remember token and continue to /auth/state */
+          } else {
           const detail = String(err?.response?.data?.detail || "");
           if (/expired|invalid|missing/i.test(detail)) {
             try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
           }
+          }
         }
       }
 
-      const { data } = await api.get("/auth/state");
+      let data;
+      let lastErr;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await api.get("/auth/state", { timeout: 8000 });
+          data = res.data;
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (!isTransientHttpError(err) || attempt === 2) break;
+          await sleep(400 * (attempt + 1));
+        }
+      }
+      if (!data) throw lastErr || new Error("auth state unavailable");
 
       // Returning guest on same IP — auto-login without a click.
       if (
@@ -90,7 +109,7 @@ export default function AuthGate({ children }) {
         clearAdminAuth({ clearRemember: false });
         toast.success(`Welcome back, ${data.auto_guest_name || data.suggested_guest_name || "guest"}`);
         // Re-fetch so is_guest is true with the new header token.
-        const { data: again } = await api.get("/auth/state");
+        const { data: again } = await api.get("/auth/state", { timeout: 8000 });
         setState({ loading: false, ...again });
         try {
           window.__oi_last_auth_state = again;
@@ -113,12 +132,43 @@ export default function AuthGate({ children }) {
         window.__oi_last_auth_state = data;
         window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: data }));
       } catch (_) { /* noop */ }
-    } catch (_) {
+    } catch (err) {
+      if (isTransientHttpError(err)) {
+        let last = null;
+        try { last = window.__oi_last_auth_state; } catch (_) { /* noop */ }
+        if (last && (last.is_admin || last.is_guest)) {
+          setState({ loading: false, ...last });
+          return;
+        }
+        const stored = storedDeskSession();
+        if (stored) {
+          setState({
+            loading: false,
+            requires_login: false,
+            public_access_open: true,
+            is_admin: !!stored.is_admin,
+            is_guest: !!stored.is_guest,
+            needs_guest_name: false,
+          });
+          return;
+        }
+        setState({
+          loading: false,
+          auth_unavailable: true,
+          requires_login: false,
+          is_admin: false,
+          is_guest: false,
+          needs_guest_name: false,
+        });
+        return;
+      }
       setState({ loading: false, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false });
     }
   };
 
-  // Attach activity listeners for idle-timeout independent of polling
+  useEffect(() => {
+    import("@/pages/Dashboard");
+  }, []);
   useEffect(() => {
     const bump = () => { lastActivityRef.current = Date.now(); };
     window.addEventListener("mousemove", bump);
@@ -308,6 +358,21 @@ export default function AuthGate({ children }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#061018]">
         <div className="text-sm text-slate-400">Loading…</div>
+      </div>
+    );
+  }
+
+  if (state.auth_unavailable) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#061018] px-6">
+        <div className="text-sm text-slate-300">Desk is busy — not signed out.</div>
+        <button
+          type="button"
+          className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm text-white"
+          onClick={() => { setState((s) => ({ ...s, loading: true, auth_unavailable: false })); refresh(); }}
+        >
+          Retry
+        </button>
       </div>
     );
   }

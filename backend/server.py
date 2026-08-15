@@ -3048,12 +3048,6 @@ async def auth_state(request: Request):
     pending_access_count = 0
     if is_admin:
         pending_access_count = await _pending_access_count()
-    # Refresh weekday alert defaults if day rolled over
-    try:
-        if tracker:
-            tracker._refresh_alert_indices_for_today()
-    except Exception:
-        pass
     return {
         "requires_login": requires_login,
         "public_access_open": open_,
