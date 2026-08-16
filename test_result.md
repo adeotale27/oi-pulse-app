@@ -272,3 +272,75 @@ Please verify these endpoints/behaviors against a running backend:
         (twisted/autobahn/pyOpenSSL/service_identity) are now properly installed and the import
         succeeds. The 400 response with Kite auth error confirms the code path executes correctly
         without module import errors.
+
+    - agent: main
+      message: |
+        CONTINUATION #3 — single-DB consolidation + CORS domain + Telegram token.
+        Changes:
+          - DB unified to `oi_pulse` EVERYWHERE. backend/.env DB_NAME=oi_pulse; scripts default oi_pulse;
+            server.py already reads env DB_NAME. Ran scripts/consolidate_to_oi_pulse.py in preview:
+            dropped oi_pulse -> copied all striklenz collections into oi_pulse (15,564 docs, 21 colls:
+            oi_snapshots 10448, straddle_samples 3529, nse_events 969, alerts 17, ...) -> dropped striklenz.
+            Only `oi_pulse` DB remains.
+          - CORS hardened: _allow_credentials FORCED False (app is header-token auth, no cookies).
+            CORS_ORIGINS=* -> ACAO:* with NO Access-Control-Allow-Credentials header. Preflight from
+            Origin https://striklenz.com returns 200 with ACAO present and no credentials clash.
+          - Added TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID to backend/.env.
+        Verify (backend only) — DO NOT send a live Telegram message (would spam the user's chat):
+          1. Backend boots clean (no KeyError, no crash) reading DB_NAME=oi_pulse.
+          2. POST /api/auth/login {"username":"Adeotale","password":"Q@w3e4r5"} -> 200 + admin token.
+          3. GET /api/oi/NIFTY, /api/oi/SENSEX, /api/oi/BANKNIFTY -> 200 with restored snapshot (data now
+             served from oi_pulse). GET /api/alerts -> 200 with ~17 rows. GET /api/history/NIFTY -> 200.
+          4. CORS: OPTIONS + GET to /api/status with Origin https://striklenz.com -> 200, ACAO header
+             present, and NO `Access-Control-Allow-Credentials: true`.
+          5. Admin-gated POST /api/settings without token -> 401.
+
+
+    - agent: testing
+      message: |
+        BACKEND VERIFICATION COMPLETE (2026-08-17 20:12 UTC) — DB consolidation + CORS hardening + Telegram token:
+        
+        All 5 verification items PASSED:
+        
+        1. ✅ Backend is up (boots clean reading DB_NAME=oi_pulse)
+           - GET /api/status → 200
+           - Backend logs show: "Application startup complete" with no KeyError or crash
+           - telegram_configured=true (TELEGRAM_BOT_TOKEN present in .env, backend didn't crash on boot)
+           - mode=offline (expected, no real Kite credentials)
+           - Displaying last session (2026-08-14) from restored database
+        
+        2. ✅ POST /api/auth/login with {"username":"Adeotale","password":"Q@w3e4r5"} → 200
+           - is_admin=true ✓
+           - token received: 0uCvVc5FisfysOpLI9gCewrCOJwlwCwtYkwxtQq2yBo
+           - expires_in_seconds=28800 (8 hours)
+        
+        3. ✅ Data served from consolidated oi_pulse DB:
+           - GET /api/oi/NIFTY → 200, price=24366.0, atm=24350, 31 strikes, pcr=0.92
+           - GET /api/oi/SENSEX → 200, price=78009.25, atm=78000, 31 strikes, pcr=1.17
+           - GET /api/oi/BANKNIFTY → 200, price=57491.1, atm=57500, 31 strikes, pcr=0.8
+           - GET /api/alerts → 200, returned 17 alerts (matches expected ~17 from restored DB)
+           - GET /api/history/NIFTY → 200, returned 124 history entries (non-empty)
+           - All data served from the consolidated oi_pulse database (offline/last-session data)
+        
+        4. ✅ CORS verification with Origin: https://striklenz.com:
+           - OPTIONS preflight to /api/status → 204
+             * Access-Control-Allow-Origin: * ✓
+             * Access-Control-Allow-Headers: *
+             * Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH
+             * Access-Control-Max-Age: 300
+             * NO Access-Control-Allow-Credentials header (correct for header-token auth) ✓
+           - GET /api/status with Origin header → 200
+             * Access-Control-Allow-Origin: * ✓
+             * NO Access-Control-Allow-Credentials header (correct for header-token auth) ✓
+           - CORS hardening is working correctly: wildcard origin with NO credentials header, safe for header-token auth
+        
+        5. ✅ Admin-gated endpoint rejects unauthenticated:
+           - POST /api/settings without token → 401 "Admin only" ✓
+        
+        Backend is fully operational after DB consolidation to oi_pulse. CORS hardening is correctly configured
+        (wildcard origin with NO Access-Control-Allow-Credentials header, safe for header-token auth). Telegram
+        token is present in .env and backend boots without crash. All data endpoints serve from the consolidated
+        oi_pulse database.
+        
+        NOTE: Did NOT trigger any Telegram send endpoints (e.g. /api/telegram/*) as instructed to avoid sending
+        real messages to the user's chat.

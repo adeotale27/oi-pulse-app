@@ -19,7 +19,7 @@ load_dotenv(ROOT / "backend" / ".env")
 
 DUMP_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/oi_restore")
 MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ.get("DB_NAME", "striklenz")
+DB_NAME = os.environ.get("DB_NAME", "oi_pulse")
 
 client = MongoClient(MONGO_URL)
 db = client[DB_NAME]

@@ -5543,12 +5543,11 @@ if _cors_regex:
     except re.error as _re_err:
         print(f"[cors] Ignoring invalid CORS_ORIGIN_REGEX ({_re_err}); falling back to CORS_ORIGINS")
         _cors_regex = None
-_allow_credentials = True
-if _cors_origins == ['*']:
-    # This app authenticates via headers (X-Admin-Token / X-Guest-Token /
-    # Authorization) and uses NO cookies, so wildcard origins are safe.
-    # Browser spec: wildcard + credentials is invalid, so disable credentials.
-    _allow_credentials = False
+_allow_credentials = False  # This app authenticates via headers (X-Admin-Token /
+# X-Guest-Token / Authorization) and uses NO cookies. Keeping credentials OFF is
+# both correct and required: it lets us use a wildcard origin without clashing
+# with the Emergent ingress, which injects `Access-Control-Allow-Origin: *`
+# (wildcard + credentials is rejected by browsers).
 
 app.add_middleware(
     CORSMiddleware,
