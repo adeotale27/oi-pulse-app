@@ -5536,9 +5536,18 @@ app.add_middleware(RateLimitMiddleware)
 _cors_env = os.environ.get('CORS_ORIGINS', '*').strip()
 _cors_origins = [o.strip() for o in _cors_env.split(',') if o.strip()]
 _cors_regex = os.environ.get('CORS_ORIGIN_REGEX', '').strip() or None
+# Guard: a malformed CORS_ORIGIN_REGEX must never crash the server at boot.
+if _cors_regex:
+    try:
+        re.compile(_cors_regex)
+    except re.error as _re_err:
+        print(f"[cors] Ignoring invalid CORS_ORIGIN_REGEX ({_re_err}); falling back to CORS_ORIGINS")
+        _cors_regex = None
 _allow_credentials = True
 if _cors_origins == ['*']:
-    # Browser spec: wildcard + credentials is invalid; disable credentials in that case.
+    # This app authenticates via headers (X-Admin-Token / X-Guest-Token /
+    # Authorization) and uses NO cookies, so wildcard origins are safe.
+    # Browser spec: wildcard + credentials is invalid, so disable credentials.
     _allow_credentials = False
 
 app.add_middleware(
