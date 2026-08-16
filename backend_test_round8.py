@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 
 # Backend URL from review request
-BASE_URL = "https://oi-api-trace.preview.emergentagent.com/api"
+BASE_URL = "https://strike-preview-1.preview.emergentagent.com/api"
 
 # Track login attempts (constraint: ≤5 total)
 login_attempts = 0

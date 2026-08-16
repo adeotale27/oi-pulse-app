@@ -22,7 +22,7 @@ import datetime
 import sys
 
 # Backend URL from review request
-BASE_URL = "https://oi-api-trace.preview.emergentagent.com/api"
+BASE_URL = "https://strike-preview-1.preview.emergentagent.com/api"
 
 def test_expiries_for_index(index_name):
     """Test expiries endpoint for a single index"""

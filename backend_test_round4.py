@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone, timedelta
 
 # Backend URL from review request
-BASE_URL = "https://oi-api-trace.preview.emergentagent.com/api"
+BASE_URL = "https://strike-preview-1.preview.emergentagent.com/api"
 
 def test_alerts_frozen_when_market_closed():
     """

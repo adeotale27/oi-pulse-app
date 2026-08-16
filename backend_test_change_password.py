@@ -16,7 +16,7 @@ import time
 from typing import Dict, Any, Optional
 
 # Backend URL from frontend/.env
-BASE_URL = "https://oi-api-trace.preview.emergentagent.com/api"
+BASE_URL = "https://strike-preview-1.preview.emergentagent.com/api"
 
 # Test credentials from /app/memory/test_credentials.md
 ADMIN_USERNAME = "Adeotale"

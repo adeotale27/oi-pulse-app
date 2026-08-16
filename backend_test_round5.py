@@ -12,7 +12,7 @@ import sys
 from typing import Dict, Any, Optional
 
 # Backend URL from review request
-BASE_URL = "https://oi-api-trace.preview.emergentagent.com"
+BASE_URL = "https://strike-preview-1.preview.emergentagent.com"
 API_BASE = f"{BASE_URL}/api"
 
 # Admin credentials from /app/memory/test_credentials.md
