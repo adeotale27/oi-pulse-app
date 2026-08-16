@@ -240,7 +240,7 @@ export default function Header({
   const kiteBtnTitle = kiteUserId
     ? `Kite live as ${kiteUserId} — open credentials`
     : "Connect / refresh Kite API credentials";
-  // Match Admin button / OI Pulse emerald green when showing the logged-in user id.
+  // Match Admin button / desk emerald green when showing the logged-in user id.
   const kiteBtnCls = kiteUserId
     ? "rounded-sm h-8 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400 font-semibold"
     : "rounded-sm h-8 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700";

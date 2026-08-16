@@ -1,7 +1,7 @@
-/** Keep in lockstep with repo-root VERSION and backend/app_version.py */
-export const APP_VERSION = "6.32";
+/** Display name: repo-root `APP_NAME` (injected at build as REACT_APP_APP_NAME). Version: `VERSION`. */
+export const APP_VERSION = "6.33";
 export const APP_VERSION_LABEL = `V${APP_VERSION}`;
-export const APP_NAME = "OI Pulse";
+export const APP_NAME = (process.env.REACT_APP_APP_NAME || "StrikLenz").trim();
 export const ABOUT_EVENT = "oi-open-about";
 
 export function openAboutApp() {

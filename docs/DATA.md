@@ -1,4 +1,4 @@
-# OI Pulse — How Data Is Stored & Manipulated
+# StrikLenz — How Data Is Stored & Manipulated
 
 ## Storage (MongoDB)
 

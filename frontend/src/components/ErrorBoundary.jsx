@@ -1,4 +1,5 @@
 import { Component } from "react";
+import { APP_NAME } from "@/lib/appVersion";
 
 /** Keep the desk usable if a view throws — avoid a blank white screen. */
 export default class ErrorBoundary extends Component {
@@ -13,7 +14,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(err) {
     try {
-      console.error("[OI Pulse] UI error", err);
+      console.error(`[${APP_NAME}] UI error`, err);
     } catch {
       /* noop */
     }

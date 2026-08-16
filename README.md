@@ -1,8 +1,8 @@
-# OI Pulse
+# StrikLenz
 
-**Version: V6.28** — see [`VERSION`](VERSION), [`CHANGELOG.md`](CHANGELOG.md), [`docs/VERSIONING.md`](docs/VERSIONING.md).
+**Version:** see [`VERSION`](VERSION) (display as `V` + that number). Product name: [`APP_NAME`](APP_NAME) — change that one file to rename the desk.
 
-OI Pulse is a live **NSE open-interest desk** for **NIFTY**, **SENSEX**, and **BANKNIFTY**. It is built for option sellers and OI readers who need strike-level conviction during the cash session — not a generic charting terminal.
+StrikLenz is a live **NSE open-interest desk** for **NIFTY**, **SENSEX**, and **BANKNIFTY**. It is built for option sellers and OI readers who need strike-level conviction during the cash session — not a generic charting terminal.
 
 Stack: **React (CRA/craco) + FastAPI + MongoDB + Zerodha Kite Connect**.
 

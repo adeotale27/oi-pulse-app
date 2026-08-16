@@ -15,6 +15,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 import httpx
 
+from app_version import APP_NAME
+
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
@@ -358,7 +360,7 @@ def format_eod_html(digest: dict, *, next_notes: Optional[list] = None) -> str:
     date = digest.get("date", "?")
     total = digest.get("alerts_total", 0)
     lines = [
-        f"📋 <b>OI Pulse · session wrap {date}</b>",
+        f"📋 <b>{APP_NAME} · session wrap {date}</b>",
         "Sent ~15:15 IST (cash F&O continuous close). Index F&O still prints until 15:40.",
         f"OI alerts today: <b>{total}</b>",
         "",

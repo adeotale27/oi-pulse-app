@@ -1,4 +1,4 @@
-# OI Pulse — development
+# StrikLenz — development
 
 For a first run, follow **[LOCAL_SETUP.md](./LOCAL_SETUP.md)** (venv, yarn, Mongo, `uvicorn`, CRA). This page is the map for changing the system without breaking it.
 
@@ -29,10 +29,11 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8000
 cd frontend && yarn install && yarn start
 
 # Tests (from backend/)
-python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_market_hours.py tests/test_event_risk.py tests/test_guest_access.py -q
+python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_market_hours.py tests/test_event_risk.py tests/test_guest_access.py tests/test_app_brand.py -q
 
 # Frontend unit (Node can run assert files)
 node frontend/src/lib/universe.test.js
+node frontend/src/lib/appVersion.test.js
 node frontend/src/lib/indexEventRisk.test.js
 node frontend/src/lib/journalYearHeat.test.js
 ```

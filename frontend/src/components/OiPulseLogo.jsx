@@ -1,7 +1,8 @@
 import { useId } from "react";
+import { APP_NAME } from "@/lib/appVersion";
 
 /**
- * OI Pulse logo — crisp geometric mark.
+ * Desk logo — crisp geometric mark.
  * Stable gradient id (no Math.random) so the icon never flickers on re-render.
  */
 export default function OiPulseLogo({ className = "w-6 h-6" }) {
@@ -12,7 +13,7 @@ export default function OiPulseLogo({ className = "w-6 h-6" }) {
       viewBox="0 0 48 48"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
-      aria-label="OI Pulse"
+      aria-label={APP_NAME}
       role="img"
       shapeRendering="geometricPrecision"
     >

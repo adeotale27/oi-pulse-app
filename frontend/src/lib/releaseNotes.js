@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.33",
+    date: "2026-08-16",
+    user: [
+      "The desk is now StrikLenz — same OI board, new name on the header, login, and About.",
+    ],
+    admin: [
+      "Display name is repo-root APP_NAME (one line). Rebuild the UI after changing it. Mongo DB name and Kite vault stay as they are.",
+    ],
+  },
+  {
     version: "6.32",
     date: "2026-08-16",
     user: [

@@ -4,6 +4,7 @@ import { completeUserKiteSession } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { toast } from "sonner";
 import OiPulseLogo from "@/components/OiPulseLogo";
+import { APP_NAME } from "@/lib/appVersion";
 
 /**
  * Kite Connect redirect target. Exchange request_token server-side
@@ -47,7 +48,7 @@ export default function KiteCallback() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-50 px-6 text-center">
       <OiPulseLogo className="h-12 w-12" />
-      <div className="text-sm font-semibold text-slate-800">OI Pulse</div>
+      <div className="text-sm font-semibold text-slate-800">{APP_NAME}</div>
       <p className="text-[13px] text-slate-600 max-w-sm" data-testid="kite-callback-status">{msg}</p>
     </div>
   );

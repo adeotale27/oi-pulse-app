@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from app_version import APP_NAME, APP_VERSION
+
 logger = logging.getLogger(__name__)
 
 TOP_N = {"NIFTY": 50, "BANKNIFTY": 14, "SENSEX": 30}
@@ -22,7 +24,11 @@ NEWS_FEEDS = (
     "https://news.google.com/rss/search?q=Nifty+OR+Sensex+OR+%22Bank+Nifty%22+OR+RBI+OR+FOMC+when:1d&hl=en-IN&gl=IN&ceid=IN:en",
     "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
 )
-UA = "Mozilla/5.0 (compatible; OIPulseDesk/6.00; +https://github.com/adeotale27/oi-pulse-app)"
+UA = (
+    "Mozilla/5.0 (compatible; "
+    f"{APP_NAME.replace(' ', '')}Desk/{APP_VERSION}; "
+    "+https://github.com/adeotale27/oi-pulse-app)"
+)
 CACHE_S = 45.0
 
 _packs: Dict[str, Dict[str, Any]] = {}

@@ -1,4 +1,4 @@
-# OI Pulse - NSE Open Interest Tracker
+# StrikLenz - NSE Open Interest Tracker
 
 ## Original Problem Statement
 Web app that fetches NSE Open Interest data for NIFTY and SENSEX every 15 seconds via Zerodha KiteConnect, shows a grouped bar chart per option strike (Put OI green + Call OI red, current vs previous), provides all timeframe filters (1m/3m/5m/10m/15m/30m/1h/2h/3h/Full Day), and pops up alerts + sound + browser push notifications when a huge OI reversal is detected. Light-theme dashboard.

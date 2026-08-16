@@ -1,4 +1,4 @@
-# Hosting OI Pulse off Emergent
+# Hosting StrikLenz off Emergent
 
 This is the ops roadmap if you want the desk on **your** machine and **your** GoDaddy domain (`aaisnamkeen.com` or similar), instead of Emergent’s preview / k8s.
 
@@ -44,7 +44,7 @@ You can **run both** during cutover: Emergent stays live until Atlas + VM + DNS 
 
 ## 3. Database: do not switch to Oracle DB
 
-Oracle Autonomous Database (ATP/ADW) on the Always Free page is **SQL**. OI Pulse uses **Motor (async Mongo)**:
+Oracle Autonomous Database (ATP/ADW) on the Always Free page is **SQL**. StrikLenz uses **Motor (async Mongo)**:
 
 - Strike arrays inside each snapshot
 - Time-range queries (`timestamp` windows for `/oi/{index}/change`)

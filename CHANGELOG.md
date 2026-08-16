@@ -1,5 +1,12 @@
 # Changelog
 
+## V6.33 — 2026-08-16
+
+The desk is branded **StrikLenz**. The display name is one line in repo-root `APP_NAME`.
+
+- Header, login, About, tab title, PWA name, API `/version`, Telegram session wrap, and current docs use that name
+- To rename later: edit `APP_NAME`, rebuild the UI. Do not change Mongo `DB_NAME` or the login token salt
+
 ## V6.32 — 2026-08-16
 
 Guest approval is optional. Hosting path is Atlas + one always-on VM (not Vercel for the API).

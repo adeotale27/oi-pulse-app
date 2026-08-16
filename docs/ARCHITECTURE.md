@@ -1,8 +1,8 @@
-# OI Pulse — architecture
+# StrikLenz — architecture
 
 ## System overview
 
-OI Pulse is a **publisher-polled open-interest desk** for Indian index options. A FastAPI process uses one Zerodha Kite Connect token to poll option chains, upsert strike-level snapshots in MongoDB, and serve a React desk. Guests never share that token for their book.
+StrikLenz is a **publisher-polled open-interest desk** for Indian index options. A FastAPI process uses one Zerodha Kite Connect token to poll option chains, upsert strike-level snapshots in MongoDB, and serve a React desk. Guests never share that token for their book.
 
 ```mermaid
 flowchart LR

@@ -1,15 +1,20 @@
-"""Canonical product version (keep in lockstep with repo-root VERSION)."""
+"""Canonical product version and display name.
+
+Name: repo-root ``APP_NAME`` (one line). Change that file to rename the desk.
+Version: repo-root ``VERSION``.
+"""
 from pathlib import Path
 
-_FALLBACK = "6.32"
+_VERSION_FALLBACK = "6.33"
+_NAME_FALLBACK = "StrikLenz"
 
 
-def load_app_version() -> str:
+def _first_line(filename: str, fallback: str) -> str:
     here = Path(__file__).resolve()
     candidates = [
-        here.parent.parent / "VERSION",
-        Path("/app/VERSION"),
-        Path.cwd() / "VERSION",
+        here.parent.parent / filename,
+        Path("/app") / filename,
+        Path.cwd() / filename,
     ]
     for path in candidates:
         try:
@@ -18,9 +23,17 @@ def load_app_version() -> str:
                 return text.splitlines()[0].strip()
         except Exception:
             continue
-    return _FALLBACK
+    return fallback
+
+
+def load_app_version() -> str:
+    return _first_line("VERSION", _VERSION_FALLBACK)
+
+
+def load_app_name() -> str:
+    return _first_line("APP_NAME", _NAME_FALLBACK)
 
 
 APP_VERSION = load_app_version()
 APP_VERSION_LABEL = f"V{APP_VERSION}"
-APP_NAME = "OI Pulse"
+APP_NAME = load_app_name()

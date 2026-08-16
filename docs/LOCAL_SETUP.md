@@ -1,4 +1,4 @@
-# OI Pulse — Run Locally
+# StrikLenz — Run Locally
 
 ## Prerequisites
 

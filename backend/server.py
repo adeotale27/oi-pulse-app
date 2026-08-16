@@ -66,7 +66,7 @@ load_dotenv(ROOT_DIR / '.env')
 client = None
 db = None
 
-app = FastAPI(title="NSE OI Tracker")
+app = FastAPI(title=APP_NAME)
 api_router = APIRouter(prefix="/api")
 
 

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { KeyRound, ExternalLink, X, ShieldCheck, LogOut } from "lucide-react";
+import { APP_NAME } from "@/lib/appVersion";
 import { friendlyKiteConnectError, extractRequestToken, httpErrorDetail } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
 
@@ -442,7 +443,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
               title="Wipe vaulted Kite key/secret/token and go offline"
               onClick={async () => {
                 const ok = window.confirm(
-                  "Sign out of Kite / broker?\n\nThis clears the saved API key, secret, and access token on this server and switches OI Pulse to offline. You can connect again anytime.",
+                  `Sign out of Kite / broker?\n\nThis clears the saved API key, secret, and access token on this server and switches ${APP_NAME} to offline. You can connect again anytime.`,
                 );
                 if (!ok) return;
                 setSaving(true);

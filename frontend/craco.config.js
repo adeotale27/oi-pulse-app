@@ -1,6 +1,28 @@
 // craco.config.js
+const fs = require("fs");
 const path = require("path");
+
+function loadAppName() {
+  const candidates = [
+    path.join(__dirname, "..", "APP_NAME"),
+    path.join(process.cwd(), "APP_NAME"),
+    path.join(process.cwd(), "..", "APP_NAME"),
+  ];
+  for (const p of candidates) {
+    try {
+      const text = fs.readFileSync(p, "utf8").trim();
+      const line = text.split("\n")[0].trim();
+      if (line) return line;
+    } catch (_) { /* try next */ }
+  }
+  return "StrikLenz";
+}
+
+process.env.REACT_APP_APP_NAME = loadAppName();
+
 require("dotenv").config();
+// File wins — do not let .env pin an old product name.
+process.env.REACT_APP_APP_NAME = loadAppName();
 
 // Check if we're in development/preview mode (not production build)
 // Craco sets NODE_ENV=development for start, NODE_ENV=production for build
@@ -102,6 +124,19 @@ let webpackConfig = {
       if (config.enableHealthCheck && healthPluginInstance) {
         webpackConfig.plugins.push(healthPluginInstance);
       }
+
+      // Keep the PWA manifest display name in lockstep with repo-root APP_NAME.
+      try {
+        const manifestPath = path.join(__dirname, "public", "manifest.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        const brand = process.env.REACT_APP_APP_NAME;
+        if (brand && (manifest.name !== brand || manifest.short_name !== brand)) {
+          manifest.name = brand;
+          manifest.short_name = brand;
+          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+        }
+      } catch (_) { /* public/ may be missing in some test runners */ }
+
       return webpackConfig;
     },
   },

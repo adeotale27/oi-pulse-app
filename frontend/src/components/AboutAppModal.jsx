@@ -50,13 +50,13 @@ export default function AboutAppModal() {
             <h3 className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1">What it is</h3>
             {isAdmin ? (
               <p>
-                OI Pulse is an options <b>open-interest desk</b>, not a generic charting app.
+                {APP_NAME} is an options <b>open-interest desk</b>, not a generic charting app.
                 The publisher Kite token polls the chain; Mongo stores every tick; the React desk
                 turns that into change, buildup, alerts, straddles, and a positions book.
               </p>
             ) : (
               <p>
-                OI Pulse is an options <b>open-interest desk</b> for NIFTY, SENSEX, and BANKNIFTY.
+                {APP_NAME} is an options <b>open-interest desk</b> for NIFTY, SENSEX, and BANKNIFTY.
                 You see who is adding Calls vs Puts, straddle premium, Index Risk, and (if you connect
                 Zerodha) your own positions — not a generic LTP chart.
               </p>

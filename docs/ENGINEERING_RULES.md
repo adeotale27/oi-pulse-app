@@ -1,4 +1,4 @@
-# OI Pulse — engineering rules
+# StrikLenz — engineering rules
 
 Read [ARCHITECTURE.md](./ARCHITECTURE.md) and [AI_DEVELOPMENT_RULES.md](./AI_DEVELOPMENT_RULES.md) first.
 Product rules: [../AGENTS.md](../AGENTS.md). Versioning: [VERSIONING.md](./VERSIONING.md).

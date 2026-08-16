@@ -1,7 +1,7 @@
 {
-  "name": "OI Pulse",
-  "short_name": "OI Pulse V5",
-  "version": "5.02",
+  "name": "StrikLenz",
+  "short_name": "StrikLenz",
+  "version": "6.33",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#11b08b",
