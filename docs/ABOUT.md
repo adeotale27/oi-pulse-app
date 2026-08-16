@@ -14,12 +14,12 @@ Stack: **React (CRA/craco) + FastAPI + Motor/MongoDB + Kite Connect**.
 |------|-----|-------|
 | **Admin** | `POST /api/auth/login` with username/password (`ADMIN_USERNAME` / `ADMIN_PASSWORD` in `backend/.env`) | `X-Admin-Token` (session TTL; optionally expires at market close) |
 | **Remember me** | `POST /api/auth/remember-login` with 24h IP-bound device token | Issues a fresh admin session |
-| **Guest** | Public access must be ON; guest requests approval via Access Control | `X-Guest-Token` after admin Approve |
+| **Guest** | Public access ON; full name required. If **Require approval** is ON (default), Access Control must approve. If OFF, the name is stored and a guest session is minted immediately | `X-Guest-Token` |
 | **Blocked IP** | Admin can block/unblock IPs; blocked clients cannot enter as guest | — |
 
 Auth state: `GET /api/auth/state` (public flag, admin/guest flags, pending request count).
 
-Public toggle: `POST /api/auth/public-access` `{ open: true|false }` (admin). Guests are kicked when Public turns off. Access requests: list / approve / reject under `/api/auth/access-requests*`.
+Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_approval?: bool }` (admin). `require_approval` defaults **true** when unset. Guests are kicked when Public turns off. Access requests: list / approve / reject under `/api/auth/access-requests*`.
 
 ---
 

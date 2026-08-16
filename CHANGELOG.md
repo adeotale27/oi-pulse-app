@@ -1,5 +1,13 @@
 # Changelog
 
+## V6.32 — 2026-08-16
+
+Guest approval is optional. Hosting path is Atlas + one always-on VM (not Vercel for the API).
+
+- Public menu: **Require approval** toggle (default ON). When OFF, a guest full name is stored and they enter immediately; blocked IPs still cannot
+- Access Control still lists names. Public OFF still signs guests out
+- HOSTING.md: UI/API/DB comparison — Atlas + Linux VM + Caddy; Vercel is not for the Kite poller
+
 ## V6.31 — 2026-08-15
 
 Index Impact and Upcoming Index Event Risk show the same upcoming constituent calendar.

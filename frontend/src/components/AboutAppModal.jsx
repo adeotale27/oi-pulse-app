@@ -119,7 +119,7 @@ export default function AboutAppModal() {
               <h3 className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1">How it is configured</h3>
               <ul className="list-disc pl-4 space-y-1">
                 <li><b>Admin configuration</b> — indices, alert focus, poll seconds, market hours, Public/Admin page ticks.</li>
-                <li><b>Public switch</b> — guests on/off; Access Control approves names and blocked IPs.</li>
+                <li><b>Public switch</b> — guests on/off; Require approval (Public menu) queues names or lets them in after they register; Access Control lists names and blocked IPs.</li>
                 <li><b>Kite API</b> — publisher key + daily token for OI. Guests use Positions → Connect Zerodha.</li>
                 <li><b>Uploads</b> — constituents / events CSVs; last-upload stamps stay admin-only.</li>
               </ul>

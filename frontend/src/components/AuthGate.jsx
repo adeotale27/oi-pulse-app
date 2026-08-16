@@ -238,6 +238,27 @@ export default function AuthGate({ children }) {
     await refresh();
   };
 
+  // If admin turns Require approval OFF while a guest is waiting, admit them.
+  useEffect(() => {
+    if (state.loading || state.is_guest || state.is_admin) return undefined;
+    if (state.guest_require_approval !== false) return undefined;
+    if (!pendingRequest) return undefined;
+    const name = (pendingRequest.name || guestName || "").trim();
+    if (name.length < 2 || !name.includes(" ")) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.post("/auth/guest", { name });
+        if (cancelled) return;
+        if (data?.token) {
+          await admitGuest(data.token, data.name || name, data.expires_in_seconds, data.expires_at);
+        }
+      } catch (_) { /* stay on wait screen */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.guest_require_approval, pendingRequest?.id, state.is_guest, state.is_admin]);
+
   // Poll pending access request until admin decides.
   useEffect(() => {
     if (!pendingRequest?.id || state.is_guest || state.is_admin) return undefined;
@@ -411,7 +432,11 @@ export default function AuthGate({ children }) {
             <OiPulseLogo className="h-11 w-11" />
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Guest access</h2>
-              <p className="text-sm text-slate-500">Request read-only entry to the desk</p>
+              <p className="text-sm text-slate-500">
+                {state.guest_require_approval === false
+                  ? "Enter your full name to open the desk"
+                  : "Request read-only entry to the desk"}
+              </p>
             </div>
           </div>
 
@@ -491,13 +516,15 @@ export default function AuthGate({ children }) {
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   <UserPlus className="h-4 w-4" />
-                  {busy ? "Requesting…" : "Request access"}
+                  {busy ? "Entering…" : state.guest_require_approval === false ? "Enter desk" : "Request access"}
                 </span>
               </Button>
             )}
 
             <p className="text-center text-xs text-slate-500">
-              New guests need admin approval. Returning guests on this network enter immediately when the same name was approved before.
+              {state.guest_require_approval === false
+                ? "Your name is recorded. You get the guest pages immediately. Blocked networks cannot enter."
+                : "New guests need admin approval. Returning guests on this network enter immediately when the same name was approved before."}
             </p>
           </form>
 

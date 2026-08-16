@@ -47,6 +47,7 @@ export default function AdminControls({
       ? {
           is_admin: true,
           public_access_open: !!publicAccessOpen,
+          guest_require_approval: true,
           pending_access_count: 0,
         }
       : null
@@ -93,6 +94,7 @@ export default function AdminControls({
         const fallback = {
           is_admin: true,
           public_access_open: !!publicAccessOpenRef.current,
+          guest_require_approval: true,
           pending_access_count: 0,
         };
         setState((prev) => prev || fallback);
@@ -212,6 +214,7 @@ export default function AdminControls({
   }
 
   const publicOn = !!(state?.public_access_open);
+  const requireApproval = state?.guest_require_approval !== false;
   const pending = Number(state?.pending_access_count || 0);
 
   const togglePublic = async () => {
@@ -220,16 +223,36 @@ export default function AdminControls({
       const { data } = await api.post("/auth/public-access", {
         open: !publicOn,
       });
+      const queue = data.require_approval !== false;
       toast.success(
         data.open
           ? (data.expires_at
-              ? `Public access ON — guests must be approved. Expires ${new Date(data.expires_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} IST`
-              : "Public access ON — guests must be approved")
+              ? `Public access ON — ${queue ? "guests must be approved" : "guests enter after their name"}. Expires ${new Date(data.expires_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} IST`
+              : `Public access ON — ${queue ? "guests must be approved" : "guests enter after their name"}`)
           : "Public access OFF — all guests signed out"
       );
       await refresh();
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Toggle failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleRequireApproval = async (on) => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/auth/public-access", {
+        require_approval: on,
+      });
+      toast.success(
+        data.require_approval
+          ? "New guests wait for your approval"
+          : "New guests enter after entering their full name — still recorded in Access Control"
+      );
+      await refresh();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not update approval");
     } finally {
       setBusy(false);
     }
@@ -302,7 +325,22 @@ export default function AdminControls({
         <PopoverContent align="start" className="w-64 p-3 space-y-2" data-testid="admin-public-pages-menu">
           <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Show to guests</div>
           <p className="text-[11px] text-slate-600 leading-snug">
-            Public access ON/OFF stays on this row. These switches only choose extra pages.
+            Public access ON/OFF stays on this row. These switches only choose extra pages and whether names wait in the queue.
+          </p>
+          <label className="flex items-center justify-between gap-2 text-[12px] text-slate-800">
+            <span>Require approval</span>
+            <Switch
+              checked={requireApproval}
+              onCheckedChange={(on) => toggleRequireApproval(on)}
+              disabled={busy}
+              data-testid="admin-require-approval-toggle"
+              className="scale-90"
+            />
+          </label>
+          <p className="text-[10px] text-slate-500 leading-snug">
+            {requireApproval
+              ? "New names wait in Access Control. Returning approved guests on this network enter immediately."
+              : "New names are saved and enter guest pages immediately. Blocked IPs stay blocked."}
           </p>
           {[
             { id: "positions", label: "Positions · Connect Zerodha" },

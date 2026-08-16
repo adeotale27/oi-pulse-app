@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.32",
+    date: "2026-08-16",
+    user: [
+      "If the desk is open without an approval queue, enter your full name and you are in. The admin still records who you are.",
+    ],
+    admin: [
+      "Public ▸ Require approval (default on). Off = name saved + guest session immediately. Blocked IPs stay blocked. Recommended host: MongoDB Atlas + one always-on VM; do not put the poller on Vercel.",
+    ],
+  },
+  {
     version: "6.31",
     date: "2026-08-15",
     user: [

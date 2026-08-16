@@ -175,7 +175,7 @@ export default function AccessControlModal({ open, onOpenChange }) {
             <UserCheck className="w-4 h-4" /> Access Control
           </DialogTitle>
           <DialogDescription>
-            Approve guest requests, remove anyone currently in the app, and block IPs. Public Access must be ON to approve.
+            Approve guest requests (when Require approval is ON), remove anyone in the app, and block IPs. Public Access must be ON for guests.
           </DialogDescription>
         </DialogHeader>
 

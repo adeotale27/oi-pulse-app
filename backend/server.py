@@ -33,6 +33,7 @@ from market_hours import (
 )
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
+from guest_access import require_approval_flag
 import event_risk_service as ers
 import trade_journal as journal
 import desk_guide as desk_guide_svc
@@ -609,6 +610,11 @@ async def _get_public_access_state():
     return open_, expires_at_iso
 
 
+async def _get_guest_require_approval() -> bool:
+    doc = await db.settings.find_one({"_id": "public_access"}) or {}
+    return require_approval_flag(doc)
+
+
 async def _revoke_guest_sessions(reason: Optional[str] = None):
     update = {"revoked_at": datetime.now(timezone.utc).isoformat()}
     if reason:
@@ -693,6 +699,72 @@ async def _create_guest_session(name: str, ip: Optional[str], ua: str, *, reques
         "expires_in_seconds": _guest_seconds_remaining(expires_at, now),
         "expires_at": expires_iso,
         "started_at": now_iso,
+    }
+
+
+async def _admit_guest_immediate(
+    name: str,
+    ip: Optional[str],
+    ua: str,
+    *,
+    reason: str = "open_door",
+) -> dict:
+    """Register the guest name and mint a session without an admin click."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    req_id = None
+    if ip:
+        existing = await db.access_requests.find_one({"ip": ip, "status": "pending"})
+        if existing:
+            req_id = existing["_id"]
+    if not req_id:
+        req_id = secrets.token_urlsafe(16)
+        await db.access_requests.insert_one({
+            "_id": req_id,
+            "name": name,
+            "ip": ip,
+            "user_agent": ua,
+            "status": "pending",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        })
+    guest = await _create_guest_session(name, ip, ua, request_id=req_id)
+    await db.access_requests.update_one(
+        {"_id": req_id},
+        {"$set": {
+            "name": name,
+            "ip": ip,
+            "user_agent": ua,
+            "status": "approved",
+            "updated_at": now_iso,
+            "decided_at": now_iso,
+            "decided_reason": reason,
+            "guest_token": guest["token"],
+        }},
+    )
+    if ip:
+        try:
+            await db.access_requests.update_many(
+                {"ip": ip, "status": "pending", "_id": {"$ne": req_id}},
+                {"$set": {
+                    "status": "consumed",
+                    "decided_at": now_iso,
+                    "decided_reason": reason,
+                    "consumed_at": now_iso,
+                }},
+            )
+        except Exception:
+            pass
+    logger.info(f"ACCESS {reason}: name='{name}' ip={ip} id={req_id}")
+    return {
+        "ok": True,
+        "status": "approved",
+        "token": guest["token"],
+        "name": name,
+        "expires_in_seconds": guest["expires_in_seconds"],
+        "expires_at": guest.get("expires_at"),
+        "source": reason,
+        "request_id": req_id,
+        "message": "Welcome",
     }
 
 
@@ -2734,7 +2806,8 @@ class GuestSessionIn(BaseModel):
 async def auth_guest_start(payload: GuestSessionIn, request: Request):
     """Guest access entry.
 
-    • New IP/name → pending until admin approves.
+    • New IP/name → pending until admin approves (default), or immediate session
+      when admin turns off Require approval.
     • Returning guest (same IP + name already approved) → mint session immediately
       (no second approval), unless admin explicitly removed them (requires_reapproval).
     • Blocked IP → soft refusal message.
@@ -2752,6 +2825,7 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
         raise HTTPException(403, BLOCKED_IP_MESSAGE)
     ua = request.headers.get("user-agent", "")[:200]
     now_iso = datetime.now(timezone.utc).isoformat()
+    open_door = not await _get_guest_require_approval()
 
     # Returning guest: IP + name already known/approved → admit without queue.
     if ip:
@@ -2807,6 +2881,9 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
                     "source": "returning",
                     "message": "Welcome back",
                 }
+
+    if open_door:
+        return await _admit_guest_immediate(name, ip, ua, reason="open_door")
 
     # Explicit request: clear Exit opt-out only. Keep requires_reapproval until approve.
     if ip:
@@ -3117,28 +3194,45 @@ async def auth_state(request: Request):
         ),
         "can_remember_login": True,
         "pending_access_count": pending_access_count,
+        "guest_require_approval": await _get_guest_require_approval(),
         "ip_blocked": await _is_ip_blocked(ip) if not is_admin else False,
         "user_kite": await _auth_user_kite_payload(is_admin, guest_sess),
     }
 
 
 class PublicAccessIn(BaseModel):
-    open: bool
+    open: Optional[bool] = None
+    require_approval: Optional[bool] = None
 
 
 @api_router.post("/auth/public-access", dependencies=[])
 async def auth_toggle_public(payload: PublicAccessIn, request: Request):
     if not await _is_admin_request(request):
         raise HTTPException(401, "Admin only")
-    if payload.open:
+    if payload.open is None and payload.require_approval is None:
+        raise HTTPException(400, "Provide open and/or require_approval")
+    if payload.require_approval is not None:
+        await db.settings.update_one(
+            {"_id": "public_access"},
+            {"$set": {"require_approval": bool(payload.require_approval)}},
+            upsert=True,
+        )
+    open_now, expires_at_iso = await _get_public_access_state()
+    if payload.open is True:
         expires_utc = _next_market_close_ist()
         await db.settings.update_one(
             {"_id": "public_access"},
             {"$set": {"open": True, "expires_at": expires_utc.isoformat()}},
             upsert=True,
         )
-        return {"ok": True, "open": True, "expires_at": expires_utc.isoformat()}
-    else:
+        require_approval = await _get_guest_require_approval()
+        return {
+            "ok": True,
+            "open": True,
+            "expires_at": expires_utc.isoformat(),
+            "require_approval": require_approval,
+        }
+    if payload.open is False:
         await db.settings.update_one(
             {"_id": "public_access"},
             {"$set": {"open": False, "expires_at": None}},
@@ -3156,7 +3250,15 @@ async def auth_toggle_public(payload: PublicAccessIn, request: Request):
             )
         except Exception:
             pass
-        return {"ok": True, "open": False, "expires_at": None}
+        require_approval = await _get_guest_require_approval()
+        return {"ok": True, "open": False, "expires_at": None, "require_approval": require_approval}
+    require_approval = await _get_guest_require_approval()
+    return {
+        "ok": True,
+        "open": open_now,
+        "expires_at": expires_at_iso,
+        "require_approval": require_approval,
+    }
 
 
 @api_router.get("/auth/guests")

@@ -232,4 +232,24 @@ If OCI signup fights you for more than an evening, **stop and use Hetzner/DO**. 
 - [ ] Emergent poller stopped after cutover  
 - [ ] Backup restore drill  
 
+---
+
+## 10. Where to put UI, API, and Mongo (decision)
+
+This desk is **not** a brochure site. One FastAPI process polls Kite every 15–60s, writes snapshots, and holds WebSockets. Ranked for *this* product:
+
+| Piece | Use | Do not use |
+|-------|-----|------------|
+| **Database** | **MongoDB Atlas** (Mumbai if offered). Native Motor, backups, data survives a dead VM. M0 to try; paid if snapshot lag. | Oracle SQL / ATP, Firebase, Vercel KV, “Mongo API on Autonomous JSON” |
+| **Backend (FastAPI + poller)** | **Always-on Linux VM** (Hetzner CX22 / DigitalOcean $6–12 / Lightsail). systemd `uvicorn`. Same box can serve the React build. | **Vercel / Netlify / Cloudflare Workers** (sleep, 10s limits, no durable asyncio poll). Railway/Render **free** sleep. Two pollers on one DB. |
+| **Frontend (React)** | **Same VM + Caddy** (`/` static, `/api` and `/ws` reverse-proxy). Empty `REACT_APP_BACKEND_URL` → same origin. | Vercel-only *if* you still need the VM for API. Extra CORS + WS pain, no poller. |
+
+**Best default for you:** Atlas + one small Mumbai/Singapore-adjacent VM + your GoDaddy domain on Caddy. Cost is a few dollars for Atlas (or free M0) plus ~₹500–1500/month for the VM.
+
+**Vercel** is a good host for *static* UIs. It is a bad host for *this* backend. Putting only the UI on Vercel still requires that VM for Kite/Mongo/WS.
+
+**Emergent/k8s** is fine until you want your own domain and backups; then move Mongo to Atlas first, then the process.
+
+Full cutover steps: sections 6–9 above.
+
 Local dev is unchanged: [LOCAL_SETUP.md](./LOCAL_SETUP.md).

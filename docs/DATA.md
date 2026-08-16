@@ -13,7 +13,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `alerts` | Server-side OI reversal / pressure alerts |
 | `straddle_samples` | ATM straddle time series |
 | `credentials` | Encrypted Kite API key/secret/token vault (`_id: kite`) |
-| `settings` | Admin settings, public access flag, password hash, sidebar notes |
+| `settings` | Admin settings, public access flag (`open`, `require_approval`, expiry), password hash, sidebar notes |
 | `admin_sessions` | Short-lived admin bearer tokens |
 | `admin_remember_devices` | 24h IP-bound remember-me tokens |
 | `guest_sessions` | Guest tokens, revoke, IP |
