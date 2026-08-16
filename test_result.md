@@ -222,3 +222,53 @@ Please verify these endpoints/behaviors against a running backend:
         Backend is fully operational with restored production data. CORS hardening is working correctly
         (wildcard origin with NO credentials header, safe for header-token auth). Admin login now works
         with the env-configured password Q@w3e4r5.
+
+    - agent: main
+      message: |
+        CONTINUATION bug #2 — "ModuleNotFoundError: No module named 'twisted'" toast when saving Kite
+        credentials (POST /api/credentials). Root cause: kiteconnect 5.2.0's KiteTicker imports the
+        Twisted/Autobahn stack which was NOT installed in this env and was MISSING from requirements.txt.
+        Fix: added twisted==26.4.0, autobahn[twisted]==19.11.2, pyOpenSSL==26.4.0, service_identity==26.1.0
+        to backend/requirements.txt and installed them; `from kiteconnect import KiteConnect, KiteTicker`
+        now imports OK; backend restarted clean.
+        Verify (backend only):
+          1. POST /api/auth/login {"username":"Adeotale","password":"Q@w3e4r5"} -> 200 + admin token.
+          2. POST /api/credentials with header X-Admin-Token=<token> and body
+             {"api_key":"testkey123","access_token":"testtoken123"} -> the response MUST NOT contain
+             "ModuleNotFoundError" or "No module named 'twisted'". A 400 with a Kite auth-style message
+             (e.g. invalid api_key/token) is the EXPECTED/acceptable result — it proves the import is fixed.
+          3. GET /api/status -> 200. GET /api/oi/NIFTY -> 200 with restored snapshot.
+        DB note: striklenz DB fully restored (oi_snapshots 10448, straddle_samples 3529, nse_events 969,
+        alerts 17, etc.) — data IS loaded; do not reseed.
+
+
+    - agent: testing
+      message: |
+        BACKEND VERIFICATION COMPLETE (2026-08-17 01:05 UTC) — Kite credentials bug fix VERIFIED:
+        
+        Bug: POST /api/credentials returned "ModuleNotFoundError: No module named 'twisted'"
+        Fix: Installed twisted==26.4.0, autobahn[twisted]==19.11.2, pyOpenSSL==26.4.0, service_identity==26.1.0
+        
+        All 4 verification items PASSED:
+        
+        1. ✅ POST /api/auth/login with {"username":"Adeotale","password":"Q@w3e4r5"} → 200
+           - is_admin=true, token received: r6XId1A5ZMPwTbF0rMgl8SL8g3K1MP1ItReYfY9_Tzk
+        
+        2. ✅ POST /api/credentials with X-Admin-Token and dummy credentials → 400 (KEY CHECK PASSED)
+           - Request: {"api_key":"testkey123","access_token":"testtoken123"}
+           - Response: 400 with "TokenException: Incorrect `api_key` or `access_token`"
+           - NO "ModuleNotFoundError" or "twisted" in response
+           - This 400 Kite auth error is the EXPECTED and PASSING result (proves twisted import is fixed)
+        
+        3. ✅ GET /api/status → 200
+           - mode=offline, has_kite_credentials=false (expected, no real Kite keys in env)
+           - Market phase: pre_open, displaying last session (2026-08-14) from restored DB
+        
+        4. ✅ GET /api/oi/NIFTY → 200 with restored snapshot
+           - price=24366.0, atm=24350, 31 strikes, pcr=0.92
+           - Data from restored database (offline/last-session)
+        
+        Bug fix is VERIFIED. The twisted module import issue is resolved. KiteTicker dependencies
+        (twisted/autobahn/pyOpenSSL/service_identity) are now properly installed and the import
+        succeeds. The 400 response with Kite auth error confirms the code path executes correctly
+        without module import errors.
