@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.34",
+    date: "2026-08-17",
+    user: [
+      "On a phone, Today P&L stays in the header. Position cards show CE or PE next to NRML so the side is still clear when the name is cut off.",
+    ],
+    admin: [
+      "Header P&L also shows for guests when Positions is a public page. Same /positions total as desktop.",
+    ],
+  },
+  {
     version: "6.33",
     date: "2026-08-16",
     user: [

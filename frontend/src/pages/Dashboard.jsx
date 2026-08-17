@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Header from "@/components/Header";
+import Header, { HeaderTodayPnl } from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
 import TimeframePills from "@/components/TimeframePills";
@@ -2088,6 +2088,17 @@ export default function Dashboard() {
                   compact
                   testId="dashboard-info-tiles-mobile"
                 />
+              }
+              pnlSlot={
+                (authState.is_admin || (authState.is_guest && tabOn("positions"))) ? (
+                  <HeaderTodayPnl
+                    enabled
+                    compact
+                    status={status}
+                    pollMs={positionsPollMs}
+                    className="flex flex-col items-end leading-none px-0.5"
+                  />
+                ) : null
               }
             />
           </div>

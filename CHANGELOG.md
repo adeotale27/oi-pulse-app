@@ -1,5 +1,12 @@
 # Changelog
 
+## V6.34 — 2026-08-17
+
+Phone Positions: Today P&L stays in the header; CE/PE sits beside NRML when the name truncates.
+
+- Compact P&L chip on the phone header and sticky index row (admin, or guest when Positions is public)
+- Phone position cards show a CE or PE badge next to NRML so the side is visible when the title ends in “…”
+
 ## V6.33 — 2026-08-16
 
 The desk is branded **StrikLenz**. The display name is one line in repo-root `APP_NAME`.

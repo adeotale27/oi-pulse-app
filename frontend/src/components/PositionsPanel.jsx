@@ -72,6 +72,7 @@ import TradeJournalModal from "@/components/TradeJournalModal";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
 import { publishTodayPnl } from "@/lib/todayPnl";
+import { optionSide } from "@/lib/optionSide";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_MASK = "••••";
@@ -194,6 +195,27 @@ function ProductBadge({ product, exited }) {
       data-testid="product-badge"
     >
       {p}
+    </span>
+  );
+}
+
+/** CE / PE chip so phone cards stay readable when the title truncates. */
+function OptionSideBadge({ row, exited }) {
+  const side = optionSide(row);
+  if (!side) return null;
+  const call = side === "CE";
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${
+        exited
+          ? "bg-slate-100 text-slate-400 border border-slate-200/60"
+          : call
+            ? "bg-rose-100 text-rose-800 border border-rose-200/70"
+            : "bg-emerald-100 text-emerald-800 border border-emerald-200/70"
+      }`}
+      data-testid="option-side-badge"
+    >
+      {side}
     </span>
   );
 }
@@ -1585,6 +1607,7 @@ export default function PositionsPanel({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <ProductBadge product={r.product} exited={r.exited} />
+                    <OptionSideBadge row={r} exited={r.exited} />
                     {r.exited ? (
                       <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
                     ) : null}
@@ -1663,6 +1686,7 @@ export default function PositionsPanel({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <ProductBadge product={r.product} exited />
+                    <OptionSideBadge row={r} exited />
                     <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
                   </div>
                   <div className="text-base font-semibold truncate text-slate-400">{positionLabel(r)}</div>

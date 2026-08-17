@@ -31,8 +31,8 @@ const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_EVENT = "oi-positions-privacy";
 const PRIVACY_MASK = "••••";
 
-/** Admin-only Today P&L chip for the header (beside the clock). */
-function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
+/** Admin/guest Today P&L chip for the header (beside the clock). */
+function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className, compact = false }) {
   const cached = readTodayPnlCache();
   const [pnl, setPnl] = useState(() => cached?.total ?? null);
   const [openCount, setOpenCount] = useState(() => cached?.open ?? 0);
@@ -100,7 +100,10 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
     ? PRIVACY_MASK
     : waiting
       ? "—"
-      : `${positive ? "+" : ""}${pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      : `${positive ? "+" : ""}${pnl.toLocaleString(undefined, {
+          minimumFractionDigits: compact ? 0 : 2,
+          maximumFractionDigits: compact ? 0 : 2,
+        })}`;
 
   return (
     <div
@@ -111,9 +114,13 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className }) {
       data-testid="header-today-pnl"
       title={openCount > 0 ? `Today P&L · ${openCount} open` : "Today P&L (includes exited today)"}
     >
-      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold">Today P&L</span>
+      <span className={`${compact ? "text-[8px]" : "text-[9px]"} uppercase tracking-wider text-slate-500 font-semibold`}>
+        {compact ? "P&L" : "Today P&L"}
+      </span>
       <span
-        className={`font-mono-data text-sm font-bold tabular-nums ${
+        className={`font-mono-data font-bold tabular-nums ${
+          compact ? "text-xs" : "text-sm"
+        } ${
           privacy || waiting ? "text-slate-500" : positive ? "text-emerald-600" : "text-rose-600"
         }`}
       >
@@ -231,6 +238,7 @@ export default function Header({
   // Guests never see Admin/Kite. Prefer Dashboard's assumedAdmin; never promote guests.
   const isGuestUser = !!authState.is_guest && !assumedAdmin;
   const isAdmin = !isGuestUser && (devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest));
+  const showHeaderPnl = isAdmin || (isGuestUser && positionsPublic);
   if (devForce) {
     try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }
@@ -452,6 +460,15 @@ export default function Header({
             );
           })()}
         </div>
+        {showHeaderPnl && (
+          <HeaderTodayPnl
+            enabled
+            compact
+            status={status}
+            pollMs={positionsPollMs}
+            className="flex flex-col items-end leading-none px-1.5 shrink-0 border-l border-slate-200 dark:border-slate-700"
+          />
+        )}
         <div className="flex items-center gap-1 shrink-0 ml-auto">
           {deskAiChipMobile}
           {isAdmin && (
@@ -654,7 +671,7 @@ export default function Header({
           <div className="origin-right">
             <BigClock compact />
           </div>
-          {isAdmin && (
+          {showHeaderPnl && (
             <HeaderTodayPnl
               enabled
               status={status}
