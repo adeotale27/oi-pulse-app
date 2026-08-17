@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.38",
+    date: "2026-08-17",
+    user: [
+      "LIVE bar scrolls all enabled indices (same as phone). Switching index keeps OI fresh. Positions keep updating in other tabs only while you have live legs.",
+    ],
+    admin: [
+      "OI poller: max 2 concurrent snapshots so turning MCX on cannot stampede Kite/CPU.",
+    ],
+  },
+  {
     version: "6.37",
     date: "2026-08-17",
     user: [

@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.38 — 2026-08-17
+
+MCX poll load cap; keep OI and live Positions warm in the background; LIVE ticker on desktop.
+
+- Poller runs at most 2 Kite snapshots at once (MCX on no longer floods CPU)
+- OI `/change` warms every enabled index after the active one so Sensex is not stale on switch
+- Positions keep polling in other tabs only while there are live (non-zero qty) legs
+- LIVE rail marquee shows all enabled indices on desktop too
+
 ## V6.37 — 2026-08-17
 
 Phone chrome and Positions layout; MCX Gold quotes use the listed strike grid.

@@ -494,6 +494,7 @@ export default function PositionsPanel({
   });
   const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
   const loadGen = useRef(0);
+  const hasLiveRef = useRef(true);
 
   const setInsights = useCallback((open) => {
     setInsightsOpen(open);
@@ -579,6 +580,7 @@ export default function PositionsPanel({
         setErrorHard(false);
         setLastRefresh(new Date().toISOString());
         setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
+        hasLiveRef.current = false;
         return;
       }
       if (isGuest) {
@@ -606,8 +608,9 @@ export default function PositionsPanel({
           if (data.pnl_today) setPnlToday(data.pnl_today);
         }
         const total = data?.pnl_today?.total;
+        const open = next.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
+        hasLiveRef.current = open > 0;
         if (Number.isFinite(Number(total))) {
-          const open = next.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
           publishTodayPnl({ total: Number(total), open });
         }
         if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
@@ -663,7 +666,7 @@ export default function PositionsPanel({
       const catchupAt = journalPositionsCatchupMinute();
       if (trading && mins < catchupAt) {
         catchupDoneRef.current = false;
-        load();
+        if (hasLiveRef.current) load();
         return;
       }
       if (trading && mins >= catchupAt && !catchupDoneRef.current) {
