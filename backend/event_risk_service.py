@@ -575,17 +575,19 @@ async def save_events(db, rows: List[Dict[str, Any]], source_filename: str = "")
 
 
 async def fetch_upload_meta(db) -> Dict[str, Any]:
-    """Return last-upload stamps for all four Upload categories.
+    """Return last-upload stamps for Upload categories.
 
     Includes age_days + stale flags so Admin UI can advise refreshes:
       • NSE events → stale after 15 days
       • Constituents → stale after 30 days
+      • NSE holidays → stale after 365 days (annual circular)
     """
     keys = {
         "nifty50": ("constituents_meta_NIFTY", 30),
         "banknifty": ("constituents_meta_BANKNIFTY", 30),
         "sensex": ("constituents_meta_SENSEX", 30),
         "events": ("nse_events_meta", 15),
+        "holidays": ("nse_holidays_meta", 365),
     }
     now = datetime.now(timezone.utc)
     out: Dict[str, Any] = {}

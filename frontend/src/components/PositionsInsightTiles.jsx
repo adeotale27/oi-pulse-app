@@ -75,7 +75,7 @@ export default function PositionsInsightTiles({ nodes = {}, layoutAnchorId = nul
         : layoutAnchorId
           ? null
           : <div className="flex items-center justify-end">{layoutButton}</div>}
-      <div className="grid grid-flow-col auto-cols-[minmax(9.25rem,1fr)] gap-2 overflow-x-auto pb-0.5">
+      <div className="grid grid-cols-2 md:grid-flow-col md:auto-cols-[minmax(9.25rem,1fr)] md:grid-cols-none gap-1.5 md:gap-2 overflow-x-visible md:overflow-x-auto pb-0.5">
         {visible.map((id) => {
           return (
             <div
@@ -106,7 +106,7 @@ export default function PositionsInsightTiles({ nodes = {}, layoutAnchorId = nul
                   setOrder((prev) => reorderInsights(prev, from, id));
                 }
               }}
-              className={`relative min-h-[6.35rem] min-w-[9.25rem] ${dragging === id ? "opacity-40" : ""} ${
+              className={`relative h-full min-h-[4.75rem] md:min-h-[5.5rem] min-w-0 md:min-w-[9.25rem] ${dragging === id ? "opacity-40" : ""} ${
                 overId === id && dragging && dragging !== id ? "ring-2 ring-emerald-400 rounded-xl" : ""
               }`}
             >

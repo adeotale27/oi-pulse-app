@@ -16,12 +16,16 @@ Uploads are **not** kept as raw files on disk for runtime. After validation succ
 | Bank Nifty constituents | `index_constituents` | All docs with `index: "BANKNIFTY"` |
 | Sensex constituents | `index_constituents` | All docs with `index: "SENSEX"` |
 | NSE event calendar | `nse_events` | **Entire** collection |
+| NSE holiday circular | `nse_holidays` | **Entire** collection (runtime **merges by calendar year** over the built-in 2025–2026 list) |
 | Event upload meta | `settings` (`_id: "nse_events_meta"`) | Upserts `uploaded_at`, `source_filename`, `row_count` |
+| Holiday upload meta | `settings` (`_id: "nse_holidays_meta"`) | Same stamp fields |
 
 APIs:
 
 - `POST /api/admin/upload/constituents` — form fields: `upload_type` ∈ `nifty50` \| `banknifty` \| `sensex`, plus `file`
 - `POST /api/admin/upload/events` — form field: `file`
+- `POST /api/admin/upload/holidays` — form field: `file` (NSE trading-holiday circular)
+- `GET /api/holidays` — `{ source: "upload"|"builtin", holidays: [...] }`
 - `GET /api/constituents/{index}` — read back
 - `GET /api/events/{index}` — joined events for constituents of that index
 
@@ -124,11 +128,47 @@ Typical source: NSE Corporate Filings → Event Calendar export.
 
 ---
 
+## NSE holiday circular (Next Holiday tile)
+
+`POST /api/admin/upload/holidays` stores the file in Mongo `nse_holidays`. **Years present in the file replace that year’s built-in dates**; other years keep the shipped 2025–2026 circular. Polling hours (`market_hours`) and the Next Holiday tile both use the merged list.
+
+Until a file is uploaded, Next Holiday / market-closed days still come from the built-in list in `frontend/src/lib/holidays.js` and `backend/market_hours.py`.
+
+This is **not** the same as:
+
+- **Next Event** (RBI / FOMC / CPI / Budget) — curated in `frontend/src/lib/econCalendar.js`
+- **Index Impact / Index Risk** — NSE corporate event calendar joined to constituents (`nse_events`)
+
+### Required columns
+
+| Column (aliases accepted) | Required | Notes |
+|---------------------------|----------|-------|
+| DATE / Date / Holiday Date | Yes | `YYYY-MM-DD`, `DD-MM-YYYY`, `DD/MM/YYYY`, Excel dates |
+| NAME / Name / Holiday / Holiday Name | Yes | Shown on the Next Holiday tile |
+| SESSION / Session / Type | No | Blank = full holiday. `muhurat` = special live session |
+| OPEN / Open / Open IST | No | `HH:MM` IST. Default `13:30` when SESSION is muhurat |
+| CLOSE / Close / Close IST | No | `HH:MM` IST. Default `14:45` when SESSION is muhurat |
+
+### Example header
+
+```text
+DATE,NAME,SESSION,OPEN,CLOSE
+2027-01-26,Republic Day,,,
+2027-11-08,Diwali Laxmi Pujan,muhurat,13:30,19:15
+```
+
+Sample file in-repo: `backend/seed_data/nse_holidays.csv` (2026 circular). Copy that shape for 2027 when NSE publishes the next list.
+
+Typical source: NSE → Resources → Exchange communication → Holidays.
+
+---
+
 ### Freshness advisories (admin only)
 
 | Category | Stale after | Why |
 |----------|-------------|-----|
 | NSE events | **15 days** | 1-month calendar drifts; refresh mid-cycle so Index Risk does not miss results |
+| NSE holidays | **365 days** | Annual circular; upload when NSE publishes the next year |
 | Nifty 50 / Bank Nifty / Sensex constituents | **30 days** | Reconstitution / weightage drift |
 
 `GET /api/upload/meta` returns `age_days`, `stale_after_days`, and `stale` per key. The admin banner + toast nudge never shows to guests. Index Risk stamps highlight amber when stale.
@@ -148,6 +188,7 @@ Typical source: NSE Corporate Filings → Event Calendar export.
 | Bank Nifty | `constituents_meta_BANKNIFTY` |
 | Sensex | `constituents_meta_SENSEX` |
 | NSE events | `nse_events_meta` |
+| NSE holidays | `nse_holidays_meta` |
 
 Each doc stores `uploaded_at`, `source_filename`, `row_count`.
 

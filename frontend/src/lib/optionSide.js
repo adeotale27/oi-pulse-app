@@ -7,3 +7,9 @@ export function optionSide(row) {
   if (/(?:^|\d)CE$/.test(blob)) return "CE";
   return null;
 }
+
+export function optionSideLabel(side) {
+  if (side === "CE") return "CALL";
+  if (side === "PE") return "PUT";
+  return null;
+}

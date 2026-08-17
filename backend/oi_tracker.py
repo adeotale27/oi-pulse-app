@@ -302,6 +302,11 @@ class OITracker:
         except Exception as e:
             logger.warning("index registry bootstrap failed: %s", e)
         await self._pause_mcx_on_desk()
+        try:
+            from holiday_calendar import load_uploaded_holidays
+            await load_uploaded_holidays(self.db)
+        except Exception as e:
+            logger.warning("load uploaded NSE holidays failed: %s", e)
 
     async def _pause_mcx_on_desk(self):
         """Drop MCX majors from the live poll list while MCX_DESK_AVAILABLE is false."""

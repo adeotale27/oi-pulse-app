@@ -1,11 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { CalendarDays, PartyPopper } from "lucide-react";
-import { allHolidays, todayIST, formatDatePretty, daysBetweenIST } from "@/lib/holidays";
+import { allHolidays, todayIST, formatDatePretty, daysBetweenIST, subscribeHolidays } from "@/lib/holidays";
 import { upcomingEvents, eventBadgeTone } from "@/lib/econCalendar";
 
 export default function HolidaysTab() {
   const today = todayIST();
-  const holidays = useMemo(() => allHolidays(), []);
+  const [calTick, setCalTick] = useState(0);
+  useEffect(() => subscribeHolidays(() => setCalTick((n) => n + 1)), []);
+  const holidays = useMemo(() => allHolidays(), [calTick]);
   const events = useMemo(() => upcomingEvents(20), []);
 
   return (
@@ -14,7 +16,7 @@ export default function HolidaysTab() {
         <div className="flex items-center gap-2 mb-3">
           <CalendarDays className="w-4 h-4 text-slate-700" />
           <div className="text-sm font-semibold">NSE Trading Holidays</div>
-          <span className="text-[10px] text-slate-400">2025 & 2026</span>
+          <span className="text-[10px] text-slate-400">Official circular · upload next year in Admin Upload</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {holidays.map((h) => {

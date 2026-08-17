@@ -129,6 +129,7 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
           </DialogTitle>
           <DialogDescription>
             Huge OI shifts and a 15:15 IST session wrap (next-session calendar). We never send your book.
+            This is the reliable path when Chrome is closed on a phone — in-page banners stop once the tab is gone.
             Change any time — takes effect on the next alert.
             {status && !status.configured && (
               <span className="block mt-1 text-rose-600">

@@ -52,7 +52,9 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | POST | `/admin/refresh-day` | **Fresh Pull** — wipe snapshots, live-pull all **enabled** indices |
 | POST | `/admin/upload/constituents` | CSV/XLSX constituents (replaces index bucket on success — see [UPLOAD.md](./UPLOAD.md)) |
 | POST | `/admin/upload/events` | Event calendar upload (full replace on success) |
-| GET | `/upload/meta` | Last successful upload stamp per category (Nifty / Bank / Sensex / events) |
+| POST | `/admin/upload/holidays` | NSE holiday circular (year overlay on success) |
+| GET | `/holidays` | Uploaded holiday rows (`source` upload or builtin) |
+| GET | `/upload/meta` | Last successful upload stamp per category (Nifty / Bank / Sensex / events / holidays) |
 | GET | `/events/{index}` / `/constituents/{index}` | Stored event/constituent data (+ upload timestamps) |
 
 ### Auth

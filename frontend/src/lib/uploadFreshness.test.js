@@ -12,6 +12,7 @@ function assert(cond, msg) {
 const now = new Date("2026-08-09T12:00:00+05:30");
 
 assert(UPLOAD_FRESHNESS.events.staleAfterDays === 15, "events threshold");
+assert(UPLOAD_FRESHNESS.holidays.staleAfterDays === 365, "holidays threshold");
 assert(UPLOAD_FRESHNESS.nifty50.staleAfterDays === 30, "nifty threshold");
 
 assert(uploadAgeDays(null, now) === null, "null age");

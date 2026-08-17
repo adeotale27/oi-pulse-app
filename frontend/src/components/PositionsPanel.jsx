@@ -19,6 +19,7 @@ import {
   Eye,
   EyeOff,
   BookOpen,
+  Bell,
   Sparkles,
   X,
   GripHorizontal,
@@ -72,7 +73,7 @@ import TradeJournalModal from "@/components/TradeJournalModal";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
 import { publishTodayPnl } from "@/lib/todayPnl";
-import { optionSide } from "@/lib/optionSide";
+import { optionSide, optionSideLabel } from "@/lib/optionSide";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_MASK = "••••";
@@ -199,10 +200,11 @@ function ProductBadge({ product, exited }) {
   );
 }
 
-/** CE / PE chip so phone cards stay readable when the title truncates. */
+/** CALL / PUT chip beside NRML so the side is always visible. */
 function OptionSideBadge({ row, exited }) {
   const side = optionSide(row);
-  if (!side) return null;
+  const label = optionSideLabel(side);
+  if (!label) return null;
   const call = side === "CE";
   return (
     <span
@@ -215,8 +217,47 @@ function OptionSideBadge({ row, exited }) {
       }`}
       data-testid="option-side-badge"
     >
-      {side}
+      {label}
     </span>
+  );
+}
+
+function BookVerdictCard({ bookVerdict }) {
+  if (!bookVerdict) return null;
+  return (
+    <div
+      className={`rounded-md border px-3 py-2.5 space-y-1.5 ${
+        bookVerdict.band === "GOOD"
+          ? "border-emerald-300 bg-emerald-50/70"
+          : bookVerdict.band === "WEAK"
+            ? "border-rose-300 bg-rose-50/70"
+            : "border-amber-300 bg-amber-50/70"
+      }`}
+      data-testid="positions-book-verdict"
+    >
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="text-xs font-semibold text-slate-900">
+          Your book · {bookVerdict.headline}
+        </div>
+        <span
+          className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-sm border ${
+            bookVerdict.band === "GOOD"
+              ? "border-emerald-400 bg-emerald-100 text-emerald-900"
+              : bookVerdict.band === "WEAK"
+                ? "border-rose-400 bg-rose-100 text-rose-900"
+                : "border-amber-400 bg-amber-100 text-amber-950"
+          }`}
+          data-testid="book-verdict-band"
+        >
+          {bookVerdict.band} · {bookVerdict.score}
+        </span>
+      </div>
+      <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc pl-4">
+        {bookVerdict.bullets.map((b) => (
+          <li key={b}>{b}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -320,6 +361,7 @@ export default function PositionsPanel({
   canConfigureDeskAi = false,
   onDeskAiPositions,
   onDeskAiRadar,
+  onOpenTelegramPrefs,
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
@@ -356,7 +398,10 @@ export default function PositionsPanel({
   const [liveOpen, setLiveOpen] = useState(true);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
-      return localStorage.getItem("oiPositionsInsightsOpen") === "1";
+      const v = localStorage.getItem("oiPositionsInsightsOpen");
+      if (v === "1") return true;
+      if (v === "0") return false;
+      return typeof window !== "undefined" && window.innerWidth < 768;
     } catch {
       return false;
     }
@@ -1247,6 +1292,19 @@ export default function PositionsPanel({
             <LineChart className="w-3.5 h-3.5 mr-1" />
             Analyze
           </Button>
+          {typeof onOpenTelegramPrefs === "function" && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-sm bg-white shrink-0 text-sky-800 border-sky-200 hover:bg-sky-50 px-2.5 md:hidden"
+            onClick={onOpenTelegramPrefs}
+            data-testid="btn-positions-telegram-alerts"
+            title="Telegram still alerts when Chrome is closed"
+          >
+            <Bell className="w-3.5 h-3.5 mr-1" />
+            Alerts
+          </Button>
+          )}
           <div className="relative" ref={colsAnchorRef}>
             <Button
               size="sm"
@@ -1568,6 +1626,14 @@ export default function PositionsPanel({
         </div>
       )}
 
+      {typeof onOpenTelegramPrefs === "function" && (
+        <p className="md:hidden text-[11px] text-slate-600 rounded-md border border-sky-100 bg-sky-50/80 px-3 py-1.5" data-testid="positions-closed-chrome-alerts">
+          Phone alerts when Chrome is closed: use <b>Alerts</b> (Telegram). Browser banners only fire while this tab is open. iOS needs the site on the Home Screen for any browser push.
+        </p>
+      )}
+
+      <BookVerdictCard bookVerdict={bookVerdict} />
+
       {/* Mobile cards */}
       <div className="md:hidden space-y-2 pb-16" data-testid="positions-mobile-cards">
         {rows.length === 0 ? (
@@ -1863,7 +1929,10 @@ export default function PositionsPanel({
               >
                 {colOn("product") && (
                   <td className="px-2 py-1">
-                    <ProductBadge product={r.product} exited={r.exited} />
+                    <div className="inline-flex items-center gap-1 flex-wrap">
+                      <ProductBadge product={r.product} exited={r.exited} />
+                      <OptionSideBadge row={r} exited={r.exited} />
+                    </div>
                   </td>
                 )}
                 {colOn("instrument") && (
@@ -2033,42 +2102,6 @@ export default function PositionsPanel({
               ))}
             </div>
           </div>
-
-          {bookVerdict && (
-            <div
-              className={`rounded-md border px-3 py-2.5 space-y-1.5 ${
-                bookVerdict.band === "GOOD"
-                  ? "border-emerald-300 bg-emerald-50/70"
-                  : bookVerdict.band === "WEAK"
-                    ? "border-rose-300 bg-rose-50/70"
-                    : "border-amber-300 bg-amber-50/70"
-              }`}
-              data-testid="positions-book-verdict"
-            >
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="text-xs font-semibold text-slate-900">
-                  Your book · {bookVerdict.headline}
-                </div>
-                <span
-                  className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-sm border ${
-                    bookVerdict.band === "GOOD"
-                      ? "border-emerald-400 bg-emerald-100 text-emerald-900"
-                      : bookVerdict.band === "WEAK"
-                        ? "border-rose-400 bg-rose-100 text-rose-900"
-                        : "border-amber-400 bg-amber-100 text-amber-950"
-                  }`}
-                  data-testid="book-verdict-band"
-                >
-                  {bookVerdict.band} · {bookVerdict.score}
-                </span>
-              </div>
-              <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc pl-4">
-                {bookVerdict.bullets.map((b) => (
-                  <li key={b}>{b}</li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           {toggles.expiryDayMode && (expiryClock.active || pinWeeklyDate) && (
             <div
@@ -2470,15 +2503,15 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
         ? "border-amber-300 bg-amber-50 text-amber-950"
         : "border-slate-300 bg-white text-slate-900";
   return (
-    <div className={`rounded-xl border px-2.5 py-2 h-full flex flex-col gap-0.5 shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+    <div className={`rounded-xl border px-2.5 py-1.5 md:py-2 h-full min-h-[4.75rem] md:min-h-0 flex flex-col gap-0.5 shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
       <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1 pr-4 leading-none">
         {label}
         {tip && (
           <InfoTip title={label} size="xs">{tip}</InfoTip>
         )}
       </div>
-      <div className="text-[17px] font-semibold font-mono-data leading-none tabular-nums">{value}</div>
-      {hint && <div className="text-[10px] text-slate-600 leading-tight">{hint}</div>}
+      <div className="text-[15px] md:text-[17px] font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
+      {hint && <div className="text-[10px] text-slate-600 leading-tight line-clamp-2">{hint}</div>}
     </div>
   );
 }

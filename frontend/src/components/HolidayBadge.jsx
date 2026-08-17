@@ -1,7 +1,7 @@
-import { useMemo, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { CalendarClock, AlertTriangle, ChevronDown } from "lucide-react";
-import { nextHolidayInfo, upcomingHolidays, formatDatePretty } from "@/lib/holidays";
+import { nextHolidayInfo, upcomingHolidays, formatDatePretty, subscribeHolidays } from "@/lib/holidays";
 import usePortaledMenu from "@/hooks/usePortaledMenu";
 
 const MENU_WIDTH = 288;
@@ -10,8 +10,10 @@ const MENU_WIDTH = 288;
  * Next NSE holiday tile. Click opens an in-place dropdown — never switches dashboard tabs.
  */
 export default function HolidayBadge({ onOpenCalendar }) {
-  const info = useMemo(() => nextHolidayInfo(), []);
-  const upcoming = useMemo(() => upcomingHolidays(), []);
+  const [calTick, setCalTick] = useState(0);
+  useEffect(() => subscribeHolidays(() => setCalTick((n) => n + 1)), []);
+  const info = useMemo(() => nextHolidayInfo(), [calTick]);
+  const upcoming = useMemo(() => upcomingHolidays(), [calTick]);
   const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
   const panelRef = useRef(null);

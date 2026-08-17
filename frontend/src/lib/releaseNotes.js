@@ -4,6 +4,17 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.35",
+    date: "2026-08-17",
+    user: [
+      "Position cards always show CALL or PUT next to NRML. Phone insight tiles are smaller and the same size. Book score sits above the list.",
+      "When Chrome is closed on a phone, use Telegram for alerts — in-page banners only work while this tab is open.",
+    ],
+    admin: [
+      "Upload → NSE holiday circular (DATE, NAME, optional SESSION/OPEN/CLOSE). Years in the file replace that year’s built-in holidays. GET /holidays.",
+    ],
+  },
+  {
     version: "6.34",
     date: "2026-08-17",
     user: [

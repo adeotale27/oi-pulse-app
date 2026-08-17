@@ -1,7 +1,7 @@
-// NSE trading holidays (equity + derivatives) for 2025 & 2026.
-// Source: NSE Trading Holidays 2025 & 2026 official circulars.
-// If NSE releases a revised list, update `HOLIDAYS_RAW` below.
-// Format: { date: 'YYYY-MM-DD', name: 'Holiday name' }
+// NSE trading holidays (equity + derivatives).
+// Built-in 2025–2026 circulars below. Admin Upload → NSE holiday circular
+// overlays those years at runtime (GET /api/holidays).
+// Format: { date: 'YYYY-MM-DD', name: 'Holiday name', session?, open?, close? }
 
 import { getMarketOpenMinute } from "./marketTimes";
 
@@ -41,6 +41,42 @@ const HOLIDAYS_RAW = [
   { date: "2026-12-25", name: "Christmas" },
 ];
 
+/** Live calendar: built-in circulars, with uploaded years merged on top. */
+let HOLIDAYS = HOLIDAYS_RAW.slice();
+const _holidayListeners = new Set();
+
+function _normHoliday(row) {
+  const date = String(row?.date || "").slice(0, 10);
+  const name = String(row?.name || "Holiday");
+  const session = String(row?.session || "").toLowerCase() === "muhurat" ? "muhurat" : undefined;
+  const open = row?.open ? String(row.open) : undefined;
+  const close = row?.close ? String(row.close) : undefined;
+  return session ? { date, name, session, open, close } : { date, name };
+}
+
+/**
+ * Merge uploaded rows over built-in dates. Years present in the file replace
+ * that year’s built-in list; other years stay.
+ */
+export function applyUploadedHolidays(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    HOLIDAYS = HOLIDAYS_RAW.slice();
+  } else {
+    const uploaded = rows.map(_normHoliday).filter((h) => /^\d{4}-\d{2}-\d{2}$/.test(h.date));
+    const years = new Set(uploaded.map((h) => h.date.slice(0, 4)));
+    const kept = HOLIDAYS_RAW.filter((h) => !years.has(h.date.slice(0, 4)));
+    HOLIDAYS = kept.concat(uploaded).sort((a, b) => a.date.localeCompare(b.date));
+  }
+  _holidayListeners.forEach((fn) => {
+    try { fn(); } catch { /* noop */ }
+  });
+}
+
+export function subscribeHolidays(fn) {
+  _holidayListeners.add(fn);
+  return () => _holidayListeners.delete(fn);
+}
+
 function toIST(d) {
   // Return YYYY-MM-DD as it would be in Asia/Kolkata.
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -62,7 +98,7 @@ function weekdayIST(iso) {
 // Filter out Sat/Sun-only entries (they aren't NSE holidays since market is
 // already closed) and any dates in the past.
 export function upcomingHolidays(fromISO = toIST(new Date())) {
-  return HOLIDAYS_RAW
+  return HOLIDAYS
     .filter((h) => h.date >= fromISO)
     .filter((h) => {
       const wd = weekdayIST(h.date);
@@ -72,11 +108,11 @@ export function upcomingHolidays(fromISO = toIST(new Date())) {
 }
 
 export function allHolidays() {
-  return HOLIDAYS_RAW.slice().sort((a, b) => a.date.localeCompare(b.date));
+  return HOLIDAYS.slice().sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function isHoliday(iso) {
-  return HOLIDAYS_RAW.find((h) => h.date === iso) || null;
+  return HOLIDAYS.find((h) => h.date === iso) || null;
 }
 
 /** Safe calendar label. `holidayObj && !special` is boolean `true` in JS — never call `.replace` on that. */
@@ -103,7 +139,7 @@ export function isTradingDayIST(iso = toIST(new Date())) {
   return !isHoliday(iso);
 }
 
-/** Diwali Laxmi Pujan muhurat (and any HOLIDAYS_RAW row with session: "muhurat"). */
+/** Diwali Laxmi Pujan muhurat (and any holiday row with session: "muhurat"). */
 export function isSpecialSessionIST(iso = toIST(new Date())) {
   const hol = isHoliday(iso);
   return Boolean(hol && hol.session === "muhurat");

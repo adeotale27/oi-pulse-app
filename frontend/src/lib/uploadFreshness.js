@@ -13,6 +13,14 @@ export const UPLOAD_FRESHNESS = {
     advice:
       "Refresh the 1-month NSE event calendar about every 15 days so Index Risk does not miss mid-month results / board meetings.",
   },
+  holidays: {
+    key: "holidays",
+    label: "NSE holiday circular",
+    shortLabel: "NSE holidays",
+    staleAfterDays: 365,
+    advice:
+      "Upload next year’s NSE trading-holiday circular when NSE publishes it. Years in the file replace that year’s built-in dates.",
+  },
   nifty50: {
     key: "nifty50",
     label: "Nifty 50 constituents",
@@ -36,7 +44,7 @@ export const UPLOAD_FRESHNESS = {
   },
 };
 
-export const UPLOAD_ORDER = ["nifty50", "banknifty", "sensex", "events"];
+export const UPLOAD_ORDER = ["nifty50", "banknifty", "sensex", "events", "holidays"];
 
 export function uploadAgeDays(uploadedAt, now = new Date()) {
   if (!uploadedAt) return null;
