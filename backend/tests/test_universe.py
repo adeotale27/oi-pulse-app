@@ -8,7 +8,12 @@ from universe import (
     fno_name_alternation,
     catalog_public,
     nearest_fut_quote_symbol,
+    set_mcx_desk_available,
 )
+
+
+def setup_function():
+    set_mcx_desk_available(False)
 
 
 def test_heatmap_ids_include_mcx_majors():
@@ -25,11 +30,21 @@ def test_heatmap_ids_include_mcx_majors():
 
 
 def test_mcx_desk_paused_strips_majors():
-    from universe import MCX_DESK_AVAILABLE, without_paused_mcx, is_paused_mcx
+    from universe import (
+        MCX_DESK_AVAILABLE,
+        without_paused_mcx,
+        is_paused_mcx,
+        set_mcx_desk_available,
+    )
+    set_mcx_desk_available(False)
     assert MCX_DESK_AVAILABLE is False
     assert is_paused_mcx("GOLD") is True
     assert is_paused_mcx("NIFTY") is False
     assert without_paused_mcx(["NIFTY", "GOLD", "BANKNIFTY", "CRUDEOIL"]) == ["NIFTY", "BANKNIFTY"]
+    set_mcx_desk_available(True)
+    assert is_paused_mcx("GOLD") is False
+    assert without_paused_mcx(["NIFTY", "GOLD"]) == ["NIFTY", "GOLD"]
+    set_mcx_desk_available(False)
     for uid in MCX_MAJOR_IDS:
         assert is_pollable(uid) is True
         assert uid not in DESK_IDS

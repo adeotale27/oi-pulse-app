@@ -222,11 +222,11 @@ function OptionSideBadge({ row, exited }) {
   );
 }
 
-function BookVerdictCard({ bookVerdict }) {
+function BookVerdictCard({ bookVerdict, place = "above", onMove, collapsed, onToggleCollapsed }) {
   if (!bookVerdict) return null;
   return (
     <div
-      className={`rounded-md border px-3 py-2.5 space-y-1.5 ${
+      className={`rounded-md border px-3 py-2 space-y-1.5 ${
         bookVerdict.band === "GOOD"
           ? "border-emerald-300 bg-emerald-50/70"
           : bookVerdict.band === "WEAK"
@@ -234,29 +234,50 @@ function BookVerdictCard({ bookVerdict }) {
             : "border-amber-300 bg-amber-50/70"
       }`}
       data-testid="positions-book-verdict"
+      data-place={place}
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-xs font-semibold text-slate-900">
-          Your book · {bookVerdict.headline}
-        </div>
-        <span
-          className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-sm border ${
-            bookVerdict.band === "GOOD"
-              ? "border-emerald-400 bg-emerald-100 text-emerald-900"
-              : bookVerdict.band === "WEAK"
-                ? "border-rose-400 bg-rose-100 text-rose-900"
-                : "border-amber-400 bg-amber-100 text-amber-950"
-          }`}
-          data-testid="book-verdict-band"
+        <button
+          type="button"
+          className="text-xs font-semibold text-slate-900 inline-flex items-center gap-1 min-w-0 text-left"
+          onClick={onToggleCollapsed}
+          data-testid="btn-book-verdict-collapse"
+          aria-expanded={!collapsed}
         >
-          {bookVerdict.band} · {bookVerdict.score}
-        </span>
+          {collapsed ? <ChevronRight className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
+          <span className="truncate">Your book · {bookVerdict.headline}</span>
+        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span
+            className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-sm border ${
+              bookVerdict.band === "GOOD"
+                ? "border-emerald-400 bg-emerald-100 text-emerald-900"
+                : bookVerdict.band === "WEAK"
+                  ? "border-rose-400 bg-rose-100 text-rose-900"
+                  : "border-amber-400 bg-amber-100 text-amber-950"
+            }`}
+            data-testid="book-verdict-band"
+          >
+            {bookVerdict.band} · {bookVerdict.score}
+          </span>
+          <button
+            type="button"
+            className="text-[10px] font-semibold text-slate-600 border border-slate-200 rounded-sm px-1.5 py-0.5 hover:bg-white"
+            onClick={() => onMove?.(place === "above" ? "below" : "above")}
+            data-testid="btn-book-verdict-move"
+            title={place === "above" ? "Move below the position list" : "Move above the position list"}
+          >
+            {place === "above" ? "Move below list" : "Move above list"}
+          </button>
+        </div>
       </div>
-      <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc pl-4">
-        {bookVerdict.bullets.map((b) => (
-          <li key={b}>{b}</li>
-        ))}
-      </ul>
+      {!collapsed && (
+        <ul className="text-[11px] text-slate-700 space-y-0.5 list-disc pl-4">
+          {bookVerdict.bullets.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -406,6 +427,22 @@ export default function PositionsPanel({
       return false;
     }
   });
+  const [bookCollapsed, setBookCollapsed] = useState(() => {
+    try {
+      const v = localStorage.getItem("oiBookVerdictCollapsed");
+      if (v === "0") return false;
+      return true;
+    } catch {
+      return true;
+    }
+  });
+  const [bookPlace, setBookPlace] = useState(() => {
+    try {
+      return localStorage.getItem("oiBookVerdictPlace") === "below" ? "below" : "above";
+    } catch {
+      return "above";
+    }
+  });
   const [deskGuide, setDeskGuide] = useState(null);
   const [outside, setOutside] = useState(null);
   const [radarAiH, setRadarAiH] = useState(() => {
@@ -437,6 +474,15 @@ export default function PositionsPanel({
     } catch {
       /* noop */
     }
+  }, []);
+
+  const setBookCollapsedPersist = useCallback((on) => {
+    setBookCollapsed(on);
+    try { localStorage.setItem("oiBookVerdictCollapsed", on ? "1" : "0"); } catch { /* noop */ }
+  }, []);
+  const setBookPlacePersist = useCallback((place) => {
+    setBookPlace(place);
+    try { localStorage.setItem("oiBookVerdictPlace", place); } catch { /* noop */ }
   }, []);
 
   const setToggle = useCallback((key, on) => {
@@ -1632,7 +1678,15 @@ export default function PositionsPanel({
         </p>
       )}
 
-      <BookVerdictCard bookVerdict={bookVerdict} />
+      {bookPlace === "above" && (
+        <BookVerdictCard
+          bookVerdict={bookVerdict}
+          place={bookPlace}
+          collapsed={bookCollapsed}
+          onToggleCollapsed={() => setBookCollapsedPersist(!bookCollapsed)}
+          onMove={setBookPlacePersist}
+        />
+      )}
 
       {/* Mobile cards */}
       <div className="md:hidden space-y-2 pb-16" data-testid="positions-mobile-cards">
@@ -2052,6 +2106,16 @@ export default function PositionsPanel({
           </tbody>
         </table>
       </div>
+
+      {bookPlace === "below" && (
+        <BookVerdictCard
+          bookVerdict={bookVerdict}
+          place={bookPlace}
+          collapsed={bookCollapsed}
+          onToggleCollapsed={() => setBookCollapsedPersist(!bookCollapsed)}
+          onMove={setBookPlacePersist}
+        />
+      )}
 
       <div className="flex items-center justify-between gap-2">
         <button

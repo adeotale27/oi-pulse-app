@@ -459,21 +459,98 @@ def parse_events(df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], List[str]]:
 # =====================================================================
 # Joining logic — events for the given index
 # =====================================================================
+def _symbols_close(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    # Long prefixes only — HDFC vs HDFCBANK must not collide.
+    if min(len(a), len(b)) >= 8 and (a.startswith(b) or b.startswith(a)):
+        return True
+    return False
+
+
+def _names_close(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if min(len(a), len(b)) >= 10 and (a in b or b in a):
+        return True
+    return False
+
+
+def match_event_constituent(
+    ev: Dict[str, Any],
+    constituents: List[Dict[str, Any]],
+    by_symbol: Dict[str, Dict[str, Any]],
+    by_name: Dict[str, Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Join an NSE calendar row to an index constituent (symbol, then name, then close)."""
+    sym = ev.get("symbol") or ""
+    if sym and sym in by_symbol:
+        return by_symbol[sym]
+    name = ev.get("normalized_name") or ""
+    if name and name in by_name:
+        return by_name[name]
+    if name:
+        for c in constituents:
+            if _names_close(name, c.get("normalized_name") or ""):
+                return c
+    if sym:
+        for c in constituents:
+            if _symbols_close(sym, c.get("symbol") or ""):
+                return c
+    return None
+
+
+def join_coverage(
+    constituents: List[Dict[str, Any]],
+    events: List[Dict[str, Any]],
+    joined: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """How well the NSE events file matched this index's constituent list."""
+    matched_ids = {r.get("id") for r in joined}
+    matched_syms = {r.get("symbol") for r in joined if r.get("symbol")}
+    near: List[Dict[str, Any]] = []
+    for ev in events:
+        if ev.get("id") in matched_ids:
+            continue
+        # Already skipped as non-constituent; keep a near-miss if names/symbols are close but not joined.
+        # (If match_event_constituent worked, it would be in joined.)
+        es = ev.get("symbol") or ""
+        en = ev.get("normalized_name") or ""
+        hint = None
+        for c in constituents:
+            cs = c.get("symbol") or ""
+            cn = c.get("normalized_name") or ""
+            if es and cs and es[:4] == cs[:4] and len(es) >= 4 and len(cs) >= 4:
+                hint = {"event_symbol": es or None, "event_company": ev.get("company_name"), "constituent": cs, "reason": "symbol-prefix"}
+                break
+            if en and cn and (en[:8] == cn[:8]) and min(len(en), len(cn)) >= 8:
+                hint = {"event_symbol": es or None, "event_company": ev.get("company_name"), "constituent": cs, "reason": "name-prefix"}
+                break
+        if hint and len(near) < 12:
+            near.append(hint)
+    return {
+        "constituent_count": len(constituents),
+        "events_in_file": len(events),
+        "matched_rows": len(joined),
+        "constituents_with_event": len(matched_syms),
+        "near_misses": near,
+    }
+
+
 def build_index_event_dataset(
     constituents: List[Dict[str, Any]],
     events: List[Dict[str, Any]],
     index_code: str,
 ) -> List[Dict[str, Any]]:
     """
-    Join events onto constituents by symbol first, then normalized company name.
+    Join events onto constituents by symbol first, then normalized company name,
+    then a conservative close-match (long prefix / contained name).
     Skip events whose company is NOT in the index's constituent list.
-
-    Returns a list sorted by:
-      1. event priority (Quarterly Results > Board Meeting > ...)
-      2. days_remaining ascending
-      3. weightage descending
     """
-    # Build lookup by symbol and by normalized name (only for the given index).
     by_symbol = {c["symbol"]: c for c in constituents if c.get("symbol")}
     by_name = {c["normalized_name"]: c for c in constituents if c.get("normalized_name")}
 
@@ -481,15 +558,9 @@ def build_index_event_dataset(
     out: List[Dict[str, Any]] = []
 
     for ev in events:
-        match = None
-        sym = ev.get("symbol") or ""
-        if sym and sym in by_symbol:
-            match = by_symbol[sym]
-        elif ev.get("normalized_name") and ev["normalized_name"] in by_name:
-            match = by_name[ev["normalized_name"]]
+        match = match_event_constituent(ev, constituents, by_symbol, by_name)
 
         if not match:
-            # Company not part of this index — skip.
             continue
 
         try:
@@ -618,9 +689,10 @@ async def fetch_upload_meta(db) -> Dict[str, Any]:
     return out
 
 
-async def fetch_events_for_index(db, index_code: str) -> List[Dict[str, Any]]:
+async def fetch_events_for_index(db, index_code: str):
     constituents = await db.index_constituents.find(
         {"index": index_code}, {"_id": 0}
     ).to_list(length=500)
     events = await db.nse_events.find({}, {"_id": 0}).to_list(length=5000)
-    return build_index_event_dataset(constituents, events, index_code)
+    joined = build_index_event_dataset(constituents, events, index_code)
+    return joined, join_coverage(constituents, events, joined)

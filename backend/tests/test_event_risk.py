@@ -119,3 +119,19 @@ def test_past_events_stay_in_payload_with_negative_days(monkeypatch):
     assert by_id["bm"]["days_remaining"] == 1
     # Type priority first; within a type, past dates sort after upcoming.
     assert [r["id"] for r in rows] == ["soon", "old", "bm"]
+
+
+def test_join_contained_company_name():
+    constituents = [_c("HINDUNILVR", "Hindustan Unilever Limited", 2.0)]
+    events = [_e("1", "", "Hindustan Unilever", "Dividend", "2026-09-01")]
+    rows = build_index_event_dataset(constituents, events, "NIFTY")
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "HINDUNILVR"
+
+
+def test_join_does_not_glue_hdfc_to_hdfcbank():
+    constituents = [_c("HDFCBANK", "HDFC Bank Limited", 12.0)]
+    events = [_e("1", "HDFC", "Housing Development Finance Corporation", "AGM", "2026-09-01")]
+    rows = build_index_event_dataset(constituents, events, "NIFTY")
+    assert rows == []
+

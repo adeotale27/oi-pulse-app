@@ -24,6 +24,10 @@ assert.deepEqual(
   normalizeEnabledIndices(["BANKNIFTY", "GOLD", "nifty", "BANK", "FINNIFTY"]),
   ["NIFTY", "BANKNIFTY", "FINNIFTY"],
 );
+assert.deepEqual(
+  normalizeEnabledIndices(["BANKNIFTY", "GOLD", "nifty"], true),
+  ["NIFTY", "BANKNIFTY", "GOLD"],
+);
 assert.equal(matchSymbolPrefix("BANKNIFTY26AUG52000PE"), "BANKNIFTY");
 assert.equal(matchSymbolPrefix("CRUDEOIL26AUG6500CE"), "CRUDEOIL");
 assert.equal(matchSymbolPrefix("NIFTY26AUG24800CE"), "NIFTY");

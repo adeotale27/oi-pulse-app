@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { api, apiDetail, INDEX_ADMIN_TIMEOUT_MS } from "@/lib/api";
 import { toast } from "sonner";
 import { Layers, Plus, RefreshCw, Search } from "lucide-react";
-import { MCX_DESK_AVAILABLE, isMcxMajorId } from "@/lib/universe";
+import { Switch } from "@/components/ui/switch";
+import { isMcxMajorId } from "@/lib/universe";
 
 const MCX_MAJORS = [
   { id: "CRUDEOIL", label: "Crude oil" },
@@ -33,11 +34,13 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
   const [syncedAt, setSyncedAt] = useState(null);
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [mcxOn, setMcxOn] = useState(false);
 
   const loadList = useCallback(async () => {
     const { data } = await api.get("/admin/indices");
     setList(data.indices || []);
     setSyncedAt(data.synced_at || null);
+    setMcxOn(!!data.mcx_desk_on);
   }, []);
 
   useEffect(() => {
@@ -121,6 +124,21 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
     }
   };
 
+  const toggleMcxDesk = async (on) => {
+    setBusy(true);
+    try {
+      await api.post("/settings", { mcx_desk_on: !!on });
+      setMcxOn(!!on);
+      toast.success(on ? "MCX desk on — Enable Gold/Crude etc. below to poll that name only" : "MCX desk off — no commodity OI");
+      await loadList();
+      onChanged?.();
+    } catch (e) {
+      toast.error(apiDetail(e, "Could not save MCX toggle"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const caps = inspect?.capabilities || {};
 
   return (
@@ -133,12 +151,25 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
           </DialogTitle>
           <DialogDescription className="text-[11px] text-slate-500">
             Discover Kite F&amp;O names, then Enable or Disable. NIFTY / SENSEX / BANKNIFTY stay on the desk.
-            {MCX_DESK_AVAILABLE
-              ? " MCX majors: CRUDEOIL, GOLD, SILVER, NATURALGAS (not the minis). ATM from nearest FUT."
-              : " MCX majors are paused and hidden from this desk."}
+            {mcxOn
+              ? " MCX on: Enable Crude/Gold/Silver/NG to poll that name only."
+              : " MCX off: no commodity OI, quotes, or chips."}
             {syncedAt ? ` Dump ${new Date(syncedAt).toLocaleString("en-IN")}` : ""}
           </DialogDescription>
         </DialogHeader>
+
+        <div className="px-4 py-2 flex items-center justify-between gap-3 border-b border-slate-100" data-testid="mcx-desk-toggle-row">
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-slate-800">MCX commodities</div>
+            <div className="text-[11px] text-slate-500">Master switch. Then Enable Gold / Crude / etc.</div>
+          </div>
+          <Switch
+            checked={mcxOn}
+            disabled={busy}
+            onCheckedChange={toggleMcxDesk}
+            data-testid="mcx-desk-toggle"
+          />
+        </div>
 
         <div className="px-4 py-2 flex gap-2 border-b border-slate-100">
           <div className="relative flex-1 min-w-0">
@@ -164,7 +195,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
           <div>
             <div className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mb-1">On the desk</div>
             <div className="space-y-1">
-              {list.filter((idx) => MCX_DESK_AVAILABLE || !isMcxMajorId(idx.id)).map((idx) => (
+              {list.filter((idx) => mcxOn || !isMcxMajorId(idx.id)).map((idx) => (
                 <div
                   key={idx.id}
                   className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
@@ -198,7 +229,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
             </div>
             {results.length === 0 ? (
               <div className="space-y-2">
-                {MCX_DESK_AVAILABLE ? (
+                {mcxOn ? (
                   <>
                 <p className="text-[12px] text-slate-400">Search Kite names, or Enable an MCX major:</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -217,12 +248,12 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
                 </div>
                   </>
                 ) : (
-                  <p className="text-[12px] text-slate-400">Search a Kite F&amp;O name (indices and stocks). Commodity MCX majors are paused.</p>
+                  <p className="text-[12px] text-slate-400">Search a Kite F&amp;O name. Turn MCX on above to add Gold / Crude / Silver / NG.</p>
                 )}
               </div>
             ) : (
               <div className="space-y-1">
-                {results.filter((r) => MCX_DESK_AVAILABLE || !isMcxMajorId(r.id)).map((r) => (
+                {results.filter((r) => mcxOn || !isMcxMajorId(r.id)).map((r) => (
                   <div
                     key={r.id}
                     className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5"

@@ -130,6 +130,7 @@ export default function EventRiskWidget({
   allowDismiss = true,
 }) {
   const [events, setEvents] = useState([]);
+  const [joinInfo, setJoinInfo] = useState(null);
   const [uploadMeta, setUploadMeta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
@@ -145,6 +146,7 @@ export default function EventRiskWidget({
       .then((r) => {
         if (cancelled) return;
         setEvents(r.data?.events || []);
+        setJoinInfo(r.data?.join || null);
         if (isAdmin && r.data.upload_meta) setUploadMeta(r.data.upload_meta);
       })
       .catch((e) => { if (!cancelled) setErr(e?.response?.data?.detail || e.message || "Failed to load events"); })
@@ -260,6 +262,19 @@ export default function EventRiskWidget({
           ) : null}
         </div>
       </div>
+
+      {joinInfo && joinInfo.constituent_count > 0 && (
+        <div
+          className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-300"
+          data-testid="event-join-coverage"
+        >
+          Events file matched {joinInfo.constituents_with_event}/{joinInfo.constituent_count} {label} names
+          {joinInfo.near_misses?.length
+            ? ` · ${joinInfo.near_misses.length} NSE row(s) look close but did not join (${joinInfo.near_misses.slice(0, 4).map((n) => n.event_symbol || n.event_company).join(", ")})`
+            : " · no leftover close-matches"}
+          .
+        </div>
+      )}
 
       {/* Last-upload stamps only when a file is stale / never uploaded */}
       {isAdmin && stampsNeedAttention && (

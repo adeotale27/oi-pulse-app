@@ -37,6 +37,7 @@ node frontend/src/lib/appVersion.test.js
 node frontend/src/lib/optionSide.test.js
 node frontend/src/lib/indexEventRisk.test.js
 node frontend/src/lib/holidays.test.js
+node frontend/src/lib/holidayReminder.test.js
 node frontend/src/lib/journalYearHeat.test.js
 ```
 

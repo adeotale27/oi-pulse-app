@@ -15,6 +15,7 @@ Kite lists commodity F&O under MCX `name` values **CRUDEOIL**, **GOLD**, **SILVE
 ## Consequences
 
 - Enabling Crude/Gold/Silver/NG is an admin tick, not a surprise poll of four extra chains.
-- **V6.29:** live desk sets `MCX_DESK_AVAILABLE = False` so majors are stripped from `enabled_indices`, hidden in Index management, and Enable is rejected until the flag is restored.
+- **V6.36:** Admin **MCX desk** toggle (`mcx_desk_on`). Off → majors are not polled or shown. On → Enable each commodity in Index management; only those names poll. Enable ticks are kept while the master switch is off.
+- **V6.29:** live desk defaulted the flag off (`MCX_DESK_AVAILABLE = False`) so majors stayed stripped until the toggle existed.
 - NSE `is_market_open()` is unchanged. `index_in_session(id)` is the per-name clock. `is_oi_session_open(enabled_indices=…)` is true if any enabled name is open.
 - Mini contracts stay searchable by Kite name; they are not auto-wired.
