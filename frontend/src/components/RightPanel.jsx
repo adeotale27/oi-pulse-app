@@ -153,6 +153,7 @@ export default function RightPanel({
               activeIndex={activeIndex}
               canClear={canClearAlerts}
               embed
+              onOpenTelegramPrefs={onOpenTelegramPrefs}
             />
           )}
           {selectedView === "strike" && (

@@ -2,6 +2,8 @@ from universe import (
     DESK_IDS,
     MCX_MAJOR_IDS,
     desk_index_config,
+    infer_strike_step,
+    is_mcx_mini_contract,
     is_pollable,
     normalize_id,
     order_desk,
@@ -65,6 +67,31 @@ def test_nearest_fut_picks_unexpired():
     assert nearest_fut_quote_symbol(rows, "CRUDEOIL", today=date(2026, 8, 15)) == "MCX:CRUDEOIL26AUGFUT"
     assert nearest_fut_quote_symbol(rows, "CRUDEOIL", today=date(2026, 8, 20)) == "MCX:CRUDEOIL26SEPFUT"
     assert nearest_fut_quote_symbol(rows, "CRUDE", today=date(2026, 8, 15)) == "MCX:CRUDEOIL26AUGFUT"
+
+
+def test_nearest_fut_majors_skip_minis():
+    from datetime import date
+    gold = [
+        {"name": "GOLD", "instrument_type": "FUT", "expiry": "2026-08-05", "exchange": "MCX", "tradingsymbol": "GOLD26AUGFUT"},
+        {"name": "GOLD", "instrument_type": "FUT", "expiry": "2026-10-05", "exchange": "MCX", "tradingsymbol": "GOLD26OCTFUT"},
+        {"name": "GOLDM", "instrument_type": "FUT", "expiry": "2026-08-05", "exchange": "MCX", "tradingsymbol": "GOLDM26AUGFUT"},
+        {"name": "GOLD", "instrument_type": "FUT", "expiry": "2026-08-05", "exchange": "MCX", "tradingsymbol": "GOLDM26AUGFUT"},
+    ]
+    silver = [
+        {"name": "SILVER", "instrument_type": "FUT", "expiry": "2026-09-04", "exchange": "MCX", "tradingsymbol": "SILVER26SEPFUT"},
+        {"name": "SILVERM", "instrument_type": "FUT", "expiry": "2026-08-28", "exchange": "MCX", "tradingsymbol": "SILVERM26AUGFUT"},
+    ]
+    assert nearest_fut_quote_symbol(gold, "GOLD", today=date(2026, 8, 15)) == "MCX:GOLD26OCTFUT"
+    assert nearest_fut_quote_symbol(silver, "SILVER", today=date(2026, 8, 15)) == "MCX:SILVER26SEPFUT"
+    assert is_mcx_mini_contract("GOLD", "GOLDM26AUGFUT") is True
+    assert is_mcx_mini_contract("GOLD", "GOLD26OCTFUT") is False
+    assert is_mcx_mini_contract("CRUDEOIL", "CRUDEOILM26AUGFUT") is True
+    assert infer_strike_step([72000, 72200, 72400, 72600], 100) == 200
+    cfg = catalog_public()
+    by_id = {r["id"]: r for r in cfg}
+    assert by_id["GOLD"]["kite_name"] == "GOLD"
+    assert by_id["SILVER"]["kite_name"] == "SILVER"
+    assert by_id["CRUDEOIL"]["kite_name"] == "CRUDEOIL"
 
 
 def test_order_desk_drops_future():

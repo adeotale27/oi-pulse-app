@@ -10,6 +10,7 @@ Keep this file aligned with ``frontend/src/lib/universe.js``.
 """
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -18,6 +19,13 @@ DESK_IDS: Tuple[str, ...] = ("NIFTY", "SENSEX", "BANKNIFTY")
 
 # Kite `name` for the four major MCX option chains (not minis).
 MCX_MAJOR_IDS: Tuple[str, ...] = ("CRUDEOIL", "GOLD", "SILVER", "NATURALGAS")
+# Tradingsymbol prefixes that are a different (mini) product — skip when resolving majors.
+MCX_MINI_PREFIXES: Dict[str, Tuple[str, ...]] = {
+    "GOLD": ("GOLDM", "GOLDPETAL"),
+    "SILVER": ("SILVERMIC", "SILVERM"),
+    "CRUDEOIL": ("CRUDEOILM",),
+    "NATURALGAS": ("NATGASMINI",),
+}
 # Pause MCX majors on the live desk until Admin turns the MCX toggle on.
 # Catalog + journal heatmap names stay. Mutated by set_mcx_desk_available().
 MCX_DESK_AVAILABLE: bool = False
@@ -272,24 +280,54 @@ def ist_today() -> date:
     return datetime.now(ist).date()
 
 
+def is_mcx_mini_contract(name: Any, tradingsymbol: Any) -> bool:
+    """True when the tradingsymbol is a mini of this major (GOLDM vs GOLD)."""
+    key = normalize_id(name) or str(name or "").strip().upper()
+    ts = str(tradingsymbol or "").strip().upper()
+    if not key or not ts:
+        return False
+    for prefix in MCX_MINI_PREFIXES.get(key, ()):
+        if ts.startswith(prefix):
+            return True
+    return False
+
+
+def infer_strike_step(strikes: Iterable[Any], fallback: int = 50) -> int:
+    """Most common positive gap between listed strikes (MCX GOLD is often 200, not 100)."""
+    fb = int(fallback or 50) or 50
+    vals = sorted({int(round(float(s))) for s in strikes if s is not None and str(s) != ""})
+    diffs = [vals[i + 1] - vals[i] for i in range(len(vals) - 1) if vals[i + 1] > vals[i]]
+    diffs = [d for d in diffs if d > 0]
+    if not diffs:
+        return fb
+    return int(Counter(diffs).most_common(1)[0][0]) or fb
+
+
 def nearest_fut_quote_symbol(rows: Iterable[Dict[str, Any]], name: str, today: Optional[date] = None) -> Optional[str]:
     """Return ``EXCHANGE:TRADINGSYMBOL`` for the nearest unexpired FUT.
 
     Falls back to the latest expired FUT still in the dump (Gold tender).
+    Majors only — minis (GOLDM, CRUDEOILM, …) are skipped even if ``name`` is wrong.
     """
     key = normalize_id(name) or str(name or "").strip().upper()
     today = today or ist_today()
     live: List[Tuple[date, str]] = []
     expired: List[Tuple[date, str]] = []
     for row in rows or []:
-        if str(row.get("name") or "").strip().upper() != key:
+        row_name = str(row.get("name") or "").strip().upper()
+        ts = str(row.get("tradingsymbol") or "").strip()
+        if row_name != key:
+            continue
+        if is_mcx_mini_contract(key, ts):
             continue
         if str(row.get("instrument_type") or "").upper() != "FUT":
             continue
-        ts = str(row.get("tradingsymbol") or "").strip()
         if not ts:
             continue
         exch = str(row.get("exchange") or "MCX").strip().upper() or "MCX"
+        if not exch.startswith("MCX"):
+            continue
+        exch = "MCX"
         exp = expiry_date(row.get("expiry"))
         if not exp:
             continue

@@ -1,5 +1,15 @@
 # Changelog
 
+## V6.37 — 2026-08-17
+
+Phone chrome and Positions layout; MCX Gold quotes use the listed strike grid.
+
+- Sticky index row no longer repeats Today P&amp;L (header chip stays)
+- Positions: insight tiles swipe left/right again; Columns is a compact popover; closed-Chrome alert copy lives on Alerts / Telegram
+- Your book can be dragged (or placed) above the list, after Live, or below the list — kept in this browser
+- OI Change “Alert on ≥ %” is a small bell on the ATM strip
+- GOLD / SILVER / CRUDEOIL quotes skip minis; snapshot ATM uses listed MCX strikes (not a wrong catalog step)
+
 ## V6.36 — 2026-08-17
 
 MCX desk toggle, clearer book tilt, collapsible Your book, guest holiday reminder, tighter event joins.

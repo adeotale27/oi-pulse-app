@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any
 
-from universe import desk_index_config, nearest_fut_quote_symbol
+from universe import desk_index_config, infer_strike_step, nearest_fut_quote_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -170,15 +170,31 @@ class KiteService:
             rows = fut.to_dict("records")
         return nearest_fut_quote_symbol(rows, cfg["name"]) or cfg.get("quote_symbol")
 
+    def _quote_blob(self, q, key: str):
+        blob = q.get(key) if isinstance(q, dict) else None
+        if not blob and isinstance(q, dict) and len(q) == 1:
+            blob = next(iter(q.values()))
+        return blob
+
     def _quote_index(self, cfg: Dict[str, Any]) -> tuple:
         """Return (quote_key, ltp, ohlc_dict)."""
         key = self.resolve_quote_symbol(cfg)
         if not key:
             raise RuntimeError("no quote symbol")
-        q = self.kite.quote(key)
-        blob = q.get(key) if isinstance(q, dict) else None
-        if not blob and isinstance(q, dict) and len(q) == 1:
-            blob = next(iter(q.values()))
+        blob = None
+        try:
+            q = self.kite.quote(key)
+            blob = self._quote_blob(q, key)
+        except Exception as e:
+            logger.warning("quote %s failed (%s); trying instrument token", key, e)
+        if not blob:
+            ts = key.split(":")[-1]
+            tok = self.instrument_token_map.get(ts)
+            if tok:
+                q = self.kite.quote(tok)
+                blob = self._quote_blob(q, str(tok)) if isinstance(q, dict) else None
+                if not blob and isinstance(q, dict) and q:
+                    blob = next(iter(q.values()))
         if not blob:
             raise RuntimeError(f"empty quote for {key}")
         ohlc = blob.get("ohlc") if isinstance(blob.get("ohlc"), dict) else {}
@@ -237,22 +253,40 @@ class KiteService:
             return None
         ltp: float = 0.0
         ohlc: dict = {}
+        quote_key = cfg.get("quote_symbol")
         try:
-            _key, ltp, ohlc = self._quote_index(cfg)
+            quote_key, ltp, ohlc = self._quote_index(cfg)
         except Exception as e:
-            logger.error(f"[get_snapshot:{index_name}] index quote failed for {cfg.get('quote_symbol')}: {type(e).__name__}: {e}")
+            logger.error(
+                f"[get_snapshot:{index_name}] index quote failed for {quote_key or cfg.get('quote_symbol')} "
+                f"name={cfg.get('name')} kind={cfg.get('quote_kind')}: {type(e).__name__}: {e}"
+            )
             return None
-
-        step = cfg["step"]
-        atm = round(ltp / step) * step
-        n = cfg["strikes_around_atm"]
-        strikes = [atm + i * step for i in range(-n, n + 1)]
 
         import pandas as pd
         opt_df = self._option_chain_df(cfg)
         if opt_df is None or opt_df.empty:
             logger.error(f"[get_snapshot:{index_name}] no option rows found in instruments_df for name={cfg['name']} segment={cfg['segment']}")
             return None
+        listed = []
+        if "strike" in opt_df.columns:
+            listed = [float(s) for s in opt_df["strike"].dropna().tolist()]
+        step = infer_strike_step(listed, int(cfg.get("step") or 50))
+        n = int(cfg.get("strikes_around_atm") or 15)
+        unique = sorted({round(float(s), 8) for s in listed})
+        if unique:
+            nearest_i = min(range(len(unique)), key=lambda i: abs(unique[i] - float(ltp)))
+            lo = max(0, nearest_i - n)
+            hi = min(len(unique), nearest_i + n + 1)
+            strikes = unique[lo:hi]
+            atm = unique[nearest_i]
+        else:
+            atm = round(ltp / step) * step
+            strikes = [atm + i * step for i in range(-n, n + 1)]
+        logger.info(
+            "[get_snapshot:%s] quote=%s ltp=%s atm=%s step=%s (catalog_step=%s)",
+            index_name, quote_key, ltp, atm, step, cfg.get("step"),
+        )
         opt_df["expiry"] = pd.to_datetime(opt_df["expiry"])
         available = sorted(opt_df["expiry"].unique())
         if not available:

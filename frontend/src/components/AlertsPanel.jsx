@@ -24,6 +24,7 @@ export default function AlertsPanel({
   canClear = true,
   /** When true, grow with content — parent (RightPanel) owns scrolling. */
   embed = false,
+  onOpenTelegramPrefs,
 }) {
   const [localShowAll, setLocalShowAll] = useState(false);
   // If parent passes an activeIndex, filter to that index by default; the user
@@ -111,6 +112,18 @@ export default function AlertsPanel({
               {filterEnabled ? "All" : activeIndex}
             </Button>
           )}
+          {typeof onOpenTelegramPrefs === "function" && (
+            <Button
+              data-testid="btn-alerts-telegram"
+              size="sm"
+              variant="ghost"
+              className="h-6 text-[11px] px-2"
+              onClick={onOpenTelegramPrefs}
+              title="Telegram when Chrome is closed"
+            >
+              Telegram
+            </Button>
+          )}
           {canClear && (
           <Button
             data-testid="btn-clear-alerts"
@@ -124,6 +137,11 @@ export default function AlertsPanel({
           )}
         </div>
       </div>
+      {typeof onOpenTelegramPrefs === "function" && (
+        <p className="px-3 py-2 text-[11px] text-slate-600 border-b border-sky-100 bg-sky-50/80" data-testid="alerts-closed-chrome-note">
+          Phone alerts when Chrome is closed: use <b>Telegram</b>. Browser banners only fire while this tab is open. iOS needs the site on the Home Screen for any browser push.
+        </p>
+      )}
       {embed ? list : (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {list}

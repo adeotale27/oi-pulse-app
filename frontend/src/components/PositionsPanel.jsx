@@ -19,11 +19,12 @@ import {
   Eye,
   EyeOff,
   BookOpen,
-  Bell,
   Sparkles,
   X,
   GripHorizontal,
+  GripVertical,
 } from "lucide-react";
+import { loadBookSlot, saveBookSlot } from "@/lib/positionsBookLayout";
 import { api } from "@/lib/api";
 import { istMinutesOfDay, getPositionsCatchupMinute, getMarketCloseHm, getMarketOpenMinute } from "@/lib/marketTimes";
 import {
@@ -222,7 +223,24 @@ function OptionSideBadge({ row, exited }) {
   );
 }
 
-function BookVerdictCard({ bookVerdict, place = "above", onMove, collapsed, onToggleCollapsed }) {
+function BookDropZone({ slot, dragging, onDrop, label }) {
+  if (!dragging) return null;
+  return (
+    <div
+      data-testid={`book-drop-${slot}`}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop?.(slot);
+      }}
+      className="h-9 rounded-md border border-dashed border-emerald-400 bg-emerald-50 text-[10px] font-semibold text-emerald-800 flex items-center justify-center"
+    >
+      {label}
+    </div>
+  );
+}
+
+function BookVerdictCard({ bookVerdict, slot = "top", onSlot, collapsed, onToggleCollapsed, onDragChange }) {
   if (!bookVerdict) return null;
   return (
     <div
@@ -234,7 +252,16 @@ function BookVerdictCard({ bookVerdict, place = "above", onMove, collapsed, onTo
             : "border-amber-300 bg-amber-50/70"
       }`}
       data-testid="positions-book-verdict"
-      data-place={place}
+      data-place={slot}
+      draggable
+      onDragStart={(e) => {
+        try {
+          e.dataTransfer.setData("text/plain", "book-verdict");
+          e.dataTransfer.effectAllowed = "move";
+        } catch { /* noop */ }
+        onDragChange?.(true);
+      }}
+      onDragEnd={() => onDragChange?.(false)}
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <button
@@ -244,6 +271,9 @@ function BookVerdictCard({ bookVerdict, place = "above", onMove, collapsed, onTo
           data-testid="btn-book-verdict-collapse"
           aria-expanded={!collapsed}
         >
+          <span className="text-slate-400 cursor-grab active:cursor-grabbing" title="Drag to move" data-testid="book-verdict-grip">
+            <GripVertical className="w-3.5 h-3.5" />
+          </span>
           {collapsed ? <ChevronRight className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
           <span className="truncate">Your book · {bookVerdict.headline}</span>
         </button>
@@ -260,15 +290,19 @@ function BookVerdictCard({ bookVerdict, place = "above", onMove, collapsed, onTo
           >
             {bookVerdict.band} · {bookVerdict.score}
           </span>
-          <button
-            type="button"
-            className="text-[10px] font-semibold text-slate-600 border border-slate-200 rounded-sm px-1.5 py-0.5 hover:bg-white"
-            onClick={() => onMove?.(place === "above" ? "below" : "above")}
-            data-testid="btn-book-verdict-move"
-            title={place === "above" ? "Move below the position list" : "Move above the position list"}
+          <label className="sr-only" htmlFor="book-verdict-slot">Place Your book</label>
+          <select
+            id="book-verdict-slot"
+            data-testid="book-verdict-slot"
+            value={slot}
+            onChange={(e) => onSlot?.(e.target.value)}
+            className="text-[10px] font-semibold text-slate-600 border border-slate-200 rounded-sm px-1 py-0.5 bg-white"
+            title="Keep this placement (this browser)"
           >
-            {place === "above" ? "Move below list" : "Move above list"}
-          </button>
+            <option value="top">Above list</option>
+            <option value="after-live">After live</option>
+            <option value="bottom">Below list</option>
+          </select>
         </div>
       </div>
       {!collapsed && (
@@ -382,7 +416,6 @@ export default function PositionsPanel({
   canConfigureDeskAi = false,
   onDeskAiPositions,
   onDeskAiRadar,
-  onOpenTelegramPrefs,
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
@@ -436,13 +469,8 @@ export default function PositionsPanel({
       return true;
     }
   });
-  const [bookPlace, setBookPlace] = useState(() => {
-    try {
-      return localStorage.getItem("oiBookVerdictPlace") === "below" ? "below" : "above";
-    } catch {
-      return "above";
-    }
-  });
+  const [bookSlot, setBookSlot] = useState(() => loadBookSlot());
+  const [bookDragging, setBookDragging] = useState(false);
   const [deskGuide, setDeskGuide] = useState(null);
   const [outside, setOutside] = useState(null);
   const [radarAiH, setRadarAiH] = useState(() => {
@@ -480,9 +508,9 @@ export default function PositionsPanel({
     setBookCollapsed(on);
     try { localStorage.setItem("oiBookVerdictCollapsed", on ? "1" : "0"); } catch { /* noop */ }
   }, []);
-  const setBookPlacePersist = useCallback((place) => {
-    setBookPlace(place);
-    try { localStorage.setItem("oiBookVerdictPlace", place); } catch { /* noop */ }
+  const setBookSlotPersist = useCallback((slot) => {
+    setBookSlot(saveBookSlot(slot));
+    setBookDragging(false);
   }, []);
 
   const setToggle = useCallback((key, on) => {
@@ -1007,6 +1035,17 @@ export default function PositionsPanel({
     });
   }, [toggles.bookVerdict, stats, assignmentWatch]);
 
+  const bookCard = bookVerdict ? (
+    <BookVerdictCard
+      bookVerdict={bookVerdict}
+      slot={bookSlot}
+      collapsed={bookCollapsed}
+      onToggleCollapsed={() => setBookCollapsedPersist(!bookCollapsed)}
+      onSlot={setBookSlotPersist}
+      onDragChange={setBookDragging}
+    />
+  ) : null;
+
   const adjustSnap = useMemo(
     () => compactAdjustSnapshot({ rows, stats, assignmentWatch, privacy: privacyMode }),
     [rows, stats, assignmentWatch, privacyMode],
@@ -1338,24 +1377,11 @@ export default function PositionsPanel({
             <LineChart className="w-3.5 h-3.5 mr-1" />
             Analyze
           </Button>
-          {typeof onOpenTelegramPrefs === "function" && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-sm bg-white shrink-0 text-sky-800 border-sky-200 hover:bg-sky-50 px-2.5 md:hidden"
-            onClick={onOpenTelegramPrefs}
-            data-testid="btn-positions-telegram-alerts"
-            title="Telegram still alerts when Chrome is closed"
-          >
-            <Bell className="w-3.5 h-3.5 mr-1" />
-            Alerts
-          </Button>
-          )}
           <div className="relative" ref={colsAnchorRef}>
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-sm bg-white min-h-11 md:min-h-[28px] md:h-7 px-2 touch-manipulation"
+              className="h-8 rounded-sm bg-white px-2"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.preventDefault();
@@ -1373,12 +1399,8 @@ export default function PositionsPanel({
             {colsOpen && typeof document !== "undefined" && createPortal(
               <div
                 ref={colsPanelRef}
-                className="fixed z-[80] max-h-[min(70vh,24rem)] overflow-auto rounded-md border border-slate-200 bg-white shadow-xl p-2 left-3 right-3 bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] top-auto md:left-auto md:right-auto md:bottom-auto md:w-[18rem]"
-                style={
-                  typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
-                    ? { top: colsPos.top, left: colsPos.left }
-                    : undefined
-                }
+                className="fixed z-[80] max-h-[min(50vh,20rem)] overflow-auto rounded-md border border-slate-200 bg-white shadow-xl p-2 w-[16.5rem] max-w-[calc(100vw-1.5rem)]"
+                style={{ top: colsPos.top, left: colsPos.left }}
                 data-testid="positions-columns-menu"
               >
                 <div className="text-[10px] uppercase tracking-wider text-slate-400 px-1.5 pb-1.5">
@@ -1388,7 +1410,7 @@ export default function PositionsPanel({
                   {POSITIONS_COLUMN_DEFS.map((c) => (
                     <label
                       key={c.id}
-                      className={`flex items-center gap-2 px-1.5 py-2 md:py-1 rounded-sm text-[13px] md:text-[11px] ${
+                      className={`flex items-center gap-2 px-1.5 py-1 rounded-sm text-[12px] ${
                         c.required
                           ? "text-slate-400 cursor-default"
                           : "text-slate-700 hover:bg-slate-50 cursor-pointer"
@@ -1672,21 +1694,8 @@ export default function PositionsPanel({
         </div>
       )}
 
-      {typeof onOpenTelegramPrefs === "function" && (
-        <p className="md:hidden text-[11px] text-slate-600 rounded-md border border-sky-100 bg-sky-50/80 px-3 py-1.5" data-testid="positions-closed-chrome-alerts">
-          Phone alerts when Chrome is closed: use <b>Alerts</b> (Telegram). Browser banners only fire while this tab is open. iOS needs the site on the Home Screen for any browser push.
-        </p>
-      )}
-
-      {bookPlace === "above" && (
-        <BookVerdictCard
-          bookVerdict={bookVerdict}
-          place={bookPlace}
-          collapsed={bookCollapsed}
-          onToggleCollapsed={() => setBookCollapsedPersist(!bookCollapsed)}
-          onMove={setBookPlacePersist}
-        />
-      )}
+      <BookDropZone slot="top" dragging={bookDragging} onDrop={setBookSlotPersist} label="Drop Your book above the list" />
+      {bookSlot === "top" && bookCard}
 
       {/* Mobile cards */}
       <div className="md:hidden space-y-2 pb-16" data-testid="positions-mobile-cards">
@@ -1779,6 +1788,8 @@ export default function PositionsPanel({
             </div>
           );
         })}
+        <BookDropZone slot="after-live" dragging={bookDragging} onDrop={setBookSlotPersist} label="Drop Your book after live" />
+        {bookSlot === "after-live" && <div className="md:hidden">{bookCard}</div>}
         {exitedRows.length > 0 && (
           <button
             type="button"
@@ -2064,6 +2075,11 @@ export default function PositionsPanel({
                   </td>
                 )}
               </tr>
+              {idx === shownOpen.length - 1 && shownOpen.length > 0 && bookSlot === "after-live" && (
+                <tr data-testid="book-verdict-table-slot">
+                  <td colSpan={Math.max(shownCols.length, 1)} className="p-2 bg-white">{bookCard}</td>
+                </tr>
+              )}
               </Fragment>
               );
             })}
@@ -2083,6 +2099,11 @@ export default function PositionsPanel({
                     Live · {openRows.length}
                   </button>
                 </td>
+              </tr>
+            )}
+            {openRows.length > 0 && !liveOpen && bookSlot === "after-live" && (
+              <tr data-testid="book-verdict-table-slot">
+                <td colSpan={Math.max(shownCols.length, 1)} className="p-2 bg-white">{bookCard}</td>
               </tr>
             )}
             {exitedRows.length > 0 && !exitedOpen && (
@@ -2107,15 +2128,8 @@ export default function PositionsPanel({
         </table>
       </div>
 
-      {bookPlace === "below" && (
-        <BookVerdictCard
-          bookVerdict={bookVerdict}
-          place={bookPlace}
-          collapsed={bookCollapsed}
-          onToggleCollapsed={() => setBookCollapsedPersist(!bookCollapsed)}
-          onMove={setBookPlacePersist}
-        />
-      )}
+      <BookDropZone slot="bottom" dragging={bookDragging} onDrop={setBookSlotPersist} label="Drop Your book below the list" />
+      {bookSlot === "bottom" && bookCard}
 
       <div className="flex items-center justify-between gap-2">
         <button

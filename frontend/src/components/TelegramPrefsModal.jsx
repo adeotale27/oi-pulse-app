@@ -129,7 +129,6 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
           </DialogTitle>
           <DialogDescription>
             Huge OI shifts and a 15:15 IST session wrap (next-session calendar). We never send your book.
-            This is the reliable path when Chrome is closed on a phone — in-page banners stop once the tab is gone.
             Change any time — takes effect on the next alert.
             {status && !status.configured && (
               <span className="block mt-1 text-rose-600">
@@ -138,6 +137,10 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
             )}
           </DialogDescription>
         </DialogHeader>
+
+        <p className="text-[12px] text-slate-600 rounded-md border border-sky-100 bg-sky-50/80 px-3 py-2" data-testid="tg-closed-chrome-note">
+          Phone alerts when Chrome is closed: use Telegram here. Browser banners only fire while this tab is open. iOS needs the site on the Home Screen for any browser push.
+        </p>
 
         {/* ---- Master switch ---- */}
         <div className="flex items-center justify-between p-3 rounded-sm border border-slate-200 bg-slate-50">
