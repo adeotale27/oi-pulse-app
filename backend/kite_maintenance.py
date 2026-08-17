@@ -112,6 +112,20 @@ def fetch_bulletin_notice(timeout_sec: float = 6.0) -> Optional[dict]:
     return payload
 
 
+def overnight_book_notice() -> Optional[dict]:
+    """Kite Portfolio is dark ~00:00–07:00 IST even when quote APIs still answer."""
+    from datetime import datetime, timezone, timedelta
+    ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    if ist.hour >= 7:
+        return None
+    return {
+        "active": True,
+        "message": "Kite is undergoing scheduled maintenance. You can see margins, positions, and holdings from 7:00 AM IST.",
+        "source": "overnight_ist",
+        "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
 def merge_maintenance(
     current: Optional[dict],
     *,

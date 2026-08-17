@@ -4216,10 +4216,6 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
             "maintenance": bool(maint and maint.get("active")),
         }
 
-    # Successful book fetch clears sticky API maintenance flags.
-    if isinstance(tracker.kite_maintenance, dict) and tracker.kite_maintenance.get("source") == "kite_api":
-        tracker.kite_maintenance = None
-
     # Read-only funds snapshot (never places trades).
     funds = None
     try:
@@ -4477,7 +4473,31 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         "kite_connected": True,
         "transient": False,
         "token_issue": False,
+        "maintenance": False,
     }
+    if not out:
+        try:
+            from kite_maintenance import fetch_bulletin_notice, merge_maintenance, overnight_book_notice
+
+            bulletin = fetch_bulletin_notice()
+            night = overnight_book_notice()
+            tracker.kite_maintenance = merge_maintenance(
+                tracker.kite_maintenance,
+                api_error=(night or {}).get("message"),
+                bulletin=bulletin,
+            )
+            if night and not (tracker.kite_maintenance and tracker.kite_maintenance.get("active")):
+                tracker.kite_maintenance = night
+            maint = tracker.kite_maintenance if isinstance(tracker.kite_maintenance, dict) else None
+            if maint and maint.get("active"):
+                result["maintenance"] = True
+                result["error"] = f"Zerodha maintenance: {maint.get('message') or night.get('message')}"
+                result["transient"] = True
+        except Exception:
+            pass
+    elif out:
+        if isinstance(tracker.kite_maintenance, dict) and tracker.kite_maintenance.get("source") == "kite_api":
+            tracker.kite_maintenance = None
     try:
         if role == "admin" and not result.get("error"):
             asyncio.create_task(_snapshot_trade_journal(result))

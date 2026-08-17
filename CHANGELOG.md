@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.39 — 2026-08-17
+
+Show Kite overnight maintenance on Positions; slimmer phone chrome.
+
+- Empty Kite book before 7:00 IST keeps the maintenance banner (same idea as Kite’s toaster)
+- Next Holiday tile flags Fri/Mon holidays as a long weekend (extra theta)
+- Phone: shorter day-bias bar; tabs/Events hide on scroll; selected index stays as a slim price chip
+- Home Screen icon uses opaque 512 + dark splash so iOS adds less white padding
+
 ## V6.38 — 2026-08-17
 
 MCX poll load cap; keep OI and live Positions warm in the background; LIVE ticker on desktop.

@@ -40,12 +40,12 @@ export default function SentimentBar({
       data-market={marketOpen ? "open" : "closed"}
       data-scope="session"
     >
-      <div className="px-3 py-2 flex items-center justify-between gap-2" style={{ background: bg }}>
-        <div className="flex items-center gap-2 text-xs font-medium min-w-0 flex-wrap">
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: barColor }} />
-          <span className="text-slate-800 dark:text-slate-100">{label}</span>
+      <div className="px-3 py-2 max-md:px-2 max-md:py-1 flex items-center justify-between gap-2" style={{ background: bg }}>
+        <div className="flex items-center gap-2 text-xs max-md:text-[10px] font-medium min-w-0 flex-wrap">
+          <span className="w-2 h-2 max-md:w-1.5 max-md:h-1.5 rounded-full shrink-0" style={{ background: barColor }} />
+          <span className="text-slate-800 dark:text-slate-100 max-md:truncate">{label}</span>
           {windowNote && (
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono-data">
+            <span className="hidden md:inline text-[10px] text-slate-500 dark:text-slate-400 font-mono-data">
               · {windowNote}
               {sessionMinutes != null ? ` (${sessionMinutes}m)` : ""}
             </span>
@@ -79,7 +79,7 @@ export default function SentimentBar({
           {isBullish ? "+" : "−"}{pct}%
         </span>
       </div>
-      <div className="h-2 bg-slate-100 dark:bg-slate-800 relative">
+      <div className="h-2 max-md:h-1 bg-slate-100 dark:bg-slate-800 relative">
         <div
           className="absolute top-0 left-1/2 h-full transition-all duration-500"
           style={{

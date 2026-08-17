@@ -295,6 +295,7 @@ export default function Dashboard() {
   const [isMobile, setIsMobile] = useState(() => {
     try { return window.matchMedia("(max-width: 767px)").matches; } catch { return false; }
   });
+  const [chromeSlim, setChromeSlim] = useState(false);
   const [replayJumpTs, setReplayJumpTs] = useState(null);
   const clearReplayJump = useCallback(() => setReplayJumpTs(null), []);
   const [vixSessionOpen, setVixSessionOpen] = useState(() => {
@@ -2073,6 +2074,7 @@ export default function Dashboard() {
         >
           <div className="md:hidden shrink-0">
             <MobileStickyChrome
+              chromeSlim={chromeSlim}
               activeIndex={activeIndex}
               indices={enabledIndices.length ? enabledIndices : INDICES}
               onSelectIndex={setActiveIndex}
@@ -2177,7 +2179,13 @@ export default function Dashboard() {
             <div className="relative w-full flex-1 min-h-0">
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
-                <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2">
+                <div
+                  className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2"
+                  onScroll={(e) => {
+                    if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) return;
+                    setChromeSlim(e.currentTarget.scrollTop > 28);
+                  }}
+                >
                 {(dayBiasSummary || changeSummary) && (
                   <SentimentBar
                     ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}
