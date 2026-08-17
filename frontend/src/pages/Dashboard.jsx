@@ -74,7 +74,7 @@ import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
 import { applyUploadedHolidays } from "@/lib/holidays";
 
-import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices } from "@/lib/universe";
+import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
 
 const INDICES = DESK_IDS;
@@ -671,8 +671,6 @@ export default function Dashboard() {
   const [expiryReady, setExpiryReady] = useState(false);
   const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
   const [enabledIndices, setEnabledIndices] = useState(INDICES);
-  const enabledIndicesRef = useRef(enabledIndices);
-  enabledIndicesRef.current = enabledIndices;
   const [indexMeta, setIndexMeta] = useState({});
   // Admin Alert Settings focus — OI toasts/sounds only for these indices.
   // null = not loaded yet → do not client-suppress (backend /alerts already scopes).
@@ -890,7 +888,7 @@ export default function Dashboard() {
         }
         setOiLoading(false);
         ensureExpiryForIndex(active).catch(() => {});
-        const rest = (enabledIndicesRef.current || []).filter((i) => i && i !== active);
+        const rest = (enabledIndicesRef.current || []).filter((i) => i && i !== active && !isMcxMajorId(i));
         for (const idx of rest) {
           if (gen !== oiReqGenRef.current) return;
           await fetchOne(idx);
