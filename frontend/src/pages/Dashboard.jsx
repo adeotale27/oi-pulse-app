@@ -671,6 +671,8 @@ export default function Dashboard() {
   const [expiryReady, setExpiryReady] = useState(false);
   const [pollMs, setPollMs] = useState(DEFAULT_POLL_MS);
   const [enabledIndices, setEnabledIndices] = useState(INDICES);
+  const enabledIndicesRef = useRef(enabledIndices);
+  enabledIndicesRef.current = enabledIndices;
   const [indexMeta, setIndexMeta] = useState({});
   // Admin Alert Settings focus — OI toasts/sounds only for these indices.
   // null = not loaded yet → do not client-suppress (backend /alerts already scopes).
@@ -853,12 +855,11 @@ export default function Dashboard() {
           }
           return { idx, data, ok: true };
         } catch (e) {
-          console.error(`loadOI(${idx}) failed`, e);
+          if (e?.response?.status !== 503) console.error(`loadOI(${idx}) failed`, e);
           return { idx, ok: false };
         }
       };
 
-      // Active index only — other names load when the user switches to them.
       if (active) {
         const first = await fetchOne(active);
         if (gen !== oiReqGenRef.current) return;
@@ -889,6 +890,11 @@ export default function Dashboard() {
         }
         setOiLoading(false);
         ensureExpiryForIndex(active).catch(() => {});
+        const rest = (enabledIndicesRef.current || []).filter((i) => i && i !== active);
+        for (const idx of rest) {
+          if (gen !== oiReqGenRef.current) return;
+          await fetchOne(idx);
+        }
       }
     } catch (e) {
       if (gen !== oiReqGenRef.current) return;
@@ -1885,7 +1891,7 @@ export default function Dashboard() {
     return out;
   }, [enabledIndices, tickerQuotes, liveSpotPrices, activeIndex, current]);
 
-  const mobileIndexTicker = isMobile ? (
+  const mobileIndexTicker = (
     <MobileIndexTicker
       activeIndex={activeIndex}
       onSelectIndex={setActiveIndex}
@@ -1893,7 +1899,7 @@ export default function Dashboard() {
       tickers={Object.values(tickerQuotes)}
       indices={enabledIndices.length ? enabledIndices : INDICES}
     />
-  ) : null;
+  );
 
   return (
     <div className="oi-shell relative h-[100dvh] max-h-[100dvh] flex flex-col overflow-hidden overscroll-none">
@@ -2593,7 +2599,7 @@ export default function Dashboard() {
                   )}
 
                   {(tabOn("positions")) && (
-                    <TabsContent value="positions" className="mt-0">
+                    <TabsContent value="positions" forceMount className={activeTab === "positions" ? "mt-0" : "hidden"}>
                     <div className="text-sm font-semibold mb-2">My Kite Positions</div>
                     <PositionsPanel
                       isKiteMode={authState.is_admin ? kiteLiveConnected : true}
@@ -2612,7 +2618,7 @@ export default function Dashboard() {
                       onPinNearestWeekly={handleChangeExpiry}
                       positionsPollMs={positionsPollMs}
                       onOpenKite={openKiteCreds}
-                      pollEnabled={activeTab === "positions"}
+                      pollEnabled
                       deskAiShow={deskAiShow}
                       deskAiAsk
                       deskAiPositions={deskAiPositions}

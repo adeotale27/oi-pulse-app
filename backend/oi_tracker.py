@@ -1080,21 +1080,22 @@ class OITracker:
             self.last_updated_at = datetime.now(timezone.utc).isoformat()
             return
 
-        # Fetch EVERY enabled index concurrently. Each index gets its own timeout
-        # so a slow NIFTY pull cannot cancel SENSEX mid-flight (the previous
-        # shared 10s wait left non-active indices cold until the UI selected them).
+        # At most 2 snapshots at once. MCX on + 4 commodities otherwise floods Kite/CPU.
+        sem = asyncio.Semaphore(2)
+
         async def _fetch_one(idx: str):
             exp = self.selected_expiry.get(idx)
-            try:
-                snap = await asyncio.wait_for(
-                    asyncio.to_thread(svc.get_snapshot, idx, exp),
-                    timeout=15.0,
-                )
-                return idx, snap, None
-            except asyncio.TimeoutError:
-                return idx, None, "timeout"
-            except Exception as e:
-                return idx, None, e
+            async with sem:
+                try:
+                    snap = await asyncio.wait_for(
+                        asyncio.to_thread(svc.get_snapshot, idx, exp),
+                        timeout=15.0,
+                    )
+                    return idx, snap, None
+                except asyncio.TimeoutError:
+                    return idx, None, "timeout"
+                except Exception as e:
+                    return idx, None, e
 
         results = await asyncio.gather(*[_fetch_one(idx) for idx in enabled])
 

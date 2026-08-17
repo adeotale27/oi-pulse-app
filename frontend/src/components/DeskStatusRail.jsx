@@ -94,7 +94,7 @@ export default function DeskStatusRail({
           {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
         </span>
         {mobileTicker ? (
-          <div className="md:hidden min-w-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-hidden" data-testid="desk-index-ticker">
             {mobileTicker}
           </div>
         ) : null}
