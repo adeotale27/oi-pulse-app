@@ -23,6 +23,11 @@ cryptography>=42.0.0
 
 # Market data
 kiteconnect==5.2.0
+# kiteconnect's KiteTicker (websocket) needs the Twisted/Autobahn stack:
+twisted==26.4.0
+autobahn[twisted]==19.11.2
+pyOpenSSL==26.4.0
+service_identity==26.1.0
 yfinance>=0.2.40
 pandas>=2.2.0,<3
 numpy>=1.26.0
