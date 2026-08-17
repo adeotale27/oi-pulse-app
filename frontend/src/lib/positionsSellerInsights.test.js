@@ -29,6 +29,18 @@ const weak = computeBookVerdict({
   pnl: -800,
 });
 assert.equal(weak.band, "WEAK", "directional stressed book is WEAK");
+assert.ok(weak.bullets.some((b) => /bullish/i.test(b)), "positive delta is bullish");
+
+const bear = computeBookVerdict({
+  netDelta: -88,
+  netTheta: 100,
+  shortCount: 2,
+  adjustCount: 0,
+  premiumLeft: 1000,
+  itmShortCount: 0,
+  pnl: 200,
+});
+assert.ok(bear.bullets.some((b) => /bearish/i.test(b)), "negative delta is bearish");
 
 assert.equal(
   effectiveAdjustThreshold(60, { expiryDayMode: true, anyExpiryDay: true, nowMs: Date.parse("2026-08-10T08:00:00Z") }),

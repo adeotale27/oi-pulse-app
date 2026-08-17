@@ -119,11 +119,11 @@ export function matchSymbolPrefix(tradingsymbol) {
 }
 
 /** Keep desk ids first; retain any extra ids the backend enabled. */
-export function normalizeEnabledIndices(list) {
+export function normalizeEnabledIndices(list, mcxDeskOn = MCX_DESK_AVAILABLE) {
   const raw = (Array.isArray(list) ? list : [])
     .map((x) => normalizeId(x))
     .filter(Boolean)
-    .filter((i) => MCX_DESK_AVAILABLE || !MCX_MAJOR_IDS.includes(i));
+    .filter((i) => mcxDeskOn || !MCX_MAJOR_IDS.includes(i));
   const set = new Set(raw);
   const desk = DESK_IDS.filter((i) => set.has(i));
   const extra = raw.filter((i) => !DESK_IDS.includes(i));

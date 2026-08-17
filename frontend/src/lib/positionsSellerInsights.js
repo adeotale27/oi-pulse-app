@@ -81,15 +81,26 @@ export function computeBookVerdict({
   const bullets = [];
 
   const absD = Math.abs(netDelta);
+  const signed = Number(netDelta).toFixed(1);
   if (absD < 10) {
     score += 20;
-    bullets.push(`Net Δ ${netDelta.toFixed(1)} — near flat (good — not betting up or down).`);
-  } else if (absD < 30) {
-    score += 5;
-    bullets.push(`Net Δ ${netDelta.toFixed(1)} — mild tilt; a small hedge may help.`);
+    bullets.push(`Net Δ ${signed} — nearly flat (not betting the market up or down).`);
+  } else if (netDelta > 0) {
+    const mild = absD < 30;
+    score += mild ? 5 : -20;
+    bullets.push(
+      mild
+        ? `Net Δ +${signed} — mildly bullish (you want Nifty/Sensex up). A small hedge may help.`
+        : `Net Δ +${signed} — bullish (you want the market up; you get hurt if it falls). Flatten before selling more.`,
+    );
   } else {
-    score -= 20;
-    bullets.push(`Net Δ ${netDelta.toFixed(1)} — book is leaning one way; flatten before selling more.`);
+    const mild = absD < 30;
+    score += mild ? 5 : -20;
+    bullets.push(
+      mild
+        ? `Net Δ ${signed} — mildly bearish (you want Nifty/Sensex down). A small hedge may help.`
+        : `Net Δ ${signed} — bearish (you want the market down; you get hurt if it rises). Flatten before selling more.`,
+    );
   }
 
   if (netTheta > 0) {

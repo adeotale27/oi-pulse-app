@@ -204,6 +204,8 @@ DEFAULT_SETTINGS = {
     "desk_ai_carry": False,
     "desk_ai_admin": False,
     "desk_ai_public": False,
+    # MCX majors (GOLD/CRUDE/…) — off until Admin turns this on, then Enable per name.
+    "mcx_desk_on": False,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
     "show_chart_signals": False,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
@@ -301,34 +303,24 @@ class OITracker:
             self.ensure_index_slots(list(INDEX_CONFIG.keys()))
         except Exception as e:
             logger.warning("index registry bootstrap failed: %s", e)
-        await self._pause_mcx_on_desk()
+        self._apply_mcx_desk_flag()
         try:
             from holiday_calendar import load_uploaded_holidays
             await load_uploaded_holidays(self.db)
         except Exception as e:
             logger.warning("load uploaded NSE holidays failed: %s", e)
 
-    async def _pause_mcx_on_desk(self):
-        """Drop MCX majors from the live poll list while MCX_DESK_AVAILABLE is false."""
+    def _apply_mcx_desk_flag(self):
+        """Apply Admin MCX on/off. Does not wipe Enable ticks; poll/UI skip majors when off."""
         try:
-            from universe import MCX_DESK_AVAILABLE, without_paused_mcx
-            if MCX_DESK_AVAILABLE:
-                return
-            enabled = list(self.settings.get("enabled_indices") or [])
-            stripped = without_paused_mcx(enabled, INDEX_CONFIG)
-            if stripped == enabled:
-                return
-            if not stripped:
-                stripped = list(INDICES)
-            self.settings["enabled_indices"] = stripped
-            await self.db.settings.update_one(
-                {"_id": "alerts"},
-                {"$set": {"enabled_indices": stripped}},
-                upsert=True,
-            )
-            logger.info("MCX desk paused — enabled_indices now %s", stripped)
+            from universe import set_mcx_desk_available
+            on = bool(self.settings.get("mcx_desk_on"))
+            set_mcx_desk_available(on)
         except Exception as e:
-            logger.warning("pause MCX on desk failed: %s", e)
+            logger.warning("apply MCX desk flag failed: %s", e)
+
+    async def _pause_mcx_on_desk(self):
+        self._apply_mcx_desk_flag()
 
     def _apply_market_hours(self):
         try:
@@ -382,6 +374,7 @@ class OITracker:
             "desk_ai_show", "desk_ai_ask", "desk_ai_positions", "desk_ai_radar",
             "desk_ai_carry",
             "desk_ai_admin", "desk_ai_public",
+            "mcx_desk_on",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}
         if "desk_ai_show" in clean:
@@ -397,6 +390,8 @@ class OITracker:
         )
         if "market_open_ist" in clean or "market_close_ist" in clean:
             self._apply_market_hours()
+        if "mcx_desk_on" in clean:
+            self._apply_mcx_desk_flag()
         if "enabled_indices" in clean:
             try:
                 await self.seed_default_expiries()
@@ -1516,7 +1511,12 @@ class OITracker:
             "kite_maintenance": maint,
             "poll_interval_seconds": poll_interval_seconds,
             "stale_after_seconds": self.stale_after_seconds(),
-            "market": {**ms, "oi_session_open": self.oi_session_open(), "mcx_on_desk": self.mcx_on_desk()},
+            "market": {
+                **ms,
+                "oi_session_open": self.oi_session_open(),
+                "mcx_on_desk": self.mcx_on_desk(),
+                "mcx_desk_on": bool(self.settings.get("mcx_desk_on")),
+            },
             "telegram_configured": notifier.is_configured(),
             "retention_hours": SNAPSHOT_RETENTION_HOURS,
             "always_poll": FORCE_ALWAYS_POLL,

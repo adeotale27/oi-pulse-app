@@ -817,6 +817,7 @@ class SettingsIn(BaseModel):
     desk_ai_carry: Optional[bool] = None  # Overnight carry-brief coach (desktop)
     desk_ai_admin: Optional[bool] = None  # Compat alias of desk_ai_show
     desk_ai_public: Optional[bool] = None  # Compat alias of desk_ai_show
+    mcx_desk_on: Optional[bool] = None  # Master MCX majors switch; Enable still per-name
 
     @field_validator(
         "cooldown_seconds",
@@ -1395,6 +1396,7 @@ async def get_settings():
     try:
         from universe import MCX_DESK_AVAILABLE, without_paused_mcx
         known = list(INDEX_CONFIG.keys())
+        data["mcx_desk_on"] = bool(tracker.settings.get("mcx_desk_on")) if tracker else False
         data["known_indices"] = known if MCX_DESK_AVAILABLE else without_paused_mcx(known, INDEX_CONFIG)
         if "enabled_indices" in data:
             data["enabled_indices"] = without_paused_mcx(data["enabled_indices"], INDEX_CONFIG)
@@ -1406,6 +1408,12 @@ async def get_settings():
 @api_router.post("/settings")
 async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_admin)):
     patch = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if "mcx_desk_on" in patch:
+        try:
+            from universe import set_mcx_desk_available
+            set_mcx_desk_available(bool(patch["mcx_desk_on"]))
+        except Exception:
+            pass
     if "enabled_indices" in patch:
         if not patch["enabled_indices"]:
             raise HTTPException(400, "At least one tracked index is required")
@@ -1529,6 +1537,7 @@ async def admin_list_indices(_admin: bool = Depends(require_admin)):
         "enabled": tracker.settings.get("enabled_indices") if tracker else [],
         "synced_at": (meta or {}).get("synced_at"),
         "known": list(INDEX_CONFIG.keys()),
+        "mcx_desk_on": bool((tracker.settings or {}).get("mcx_desk_on")) if tracker else False,
     }
 
 
@@ -1596,7 +1605,7 @@ async def admin_enable_index(
         rows = await _kite_instrument_rows()
         info = inspect_underlying(rows, key)
         if is_paused_mcx(key, (info or {}).get("config")):
-            raise HTTPException(400, "MCX majors are paused on this desk")
+            raise HTTPException(400, "Turn on the MCX desk toggle first, then Enable this commodity")
         if not info.get("can_enable_oi") or not info.get("config"):
             raise HTTPException(400, info.get("notes") or "Cannot enable OI analytics for this instrument")
         prev = await db.index_registry.find_one({"_id": key})
@@ -2609,13 +2618,16 @@ async def get_config():
     straddle_poll = max(1, int(tracker.settings.get("straddle_poll_interval_seconds", 60)))
     positions_poll = max(1, int(tracker.settings.get("positions_poll_interval_seconds", 30)))
     open_hm, close_hm = display_hours()
+    from universe import without_paused_mcx
+    raw_enabled = tracker.settings.get("enabled_indices", list(INDEX_CONFIG.keys()))
     return {
         "indices": INDEX_CONFIG,
         "poll_interval_seconds": poll_interval_seconds,
         "oi_poll_interval_seconds": poll_interval_seconds,
         "straddle_poll_interval_seconds": straddle_poll,
         "positions_poll_interval_seconds": positions_poll,
-        "enabled_indices": tracker.settings.get("enabled_indices", list(INDEX_CONFIG.keys())),
+        "enabled_indices": without_paused_mcx(raw_enabled, INDEX_CONFIG),
+        "mcx_desk_on": bool(tracker.settings.get("mcx_desk_on")),
         "straddle_enabled_indices": tracker.settings.get("straddle_enabled_indices", STRADDLE_INDICES),
         "alert_enabled_indices": tracker.settings.get("alert_enabled_indices"),
         "visible_pages": tracker.settings.get("visible_pages"),
@@ -2630,7 +2642,7 @@ async def get_config():
         **resolve_desk_ai(tracker.settings),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "universe": catalog_public(),
-        "known_indices": list(INDEX_CONFIG.keys()),
+        "known_indices": without_paused_mcx(list(INDEX_CONFIG.keys()), INDEX_CONFIG),
         "app_version": APP_VERSION,
         "app_version_label": APP_VERSION_LABEL,
     }
@@ -5350,7 +5362,7 @@ async def get_index_events(index: str):
     idx_code = _ACTIVE_INDEX_ALIASES.get(key)
     if not idx_code:
         raise HTTPException(400, f"Unknown index '{index}'")
-    events = await ers.fetch_events_for_index(db, idx_code)
+    events, coverage = await ers.fetch_events_for_index(db, idx_code)
     meta = await ers.fetch_upload_meta(db)
     events_meta = meta.get("events") or {}
     idx_key = {"NIFTY": "nifty50", "BANKNIFTY": "banknifty", "SENSEX": "sensex"}.get(idx_code)
@@ -5364,6 +5376,7 @@ async def get_index_events(index: str):
         "constituents_uploaded_at": constituents_meta.get("uploaded_at"),
         "constituents_source_filename": constituents_meta.get("source_filename"),
         "upload_meta": meta,
+        "join": coverage,
     }
 
 

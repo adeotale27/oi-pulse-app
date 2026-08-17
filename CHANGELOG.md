@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.36 — 2026-08-17
+
+MCX desk toggle, clearer book tilt, collapsible Your book, guest holiday reminder, tighter event joins.
+
+- Admin **MCX** switch in Index management and Settings. Off = no commodity poll/UI. On = Enable Gold/Crude/etc.; only those names pull OI
+- Your book collapses by default; Move above/below the position list. Net Δ says **bullish** or **bearish**, not “one way”
+- Guests see a holiday-calendar reminder from **20 Dec** until Admin uploads next year’s NSE circular
+- Index Risk join: longer company-name matches; coverage line shows how many Nifty / Bank Nifty / Sensex names hit the events file
+
 ## V6.35 — 2026-08-17
 
 Positions phone polish, always-on CALL/PUT, and an uploadable NSE holiday circular.

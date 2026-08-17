@@ -23,6 +23,7 @@ import MobileStickyChrome from "@/components/MobileStickyChrome";
 import MobileIndexTicker from "@/components/MobileIndexTicker";
 import ActivityFeed from "@/components/ActivityFeed";
 import BuildupTable from "@/components/BuildupTable";
+import GuestHolidayCalendarBanner from "@/components/GuestHolidayCalendarBanner";
 import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
 import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
@@ -1095,7 +1096,7 @@ export default function Dashboard() {
           setAdminVisiblePages(res.data.admin_visible_pages);
         }
         if (Array.isArray(res.data.enabled_indices) && res.data.enabled_indices.length) {
-          setEnabledIndices(res.data.enabled_indices);
+          setEnabledIndices(normalizeEnabledIndices(res.data.enabled_indices, !!res.data.mcx_desk_on));
         }
         if (Array.isArray(res.data.alert_enabled_indices) && res.data.alert_enabled_indices.length) {
           setAlertEnabledIndices(res.data.alert_enabled_indices);
@@ -1135,7 +1136,7 @@ export default function Dashboard() {
         setPositionsPollMs(d.positions_poll_interval_seconds * 1000);
       }
       if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
-        setEnabledIndices(d.enabled_indices);
+        setEnabledIndices(normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on));
       }
       if (d.indices && typeof d.indices === "object") {
         setIndexMeta(d.indices);
@@ -1940,6 +1941,10 @@ export default function Dashboard() {
         </>
       )}
       <KiteMaintenanceBanner status={status} />
+      <GuestHolidayCalendarBanner
+        isAdmin={!!authState.is_admin}
+        onOpenUpload={() => setUploadOpen(true)}
+      />
       {authState.is_admin && (
         <AdminUploadAdvisor
           isAdmin
@@ -2896,7 +2901,7 @@ export default function Dashboard() {
             setPositionsPollMs(settings.positions_poll_interval_seconds * 1000);
           }
           if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
-            setEnabledIndices(settings.enabled_indices);
+            setEnabledIndices(normalizeEnabledIndices(settings.enabled_indices, !!settings.mcx_desk_on));
           }
           if (Array.isArray(settings.alert_enabled_indices) && settings.alert_enabled_indices.length) {
             setAlertEnabledIndices(settings.alert_enabled_indices);
@@ -2939,7 +2944,7 @@ export default function Dashboard() {
           api.get("/config").then((r) => {
             const d = r.data || {};
             if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
-              setEnabledIndices(d.enabled_indices);
+              setEnabledIndices(normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on));
             }
             if (d.indices && typeof d.indices === "object") setIndexMeta(d.indices);
           }).catch(() => {});

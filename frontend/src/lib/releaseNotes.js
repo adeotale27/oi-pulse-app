@@ -4,6 +4,18 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.36",
+    date: "2026-08-17",
+    user: [
+      "Your book is collapsible and can sit above or below the position list. Net Δ now says bullish or bearish.",
+      "From 20 December, a reminder asks for next year’s NSE holiday list until the admin uploads it.",
+    ],
+    admin: [
+      "Index management and Settings: MCX master toggle. Off = no commodity data. On = Enable each name to poll only that chain.",
+      "Index Risk shows how many constituent names matched the NSE events file, plus close-misses.",
+    ],
+  },
+  {
     version: "6.35",
     date: "2026-08-17",
     user: [

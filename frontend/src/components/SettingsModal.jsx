@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -11,7 +12,7 @@ import { Settings2 } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import InfoTip from "@/components/InfoTip";
 
-import { DESK_IDS, MCX_DESK_AVAILABLE, isMcxMajorId } from "@/lib/universe";
+import { DESK_IDS, isMcxMajorId } from "@/lib/universe";
 
 const ALL_INDICES = DESK_IDS;
 const HARD_ADMIN_PAGES = new Set([]);
@@ -55,7 +56,7 @@ export default function SettingsModal({
         const known = Array.isArray(d.known_indices) ? d.known_indices : [];
         const enabled = Array.isArray(d.enabled_indices) ? d.enabled_indices : [];
         const pool = [...new Set([...DESK_IDS, ...known, ...enabled])]
-          .filter((i) => MCX_DESK_AVAILABLE || !isMcxMajorId(i));
+          .filter((i) => !!d.mcx_desk_on || !isMcxMajorId(i));
         if (pool.length) setKnownIndices(pool);
       })
       .catch((e) => {
@@ -177,6 +178,7 @@ export default function SettingsModal({
           expire_admin_on_market_close: settings.expire_admin_on_market_close,
           admin_session_ttl_minutes: settings.admin_session_ttl_minutes,
           alert_enabled_indices: settings.alert_enabled_indices,
+          mcx_desk_on: !!settings.mcx_desk_on,
           show_strike_range: settings.show_strike_range,
           show_writer_defense: settings.show_writer_defense,
           show_suggestion: settings.show_suggestion,
@@ -318,11 +320,25 @@ export default function SettingsModal({
             </div>
 
             <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block">
-                Tracked indices (polled every cycle)
-              </Label>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <Label className="text-xs uppercase tracking-wider text-slate-500">
+                  Tracked indices (polled every cycle)
+                </Label>
+                <label className="inline-flex items-center gap-2 text-[12px] font-semibold text-slate-700" data-testid="settings-mcx-desk-toggle">
+                  MCX
+                  <Switch
+                    checked={!!settings.mcx_desk_on}
+                    onCheckedChange={(on) => setSettings({ ...settings, mcx_desk_on: !!on })}
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-2">
+                {settings.mcx_desk_on
+                  ? "MCX on — only names you Enable (Gold, Crude, …) are polled."
+                  : "MCX off — no commodity data. Use Index management to Enable a name after turning this on."}
+              </p>
               <div className="space-y-1.5">
-                {knownIndices.map((idx) => (
+                {knownIndices.filter((idx) => settings.mcx_desk_on || !isMcxMajorId(idx)).map((idx) => (
                   <label
                     key={idx}
                     className="flex items-center gap-2 py-1 px-2 rounded-sm hover:bg-slate-50 cursor-pointer"
