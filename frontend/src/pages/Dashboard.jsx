@@ -71,7 +71,7 @@ import { useNotify } from "@/hooks/useNotify";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
-import { playForAlert } from "@/lib/sounds";
+import { applyUploadedHolidays } from "@/lib/holidays";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
@@ -353,6 +353,12 @@ export default function Dashboard() {
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
   const { alarm, siren, push, requestPermission } = useNotify();
+
+  useEffect(() => {
+    api.get("/holidays").then((r) => {
+      if (r.data?.source === "upload") applyUploadedHolidays(r.data.holidays || []);
+    }).catch(() => {});
+  }, []);
 
   // Poll status
   useEffect(() => {
@@ -2624,6 +2630,7 @@ export default function Dashboard() {
                       canConfigureDeskAi={!!authState.is_admin}
                       onDeskAiPositions={(on) => patchDeskAi({ desk_ai_positions: !!on })}
                       onDeskAiRadar={(on) => patchDeskAi({ desk_ai_radar: !!on })}
+                      onOpenTelegramPrefs={authState.is_admin ? () => setTelegramPrefsOpen(true) : undefined}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "adjust-watch",
@@ -2779,6 +2786,7 @@ export default function Dashboard() {
                       canConfigureDeskAi={!!authState.is_admin}
                       onDeskAiPositions={(on) => patchDeskAi({ desk_ai_positions: !!on })}
                       onDeskAiRadar={(on) => patchDeskAi({ desk_ai_radar: !!on })}
+                      onOpenTelegramPrefs={authState.is_admin ? () => setTelegramPrefsOpen(true) : undefined}
                       suggestion={
                         showSuggestion ? (
                           <SuggestionBox
@@ -2942,7 +2950,14 @@ export default function Dashboard() {
       <UploadModal
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        onUploaded={() => setUploadRefreshKey((k) => k + 1)}
+        onUploaded={(kind) => {
+          setUploadRefreshKey((k) => k + 1);
+          if (kind === "holidays") {
+            api.get("/holidays").then((r) => {
+              if (r.data?.source === "upload") applyUploadedHolidays(r.data.holidays || []);
+            }).catch(() => {});
+          }
+        }}
       />
     </div>
   );

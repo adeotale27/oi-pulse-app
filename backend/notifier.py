@@ -333,22 +333,24 @@ async def alert_huge_shift(shift: dict):
 
 def next_session_notes(now: Optional[datetime] = None) -> list:
     """Holidays / session notes for the next open. No positions."""
-    from market_hours import now_ist, is_trading_day, is_full_holiday, NSE_SPECIAL_SESSIONS, NSE_HOLIDAYS
+    from market_hours import now_ist, is_trading_day, is_full_holiday, special_sessions, holiday_dates
     dt = now or datetime.now(IST)
     notes = []
     d = (dt + timedelta(days=1)).date()
     guard = 0
+    sessions = special_sessions()
+    holidays = holiday_dates()
     while guard < 10:
         guard += 1
         probe = datetime(d.year, d.month, d.day, 12, 0, tzinfo=IST)
         iso = d.isoformat()
-        if iso in NSE_SPECIAL_SESSIONS:
-            name = (NSE_SPECIAL_SESSIONS.get(iso) or {}).get("name") or "Muhurat"
+        if iso in sessions:
+            name = (sessions.get(iso) or {}).get("name") or "Muhurat"
             notes.append(f"Special session {iso}: {name}")
         if is_trading_day(probe):
             notes.insert(0, f"Next session: {d.strftime('%a %d %b %Y')}")
             break
-        if is_full_holiday(probe) or iso in NSE_HOLIDAYS:
+        if is_full_holiday(probe) or iso in holidays:
             notes.append(f"Market closed {iso} (NSE holiday)")
         elif probe.weekday() >= 5:
             notes.append(f"Weekend {iso}")

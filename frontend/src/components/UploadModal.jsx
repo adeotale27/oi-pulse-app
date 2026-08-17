@@ -40,6 +40,16 @@ const UPLOAD_TYPES = [
     sourceTitle: "NSE Event Calendar — download CSV/XLSX",
     sourceHost: "nseindia.com",
   },
+  {
+    value: "holidays",
+    label: "NSE holiday circular",
+    endpoint: "/admin/upload/holidays",
+    sourceUrl: "https://www.nseindia.com/resources/exchange-communication-holidays",
+    sourceTitle: "NSE trading holidays — official circular",
+    sourceHost: "nseindia.com",
+    formatHint:
+      "CSV/XLSX. Required: DATE, NAME. Optional: SESSION, OPEN, CLOSE.\nDATE = YYYY-MM-DD (or DD-MM-YYYY). SESSION blank = full holiday; SESSION=muhurat needs OPEN/CLOSE as HH:MM IST.\nYears in this file replace that year’s built-in list (other years stay).\n\nDATE,NAME,SESSION,OPEN,CLOSE\n2027-01-26,Republic Day,,,\n2027-11-08,Diwali Laxmi Pujan,muhurat,13:30,19:15",
+  },
 ];
 
 function formatLastUploaded(iso) {
@@ -240,6 +250,15 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
               </div>
               <ExternalLink className="h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
             </a>
+          )}
+
+          {selected?.formatHint && (
+            <pre
+              data-testid="upload-format-hint"
+              className="whitespace-pre-wrap text-[11px] leading-snug rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 font-mono"
+            >
+              {selected.formatHint}
+            </pre>
           )}
 
           <div>

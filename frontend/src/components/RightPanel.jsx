@@ -73,6 +73,7 @@ export default function RightPanel({
   canConfigureDeskAi = false,
   onDeskAiPositions,
   onDeskAiRadar,
+  onOpenTelegramPrefs,
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -209,6 +210,7 @@ export default function RightPanel({
               canConfigureDeskAi={canConfigureDeskAi}
               onDeskAiPositions={onDeskAiPositions}
               onDeskAiRadar={onDeskAiRadar}
+              onOpenTelegramPrefs={onOpenTelegramPrefs}
             />
           )}
           {selectedView === "oichart" && (

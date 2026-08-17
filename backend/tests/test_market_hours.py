@@ -11,6 +11,7 @@ from market_hours import (
     session_poll_bounds,
     eod_lock_time,
     session_anchor_date,
+    clear_uploaded_holidays,
 )
 
 
@@ -23,6 +24,7 @@ def _d(y, m, d, hh=12, mm=0):
 
 def setup_function():
     mark_quote_session_live(False)
+    clear_uploaded_holidays()
 
 
 def test_muhurat_is_a_trading_day_for_oi():

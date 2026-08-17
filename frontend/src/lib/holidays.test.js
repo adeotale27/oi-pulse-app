@@ -72,4 +72,21 @@ assert.equal(holidayCellLabel({ name: "Balipratipada" }), "Balipratipada");
 assert.equal(holidayCellLabel({ name: "Diwali Laxmi Pujan* (Muhurat trading)", session: "muhurat" }), "Muh.");
 assert.ok(holidayCellLabel({ name: "Prakash Gurpurb Sri Guru Nanak Dev" }).startsWith("Prakash"));
 
+const RAW = [
+  { date: "2026-05-01", name: "Maharashtra Day" },
+  { date: "2026-11-08", name: "Diwali Laxmi Pujan", session: "muhurat" },
+];
+function mergeYears(raw, rows) {
+  if (!rows.length) return raw.slice();
+  const years = new Set(rows.map((h) => h.date.slice(0, 4)));
+  return raw.filter((h) => !years.has(h.date.slice(0, 4))).concat(rows);
+}
+const merged = mergeYears(RAW, [
+  { date: "2027-01-26", name: "Republic Day" },
+  { date: "2027-11-08", name: "Diwali Laxmi Pujan", session: "muhurat" },
+]);
+assert.equal(merged.find((h) => h.date === "2027-01-26")?.name, "Republic Day");
+assert.ok(merged.find((h) => h.date === "2026-05-01"), "other years stay");
+assert.equal(mergeYears(RAW, []).find((h) => h.date === "2027-01-26"), undefined);
+
 console.log("holidays.test.js ok");

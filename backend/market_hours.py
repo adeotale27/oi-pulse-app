@@ -8,11 +8,11 @@ Defaults aligned with Index F&O / CAS rules (effective 2026-08-03):
 
 Admin Settings can override open/close via configure_hours().
 
-Holiday list must stay in sync with frontend/src/lib/holidays.js
-(official NSE circular dates).
+Built-in holiday list must stay in sync with frontend/src/lib/holidays.js.
+Admin Upload → NSE holidays overlays those years at runtime (Mongo `nse_holidays`).
 """
 from datetime import datetime, timedelta, time as dtime, timezone, date
-from typing import Iterable, Optional, Tuple, Set
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Set
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -64,6 +64,7 @@ NSE_HOLIDAYS_2026 = {
 }
 
 NSE_HOLIDAYS: Set[str] = NSE_HOLIDAYS_2025 | NSE_HOLIDAYS_2026
+# None = use built-in circulars. Non-empty = replace those calendar years.
 
 # Special live cash/F&O sessions on dates NSE still lists as holidays.
 # Hours from NSE circulars (2025: NSE/CMTR/70319 afternoon session).
@@ -84,6 +85,53 @@ NSE_SPECIAL_SESSIONS: dict[str, dict] = {
 
 # Set from OI tracker when Kite quotes have a fresh last_trade_time (no session API).
 _QUOTE_SESSION_LIVE = False
+
+# Uploaded NSE holiday rows (date/name/session/open/close). None = built-in only.
+_uploaded_holiday_rows: Optional[List[Dict[str, Any]]] = None
+
+
+def apply_uploaded_holidays(rows: Optional[List[Dict[str, Any]]]) -> None:
+    """Overlay uploaded circular years. Pass None or [] to revert to built-in."""
+    global _uploaded_holiday_rows
+    if not rows:
+        _uploaded_holiday_rows = None
+        return
+    _uploaded_holiday_rows = list(rows)
+
+
+def clear_uploaded_holidays() -> None:
+    apply_uploaded_holidays(None)
+
+
+def _uploaded_years() -> Set[str]:
+    if not _uploaded_holiday_rows:
+        return set()
+    return {str(r.get("date") or "")[:4] for r in _uploaded_holiday_rows if r.get("date")}
+
+
+def holiday_dates() -> Set[str]:
+    if not _uploaded_holiday_rows:
+        return NSE_HOLIDAYS
+    years = _uploaded_years()
+    base = {d for d in NSE_HOLIDAYS if d[:4] not in years}
+    extra = {str(r["date"]) for r in _uploaded_holiday_rows if r.get("date")}
+    return base | extra
+
+
+def special_sessions() -> dict:
+    if not _uploaded_holiday_rows:
+        return NSE_SPECIAL_SESSIONS
+    years = _uploaded_years()
+    out = {k: dict(v) for k, v in NSE_SPECIAL_SESSIONS.items() if k[:4] not in years}
+    for r in _uploaded_holiday_rows:
+        d = str(r.get("date") or "")
+        if str(r.get("session") or "").lower() == "muhurat" and d:
+            out[d] = {
+                "name": r.get("name") or "Muhurat",
+                "open": r.get("open") or "13:30",
+                "close": r.get("close") or "14:45",
+            }
+    return out
 
 
 def _parse_hm(value: str, fallback: dtime) -> dtime:
@@ -140,7 +188,7 @@ def now_ist() -> datetime:
 
 def is_holiday(d: datetime) -> bool:
     """True if the date is on the NSE holiday circular (includes Muhurat dates)."""
-    return d.strftime("%Y-%m-%d") in NSE_HOLIDAYS
+    return d.strftime("%Y-%m-%d") in holiday_dates()
 
 
 def is_weekend(d: datetime) -> bool:
@@ -148,7 +196,7 @@ def is_weekend(d: datetime) -> bool:
 
 
 def is_special_session_day(d: datetime) -> bool:
-    return d.strftime("%Y-%m-%d") in NSE_SPECIAL_SESSIONS
+    return d.strftime("%Y-%m-%d") in special_sessions()
 
 
 def is_full_holiday(d: datetime) -> bool:
@@ -184,7 +232,7 @@ def quote_session_is_live() -> bool:
 
 
 def special_session_info(d: datetime) -> Optional[dict]:
-    return NSE_SPECIAL_SESSIONS.get(d.strftime("%Y-%m-%d"))
+    return special_sessions().get(d.strftime("%Y-%m-%d"))
 
 
 def _shift_dtime(t: dtime, minutes: int) -> dtime:
@@ -533,7 +581,7 @@ def market_status() -> dict:
         "is_holiday": is_full_holiday(dt),
         "is_special_session": is_special_session_day(dt),
         "special_session_name": special_name if is_special_session_day(dt) else None,
-        "holidays": sorted(NSE_HOLIDAYS),
+        "holidays": sorted(holiday_dates()),
         "next_market_open_ist": next_market_open(dt).isoformat() if not open_ else None,
         "seconds_until_next_open": seconds_until_next_open(dt) if not open_ else 0,
     }

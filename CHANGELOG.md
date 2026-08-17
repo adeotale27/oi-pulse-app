@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.35 — 2026-08-17
+
+Positions phone polish, always-on CALL/PUT, and an uploadable NSE holiday circular.
+
+- Phone insight tiles are a 2-column equal-height grid (no huge P&amp;L / funds cards). Book score sits above the cards; Insights opens on first phone visit
+- Position cards always show CALL or PUT beside NRML, even when the name is fully visible
+- Admin Upload → **NSE holiday circular** (CSV/XLSX). Years in the file overlay the built-in list. Next Holiday / poll hours use the merge
+- Closed-Chrome phone alerts: Telegram is the reliable path (documented on Positions + Telegram prefs). Browser banners still need the tab open
+
 ## V6.34 — 2026-08-17
 
 Phone Positions: Today P&L stays in the header; CE/PE sits beside NRML when the name truncates.

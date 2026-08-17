@@ -5298,6 +5298,42 @@ async def upload_events(
     }
 
 
+@api_router.post("/admin/upload/holidays")
+async def upload_holidays(
+    file: UploadFile = File(...),
+    _admin: bool = Depends(require_admin),
+):
+    """Admin-only. NSE cash/F&O holiday circular (CSV or XLSX). Replaces those years."""
+    import holiday_calendar as hcal
+    try:
+        raw = await file.read()
+    except Exception as e:
+        raise HTTPException(400, f"Could not read uploaded file: {e}")
+    if not raw:
+        raise HTTPException(400, "Uploaded file is empty.")
+    try:
+        df = ers.read_upload_bytes(raw, file.filename or "")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    rows, errors = hcal.parse_holidays(df)
+    if errors:
+        return {"ok": False, "errors": errors, "row_count": 0}
+    res = await hcal.save_holidays(db, rows, source_filename=file.filename or "")
+    return {
+        "ok": True,
+        "rows_saved": res["rows_saved"],
+        "filename": file.filename,
+        "uploaded_at": res.get("uploaded_at"),
+    }
+
+
+@api_router.get("/holidays")
+async def get_holidays():
+    """NSE holiday circular: uploaded rows when present, else empty (UI uses built-in)."""
+    import holiday_calendar as hcal
+    return await hcal.fetch_holidays_payload(db)
+
+
 @api_router.get("/upload/meta")
 async def get_upload_meta():
     """Last successful upload stamp for each Upload category (public read)."""
