@@ -616,9 +616,11 @@ export default function PositionsPanel({
         if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
         if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
       }
-      if (data.error) {
+      if (data.maintenance || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""))) {
+        setError(data.error || "Zerodha / Kite maintenance");
+        setErrorHard(false);
+      } else if (data.error) {
         setError(data.error);
-        // Soft only when API explicitly marks transient; never treat missing flag as hard.
         setErrorHard(hard && !maintenance);
       } else {
         setError(null);

@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.39",
+    date: "2026-08-17",
+    user: [
+      "If Kite is in overnight maintenance, Positions says so (not a blank zero book). Phone bias bar is shorter; tabs tuck away when you scroll. Friday/Monday holidays show Long weekend on the tile.",
+    ],
+    admin: [
+      "Empty /positions before 7:00 IST plus bulletin/API flags set maintenance. Do not clear that flag on an empty book.",
+    ],
+  },
+  {
     version: "6.38",
     date: "2026-08-17",
     user: [

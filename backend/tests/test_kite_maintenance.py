@@ -1,6 +1,6 @@
 """Kite / Zerodha maintenance detection helpers."""
 
-from kite_maintenance import looks_like_maintenance, merge_maintenance, notice_from_error
+from kite_maintenance import looks_like_maintenance, merge_maintenance, notice_from_error, overnight_book_notice
 
 
 def test_looks_like_maintenance_phrases():
@@ -43,3 +43,11 @@ def test_merge_keeps_api_notice_when_bulletin_inactive():
     }
     out = merge_maintenance(current, bulletin=bulletin)
     assert out is current
+
+
+def test_overnight_notice_shape():
+    n = overnight_book_notice()
+    if n:
+        assert n["active"] is True
+        assert "7:00" in n["message"]
+

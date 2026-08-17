@@ -91,6 +91,11 @@ export default function HolidayBadge({ onOpenCalendar }) {
             <div className="text-[10px] leading-tight truncate" data-testid="holiday-badge-name">
               {info.name}
             </div>
+            {info.longWeekend ? (
+              <div className="text-[9px] font-semibold text-amber-800 mt-0.5" data-testid="holiday-long-weekend">
+                Long weekend · extra theta
+              </div>
+            ) : null}
           </>
         ) : (
           <>

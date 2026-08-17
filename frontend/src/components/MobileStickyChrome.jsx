@@ -28,6 +28,7 @@ export default function MobileStickyChrome({
   infoTilesOpen,
   onToggleInfoTiles,
   infoTiles,
+  chromeSlim = false,
 }) {
   const [draggingId, setDraggingId] = useState(null);
   const [overId, setOverId] = useState(null);
@@ -140,7 +141,9 @@ export default function MobileStickyChrome({
         type="button"
         onClick={() => onSelectIndex?.(idx)}
         data-testid={`mobile-index-${idx}`}
-        className={`min-w-0 rounded-xl border px-1.5 py-1.5 text-left transition-colors ${
+        className={`min-w-0 rounded-xl border text-left transition-colors ${
+          chromeSlim ? "px-1 py-0.5" : "px-1.5 py-1.5"
+        } ${
           active
             ? "border-emerald-400 bg-emerald-50 shadow-sm dark:border-emerald-700 dark:bg-emerald-950/40"
             : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
@@ -151,7 +154,15 @@ export default function MobileStickyChrome({
           <span className={`truncate text-[10px] font-bold ${active ? "text-emerald-900 dark:text-emerald-100" : "text-slate-700 dark:text-slate-200"}`}>
             {INDEX_SHORT[idx] || idx}
           </span>
+          {chromeSlim && active ? (
+            <span className={`ml-auto font-mono-data text-[10px] tabular-nums ${moveCls}`}>
+              {spotTxt}
+              {pts != null ? ` ${pts > 0 ? "+" : ""}${pts.toFixed(Math.abs(pts) >= 100 ? 0 : 1)}` : ""}
+            </span>
+          ) : null}
         </div>
+        {!chromeSlim && (
+          <>
         <div className={`mt-0.5 font-mono-data text-[11px] tabular-nums truncate ${active ? "text-slate-800 dark:text-slate-100" : "text-slate-600 dark:text-slate-300"}`}>
           {spotTxt}
         </div>
@@ -159,6 +170,8 @@ export default function MobileStickyChrome({
           {pts != null ? `${pts > 0 ? "+" : ""}${pts.toFixed(Math.abs(pts) >= 100 ? 0 : 1)}` : "—"}
           {pct != null ? ` ${pct > 0 ? "+" : ""}${pct.toFixed(2)}%` : ""}
         </div>
+          </>
+        )}
       </button>
     );
   };
@@ -200,7 +213,7 @@ export default function MobileStickyChrome({
         </div>
       </div>
 
-      {tabs.length > 0 && (
+      {tabs.length > 0 && !chromeSlim && (
         <div className="border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-1 px-1.5 py-1">
           <div
@@ -280,7 +293,7 @@ export default function MobileStickyChrome({
         </div>
       )}
 
-      {typeof onToggleInfoTiles === "function" && infoTilesOpen && (
+      {typeof onToggleInfoTiles === "function" && infoTilesOpen && !chromeSlim && (
         <div
           className="border-t border-slate-100 px-2 py-2 dark:border-slate-800"
           data-testid="mobile-info-tiles-bar"
