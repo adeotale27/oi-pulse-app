@@ -4,6 +4,17 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.37",
+    date: "2026-08-17",
+    user: [
+      "Today P&L stays in the header only. Position insight tiles swipe sideways again. Your book can sit above the list, after Live, or below — drag it or use the placement menu.",
+      "Closed-Chrome phone alerts: open Alerts and use Telegram. OI Change’s percent alert is a small bell on the ATM row.",
+    ],
+    admin: [
+      "GOLD / SILVER / CRUDEOIL Kite names stay majors (not GOLDM / CRUDEOILM). Snapshot ATM follows listed MCX strikes so Gold OI does not 503 on a 100-pt catalog step.",
+    ],
+  },
+  {
     version: "6.36",
     date: "2026-08-17",
     user: [

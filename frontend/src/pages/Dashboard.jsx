@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Header, { HeaderTodayPnl } from "@/components/Header";
+import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OIChart from "@/components/OIChart";
 import TimeframePills from "@/components/TimeframePills";
@@ -56,7 +56,7 @@ import {
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight, Play, HelpCircle } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight, Play, HelpCircle, Bell } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -2100,17 +2100,6 @@ export default function Dashboard() {
                   testId="dashboard-info-tiles-mobile"
                 />
               }
-              pnlSlot={
-                (authState.is_admin || (authState.is_guest && tabOn("positions"))) ? (
-                  <HeaderTodayPnl
-                    enabled
-                    compact
-                    status={status}
-                    pollMs={positionsPollMs}
-                    className="flex flex-col items-end leading-none px-0.5"
-                  />
-                ) : null
-              }
             />
           </div>
 
@@ -2219,45 +2208,9 @@ export default function Dashboard() {
                           Collecting snapshots for {timeframeLabel} · {liveAvailMin.toFixed(1)} min so far · unlocks in {clock}
                         </span>
                       )}
-                      <span className="ml-auto hidden md:flex items-center gap-1.5 text-[11px]" data-testid="change-alert-threshold-wrapper">
-                        <span className="opacity-80">Alert on ≥</span>
-                        <input
-                          data-testid="change-alert-threshold"
-                          type="number"
-                          step="0.5"
-                          min="0.1"
-                          value={changeAlertPct}
-                          onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (Number.isFinite(v) && v > 0) setChangeAlertPct(v);
-                          }}
-                          className="w-14 px-1 py-0.5 rounded border border-slate-300 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono-data text-right"
-                        />
-                        <span className="opacity-80">%</span>
-                      </span>
                     </div>
                   );
                 })()}
-                {activeTab === "oi-change" && historyReady && (
-                  <div className="hidden md:flex justify-end -mb-1" data-testid="change-alert-threshold-wrapper">
-                    <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
-                      <span>Alert on ≥</span>
-                      <input
-                        data-testid="change-alert-threshold"
-                        type="number"
-                        step="0.5"
-                        min="0.1"
-                        value={changeAlertPct}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (Number.isFinite(v) && v > 0) setChangeAlertPct(v);
-                        }}
-                        className="w-14 px-1 py-0.5 rounded border border-slate-200 bg-white dark:bg-slate-900 font-mono-data text-right"
-                      />
-                      <span>%</span>
-                    </label>
-                  </div>
-                )}
                 <div
                   className={`oi-panel oi-rise p-4 transition-all duration-700 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
@@ -2356,6 +2309,38 @@ export default function Dashboard() {
                         {typeof strikesAround === "number" && (
                           <span className="text-slate-600">showing ±{strikesAround} strikes</span>
                         )}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
+                              data-testid="change-alert-threshold-wrapper"
+                              title="Toast when CE or PE OI change hits this percent"
+                            >
+                              <Bell className="w-3 h-3" />
+                              ≥{changeAlertPct}%
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-48 p-3 space-y-1.5" data-testid="change-alert-threshold-menu">
+                            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">OI change toast</div>
+                            <label className="flex items-center gap-1.5 text-[12px] text-slate-700">
+                              <span>Alert on ≥</span>
+                              <input
+                                data-testid="change-alert-threshold"
+                                type="number"
+                                step="0.5"
+                                min="0.1"
+                                value={changeAlertPct}
+                                onChange={(e) => {
+                                  const v = parseFloat(e.target.value);
+                                  if (Number.isFinite(v) && v > 0) setChangeAlertPct(v);
+                                }}
+                                className="w-14 px-1 py-0.5 rounded border border-slate-200 bg-white font-mono-data text-right"
+                              />
+                              <span>%</span>
+                            </label>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     )}
                     <div
@@ -2653,7 +2638,13 @@ export default function Dashboard() {
                   {(tabOn("alerts")) && (
                     <TabsContent value="alerts" className="mt-0">
                     <div className="text-sm font-semibold mb-2">All Alerts</div>
-                    <AlertsPanel alerts={focusedAlerts} onClear={handleClearAlerts} activeIndex={activeIndex} canClear={authState.is_admin} />
+                    <AlertsPanel
+                      alerts={focusedAlerts}
+                      onClear={handleClearAlerts}
+                      activeIndex={activeIndex}
+                      canClear={authState.is_admin}
+                      onOpenTelegramPrefs={authState.is_admin ? () => setTelegramPrefsOpen(true) : undefined}
+                    />
                   </TabsContent>
                   )}
 

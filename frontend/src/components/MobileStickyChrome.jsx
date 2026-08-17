@@ -28,7 +28,6 @@ export default function MobileStickyChrome({
   infoTilesOpen,
   onToggleInfoTiles,
   infoTiles,
-  pnlSlot,
 }) {
   const [draggingId, setDraggingId] = useState(null);
   const [overId, setOverId] = useState(null);
@@ -172,7 +171,7 @@ export default function MobileStickyChrome({
       <div className="px-2 py-1.5 space-y-1">
         <div className="flex items-center gap-2">
         <div
-          className="min-w-0 flex-1 grid grid-cols-3 gap-1"
+          className={`min-w-0 flex-1 grid gap-1 ${many || list.length >= 3 ? "grid-cols-3" : "grid-cols-2"}`}
           data-testid="mobile-index-switcher"
         >
           {many ? (
@@ -198,11 +197,6 @@ export default function MobileStickyChrome({
             list.map((idx) => chip(idx))
           )}
         </div>
-        {pnlSlot ? (
-          <div className="shrink-0 pl-1.5 border-l border-slate-200 dark:border-slate-700" data-testid="mobile-sticky-pnl">
-            {pnlSlot}
-          </div>
-        ) : null}
         </div>
       </div>
 
