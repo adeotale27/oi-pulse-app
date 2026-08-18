@@ -1,5 +1,14 @@
 # Changelog
 
+## V7.08 — 2026-08-18
+
+Cloudflare/nginx 502 HTML must not pin AuthGate on “Loading…”.
+
+- `/auth/state` is fetched with AbortController; HTML bodies (Emergent 502 page) are rejected
+- AuthGate only spreads a real JSON payload (`is_admin` boolean); fail-open on 502/HTML
+- Auth poller run is capped at 3.2s so a hung XHR cannot stick `runRef`
+- `withTimeout` aborts the in-flight request when the budget expires
+
 ## V7.07 — 2026-08-18
 
 Keep the desk answering while Kite and Mongo catch up. Admin 15s poll / extra indices must not freeze Loading.

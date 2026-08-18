@@ -1,5 +1,5 @@
 import axios from "axios";
-import { shouldWipeTokensOn401 } from "@/lib/authBoot";
+import { shouldWipeTokensOn401, isAuthStatePayload, looksLikeHtmlBody } from "@/lib/authBoot";
 
 // Backend URL resolution:
 // 1. Use REACT_APP_BACKEND_URL if provided at build time (Emergent preview).
@@ -281,6 +281,49 @@ api.interceptors.response.use(
 );
 
 export const fetchStatus = () => api.get("/status", { timeout: 8000 }).then((r) => r.data);
+
+/** GET /auth/state — abort on hang; reject Cloudflare/nginx HTML (502) so AuthGate cannot spread it. */
+export function fetchAuthState({ timeoutMs = 2500 } = {}) {
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = setTimeout(() => {
+    try { ctrl?.abort(); } catch (_) { /* noop */ }
+  }, timeoutMs);
+  return api
+    .get("/auth/state", {
+      timeout: timeoutMs,
+      signal: ctrl?.signal,
+      validateStatus: (s) => s === 200,
+      transformResponse: [(data) => data],
+    })
+    .then((r) => {
+      const raw = r?.data;
+      if (looksLikeHtmlBody(raw)) {
+        const err = new Error("auth state returned HTML");
+        err.code = "ECONNABORTED";
+        err.response = { status: 502, data: raw };
+        throw err;
+      }
+      let parsed = raw;
+      if (typeof raw === "string") {
+        try {
+          parsed = JSON.parse(raw);
+        } catch (_) {
+          const err = new Error("auth state not JSON");
+          err.code = "ECONNABORTED";
+          err.response = { status: 502, data: raw };
+          throw err;
+        }
+      }
+      if (!isAuthStatePayload(parsed)) {
+        const err = new Error("auth state invalid");
+        err.code = "ECONNABORTED";
+        err.response = { status: 502, data: parsed };
+        throw err;
+      }
+      return parsed;
+    })
+    .finally(() => clearTimeout(timer));
+}
 export const fetchOI = (idx) => api.get(`/oi/${idx}`).then((r) => r.data);
 
 let __configInflight = null;

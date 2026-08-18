@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Navigate, Link } from "react-router-dom";
-import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession } from "@/lib/api";
-import { isTransientHttpError, storedDeskSession, optimisticDeskAuthState, withTimeout } from "@/lib/authBoot";
+import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession, fetchAuthState } from "@/lib/api";
+import { isTransientHttpError, optimisticDeskAuthState, withTimeout, isAuthStatePayload, failOpenAuthState } from "@/lib/authBoot";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,15 +60,15 @@ export default function AuthGate({ children }) {
       })();
 
       // /auth/state first so a hung Remember-me cannot pin the dark Loading screen.
+      // Ingress 502 returns Cloudflare HTML — never spread that into React state.
       let data;
       let lastErr;
       try {
-        const res = await withTimeout(api.get("/auth/state", { timeout: 2500 }), 2800, "auth state timeout");
-        data = res.data;
+        data = await withTimeout(fetchAuthState({ timeoutMs: 2500 }), 2800, "auth state timeout");
       } catch (err) {
         lastErr = err;
       }
-      if (!data) throw lastErr || new Error("auth state unavailable");
+      if (!isAuthStatePayload(data)) throw lastErr || new Error("auth state unavailable");
 
       // Returning guest on same IP — auto-login without a click.
       if (
@@ -87,7 +87,8 @@ export default function AuthGate({ children }) {
         clearAdminAuth({ clearRemember: false });
         toast.success(`Welcome back, ${data.auto_guest_name || data.suggested_guest_name || "guest"}`);
         // Re-fetch so is_guest is true with the new header token.
-        const { data: again } = await withTimeout(api.get("/auth/state", { timeout: 2500 }), 2800, "auth state timeout");
+        const again = await withTimeout(fetchAuthState({ timeoutMs: 2500 }), 2800, "auth state timeout");
+        if (!isAuthStatePayload(again)) throw new Error("auth state unavailable");
         setState({ loading: false, ...again });
         try {
           window.__oi_last_auth_state = again;
@@ -120,12 +121,14 @@ export default function AuthGate({ children }) {
           );
           if (rem?.token) {
             persistAdminSession(rem.token);
-            const { data: again } = await withTimeout(api.get("/auth/state", { timeout: 2500 }), 2800, "auth state timeout");
-            setState({ loading: false, ...again });
-            try {
-              window.__oi_last_auth_state = again;
-              window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: again }));
-            } catch (_) { /* noop */ }
+            const again = await withTimeout(fetchAuthState({ timeoutMs: 2500 }), 2800, "auth state timeout");
+            if (isAuthStatePayload(again)) {
+              setState({ loading: false, ...again });
+              try {
+                window.__oi_last_auth_state = again;
+                window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: again }));
+              } catch (_) { /* noop */ }
+            }
           }
         } catch (err) {
           if (!isTransientHttpError(err)) {
@@ -140,33 +143,14 @@ export default function AuthGate({ children }) {
       if (isTransientHttpError(err)) {
         let last = null;
         try { last = window.__oi_last_auth_state; } catch (_) { /* noop */ }
-        if (last && (last.is_admin || last.is_guest)) {
+        if (isAuthStatePayload(last) && (last.is_admin || last.is_guest)) {
           setState({ loading: false, ...last });
           return;
         }
-        const stored = storedDeskSession();
-        if (stored) {
-          setState({
-            loading: false,
-            requires_login: false,
-            public_access_open: true,
-            is_admin: !!stored.is_admin,
-            is_guest: !!stored.is_guest,
-            needs_guest_name: false,
-          });
-          return;
-        }
-        setState({
-          loading: false,
-          auth_unavailable: true,
-          requires_login: false,
-          is_admin: false,
-          is_guest: false,
-          needs_guest_name: false,
-        });
+        setState(failOpenAuthState());
         return;
       }
-      setState({ loading: false, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false });
+      setState(failOpenAuthState());
     }
   };
 
@@ -175,28 +159,7 @@ export default function AuthGate({ children }) {
   }, []);
   useEffect(() => {
     const failOpen = setTimeout(() => {
-      setState((s) => {
-        if (!s.loading) return s;
-        const stored = storedDeskSession();
-        if (stored) {
-          return {
-            loading: false,
-            requires_login: false,
-            public_access_open: true,
-            is_admin: !!stored.is_admin,
-            is_guest: !!stored.is_guest,
-            needs_guest_name: false,
-          };
-        }
-        return {
-          loading: false,
-          auth_unavailable: true,
-          requires_login: false,
-          is_admin: false,
-          is_guest: false,
-          needs_guest_name: false,
-        };
-      });
+      setState((s) => (s.loading ? failOpenAuthState() : s));
     }, 1500);
     return () => clearTimeout(failOpen);
   }, []);
@@ -217,6 +180,7 @@ export default function AuthGate({ children }) {
     immediate: true,
     allowDuringQuiescent: true,
     dedupeKey: "auth-gate",
+    maxRunMs: 3200,
   });
 
   // Absolute session TTL logout for admin (matches backend created_at + ttl).

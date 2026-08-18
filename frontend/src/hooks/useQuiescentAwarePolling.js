@@ -7,7 +7,7 @@ import { isMarketQuiescent } from "@/lib/marketTimes";
 // - deps: dependency array for effect
 // - options: { status: optionalServerStatus, immediate: true, allowDuringQuiescent: false }
 export default function useQuiescentAwarePolling(callback, ms, deps = [], options = {}) {
-  const { status = undefined, immediate = true, allowDuringQuiescent = false, dedupeKey = null, delayMs = 0 } = options;
+  const { status = undefined, immediate = true, allowDuringQuiescent = false, dedupeKey = null, delayMs = 0, maxRunMs = 0 } = options;
   const mountedRef = useRef(false);
 
   const runRef = useRef(false);
@@ -52,7 +52,21 @@ export default function useQuiescentAwarePolling(callback, ms, deps = [], option
           try { console.debug(`[useQuiescentAwarePolling#${instanceId}] run() invoked dedupeKey=${String(dedupeKey)} isPrimaryOwner=${isPrimaryOwner}`); } catch (_) {}
         }
         // call the latest callback
-        await callbackRef.current();
+        const fn = callbackRef.current;
+        if (maxRunMs > 0) {
+          await Promise.race([
+            Promise.resolve(fn()),
+            new Promise((_, reject) => {
+              setTimeout(() => {
+                const err = new Error("poll run cap");
+                err.code = "ECONNABORTED";
+                reject(err);
+              }, maxRunMs);
+            }),
+          ]);
+        } else {
+          await fn();
+        }
       } catch (e) {
         // swallow errors here; callers may handle
       } finally {
@@ -130,5 +144,5 @@ export default function useQuiescentAwarePolling(callback, ms, deps = [], option
     // Depend on market-open flag only — full `status` object identity changes
     // every status poll and was recreating intervals unnecessarily.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, ms, status?.market?.is_market_open, immediate, allowDuringQuiescent, dedupeKey, delayMs]);
+  }, [...deps, ms, status?.market?.is_market_open, immediate, allowDuringQuiescent, dedupeKey, delayMs, maxRunMs]);
 }

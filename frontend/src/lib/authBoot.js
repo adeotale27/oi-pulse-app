@@ -4,12 +4,59 @@ export function isTransientHttpError(err) {
   const status = err?.response?.status;
   const code = String(err?.code || "");
   const msg = String(err?.message || "");
-  if (code === "ECONNABORTED" || code === "ERR_NETWORK" || code === "ETIMEDOUT") return true;
-  if (/timeout/i.test(msg) || /network error/i.test(msg)) return true;
+  if (code === "ECONNABORTED" || code === "ERR_CANCELED" || code === "ERR_NETWORK" || code === "ETIMEDOUT") return true;
+  if (/timeout/i.test(msg) || /network error/i.test(msg) || /aborted/i.test(msg)) return true;
+  if (looksLikeHtmlBody(err?.response?.data) || looksLikeHtmlBody(err?.data)) return true;
   if (status == null) return true;
   if (status === 429 || status === 502 || status === 503 || status === 504) return true;
   if (status === 520 || status === 521 || status === 522 || status === 523 || status === 524) return true;
   return status >= 500;
+}
+
+export function looksLikeHtmlBody(data) {
+  if (typeof data === "string") return /^\s*</.test(data);
+  return false;
+}
+
+/** True only for a real /auth/state JSON object — never a Cloudflare 502 HTML page. */
+export function isAuthStatePayload(data) {
+  return !!(
+    data
+    && typeof data === "object"
+    && !Array.isArray(data)
+    && typeof data.is_admin === "boolean"
+  );
+}
+
+export function deskUnavailableAuthState() {
+  return {
+    loading: false,
+    auth_unavailable: true,
+    requires_login: false,
+    public_access_open: false,
+    is_admin: false,
+    is_guest: false,
+    needs_guest_name: false,
+  };
+}
+
+export function storedSessionAuthState() {
+  const stored = storedDeskSession();
+  if (!stored) return deskUnavailableAuthState();
+  return {
+    loading: false,
+    requires_login: false,
+    public_access_open: true,
+    is_admin: !!stored.is_admin,
+    is_guest: !!stored.is_guest,
+    needs_guest_name: false,
+  };
+}
+
+export function failOpenAuthState() {
+  const stored = storedDeskSession();
+  if (stored) return storedSessionAuthState();
+  return deskUnavailableAuthState();
 }
 
 export function storedDeskSession() {
@@ -67,11 +114,14 @@ export async function sleep(ms) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
-/** Never let boot wait forever on a hung origin (preview /auth/state 0-byte stall). */
-export function withTimeout(promise, ms, label = "timeout") {
+/** Never let boot wait forever on a hung origin (preview /auth/state 0-byte stall).
+ *  Pass `abort` so axios/XHR is actually cancelled when the budget expires
+ *  (axios timeout alone often does not abort a Cloudflare 502 that never finishes). */
+export function withTimeout(promise, ms, label = "timeout", abort) {
   let t;
   const killer = new Promise((_, reject) => {
     t = setTimeout(() => {
+      try { abort?.(); } catch (_) { /* noop */ }
       const err = new Error(label);
       err.code = "ECONNABORTED";
       reject(err);

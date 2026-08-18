@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.08",
+    date: "2026-08-18",
+    user: [
+      "If the live API is behind a 502 / error page, you get Retry instead of a stuck Loading screen.",
+    ],
+    admin: [
+      "fetchAuthState rejects Cloudflare HTML. AuthGate never spreads a non-JSON body. Poller maxRunMs 3.2s. withTimeout aborts XHR.",
+    ],
+  },
+  {
     version: "7.07",
     date: "2026-08-18",
     user: [
