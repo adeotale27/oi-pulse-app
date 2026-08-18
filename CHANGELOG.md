@@ -1,5 +1,17 @@
 # Changelog
 
+## V7.07 — 2026-08-18
+
+Keep the desk answering while Kite and Mongo catch up. Admin 15s poll / extra indices must not freeze Loading.
+
+- HTTP binds after Mongo ping; index builds and Kite dump run in the background
+- OI poller no longer waits on `kite.instruments()`; dump is fire-and-forget
+- GET `/oi`, straddle, and VRP use cache until the dump is in memory (no dump on the event loop)
+- Dashboard settings poll uses `/config` (no Mongo reload). Admin configuration uses `?reload=1`
+- 15s OI interval is floored to 30s until instruments are loaded
+- Auth gate fail-opens after 1.5s if `/auth/state` never returns
+
+
 ## V7.06 — 2026-08-18
 
 Unstick the origin: the daily Kite instrument dump no longer runs on the FastAPI event loop.

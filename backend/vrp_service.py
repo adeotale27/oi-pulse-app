@@ -45,7 +45,8 @@ def _index_token(kite_service, index_name: str) -> Optional[int]:
     if not kite_service:
         return None
     try:
-        kite_service._load_instruments()
+        if not getattr(kite_service, "_loaded", False):
+            return None
     except Exception as e:
         logger.error(f"[vrp] load_instruments failed: {e}")
         return None
