@@ -143,7 +143,27 @@ def test_partial_close_books_kite_realised():
     assert bits["pnl"] == 19000.0
 
 
-def test_partial_close_falls_back_to_matched_buy_sell():
+def test_booked_pnl_exited_prefers_realised_over_value():
+    bits = booked_pnl_from_kite_row(
+        qty=0,
+        buy_qty=325,
+        sell_qty=325,
+        buy_price=3.55,
+        sell_price=12.65,
+        pnl=100,
+        realised=12851.0,
+        unrealised=0,
+        exited=True,
+        buy_value=1000,
+        sell_value=4000,
+        last_price=2.15,
+        multiplier=1,
+    )
+    assert bits["booked_pnl"] == 12851.0
+    assert bits["pnl_source"] == "realised"
+
+
+def test_partial_close_falls_back_to_kite_pnl_minus_unrealised():
     bits = booked_pnl_from_kite_row(
         qty=-650,
         buy_qty=195,
@@ -158,9 +178,8 @@ def test_partial_close_falls_back_to_matched_buy_sell():
         mark_to_market=True,
     )
     assert bits["partial"] is True
-    # (80 - 40) * 195 — closed lots only, not pnl minus a lagging unrealised.
-    assert bits["booked_pnl"] == 7800.0
-    # MTM can move; booked must not.
+    # Kite Booked = pnl - unrealised when realised is empty (not buy/sell averages).
+    assert bits["booked_pnl"] == 12600.0
     bits2 = booked_pnl_from_kite_row(
         qty=-650,
         buy_qty=195,
@@ -175,6 +194,35 @@ def test_partial_close_falls_back_to_matched_buy_sell():
         mark_to_market=True,
     )
     assert bits2["booked_pnl"] == bits["booked_pnl"]
+
+
+def test_apply_live_ltp_keeps_kite_booked():
+    from kite_positions import apply_live_ltp_to_open_rows
+    row = {
+        "exited": False,
+        "exchange": "NFO",
+        "tradingsymbol": "NIFTY2581824200PE",
+        "quantity": -50,
+        "buy_quantity": 25,
+        "sell_quantity": 75,
+        "buy_price": 80,
+        "sell_price": 100,
+        "pnl": 19000,
+        "realised": 12600,
+        "unrealised": 6400,
+        "booked_pnl": 12600,
+        "buy_value": 2000,
+        "sell_value": 7500,
+        "last_price": 90,
+        "multiplier": 1,
+    }
+    apply_live_ltp_to_open_rows(
+        [row],
+        {"NFO:NIFTY2581824200PE": {"last_price": 40}},
+    )
+    assert row["booked_pnl"] == 12600.0
+    assert row["realised"] == 12600.0
+    assert row["last_price"] == 40
 
 
 def test_booked_today_from_row_sums_exit_and_partial():

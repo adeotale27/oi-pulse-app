@@ -4261,7 +4261,7 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         format_fno_option_label,
         parse_fno_option_symbol,
     )
-    from kite_positions import apply_live_ltp_to_open_rows, merge_kite_net_day
+    from kite_positions import apply_live_ltp_to_open_rows, booked_today_from_row, merge_kite_net_day
     from universe import match_symbol_prefix
 
     # Net quantity is authoritative for open vs exited. Day rows only enrich
@@ -4394,6 +4394,56 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
                 quotes.update(await asyncio.to_thread(kite.quote, keys) or {})
             except Exception as e:
                 logger.warning("positions %s kite.quote failed: %s", label, e)
+
+    # Tile totals from Kite Booked / Unbooked / P&L — before quote MTM on open legs.
+    def _row_day_pnl(r: dict) -> float:
+        if r.get("exited"):
+            for key in ("booked_pnl", "realised", "pnl"):
+                try:
+                    v = float(r.get(key))
+                except (TypeError, ValueError):
+                    continue
+                if v == v:  # not NaN
+                    return v
+            return 0.0
+        try:
+            return float(r.get("pnl") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    open_n = sum(1 for r in out if not r.get("exited"))
+    exited_n = sum(1 for r in out if r.get("exited"))
+    partial_n = sum(1 for r in out if r.get("partial") and not r.get("exited"))
+    open_pnl = round(sum(_row_day_pnl(r) for r in out if not r.get("exited")), 2)
+    exited_pnl = round(sum(_row_day_pnl(r) for r in out if r.get("exited")), 2)
+    booked_today = round(sum(booked_today_from_row(r) for r in out), 2)
+    unbooked = 0.0
+    for r in out:
+        if r.get("exited"):
+            continue
+        try:
+            u = float(r.get("unrealised") or 0)
+        except (TypeError, ValueError):
+            u = 0.0
+        if u != u:
+            u = 0.0
+        unbooked += u
+    unbooked = round(unbooked, 2)
+    booked_on_open = round(booked_today - exited_pnl, 2)
+    if abs(unbooked) < 1e-9 and abs(open_pnl) > 1e-9:
+        # Kite sometimes leaves unrealised at 0 and only fills pnl.
+        unbooked = round(open_pnl - booked_on_open, 2)
+    kite_total = round(booked_today + unbooked, 2)
+    if abs(booked_today) < 1e-9 and abs(unbooked) < 1e-9:
+        kite_total = round(open_pnl + exited_pnl, 2)
+    pnl_today = {
+        "open": unbooked,
+        "exited": exited_pnl,
+        "booked": booked_today,
+        "unbooked": unbooked,
+        "total": kite_total,
+    }
+
     apply_live_ltp_to_open_rows(out, quotes)
 
     for idx in indices_needed:
@@ -4444,43 +4494,13 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
                 ],
             }
 
-    from kite_positions import booked_today_from_row
-
-    open_n = sum(1 for r in out if not r.get("exited"))
-    exited_n = sum(1 for r in out if r.get("exited"))
-    partial_n = sum(1 for r in out if r.get("partial") and not r.get("exited"))
-    # Today P&L: open legs use Kite net pnl (includes day realised on partials);
-    # same-day exits use booked/realised. Sum must match Kite "Total P&L".
-    def _row_day_pnl(r: dict) -> float:
-        if r.get("exited"):
-            for key in ("booked_pnl", "realised", "pnl"):
-                try:
-                    v = float(r.get(key))
-                except (TypeError, ValueError):
-                    continue
-                if v == v:  # not NaN
-                    return v
-            return 0.0
-        try:
-            return float(r.get("pnl") or 0)
-        except (TypeError, ValueError):
-            return 0.0
-
-    open_pnl = round(sum(_row_day_pnl(r) for r in out if not r.get("exited")), 2)
-    exited_pnl = round(sum(_row_day_pnl(r) for r in out if r.get("exited")), 2)
-    booked_today = round(sum(booked_today_from_row(r) for r in out), 2)
     result = {
         "mode": tracker.mode,
         "positions": out,
         "open_count": open_n,
         "exited_count": exited_n,
         "partial_count": partial_n,
-        "pnl_today": {
-            "open": open_pnl,
-            "exited": exited_pnl,
-            "booked": booked_today,
-            "total": round(open_pnl + exited_pnl, 2),
-        },
+        "pnl_today": pnl_today,
         "spot": idx_spot,
         "oi": oi_by_index,
         "funds": funds,
