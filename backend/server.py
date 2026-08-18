@@ -4481,6 +4481,10 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
 
             bulletin = fetch_bulletin_notice()
             night = overnight_book_notice()
+            if not night:
+                from kite_maintenance import stale_overnight_notice
+                if stale_overnight_notice(tracker.kite_maintenance):
+                    tracker.kite_maintenance = None
             tracker.kite_maintenance = merge_maintenance(
                 tracker.kite_maintenance,
                 api_error=(night or {}).get("message"),
