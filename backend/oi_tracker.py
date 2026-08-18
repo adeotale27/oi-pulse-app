@@ -855,7 +855,10 @@ class OITracker:
                 await self.seed_default_expiries(force_roll=False)
                 return
             try:
-                self.kite_service.reload_instruments(force=True)
+                await asyncio.wait_for(
+                    asyncio.to_thread(self.kite_service.reload_instruments, True),
+                    timeout=40,
+                )
                 self._instruments_loaded_at = now
                 await self.seed_default_expiries(force_roll=True)
                 logger.info("Reloaded Kite instruments + rolled default expiries for %s", ist_today)

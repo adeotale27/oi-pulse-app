@@ -1328,6 +1328,7 @@ async def get_expiries(index_name: str):
                     {"index": idx},
                     sort=[("timestamp", -1)],
                     projection={"expiry": 1, "_id": 0},
+                    maxTimeMS=1500,
                 )
                 snap_exp = (doc or {}).get("expiry")
             except Exception:
@@ -1775,18 +1776,29 @@ async def _find_previous_snapshot(
     # ASC → earliest in window ≈ closest to the N-min-ago boundary.
     # Cap query time so a missing index cannot pin the event loop for 20s.
     try:
-        prev_doc = await db.oi_snapshots.find_one(
-            window_query,
-            sort=[("timestamp", 1)],
-            projection={"_id": 0},
-            maxTimeMS=4000,
+        prev_doc = await asyncio.wait_for(
+            db.oi_snapshots.find_one(
+                window_query,
+                sort=[("timestamp", 1)],
+                projection={"_id": 0},
+                maxTimeMS=2500,
+            ),
+            timeout=3.0,
         )
     except TypeError:
-        prev_doc = await db.oi_snapshots.find_one(
-            window_query,
-            sort=[("timestamp", 1)],
-            projection={"_id": 0},
-        )
+        try:
+            prev_doc = await asyncio.wait_for(
+                db.oi_snapshots.find_one(
+                    window_query,
+                    sort=[("timestamp", 1)],
+                    projection={"_id": 0},
+                ),
+                timeout=3.0,
+            )
+        except Exception:
+            prev_doc = None
+    except Exception:
+        prev_doc = None
 
     history_ready = True
     elapsed_min_val: Optional[float] = None
@@ -1906,11 +1918,27 @@ async def get_oi_change(
     needs_db = (not current) or (age is not None and age > STALE_THRESHOLD_SECONDS and not market_is_open)
 
     if needs_db or (not current):
-        doc = await db.oi_snapshots.find_one(
-            {"index": idx, **({"expiry": expiry} if expiry else {})},
-            sort=[("timestamp", -1)],
-            projection={"_id": 0},
-        )
+        try:
+            doc = await asyncio.wait_for(
+                db.oi_snapshots.find_one(
+                    {"index": idx, **({"expiry": expiry} if expiry else {})},
+                    sort=[("timestamp", -1)],
+                    projection={"_id": 0},
+                    maxTimeMS=1500,
+                ),
+                timeout=2.0,
+            )
+        except TypeError:
+            doc = await asyncio.wait_for(
+                db.oi_snapshots.find_one(
+                    {"index": idx, **({"expiry": expiry} if expiry else {})},
+                    sort=[("timestamp", -1)],
+                    projection={"_id": 0},
+                ),
+                timeout=2.0,
+            )
+        except Exception:
+            doc = None
         if doc:
             current = doc
             # Only seed shared cache when serving the poller's selected expiry.

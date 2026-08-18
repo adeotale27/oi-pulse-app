@@ -58,7 +58,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
+import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, fetchConfig, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
 import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
@@ -816,7 +816,7 @@ export default function Dashboard() {
     }
     const job = (async () => {
     try {
-      const r = await api.get(`/expiries/${idx}`);
+      const r = await api.get(`/expiries/${idx}`, { timeout: 8000 });
       const list = r.data.expiries || [];
       const meta = r.data.expiries_meta || [];
       const note = r.data.note || null;
@@ -1212,6 +1212,7 @@ export default function Dashboard() {
     try {
       const res = await api.get("/settings", {
         params: { _: Date.now() },
+        timeout: 6000,
         headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
       });
       if (res.data) applyServerSettings(res.data);
@@ -1222,8 +1223,8 @@ export default function Dashboard() {
 
   // Boot: pull /config once so poll interval is correct before first OI tick.
   useEffect(() => {
-    api.get("/config").then((r) => {
-      applyServerSettings(r.data || {});
+    fetchConfig().then((data) => {
+      applyServerSettings(data || {});
     }).catch(() => { /* ignore — settings poll will retry */ });
   }, [applyServerSettings]);
 
@@ -3022,7 +3023,7 @@ export default function Dashboard() {
         onOpenChange={setIndexManagerOpen}
         onChanged={() => {
           fetchSettings();
-          api.get("/config").then((r) => applyServerSettings(r.data || {})).catch(() => {});
+          fetchConfig().then((data) => applyServerSettings(data || {})).catch(() => {});
         }}
       />
 
