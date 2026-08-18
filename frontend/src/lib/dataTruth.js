@@ -90,7 +90,7 @@ export function buildDataTruth({
         : asOfClock
           ? `${asOfClock} IST`
           : "Prior close",
-      detail: "Market closed · OI paused until next open · GIFT/VIX may still update",
+      detail: "",
       tone: "session",
     };
   }

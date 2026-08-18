@@ -340,6 +340,25 @@ function AvgCell({ row, privacy = false }) {
   return <span>{fmt(row?.average_price)}</span>;
 }
 
+function ExpiryLeftoverSettleBtn({ count, onSettle, busy }) {
+  if (!count) return null;
+  return (
+    <button
+      type="button"
+      data-testid="btn-settle-expiry-leftovers"
+      className="ml-2 inline-flex items-center rounded-sm border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSettle?.();
+      }}
+      disabled={busy}
+      title="Zerodha already squares 0.05 expiry hedges after close. Book them here so Profit booked / journal match Today P&L. Does not place a Kite order."
+    >
+      {busy ? "Booking…" : `Square ${count} leftover${count === 1 ? "" : "s"} in book`}
+    </button>
+  );
+}
+
 function StatusChip({ breached, isShortOpt, exited }) {
   if (exited) return <ExitedChip />;
   if (breached) {
@@ -460,6 +479,9 @@ export default function PositionsPanel({
   const [guestKiteId, setGuestKiteId] = useState(null);
   const [exitedOpen, setExitedOpen] = useState(false);
   const [liveOpen, setLiveOpen] = useState(true);
+  const [leftoverOpenCount, setLeftoverOpenCount] = useState(0);
+  const [expirySettledCount, setExpirySettledCount] = useState(0);
+  const [settleBusy, setSettleBusy] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(() => {
     try {
       const v = localStorage.getItem("oiPositionsInsightsOpen");
@@ -597,6 +619,8 @@ export default function PositionsPanel({
       setGuestKiteId(data?.user_kite?.kite_user_id || null);
     }
     const next = data.positions || [];
+    setLeftoverOpenCount(Number(data.expiry_leftover_open_count) || 0);
+    setExpirySettledCount(Number(data.expiry_settled_count) || 0);
     const hard =
       data.token_issue === true
       || data.kite_connected === false
@@ -635,6 +659,18 @@ export default function PositionsPanel({
     setLastRefresh(new Date().toISOString());
     setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
   }, [isGuest, pollMs]);
+
+  const settleExpiryLeftovers = useCallback(async () => {
+    setSettleBusy(true);
+    try {
+      const data = await fetchPositionsBook({ force: true, settleExpiry: true });
+      applyBook(data);
+    } catch {
+      /* keep last book */
+    } finally {
+      setSettleBusy(false);
+    }
+  }, [applyBook]);
 
   const load = useCallback(async (opts) => {
     const gen = ++loadGen.current;
@@ -1708,8 +1744,9 @@ export default function PositionsPanel({
             onClick={() => setLiveOpen((v) => !v)}
             data-testid="btn-toggle-live-positions-mobile"
           >
-            {liveOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      {liveOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             Live · {openRows.length}
+            <ExpiryLeftoverSettleBtn count={leftoverOpenCount} onSettle={settleExpiryLeftovers} busy={settleBusy} />
           </button>
         )}
         {(liveOpen ? openRows : []).map((r) => {
@@ -1953,6 +1990,7 @@ export default function PositionsPanel({
                       {liveOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                       Live · {openRows.length}
                     </button>
+                    <ExpiryLeftoverSettleBtn count={leftoverOpenCount} onSettle={settleExpiryLeftovers} busy={settleBusy} />
                   </td>
                 </tr>
               )}
@@ -2096,6 +2134,7 @@ export default function PositionsPanel({
                     <ChevronRight className="w-3.5 h-3.5" />
                     Live · {openRows.length}
                   </button>
+                  <ExpiryLeftoverSettleBtn count={leftoverOpenCount} onSettle={settleExpiryLeftovers} busy={settleBusy} />
                 </td>
               </tr>
             )}

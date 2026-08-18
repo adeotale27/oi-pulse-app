@@ -53,13 +53,13 @@ export function subscribePositionsBook(fn) {
   return () => listeners.delete(fn);
 }
 
-export async function fetchPositionsBook({ force = false } = {}) {
-  if (inflight) return inflight;
-  if (!force && lastPayload && Date.now() - lastAt < 900) return lastPayload;
-  inflight = api
+export async function fetchPositionsBook({ force = false, settleExpiry = false } = {}) {
+  if (inflight && !settleExpiry) return inflight;
+  if (!force && !settleExpiry && lastPayload && Date.now() - lastAt < 900) return lastPayload;
+  const req = api
     .get("/positions", {
       timeout: 12000,
-      params: { _: Date.now() },
+      params: { _: Date.now(), ...(settleExpiry ? { settle_expiry: 1 } : {}) },
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
     })
     .then((r) => {
@@ -70,6 +70,7 @@ export async function fetchPositionsBook({ force = false } = {}) {
     .finally(() => {
       inflight = null;
     });
+  inflight = req;
   return inflight;
 }
 

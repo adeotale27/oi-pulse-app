@@ -1,5 +1,18 @@
 # Changelog
 
+## V7.08 — 2026-08-18
+
+Book leftover 0.05 expiry hedges after the cash session so Profit booked and the journal match Today P&L.
+
+- After admin market close + 5 minutes, open CE/PE with expiry today (or earlier) at ₹0.05 are marked closed in our book (no Kite order). Zerodha already RMS-squares them; Connect often still shows net qty until T+1.
+- Manual **Square leftovers in book** on Positions after close if you want it before 15:45.
+- Journal EOD lock uses the same booked total (your ~₹47.5k, not the inflated booked column).
+- LAST SESSION rail: yellow pill + date/time, then moon **Markets closed for the day**. Dropped the duplicate “Market closed · OI paused · GIFT/VIX” line.
+- India VIX poll window is 09:15–15:40 IST (not after hours).
+
+Kite forum (settlement vs LTP on leftover expiry): realised P&L uses settlement, not lastPrice.
+
+
 ## V7.07 — 2026-08-18
 
 Keep the desk answering while Kite and Mongo catch up. Admin 15s poll / extra indices must not freeze Loading.

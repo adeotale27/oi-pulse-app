@@ -52,7 +52,7 @@ export default function DeskStatusRail({
       phase === "pre_open" ? "Not open yet"
         : phase === "weekend" ? "Weekend"
           : phase === "holiday" ? "NSE holiday"
-            : "Markets closed"
+            : "Markets closed for the day"
     );
     const short =
       phase === "pre_open" ? `Opens ${openHm}`
@@ -87,15 +87,17 @@ export default function DeskStatusRail({
           )}
           {truth.badge}
         </span>
-        <span className="opacity-90 shrink-0 whitespace-nowrap pr-3 hidden sm:inline" data-testid="data-truth-detail">
-          {truth.detail}
-        </span>
         <span
-          className="hidden font-mono-data font-semibold truncate tracking-tight"
+          className={`font-mono-data font-semibold tracking-tight shrink-0 ${truth.mode === "LIVE" ? "hidden" : ""}`}
           data-testid="data-truth-asof"
         >
           {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
         </span>
+        {truth.mode !== "LAST_SESSION" && truth.detail ? (
+          <span className="opacity-90 shrink-0 whitespace-nowrap pr-3 hidden sm:inline" data-testid="data-truth-detail">
+            {truth.detail}
+          </span>
+        ) : null}
         {mobileTicker ? (
           <div className="min-w-0 flex-1 overflow-hidden" data-testid="desk-index-ticker">
             {mobileTicker}
@@ -104,8 +106,8 @@ export default function DeskStatusRail({
 
         {marketBits && (
           <>
-            <span className="opacity-50 hidden md:inline">·</span>
-            <span className="hidden md:inline-flex items-center gap-1 opacity-95" data-testid="market-status-banner">
+            <span className="opacity-50 hidden md:inline ml-auto">·</span>
+            <span className="hidden md:inline-flex items-center gap-1 opacity-95 shrink-0" data-testid="market-status-banner">
               {(() => {
                 const Icon = marketBits.Icon;
                 return <Icon className="w-3 h-3 shrink-0" strokeWidth={2} />;

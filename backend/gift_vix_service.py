@@ -10,7 +10,7 @@ India VIX:
   2. Yahoo →  ^INDIAVIX
 
 Polling windows (IST):
-  • India VIX     : 09:15 – 15:30  (Mon–Fri, non-holiday)
+  • India VIX     : 09:15 – 15:40  (Mon–Fri, non-holiday; same as NSE cash/F&O)
   • GIFT NIFTY    : 06:30 – 15:40 and 16:35 – 02:45 next day
                     (Mon–Fri evening; Fri evening continues into Sat 02:45)
 
@@ -28,7 +28,7 @@ from market_hours import IST, is_holiday, is_weekend, now_ist
 
 logger = logging.getLogger(__name__)
 
-VIX_WINDOW = (dtime(9, 15), dtime(15, 30))
+VIX_WINDOW = (dtime(9, 15), dtime(15, 40))
 
 POLL_SECONDS = 60
 
@@ -208,8 +208,8 @@ class ExtraTickers:
             "windows": {
                 "vix": {
                     "start_ist": "09:15",
-                    "end_ist": "15:30",
-                    "display": "09:15–15:30",
+                    "end_ist": "15:40",
+                    "display": "09:15–15:40",
                     "open_now": is_vix_session_open(),
                 },
                 "gift": {

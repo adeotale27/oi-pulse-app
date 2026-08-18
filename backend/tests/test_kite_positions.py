@@ -360,3 +360,109 @@ def test_apply_live_ltp_updates_open_row():
     assert row["last_price"] == 80
     assert row["pnl"] == 1000.0
 
+
+def test_expiry_floor_leftover_detected():
+    from datetime import date
+    from kite_positions import is_expiry_floor_leftover
+
+    row = {
+        "exited": False,
+        "quantity": 520,
+        "side": "CE",
+        "expiry_iso": "2026-08-18",
+        "last_price": 0.05,
+    }
+    assert is_expiry_floor_leftover(row, today=date(2026, 8, 18))
+    row["last_price"] = 1.70
+    assert not is_expiry_floor_leftover(row, today=date(2026, 8, 18))
+    row["last_price"] = 0.05
+    row["expiry_iso"] = "2026-08-20"
+    assert not is_expiry_floor_leftover(row, today=date(2026, 8, 18))
+
+
+def test_settle_expiry_floor_moves_unbooked_into_booked():
+    """OTM expiry hedges at 0.05: Today P&L stays, booked absorbs the tick MTM."""
+    from datetime import datetime
+    from kite_positions import booked_today_from_row, settle_expiry_floor_hedges
+
+    now = datetime(2026, 8, 18, 15, 46)
+    leftover = {
+        "exited": False,
+        "quantity": 520,
+        "side": "CE",
+        "expiry_iso": "2026-08-18",
+        "last_price": 0.05,
+        "buy_quantity": 520,
+        "sell_quantity": 0,
+        "buy_price": 0.90,
+        "sell_price": 0,
+        "buy_value": 468,
+        "sell_value": 0,
+        "pnl": -442,
+        "realised": 0,
+        "unrealised": -442,
+        "booked_pnl": 0,
+        "multiplier": 1,
+    }
+    closed = {
+        "exited": True,
+        "quantity": 0,
+        "side": "PE",
+        "expiry_iso": "2026-08-18",
+        "last_price": 12,
+        "buy_quantity": 65,
+        "sell_quantity": 65,
+        "pnl": 50076,
+        "realised": 50076,
+        "unrealised": 0,
+        "booked_pnl": 50076,
+        "buy_price": 1,
+        "sell_price": 2,
+        "buy_value": 0,
+        "sell_value": 0,
+        "multiplier": 1,
+    }
+    rows = [leftover, closed]
+    booked_before = sum(booked_today_from_row(r) for r in rows)
+    assert booked_before == 50076
+    n = settle_expiry_floor_hedges(rows, now=now, market_close_ist="15:40", force=False)
+    assert n == 1
+    assert leftover["exited"] is True
+    assert leftover["quantity"] == 0
+    assert leftover["expiry_settled"] is True
+    booked_after = sum(booked_today_from_row(r) for r in rows)
+    assert booked_after == 50076 + leftover["booked_pnl"]
+    assert leftover["booked_pnl"] == -442
+
+
+def test_settle_expiry_waits_until_after_close():
+    from datetime import datetime
+    from kite_positions import settle_expiry_floor_hedges
+
+    now = datetime(2026, 8, 18, 15, 20)
+    row = {
+        "exited": False,
+        "quantity": 100,
+        "side": "CE",
+        "expiry_iso": "2026-08-18",
+        "last_price": 0.05,
+        "buy_quantity": 100,
+        "sell_quantity": 0,
+        "buy_price": 1,
+        "sell_price": 0,
+        "pnl": -95,
+        "realised": 0,
+        "unrealised": -95,
+        "booked_pnl": 0,
+        "multiplier": 1,
+        "buy_value": 100,
+        "sell_value": 0,
+    }
+    n = settle_expiry_floor_hedges([row], now=now, market_close_ist="15:40")
+    assert n == 0
+    assert row["exited"] is False
+    assert row["can_settle_in_book"] is False
+    n = settle_expiry_floor_hedges([row], now=now, market_close_ist="15:40", force=True)
+    assert n == 1
+    assert row["exited"] is True
+

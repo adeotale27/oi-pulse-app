@@ -168,6 +168,7 @@ const lastSess = buildDataTruth({
 assert(lastSess.badge === "LAST SESSION", "last session badge");
 // asOfLabel must not repeat the word "session" (badge already says LAST SESSION)
 assert(!/session/i.test(String(lastSess.asOfLabel || "")), "no redundant session word");
+assert(!/OI paused/i.test(String(lastSess.detail || "")), "no duplicate market-closed sentence");
 assert(buildDataTruth({
   dataStatus: { is_live: false, stale_reason: "missing_kite_credentials", data_date: "2026-08-07" },
   marketOpen: true, mode: "offline", snapshotTs: "2026-08-07T10:00:00+05:30",

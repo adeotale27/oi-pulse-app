@@ -78,7 +78,7 @@ export default function DataTruthStrip({
           {truth.badge}
         </span>
         <span
-          className="hidden font-mono-data font-semibold tracking-tight"
+          className={`font-mono-data font-semibold tracking-tight ${truth.mode === "LIVE" ? "hidden" : ""}`}
           data-testid="data-truth-asof"
         >
           {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
@@ -88,10 +88,14 @@ export default function DataTruthStrip({
             {mobileTicker}
           </div>
         ) : null}
-        <span className="opacity-80 hidden sm:inline">·</span>
-        <span className="opacity-90 text-xs sm:text-sm hidden sm:inline" data-testid="data-truth-detail">
-          {truth.detail}
-        </span>
+        {truth.mode !== "LAST_SESSION" && truth.detail ? (
+          <>
+            <span className="opacity-80 hidden sm:inline">·</span>
+            <span className="opacity-90 text-xs sm:text-sm hidden sm:inline" data-testid="data-truth-detail">
+              {truth.detail}
+            </span>
+          </>
+        ) : null}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, time as dtime, timedelta
 from typing import Any, Optional
 
 
@@ -328,3 +329,144 @@ def booked_today_from_row(row: Optional[dict]) -> float:
     if realised != realised:
         realised = 0.0
     return realised
+
+
+# NSE options tick is ₹0.05. Leftover expiry hedges often sit there because
+# the auction did not fill; Zerodha RMS squares them after close. Kite Connect
+# can still list net qty until the next session (forum: leftover expiry P&L
+# must use settlement price, not live LTP).
+OPTION_FLOOR_TICK = 0.05
+EXPIRY_SETTLE_LAG_MINUTES = 5
+
+
+def _parse_hhmm(raw: str) -> Optional[dtime]:
+    try:
+        parts = str(raw or "").strip().split(":")
+        hh, mm = int(parts[0]), int(parts[1] if len(parts) > 1 else 0)
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            return dtime(hh, mm)
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
+
+
+def is_option_floor_tick(price: Any) -> bool:
+    try:
+        p = float(price)
+    except (TypeError, ValueError):
+        return False
+    if p != p or p < 0:
+        return False
+    return p <= OPTION_FLOOR_TICK + 1e-9
+
+
+def option_expiry_date(row: Optional[dict]) -> Optional[date]:
+    if not isinstance(row, dict):
+        return None
+    iso = row.get("expiry_iso")
+    if not iso:
+        return None
+    try:
+        return date.fromisoformat(str(iso)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def is_expiry_floor_leftover(row: Optional[dict], *, today: Optional[date] = None) -> bool:
+    """Open CE/PE on/after its expiry date, still printing at the 0.05 floor."""
+    if not isinstance(row, dict) or row.get("exited"):
+        return False
+    try:
+        qty = int(row.get("quantity") or 0)
+    except (TypeError, ValueError):
+        return False
+    if qty == 0:
+        return False
+    if str(row.get("side") or "") not in ("CE", "PE"):
+        return False
+    exp = option_expiry_date(row)
+    if exp is None:
+        return False
+    day = today or date.today()
+    if exp > day:
+        return False
+    return is_option_floor_tick(row.get("last_price"))
+
+
+def past_exchange_square_window(
+    now: datetime,
+    *,
+    market_close_ist: str = "15:40",
+    lag_minutes: int = EXPIRY_SETTLE_LAG_MINUTES,
+) -> bool:
+    close = _parse_hhmm(market_close_ist) or dtime(15, 40)
+    close_dt = datetime.combine(now.date(), close, tzinfo=now.tzinfo)
+    return now >= close_dt + timedelta(minutes=max(0, int(lag_minutes)))
+
+
+def settle_expiry_floor_hedges(
+    rows: list,
+    *,
+    now: Optional[datetime] = None,
+    market_close_ist: str = "15:40",
+    force: bool = False,
+) -> int:
+    """Book leftover 0.05 expiry hedges as closed in *our* book (no Kite order).
+
+    After cash/F&O close + 5 minutes (default 15:45 IST), Zerodha has already
+    squared these for margin. We mark them exited so booked P&L / journal match
+    Today P&L instead of leaving the tick as Unbooked.
+    """
+    if not rows:
+        return 0
+    if now is None:
+        now = datetime.now()
+    today = now.date()
+    auto = force or past_exchange_square_window(now, market_close_ist=market_close_ist)
+    n = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        leftover = is_expiry_floor_leftover(row, today=today)
+        row["expiry_floor_leftover"] = leftover
+        row["can_settle_in_book"] = leftover and (force or past_exchange_square_window(
+            now, market_close_ist=market_close_ist, lag_minutes=0,
+        ))
+        if not leftover or not auto:
+            continue
+        try:
+            qty = int(row.get("quantity") or 0)
+        except (TypeError, ValueError):
+            continue
+        bits = booked_pnl_from_kite_row(
+            qty=qty,
+            buy_qty=int(row.get("buy_quantity") or 0),
+            sell_qty=int(row.get("sell_quantity") or 0),
+            buy_price=float(row.get("buy_price") or 0),
+            sell_price=float(row.get("sell_price") or 0),
+            pnl=float(row.get("pnl") or 0),
+            realised=float(row.get("realised") or 0),
+            unrealised=float(row.get("unrealised") or 0),
+            exited=True,
+            buy_value=float(row.get("buy_value") or 0),
+            sell_value=float(row.get("sell_value") or 0),
+            last_price=float(row.get("last_price") or 0),
+            multiplier=float(row.get("multiplier") or 1) or 1.0,
+        )
+        row["exited"] = True
+        row["is_exited"] = True
+        row["quantity"] = 0
+        row["average_price"] = 0.0
+        row["position_state"] = "closed"
+        row["status"] = "Closed"
+        row["expiry_settled"] = True
+        row["expiry_floor_leftover"] = False
+        row["can_settle_in_book"] = False
+        row["pnl"] = bits["pnl"]
+        row["booked_pnl"] = bits["booked_pnl"]
+        row["realised"] = bits["realised"]
+        row["unrealised"] = 0.0
+        row["pnl_source"] = "expiry_settlement"
+        row["partial"] = False
+        n += 1
+    return n
