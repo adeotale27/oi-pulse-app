@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import usePortaledMenu from "@/hooks/usePortaledMenu";
+import OiPulseLogo from "@/components/OiPulseLogo";
 import {
   RefreshCw,
   PlugZap,
   AlertTriangle,
-  Building2,
   Zap,
   ShieldAlert,
   Crosshair,
@@ -1188,7 +1188,7 @@ export default function PositionsPanel({
     <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-slate-700" />
+          <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md" pulse={false} />
           <div className="text-sm font-semibold text-slate-900">Kite Positions</div>
           <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
             {stats.openCount} open
@@ -1682,15 +1682,11 @@ export default function PositionsPanel({
         }}
       />
 
-      {stats.shortCount > 0 && (
-        <div className="text-[11px] text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 flex flex-wrap gap-x-4 gap-y-1" data-testid="positions-seller-strip">
+      {stats.adjustCount > 0 && (
+        <div className="text-[11px] text-rose-800 dark:text-rose-200 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 flex flex-wrap gap-x-4 gap-y-1" data-testid="positions-seller-strip">
           <span>
             Sold options <b>{stats.shortCount}</b>
-            {stats.adjustCount > 0 ? (
-              <span className="text-rose-700"> · {stats.adjustCount} too close — check them</span>
-            ) : (
-              <span className="text-emerald-700"> · all OK (market still away)</span>
-            )}
+            <span> · {stats.adjustCount} too close — check them</span>
           </span>
           {(() => {
             const b = fundsBreakdown(funds);

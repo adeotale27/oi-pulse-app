@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { INDEX_CHIP_CAP } from "@/lib/universe";
@@ -222,13 +221,6 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     ? new Set(enabledIndices)
     : null;
   const indexSelectable = (idx) => !enabledSet || enabledSet.has(idx);
-  const disabledToastAt = useRef(0);
-  const toastDisabledIndex = (name) => {
-    const now = Date.now();
-    if (now - disabledToastAt.current < 8000) return;
-    disabledToastAt.current = now;
-    toast.message(`${name} is on the quote strip but not enabled for the desk`);
-  };
 
   if (loading && !tickers.length) {
     return (
@@ -265,7 +257,6 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
               : `${s.label} is on the quote strip but not enabled for the desk`}
-              onMouseEnter={selectable ? undefined : () => toastDisabledIndex(s.label)}
               className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[11px] tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
                 !selectable
                   ? "border-transparent"
@@ -347,7 +338,6 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
             } ${selectable ? "hover:brightness-[0.99] transition-all" : ""} ${isActive && selectable ? "shadow-md" : ""}`}
-            onMouseEnter={selectable ? undefined : () => toastDisabledIndex(s.label)}
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
               : `${s.label} is on the quote strip but not enabled for the desk`}

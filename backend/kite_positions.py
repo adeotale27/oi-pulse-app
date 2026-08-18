@@ -184,25 +184,18 @@ def booked_pnl_from_kite_row(
         source = "buy_sell"
 
     partial = matched > 0
+    # Open booked = today's closed cash only. Quote LTP must not move this number.
     booked = 0.0
     booked_source = source
-    if partial:
-        if abs(kite_realised) > 1e-9:
-            booked = kite_realised
-            booked_source = "realised"
-        elif abs(kite_unrealised) > 1e-9:
-            booked = open_pnl - kite_unrealised
-            booked_source = "pnl_minus_unrealised"
-        elif abs(computed) > 1e-9:
-            booked = computed
-            booked_source = "buy_sell"
-        elif value_pnl is not None:
-            # Official total pnl = (sell_value - buy_value) + qty * LTP * mult.
-            # Drop the open MTM term to isolate the closed slice.
-            booked = (sv - bv)
-            booked_source = "buy_sell_value_closed"
-    else:
+    if abs(kite_realised) > 1e-9:
         booked = kite_realised
+        booked_source = "realised"
+    elif matched > 0 and abs(computed) > 1e-9:
+        booked = computed
+        booked_source = "buy_sell"
+    elif matched > 0 and (abs(sv) > 1e-9 or abs(bv) > 1e-9):
+        booked = sv - bv
+        booked_source = "buy_sell_value_closed"
 
     return {
         "pnl": round(open_pnl, 2),

@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.02",
+    date: "2026-08-18",
+    user: [
+      "The Bank Nifty quote-strip toast no longer pops up while you scroll. Profit booked today stays still on refresh. The Positions heading and the phone home-screen icon use the pulse mark with a thin white border.",
+    ],
+    admin: [
+      "Disabled ticker chips keep a title, not a hover toast. Open-leg booked P&L ignores quote MTM. PWA icons are /logo192 /logo512 /apple-touch-icon with start_url /.",
+    ],
+  },
+  {
     version: "7.01",
     date: "2026-08-18",
     user: [
