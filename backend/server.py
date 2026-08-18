@@ -2623,10 +2623,6 @@ async def clear_alerts(_admin: bool = Depends(require_admin)):
 async def get_config():
     if tracker:
         try:
-            await tracker.reload_settings_from_db()
-        except Exception:
-            pass
-        try:
             tracker._refresh_alert_indices_for_today()
         except Exception:
             pass
@@ -5560,7 +5556,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "form-action 'self'; "
             "object-src 'none'; "
             "frame-ancestors 'none'; "
-            "script-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; "
+            "script-src-elem 'self' 'unsafe-inline' https://static.cloudflareinsights.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
             "img-src 'self' data: blob: https:; "

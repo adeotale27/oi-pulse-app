@@ -349,8 +349,19 @@ class OITracker:
             logger.warning("load uploaded NSE holidays failed: %s", e)
 
     async def reload_settings_from_db(self):
-        """Re-read Admin configuration from Mongo so every API worker matches the saved doc."""
-        doc = await self.db.settings.find_one({"_id": "alerts"})
+        """Re-read Admin configuration from Mongo. Hard-capped so a stuck DB cannot pin HTTP."""
+        try:
+            doc = await asyncio.wait_for(
+                self.db.settings.find_one({"_id": "alerts"}, maxTimeMS=2000),
+                timeout=2.5,
+            )
+        except TypeError:
+            doc = await asyncio.wait_for(
+                self.db.settings.find_one({"_id": "alerts"}),
+                timeout=2.5,
+            )
+        except Exception:
+            return self.settings
         overlay_settings_doc(self.settings, doc)
         self._apply_market_hours()
         self._apply_mcx_desk_flag()
@@ -986,10 +997,6 @@ class OITracker:
         was_open = False
         while self.running:
             try:
-                try:
-                    await self.reload_settings_from_db()
-                except Exception:
-                    pass
                 poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
                 await self._refresh_quote_session_flag()
                 await self._maybe_eod_telegram()

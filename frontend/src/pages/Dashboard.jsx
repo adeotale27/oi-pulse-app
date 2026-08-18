@@ -883,8 +883,8 @@ export default function Dashboard() {
         try {
           const data = await fetchOIChange(idx, minutes, {
             expiry: exp || undefined,
-            also,
-            timeout: bootLite ? 12000 : 20000,
+            also: bootLite && idx === active ? undefined : also,
+            timeout: 20000,
           });
           oiCacheRef.current[idx] = {
             current: data.current,
@@ -940,6 +940,23 @@ export default function Dashboard() {
         }
         setOiLoading(false);
         ensureExpiryForIndex(active).catch(() => {});
+        if (bootLite && first.ok) {
+          window.setTimeout(() => {
+            fetchOIChange(active, minutes, {
+              expiry: selectedExpiryRef.current || expiryByIndexRef.current[active]?.selected || undefined,
+              also: alsoFull,
+              timeout: 20000,
+            }).then((data) => {
+              if (!data) return;
+              oiCacheRef.current[active] = {
+                ...(oiCacheRef.current[active] || {}),
+                also_windows: data.also_windows || {},
+                at: Date.now(),
+              };
+              if (activeIndexRef.current === active) applyOiPayload(data, { pulse: false });
+            }).catch(() => {});
+          }, 2500);
+        }
         const rest = (enabledIndicesRef.current || []).filter((i) => i && i !== active && !isMcxMajorId(i));
         if (!oiWarmRestRef.current) {
           oiWarmRestRef.current = true;

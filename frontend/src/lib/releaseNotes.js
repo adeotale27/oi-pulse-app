@@ -10,7 +10,7 @@ export const RELEASE_NOTES = [
       "The Bank Nifty quote-strip toast no longer pops up while you scroll. Profit booked today stays still on refresh. Straddle chart is taller without the Straddle Price pill. The Positions heading and the phone home-screen icon use the pulse mark with a very thin white border.",
     ],
     admin: [
-      "Disabled ticker chips keep a title, not a hover toast. Open-leg booked P&L ignores quote MTM. Straddle plot is 280/460px. PWA icons are the in-app pulse, supersampled, thin white rim.",
+      "GET /config does not reload Mongo. OI poller does not find_one settings every tick. First /change has no also= lookbacks. CSP allows Cloudflare insights. Settings reload is wait_for 2.5s.",
     ],
   },
   {
