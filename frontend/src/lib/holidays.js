@@ -256,7 +256,7 @@ export function nextHolidayInfo() {
   return { ...next, status, daysAway: diff, today, longWeekend: isLongWeekendHoliday(next.date) };
 }
 
-/** Fri or Mon NSE holiday → Sat–Mon or Fri–Sun off; extra theta for sellers. */
+/** Fri holiday → Fri–Sat–Sun off. Mon holiday → Sat–Sun–Mon off. Extra theta for sellers. */
 export function isLongWeekendHoliday(iso) {
   const wd = weekdayIST(iso);
   return wd === 5 || wd === 1;

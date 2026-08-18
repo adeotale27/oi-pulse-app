@@ -2,8 +2,8 @@ import { useId } from "react";
 import { APP_NAME } from "@/lib/appVersion";
 
 /**
- * Full-bleed desk mark (no inset / white padding). iOS home-screen icons
- * must fill the canvas; the OS applies the rounded mask.
+ * Rounded desk mark (same radius as the in-app tile). Home-screen PNGs
+ * bake the same rounded square so the phone icon is not a hard full square.
  */
 export default function OiPulseLogo({ className = "w-6 h-6", pulse = true }) {
   const reactId = useId().replace(/:/g, "");
@@ -24,7 +24,7 @@ export default function OiPulseLogo({ className = "w-6 h-6", pulse = true }) {
           <stop offset="100%" stopColor="#0EA5E9" />
         </linearGradient>
       </defs>
-      <rect x="0" y="0" width="48" height="48" rx="0" ry="0" fill={`url(#${gid})`} />
+      <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill={`url(#${gid})`} />
       <path
         d="M4 24 H12 L16 24 L20 10 L24 38 L28 18 L32 24 H42"
         fill="none"

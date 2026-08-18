@@ -1,5 +1,15 @@
 # Changelog
 
+## V6.42 — 2026-08-18
+
+Open-leg P&L marks to live quotes; OI + Open Interest stay centered when panes close.
+
+- Positions re-quote open F&O LTPs and recompute MTM (Kite `positions().pnl` was lagging)
+- Open Interest uses the same max-width card as OI Change when both side panes are closed
+- Disabled BNF hover toasts instead of the forbidden cursor
+- Long weekend: Friday holiday (Fri–Sun) and Monday holiday (Sat–Mon)
+- Phone / Home Screen icon is the rounded desk mark, not a hard full square
+
 ## V6.41 — 2026-08-18
 
 Brokerage counted per order; LIVE status sits next to the pill; Positions refresh.

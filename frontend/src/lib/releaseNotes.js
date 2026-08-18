@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.42",
+    date: "2026-08-18",
+    user: [
+      "Live P&L on open legs follows quote LTP. Open Interest stays centered when panes are closed (same as OI Change). Hovering a disabled index shows a toast. Home Screen icon matches the rounded in-app mark.",
+    ],
+    admin: [
+      "GET /positions quotes open instruments and marks MTM with the official Kite value formula. Disabled ticker tiles toast instead of cursor-not-allowed.",
+    ],
+  },
+  {
     version: "6.41",
     date: "2026-08-18",
     user: [

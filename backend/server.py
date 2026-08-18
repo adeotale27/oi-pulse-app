@@ -4249,7 +4249,7 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         format_fno_option_label,
         parse_fno_option_symbol,
     )
-    from kite_positions import merge_kite_net_day
+    from kite_positions import apply_live_ltp_to_open_rows, merge_kite_net_day
     from universe import match_symbol_prefix
 
     # Net quantity is authoritative for open vs exited. Day rows only enrich
@@ -4365,13 +4365,24 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
             indices_needed.append(idx)
 
     quotes = {}
-    if indices_needed and tracker.kite_service:
-        try:
-            keys = [INDEX_CONFIG[i]["quote_symbol"] for i in indices_needed]
-            quotes = await asyncio.to_thread(kite.quote, keys) or {}
-        except Exception as e:
-            logger.warning("positions per-index kite.quote failed: %s", e)
-            quotes = {}
+    index_keys = [INDEX_CONFIG[i]["quote_symbol"] for i in indices_needed]
+    leg_keys = []
+    for pos in out:
+        if pos.get("exited"):
+            continue
+        ex, ts = pos.get("exchange"), pos.get("tradingsymbol")
+        if ex and ts:
+            leg_keys.append(f"{ex}:{ts}")
+    leg_keys = list(dict.fromkeys(leg_keys))
+    if tracker.kite_service:
+        for keys, label in ((index_keys, "index"), (leg_keys, "open-leg")):
+            if not keys:
+                continue
+            try:
+                quotes.update(await asyncio.to_thread(kite.quote, keys) or {})
+            except Exception as e:
+                logger.warning("positions %s kite.quote failed: %s", label, e)
+    apply_live_ltp_to_open_rows(out, quotes)
 
     for idx in indices_needed:
         qkey = INDEX_CONFIG[idx]["quote_symbol"]
