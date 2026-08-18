@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.08",
+    date: "2026-08-18",
+    user: [
+      "Expiry-day 0.05 hedges you keep for margin are booked after close (Zerodha already squares them). Profit booked and the journal then match Today P&L. Closed session bar: LAST SESSION + date/time, then Markets closed for the day — no duplicate market-closed sentence.",
+    ],
+    admin: [
+      "settle_expiry_floor_hedges after close+5m or ?settle_expiry=1. Journal lock reads that booked total. VIX window 09:15–15:40 IST.",
+    ],
+  },
+  {
     version: "7.07",
     date: "2026-08-18",
     user: [

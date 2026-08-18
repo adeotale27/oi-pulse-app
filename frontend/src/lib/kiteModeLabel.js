@@ -26,7 +26,7 @@ export function kiteModeBadge(mode, marketOpen) {
     short: "CLOSED",
     tone: "closed",
     title:
-      "MARKETS CLOSED — Kite is connected, but the cash/F&O session is closed (after hours / weekend / holiday). Board shows the last session snapshot; OI polling pauses until next open. GIFT/VIX may still update.",
+      "MARKETS CLOSED — Kite is connected, but the cash/F&O session is closed (after hours / weekend / holiday). Board shows the last session snapshot; OI polling pauses until next open. GIFT NIFTY may still print; India VIX follows NSE hours (09:15–15:40 IST).",
   };
 }
 

@@ -3847,7 +3847,7 @@ async def get_tickers():
 async def get_extra_tickers():
     """Live snapshot of India VIX + GIFT NIFTY, refreshed by the background
     `extra_tickers` service on its own schedule:
-    - VIX: 09:15–15:30 IST
+    - VIX: 09:15–15:40 IST
     - GIFT NIFTY: 06:30–15:40 IST and 16:35–02:45 IST
     Mon–Fri. Returns last-known values outside those windows."""
     return extra_tickers.snapshot()
@@ -4187,7 +4187,11 @@ async def kite_user_disconnect(request: Request, role: str = Depends(require_des
 
 
 @api_router.get("/positions")
-async def get_positions(request: Request, role: str = Depends(require_desk_user)):
+async def get_positions(
+    request: Request,
+    role: str = Depends(require_desk_user),
+    settle_expiry: bool = Query(False),
+):
     """Fetch F&O positions from the caller's Kite book (net + day).
 
     Admin uses the publisher vault (same client as OI).
@@ -4356,7 +4360,12 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         format_fno_option_label,
         parse_fno_option_symbol,
     )
-    from kite_positions import apply_live_ltp_to_open_rows, booked_today_from_row, merge_kite_net_day
+    from kite_positions import (
+        apply_live_ltp_to_open_rows,
+        booked_today_from_row,
+        merge_kite_net_day,
+        settle_expiry_floor_hedges,
+    )
     from universe import match_symbol_prefix
 
     # Net quantity is authoritative for open vs exited. Day rows only enrich
@@ -4528,6 +4537,31 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
 
     apply_live_ltp_to_open_rows(out, quotes)
 
+    _, close_hm = display_hours()
+    force_settle = bool(settle_expiry)
+    settled_n = settle_expiry_floor_hedges(
+        out,
+        now=now_ist(),
+        market_close_ist=close_hm,
+        force=force_settle,
+    )
+    leftover_open = sum(1 for r in out if r.get("can_settle_in_book"))
+    open_n = sum(1 for r in out if not r.get("exited"))
+    exited_n = sum(1 for r in out if r.get("exited"))
+    partial_n = sum(1 for r in out if r.get("partial") and not r.get("exited"))
+    open_pnl = round(sum(_row_day_pnl(r) for r in out if not r.get("exited")), 2)
+    exited_pnl = round(sum(_row_day_pnl(r) for r in out if r.get("exited")), 2)
+    booked_today = round(sum(booked_today_from_row(r) for r in out), 2)
+    kite_total = round(open_pnl + exited_pnl, 2)
+    unbooked = round(kite_total - booked_today, 2)
+    pnl_today = {
+        "open": unbooked,
+        "exited": exited_pnl,
+        "booked": booked_today,
+        "unbooked": unbooked,
+        "total": kite_total,
+    }
+
     for idx in indices_needed:
         qkey = INDEX_CONFIG[idx]["quote_symbol"]
         q = quotes.get(qkey) or {}
@@ -4583,6 +4617,8 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         "exited_count": exited_n,
         "partial_count": partial_n,
         "pnl_today": pnl_today,
+        "expiry_settled_count": int(settled_n),
+        "expiry_leftover_open_count": int(leftover_open),
         "spot": idx_spot,
         "oi": oi_by_index,
         "funds": funds,
