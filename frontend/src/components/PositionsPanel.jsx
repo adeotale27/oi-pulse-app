@@ -73,7 +73,15 @@ import PositionHeatmap from "@/components/PositionHeatmap";
 import TradeJournalModal from "@/components/TradeJournalModal";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
-import { publishTodayPnl } from "@/lib/todayPnl";
+import {
+  fetchPositionsBook,
+  startPositionsBookPolling,
+  stopPositionsBookPolling,
+  subscribePositionsBook,
+  openLiveCount,
+  POSITIONS_BOOK_LIVE_MS,
+  POSITIONS_BOOK_IDLE_MS,
+} from "@/lib/positionsBook";
 import { optionSide, optionSideLabel } from "@/lib/optionSide";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
@@ -570,73 +578,71 @@ export default function PositionsPanel({
     }
   }, []);
 
+  const applyBook = useCallback((data) => {
+    if (!data) return;
+    if (data.connect_required) {
+      setGuestNeedsConnect(true);
+      setGuestKiteId(data?.user_kite?.kite_user_id || null);
+      setPositions([]);
+      setError(data.error || "Connect your Zerodha account");
+      setErrorHard(false);
+      setLastRefresh(new Date().toISOString());
+      hasLiveRef.current = false;
+      return;
+    }
+    if (isGuest) {
+      setGuestNeedsConnect(false);
+      setGuestKiteId(data?.user_kite?.kite_user_id || null);
+    }
+    const next = data.positions || [];
+    const hard =
+      data.token_issue === true
+      || data.kite_connected === false
+      || /not connected|connect kite|tokenexception|invalid token|api_key|unauthorized|forbidden/i.test(
+        String(data.error || ""),
+      );
+    const maintenance =
+      data.maintenance === true
+      || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""));
+    // Keep last good book on transient Kite blips — do not wipe the table.
+    if (next.length > 0 || !data.error || hard) {
+      setPositions(next);
+      if (hard && (data.kite_connected === false || data.token_issue === true)) {
+        setFunds(data.funds ?? null);
+        setPnlToday(data.pnl_today ?? null);
+      } else {
+        if (data.funds != null) setFunds(data.funds);
+        if (data.pnl_today != null) setPnlToday(data.pnl_today);
+      }
+      const open = openLiveCount(data);
+      hasLiveRef.current = open > 0;
+      shownBookRef.current = true;
+      if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
+      if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
+    }
+    if (data.maintenance || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""))) {
+      setError(data.error || "Zerodha / Kite maintenance");
+      setErrorHard(false);
+    } else if (data.error) {
+      setError(data.error);
+      setErrorHard(hard && !maintenance);
+    } else {
+      setError(null);
+      setErrorHard(false);
+    }
+    setLastRefresh(new Date().toISOString());
+    const tickMs = openLiveCount(data) > 0 ? POSITIONS_BOOK_LIVE_MS : POSITIONS_BOOK_IDLE_MS;
+    setSecsLeft(Math.max(1, Math.round(tickMs / 1000)));
+  }, [isGuest]);
+
   const load = useCallback(async (opts) => {
     const gen = ++loadGen.current;
     const force = !!(opts && opts.force);
     if (force || !shownBookRef.current) setLoading(true);
     try {
-      const { data } = await api.get("/positions", {
-        params: { _: Date.now() },
-        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-      });
+      const data = await fetchPositionsBook({ force: true });
       if (gen !== loadGen.current) return;
-      if (data.connect_required) {
-        setGuestNeedsConnect(true);
-        setGuestKiteId(data?.user_kite?.kite_user_id || null);
-        setPositions([]);
-        setError(data.error || "Connect your Zerodha account");
-        setErrorHard(false);
-        setLastRefresh(new Date().toISOString());
-        setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
-        hasLiveRef.current = false;
-        return;
-      }
-      if (isGuest) {
-        setGuestNeedsConnect(false);
-        setGuestKiteId(data?.user_kite?.kite_user_id || null);
-      }
-      const next = data.positions || [];
-      const hard =
-        data.token_issue === true
-        || data.kite_connected === false
-        || /not connected|connect kite|tokenexception|invalid token|api_key|unauthorized|forbidden/i.test(
-          String(data.error || ""),
-        );
-      const maintenance =
-        data.maintenance === true
-        || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""));
-      // Keep last good book on transient Kite blips — do not wipe the table.
-      if (next.length > 0 || !data.error || hard) {
-        setPositions(next);
-        if (hard && (data.kite_connected === false || data.token_issue === true)) {
-          setFunds(data.funds ?? null);
-          setPnlToday(data.pnl_today ?? null);
-        } else {
-          if (data.funds != null) setFunds(data.funds);
-          if (data.pnl_today != null) setPnlToday(data.pnl_today);
-        }
-        const total = data?.pnl_today?.total;
-        const open = next.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
-        hasLiveRef.current = open > 0;
-        shownBookRef.current = true;
-        if (Number.isFinite(Number(total))) {
-          publishTodayPnl({ total: Number(total), open });
-        }
-        if (data.spot && typeof data.spot === "object") setSpotByIndex(data.spot);
-        if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
-      }
-      if (data.maintenance || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""))) {
-        setError(data.error || "Zerodha / Kite maintenance");
-        setErrorHard(false);
-      } else if (data.error) {
-        setError(data.error);
-        setErrorHard(hard && !maintenance);
-      } else {
-        setError(null);
-        setErrorHard(false);
-      }
-      setLastRefresh(new Date().toISOString());
-      setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
+      applyBook(data);
     } catch (e) {
       if (gen !== loadGen.current) return;
       const status = e?.response?.status;
@@ -646,7 +652,7 @@ export default function PositionsPanel({
     } finally {
       if (gen === loadGen.current) setLoading(false);
     }
-  }, [pollMs, isGuest]);
+  }, [applyBook]);
 
   useEffect(() => {
     if (isKiteMode) {
@@ -663,12 +669,17 @@ export default function PositionsPanel({
   const kiteReady = isGuest ? true : (isKiteMode || stickyKite);
   const catchupDoneRef = useRef(false);
 
+  useEffect(() => subscribePositionsBook((payload) => {
+    applyBook(payload);
+    setLoading(false);
+  }), [applyBook]);
+
   useEffect(() => {
     if (!kiteReady || !pollEnabled) return undefined;
+    startPositionsBookPolling();
     const bootId = setTimeout(() => {
-      load();
       loadBrokerage();
-    }, 8000);
+    }, 2000);
     const mins0 = istMinutesOfDay();
     if (isJournalSessionDayIST(todayIST()) && mins0 >= journalPositionsCatchupMinute()) {
       catchupDoneRef.current = true;
@@ -680,7 +691,6 @@ export default function PositionsPanel({
       const open = specialSessionOpenMinute(iso) ?? getMarketOpenMinute();
       const catchupAt = journalPositionsCatchupMinute(iso);
       if (mins < open) return;
-      load();
       if (mins >= catchupAt) loadBrokerage();
     };
     const id = setInterval(poll, pollMs);
@@ -689,7 +699,6 @@ export default function PositionsPanel({
       const mins = istMinutesOfDay();
       if (trading && mins >= journalPositionsCatchupMinute() && !catchupDoneRef.current) {
         catchupDoneRef.current = true;
-        load();
         loadBrokerage();
       }
     }, 5000);
@@ -697,16 +706,18 @@ export default function PositionsPanel({
       if (journalPositionsRefreshOn()) loadBrokerage();
     }, Math.max(pollMs * 4, 120_000));
     return () => {
+      stopPositionsBookPolling();
       clearTimeout(bootId);
       clearInterval(id);
       clearInterval(catchId);
       clearInterval(chargesId);
     };
-  }, [kiteReady, pollEnabled, load, loadBrokerage, pollMs]);
+  }, [kiteReady, pollEnabled, loadBrokerage, pollMs]);
 
   useEffect(() => {
     if (!kiteReady || !journalPositionsRefreshOn()) return undefined;
-    setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
+    const tickMs = hasLiveRef.current ? POSITIONS_BOOK_LIVE_MS : POSITIONS_BOOK_IDLE_MS;
+    setSecsLeft(Math.max(1, Math.round(tickMs / 1000)));
     const id = setInterval(() => {
       setSecsLeft((s) => Math.max(0, s - 1));
     }, 1000);

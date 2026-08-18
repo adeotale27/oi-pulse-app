@@ -12,6 +12,8 @@ Desk V7: one OI toast with the full read, a visible LIVE pulse, and a cleaner ph
 - Sell / decay ideas stay live until **market close IST on expiry day** (not ~4h before close)
 - Position heatmap uses desk green/red fills; P&L border (not a red ring on every “too close” tile)
 - Side-panel OI Change uses the same OI-on/off chart as the main tab
+- Header Today P&L and Positions Today P&L share one book snapshot (they no longer drift by a few tens of rupees)
+- Open live legs keep GET /positions running on every dashboard page while the cash session is live
 
 ## V6.45 — 2026-08-18
 

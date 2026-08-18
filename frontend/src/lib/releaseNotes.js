@@ -7,10 +7,10 @@ export const RELEASE_NOTES = [
     version: "7.00",
     date: "2026-08-18",
     user: [
-      "One OI toast with Puts adding — bullish, Put selling increase, the old pressure line, and PE/CE crores. LIVE pulse is green on the white tile. Phone no longer shows Market open / Updated on the top rail. Header type is Outfit. Sell ideas stay on until expiry-day close. Heatmap matches desk green/red. Side OI Change matches the main chart.",
+      "One OI toast with Puts adding — bullish, Put selling increase, the old pressure line, and PE/CE crores. LIVE pulse is green on the white tile. Phone no longer shows Market open / Updated on the top rail. Header type is Outfit. Sell ideas stay on until expiry-day close. Heatmap matches desk green/red. Side OI Change matches the main chart. Header and Positions Today P&L stay on the same number; the book keeps polling on other tabs while the market is open and you have live legs.",
     ],
     admin: [
-      "V7.00 major bump (desk chrome + toast copy). First /change for the open index still includes 1/3/5 lookbacks.",
+      "V7.00 major bump (desk chrome + toast copy). First /change for the open index still includes 1/3/5 lookbacks. Header and Positions share one GET /positions feed; live legs poll every 5s on any page during the cash session.",
     ],
   },
   {
