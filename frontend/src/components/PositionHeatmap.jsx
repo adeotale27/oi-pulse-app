@@ -27,8 +27,8 @@ export default function PositionHeatmap({
           const pnl = Number(r.pnl) || 0;
           const t = Math.min(1, Math.abs(pnl) / mag);
           const bg = pnl >= 0
-            ? `rgba(16, 185, 129, ${0.14 + t * 0.5})`
-            : `rgba(244, 63, 94, ${0.14 + t * 0.5})`;
+            ? `rgba(22, 163, 74, ${0.22 + t * 0.55})`
+            : `rgba(220, 38, 38, ${0.18 + t * 0.52})`;
           const qty = Number(r.quantity);
           const qtyTxt = Number.isFinite(qty) && qty !== 0
             ? `${qty > 0 ? "+" : ""}${qty}`
@@ -41,7 +41,7 @@ export default function PositionHeatmap({
               data-testid="heatmap-cell"
               onClick={() => onSelect?.(r.tradingsymbol)}
               className={`rounded-lg border text-left ${compact ? "px-1.5 py-1 min-h-[48px]" : "px-2 py-1.5 min-h-[56px]"} ${
-                r.breachedAdjust ? "border-rose-400 ring-1 ring-rose-300" : "border-white/70"
+                pnl >= 0 ? "border-emerald-400/80" : "border-rose-400/80"
               }`}
               style={{ background: bg }}
               title={r.display_name || r.tradingsymbol}

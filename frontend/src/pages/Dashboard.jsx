@@ -61,7 +61,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
-import { isMarketQuiescent, EVENT_WARNING_MINUTE, applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive } from "@/lib/marketTimes";
+import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
+import { setPositionsBookPollMs } from "@/lib/positionsBook";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
@@ -72,7 +73,7 @@ import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert, unlockSounds } from "@/lib/sounds";
 import { flushHiddenAlerts, surfaceAlert } from "@/lib/alertSurface";
 import { applyUploadedHolidays } from "@/lib/holidays";
-import { hugeShiftToastCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
+import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
@@ -871,7 +872,7 @@ export default function Dashboard() {
     ].join(",");
     const minutes = resolveMinutes(timeframeRef.current);
     const bootLite = !oiWarmRestRef.current;
-    const also = bootLite ? "session" : alsoFull;
+    const also = alsoFull;
 
     try {
       const fetchOne = async (idx) => {
@@ -1056,17 +1057,26 @@ export default function Dashboard() {
       for (const a of fresh.reverse()) {
         const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
         const toastFn = isBullish ? toast.success : toast.error;
-        const title = a.message || `OI alert · ${a.index}`;
-        const desc = [
-          a.index,
-          a.direction,
-          a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
-          a.atm != null ? `ATM ${a.atm}` : null,
-        ].filter(Boolean).join(" · ");
+        const tf = timeframeRef.current;
+        const winLabel = ({
+          1: "1 min", 3: "3 mins", 5: "5 mins", 10: "10 mins", 15: "15 mins",
+          30: "30 mins", 60: "1 Hr", 120: "2 Hrs", 180: "3 Hrs", full: "Full Day",
+        })[tf] || (tf != null ? `${tf} mins` : "15 mins");
+        const { title, description: desc } = oiBoardAlertCopy({
+          index: a.index,
+          direction: a.direction,
+          windowLabel: winLabel,
+          strikes: a.strikes,
+        });
         surfaceAlert({
           toastFn,
           title,
-          description: desc,
+          description: desc || [
+            a.index,
+            a.direction,
+            a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
+            a.atm != null ? `ATM ${a.atm}` : null,
+          ].filter(Boolean).join(" · "),
           duration: 8000,
           soundKind: "reversal",
           playSound: playForAlert,
@@ -1130,6 +1140,41 @@ export default function Dashboard() {
     if (typeof d.desk_ai_radar === "boolean") setDeskAiRadar(d.desk_ai_radar);
   }, []);
 
+  const applyServerSettings = useCallback((d) => {
+    if (!d || typeof d !== "object") return;
+    applyMarketHoursFromStatus(d);
+    const oiSec = Number(d.oi_poll_interval_seconds ?? d.poll_interval_seconds);
+    if (Number.isFinite(oiSec) && oiSec > 0) {
+      const next = oiSec * 1000;
+      setPollMs((prev) => (prev === next ? prev : next));
+    }
+    const straddleSec = Number(d.straddle_poll_interval_seconds);
+    if (Number.isFinite(straddleSec) && straddleSec > 0) {
+      const next = straddleSec * 1000;
+      setStraddlePollMs((prev) => (prev === next ? prev : next));
+    }
+    const posSec = Number(d.positions_poll_interval_seconds);
+    if (Number.isFinite(posSec) && posSec > 0) {
+      const next = Math.max(5000, posSec * 1000);
+      setPositionsPollMs((prev) => (prev === next ? prev : next));
+      setPositionsBookPollMs(next);
+    }
+    if (Array.isArray(d.visible_pages)) setVisiblePages(d.visible_pages);
+    if (Array.isArray(d.admin_visible_pages)) setAdminVisiblePages(d.admin_visible_pages);
+    if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
+      setEnabledIndices(normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on));
+    }
+    if (d.indices && typeof d.indices === "object") setIndexMeta(d.indices);
+    if (Array.isArray(d.alert_enabled_indices) && d.alert_enabled_indices.length) {
+      setAlertEnabledIndices(d.alert_enabled_indices);
+    }
+    if (typeof d.show_strike_range === "boolean") setShowStrikeRange(d.show_strike_range);
+    if (typeof d.show_writer_defense === "boolean") setShowWriterDefense(d.show_writer_defense);
+    if (typeof d.show_suggestion === "boolean") setShowSuggestion(d.show_suggestion);
+    if (typeof d.show_chart_signals === "boolean") setShowChartSignals(d.show_chart_signals);
+    applyDeskAi(d);
+  }, [applyDeskAi]);
+
   const patchDeskAi = useCallback(async (patch) => {
     const prev = { show: deskAiShow, radar: deskAiRadar, positions: deskAiPositions };
     if (typeof patch.desk_ai_show === "boolean") setDeskAiShow(patch.desk_ai_show);
@@ -1148,97 +1193,22 @@ export default function Dashboard() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await api.get("/settings");
-      if (res.data) {
-        applyMarketHoursFromStatus(res.data);
-        if (typeof res.data.oi_poll_interval_seconds === "number") {
-          const next = res.data.oi_poll_interval_seconds * 1000;
-          setPollMs((prev) => (prev === next ? prev : next));
-        }
-        if (res.data.straddle_poll_interval_seconds) {
-          const next = res.data.straddle_poll_interval_seconds * 1000;
-          setStraddlePollMs((prev) => (prev === next ? prev : next));
-        }
-        if (typeof res.data.positions_poll_interval_seconds === "number") {
-          const next = res.data.positions_poll_interval_seconds * 1000;
-          setPositionsPollMs((prev) => (prev === next ? prev : next));
-        }
-        if (Array.isArray(res.data.visible_pages)) {
-          setVisiblePages(res.data.visible_pages);
-        }
-        if (Array.isArray(res.data.admin_visible_pages)) {
-          setAdminVisiblePages(res.data.admin_visible_pages);
-        }
-        if (Array.isArray(res.data.enabled_indices) && res.data.enabled_indices.length) {
-          setEnabledIndices(normalizeEnabledIndices(res.data.enabled_indices, !!res.data.mcx_desk_on));
-        }
-        if (Array.isArray(res.data.alert_enabled_indices) && res.data.alert_enabled_indices.length) {
-          setAlertEnabledIndices(res.data.alert_enabled_indices);
-        }
-        if (typeof res.data.show_strike_range === "boolean") {
-          setShowStrikeRange(res.data.show_strike_range);
-        }
-        if (typeof res.data.show_writer_defense === "boolean") {
-          setShowWriterDefense(res.data.show_writer_defense);
-        }
-        if (typeof res.data.show_suggestion === "boolean") {
-          setShowSuggestion(res.data.show_suggestion);
-        }
-        if (typeof res.data.show_chart_signals === "boolean") {
-          setShowChartSignals(res.data.show_chart_signals);
-        }
-        applyDeskAi(res.data);
-      }
+      const res = await api.get("/settings", {
+        params: { _: Date.now() },
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      });
+      if (res.data) applyServerSettings(res.data);
     } catch (e) {
       console.error("Failed to fetch settings", e);
     }
-  }, [applyDeskAi]);
+  }, [applyServerSettings]);
 
   // Boot: pull /config once so poll interval is correct before first OI tick.
   useEffect(() => {
     api.get("/config").then((r) => {
-      const d = r.data || {};
-      if (typeof d.oi_poll_interval_seconds === "number") {
-        setPollMs(d.oi_poll_interval_seconds * 1000);
-      } else if (typeof d.poll_interval_seconds === "number") {
-        setPollMs(d.poll_interval_seconds * 1000);
-      }
-      if (typeof d.straddle_poll_interval_seconds === "number") {
-        setStraddlePollMs(d.straddle_poll_interval_seconds * 1000);
-      }
-      if (typeof d.positions_poll_interval_seconds === "number") {
-        setPositionsPollMs(d.positions_poll_interval_seconds * 1000);
-      }
-      if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
-        setEnabledIndices(normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on));
-      }
-      if (d.indices && typeof d.indices === "object") {
-        setIndexMeta(d.indices);
-      }
-      if (Array.isArray(d.alert_enabled_indices) && d.alert_enabled_indices.length) {
-        setAlertEnabledIndices(d.alert_enabled_indices);
-      }
-      if (Array.isArray(d.visible_pages)) {
-        setVisiblePages(d.visible_pages);
-      }
-      if (Array.isArray(d.admin_visible_pages)) {
-        setAdminVisiblePages(d.admin_visible_pages);
-      }
-      if (typeof d.show_strike_range === "boolean") {
-        setShowStrikeRange(d.show_strike_range);
-      }
-      if (typeof d.show_writer_defense === "boolean") {
-        setShowWriterDefense(d.show_writer_defense);
-      }
-      if (typeof d.show_suggestion === "boolean") {
-        setShowSuggestion(d.show_suggestion);
-      }
-      if (typeof d.show_chart_signals === "boolean") {
-        setShowChartSignals(d.show_chart_signals);
-      }
-      applyDeskAi(d);
+      applyServerSettings(r.data || {});
     }).catch(() => { /* ignore — settings poll will retry */ });
-  }, [applyDeskAi]);
+  }, [applyServerSettings]);
 
   // Auth state — AuthGate already fetched; listen, then refresh later (no boot stampede).
   useEffect(() => {
@@ -1278,6 +1248,12 @@ export default function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    const onSaved = (e) => applyServerSettings(e?.detail);
+    window.addEventListener("oi-settings-saved", onSaved);
+    return () => window.removeEventListener("oi-settings-saved", onSaved);
+  }, [applyServerSettings]);
+
   useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 8000 });
 
   useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status", delayMs: 800 });
@@ -1312,7 +1288,7 @@ export default function Dashboard() {
     },
     5000,
     [loadAlerts, status?.market?.is_market_open],
-    { status, dedupeKey: "dash-alerts", delayMs: 6000 },
+    { status, dedupeKey: "dash-alerts", delayMs: 2500 },
   );
 
   // When index changes, hydrate from warm cache immediately so the chart never goes cold.
@@ -1624,6 +1600,8 @@ export default function Dashboard() {
         index: activeIndex,
         bullish: changeSummary.bullish,
         windowLabel: timeframeLabel,
+        pe: changeSummary.pe,
+        ce: changeSummary.ce,
       });
       surfaceAlert({
         toastFn: changeSummary.bullish ? toast.success : toast.error,
@@ -1670,6 +1648,8 @@ export default function Dashboard() {
         side: which,
         pct: pctVal,
         windowLabel: timeframeLabel,
+        pe: changeSummary.pe,
+        ce: changeSummary.ce,
       });
       const isBull = (which === "PE" && pctVal >= 0) || (which === "CE" && pctVal < 0);
       surfaceAlert({
@@ -3000,42 +2980,8 @@ export default function Dashboard() {
         onOpenChange={setSettingsOpen}
         isAdmin={authState.is_admin}
         onSaved={(settings) => {
-          applyMarketHoursFromStatus(settings);
+          applyServerSettings(settings);
           loadStatus();
-          if (Array.isArray(settings.visible_pages)) {
-            setVisiblePages(settings.visible_pages);
-          }
-          if (Array.isArray(settings.admin_visible_pages)) {
-            setAdminVisiblePages(settings.admin_visible_pages);
-          }
-          if (typeof settings.oi_poll_interval_seconds === "number") {
-            setPollMs(settings.oi_poll_interval_seconds * 1000);
-          }
-          if (typeof settings.straddle_poll_interval_seconds === "number") {
-            setStraddlePollMs(settings.straddle_poll_interval_seconds * 1000);
-          }
-          if (typeof settings.positions_poll_interval_seconds === "number") {
-            setPositionsPollMs(settings.positions_poll_interval_seconds * 1000);
-          }
-          if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
-            setEnabledIndices(normalizeEnabledIndices(settings.enabled_indices, !!settings.mcx_desk_on));
-          }
-          if (Array.isArray(settings.alert_enabled_indices) && settings.alert_enabled_indices.length) {
-            setAlertEnabledIndices(settings.alert_enabled_indices);
-          }
-          if (typeof settings.show_strike_range === "boolean") {
-            setShowStrikeRange(settings.show_strike_range);
-          }
-          if (typeof settings.show_writer_defense === "boolean") {
-            setShowWriterDefense(settings.show_writer_defense);
-          }
-          if (typeof settings.show_suggestion === "boolean") {
-            setShowSuggestion(settings.show_suggestion);
-          }
-          if (typeof settings.show_chart_signals === "boolean") {
-            setShowChartSignals(settings.show_chart_signals);
-          }
-          applyDeskAi(settings);
         }}
         onLocalSaved={setOiSettings}
       />
@@ -3059,13 +3005,7 @@ export default function Dashboard() {
         onOpenChange={setIndexManagerOpen}
         onChanged={() => {
           fetchSettings();
-          api.get("/config").then((r) => {
-            const d = r.data || {};
-            if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
-              setEnabledIndices(normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on));
-            }
-            if (d.indices && typeof d.indices === "object") setIndexMeta(d.indices);
-          }).catch(() => {});
+          api.get("/config").then((r) => applyServerSettings(r.data || {})).catch(() => {});
         }}
       />
 

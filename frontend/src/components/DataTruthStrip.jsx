@@ -5,7 +5,7 @@ const TONE = {
   live: {
     bar: "bg-emerald-600 text-white border-emerald-700",
     badge: "bg-white text-emerald-800",
-    pulse: "bg-white",
+    pulse: "bg-emerald-600",
   },
   session: {
     // Dark forest green (not mint) — deeper than LIVE emerald-600

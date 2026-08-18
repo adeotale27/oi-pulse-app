@@ -144,6 +144,8 @@ input[type="number"] {
     box-shadow: 0 8px 24px -20px rgba(15, 55, 70, 0.35);
     overflow-x: hidden;
     overflow-y: hidden;
+    font-family: var(--font-ui);
+    letter-spacing: -0.015em;
   }
 
   /* Normal desk header — light, high-contrast (not forced dark). */
@@ -152,7 +154,7 @@ input[type="number"] {
     border-bottom: 1px solid #e2e8f0;
     box-shadow: 0 8px 22px -18px rgba(15, 55, 70, 0.28);
     color: #0f172a;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .oi-header * {

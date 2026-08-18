@@ -1,12 +1,43 @@
 import assert from "node:assert/strict";
-import { hugeShiftCopy, oiPctCopy, oiPressureCopy, hugeShiftToastCopy } from "./oiAlertCopy.js";
+import {
+  formatOiDelta,
+  hugeShiftCopy,
+  oiBoardAlertCopy,
+  oiPctCopy,
+  oiPressureCopy,
+  hugeShiftToastCopy,
+  oiSellerRead,
+} from "./oiAlertCopy.js";
 
-const p = oiPressureCopy({ index: "NIFTY", bullish: true, windowLabel: "5 min" });
+const p = oiPressureCopy({
+  index: "NIFTY",
+  bullish: true,
+  windowLabel: "15 mins",
+  pe: 3.49e7,
+  ce: 4.56e7,
+});
 assert.equal(p.title, "NIFTY · Puts adding — bullish");
-assert.equal(p.description, "Last 5 min");
+assert.match(p.description, /Put selling increase — bullish further/);
+assert.match(p.description, /Bullish pressure \(Put OI building\) in last 15 mins/);
+assert.match(p.description, /PE \+3\.49Cr · CE \+4\.56Cr/);
 
 const bear = oiPressureCopy({ index: "SENSEX", bullish: false, windowLabel: "1 min" });
 assert.equal(bear.title, "SENSEX · Calls adding — bearish");
+assert.match(bear.description, /Call selling increase — bearish further/);
+
+assert.equal(oiSellerRead(true), "Put selling increase — bullish further");
+assert.equal(formatOiDelta(3.49e7), "+3.49Cr");
+
+const board = oiBoardAlertCopy({
+  index: "NIFTY",
+  direction: "Bearish pressure (Call OI building)",
+  windowLabel: "15 mins",
+  pe: 3.49e7,
+  ce: 4.56e7,
+});
+assert.equal(board.title, "NIFTY: Bearish pressure (Call OI building) in last 15 mins");
+assert.match(board.description, /PE \+3\.49Cr · CE \+4\.56Cr/);
+assert.match(board.description, /Call selling increase/);
 
 const pct = oiPctCopy({ index: "NIFTY", side: "CE", pct: -5.21, windowLabel: "5 min" });
 assert.equal(pct.title, "NIFTY · Calls down 5.2%");

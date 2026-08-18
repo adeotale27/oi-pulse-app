@@ -4,13 +4,33 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.01",
+    date: "2026-08-18",
+    user: [
+      "Admin Positions auto-refresh is saved and used on the desk. Opening configuration shows the value from the database.",
+    ],
+    admin: [
+      "GET /settings and /config re-read Mongo so multi-worker memory cannot keep a default 30s. Positions poll uses positions_poll_interval_seconds (min 5s) while the cash session is live.",
+    ],
+  },
+  {
+    version: "7.00",
+    date: "2026-08-18",
+    user: [
+      "One OI toast with Puts adding — bullish, Put selling increase, the old pressure line, and PE/CE crores. LIVE pulse is green on the white tile. Phone no longer shows Market open / Updated on the top rail. Header type is Outfit. Sell ideas stay on until expiry-day close. Heatmap matches desk green/red. Side OI Change matches the main chart. Header and Positions Today P&L stay on the same number; the book keeps polling on other tabs while the market is open and you have live legs.",
+    ],
+    admin: [
+      "V7.00 major bump (desk chrome + toast copy). First /change for the open index still includes 1/3/5 lookbacks. Header and Positions share one GET /positions feed; live legs poll every 5s on any page during the cash session.",
+    ],
+  },
+  {
     version: "6.45",
     date: "2026-08-18",
     user: [
       "The desk opens from a saved session instead of sitting on Loading for a minute. The chart you are on fills first; other indices catch up a few seconds later. Funds available matches Kite Available margin (not the negative cash line).",
     ],
     admin: [
-      "AuthGate no longer waits 3×8s on /auth/state. /change lookbacks gather in parallel with maxTimeMS so Mongo cannot pin the origin. CSP allows data: alert beeps.",
+      "AuthGate no longer waits 3×8s on /auth/state. /change lookbacks gather in parallel with maxTimeMS so Mongo cannot pin the origin. CSP allows data: alert beeps. Funds tile uses kite.margins equity.net (Available margin).",
     ],
   },
   {

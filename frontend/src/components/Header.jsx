@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
@@ -25,14 +25,20 @@ import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
 import { isTradingDayIST, todayIST } from "@/lib/holidays";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { kiteModeBadge, kiteModeBadgeClass } from "@/lib/kiteModeLabel";
-import { publishTodayPnl, readTodayPnlCache, TODAY_PNL_EVENT } from "@/lib/todayPnl";
+import { readTodayPnlCache, TODAY_PNL_EVENT } from "@/lib/todayPnl";
+import {
+  startPositionsBookPolling,
+  stopPositionsBookPolling,
+  subscribePositionsBook,
+  openLiveCount,
+} from "@/lib/positionsBook";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_EVENT = "oi-positions-privacy";
 const PRIVACY_MASK = "••••";
 
 /** Admin/guest Today P&L chip for the header (beside the clock). */
-function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className, compact = false }) {
+function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 15_000, className, compact = false }) {
   const cached = readTodayPnlCache();
   const [pnl, setPnl] = useState(() => cached?.total ?? null);
   const [openCount, setOpenCount] = useState(() => cached?.open ?? 0);
@@ -67,33 +73,20 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className, compact =
     return () => window.removeEventListener(TODAY_PNL_EVENT, onPnl);
   }, []);
 
-  const load = useCallback(async () => {
-    if (!enabled) return;
-    try {
-      const { data } = await api.get("/positions", {
-        params: { _: Date.now() },
-        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-      });
-      const rows = Array.isArray(data?.positions) ? data.positions : [];
-      const open = rows.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
-      const total = data?.pnl_today?.total;
-      const next = total != null && Number.isFinite(Number(total)) ? Number(total) : 0;
-      setOpenCount(open);
-      setPnl(next);
-      publishTodayPnl({ total: next, open });
-    } catch {
-      /* keep last good value */
-    }
-  }, [enabled]);
+  useEffect(() => {
+    return subscribePositionsBook((payload) => {
+      const total = payload?.pnl_today?.total;
+      if (total == null || !Number.isFinite(Number(total))) return;
+      setPnl(Number(total));
+      setOpenCount(openLiveCount(payload));
+    });
+  }, []);
 
-  // Keep header P&L fresh even when Positions tab is not mounted.
-  const interval = Math.max(5_000, Math.min(120_000, Number(pollMs) || 15_000));
-  useQuiescentAwarePolling(load, interval, [load, enabled, interval], {
-    status,
-    allowDuringQuiescent: true,
-    dedupeKey: "header-today-pnl",
-    delayMs: 8000,
-  });
+  useEffect(() => {
+    if (!enabled) return undefined;
+    startPositionsBookPolling();
+    return () => stopPositionsBookPolling();
+  }, [enabled]);
 
   if (!enabled) return null;
 
@@ -104,8 +97,8 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className, compact =
     : waiting
       ? "—"
       : `${positive ? "+" : ""}${pnl.toLocaleString(undefined, {
-          minimumFractionDigits: compact ? 0 : 2,
-          maximumFractionDigits: compact ? 0 : 2,
+            minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
         })}`;
 
   return (
@@ -243,6 +236,12 @@ export default function Header({
   const isGuestUser = !!authState.is_guest && !assumedAdmin;
   const isAdmin = !isGuestUser && (devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest));
   const showHeaderPnl = isAdmin || (isGuestUser && positionsPublic);
+
+  useEffect(() => {
+    if (!(isAdmin || isGuestUser)) return undefined;
+    startPositionsBookPolling();
+    return () => stopPositionsBookPolling();
+  }, [isAdmin, isGuestUser]);
   if (devForce) {
     try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }
@@ -1114,7 +1113,7 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   if (inline) {
     return (
       <div
-        className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm font-mono-data text-[10px] tabular-nums"
+        className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm text-[11px] tabular-nums"
         data-testid="vix-metric"
         title="India VIX"
       >
@@ -1330,7 +1329,7 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
       {inline ? (
         <button
           type="button"
-          className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm font-mono-data text-[10px] tabular-nums hover:bg-slate-50 dark:hover:bg-slate-800"
+          className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm text-[11px] tabular-nums hover:bg-slate-50 dark:hover:bg-slate-800"
           onClick={() => isGift && onOpenSessions?.()}
           title={giftTooltip || label}
         >

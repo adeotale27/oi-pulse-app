@@ -111,6 +111,16 @@ export function yearsToExpiry(expiryISO, nowMs = Date.now()) {
   return Math.max(0, years);
 }
 
+/** True until configured market close IST on the expiry date (not UTC midnight). */
+export function expiryStillLive(expiryISO, nowMs = Date.now()) {
+  if (!expiryISO) return false;
+  const closeMin = getMarketCloseMinute();
+  const hh = String(Math.floor(closeMin / 60)).padStart(2, "0");
+  const mm = String(closeMin % 60).padStart(2, "0");
+  const expiryMs = Date.parse(`${String(expiryISO).slice(0, 10)}T${hh}:${mm}:00+05:30`);
+  return Number.isFinite(expiryMs) && nowMs <= expiryMs;
+}
+
 /** Minutes remaining until configured market close IST today (0 if already past). */
 export function minutesToCloseIST(nowMs = Date.now()) {
   const parts = new Intl.DateTimeFormat("en-GB", {

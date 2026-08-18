@@ -266,7 +266,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
               : `${s.label} is on the quote strip but not enabled for the desk`}
               onMouseEnter={selectable ? undefined : () => toastDisabledIndex(s.label)}
-              className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
+              className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[11px] tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
                 !selectable
                   ? "border-transparent"
                   : isActive
@@ -274,7 +274,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
               }`}
             >
-              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-900 dark:text-slate-100">
+              <span className="text-[11px] uppercase tracking-wide font-semibold text-slate-800 dark:text-slate-100">
                 {shortLabel}
               </span>
               <Arrow className={`w-3 h-3 shrink-0 ${toneCls}`} strokeWidth={2.5} aria-hidden />
@@ -352,7 +352,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
               : `${s.label} is on the quote strip but not enabled for the desk`}
           >
-            <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label || ""} ${
+            <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-semibold ${tones.label || ""} ${
               isHeader ? "text-[11px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"
             }`}>
               <div className="flex items-center gap-1 min-w-0">

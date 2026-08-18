@@ -5,7 +5,7 @@ import { isKiteCredentialProblem, kiteCredentialTitle } from "@/lib/kiteCredenti
 import { useEffect, useMemo, useState } from "react";
 
 const TRUTH_TONE = {
-  live: { bar: "bg-emerald-600/95 text-white border-emerald-700", badge: "bg-white text-emerald-800", pulse: "bg-white" },
+  live: { bar: "bg-emerald-600/95 text-white border-emerald-700", badge: "bg-white text-emerald-800", pulse: "bg-emerald-600" },
   session: { bar: "bg-[#022c22] text-emerald-50 border-[#011f18]", badge: "bg-amber-400 text-amber-950", pulse: "bg-amber-300" },
   warn: { bar: "bg-amber-500 text-amber-950 border-amber-600", badge: "bg-amber-950 text-amber-100", pulse: "bg-amber-950" },
   offline: { bar: "bg-rose-700 text-rose-50 border-rose-800", badge: "bg-rose-100 text-rose-900", pulse: "bg-rose-200" },
@@ -87,7 +87,7 @@ export default function DeskStatusRail({
           )}
           {truth.badge}
         </span>
-        <span className="opacity-90 shrink-0 whitespace-nowrap pr-3" data-testid="data-truth-detail">
+        <span className="opacity-90 shrink-0 whitespace-nowrap pr-3 hidden sm:inline" data-testid="data-truth-detail">
           {truth.detail}
         </span>
         <span

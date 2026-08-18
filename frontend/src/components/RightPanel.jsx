@@ -231,7 +231,7 @@ export default function RightPanel({
               previous={previous}
               atm={atm}
               mode={status?.mode}
-              showOI={false}
+              showOI={showOI}
               currentTime={current?.timestamp}
               prevTime={previous?.timestamp}
             />

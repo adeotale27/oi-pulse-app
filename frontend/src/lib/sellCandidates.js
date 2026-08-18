@@ -19,7 +19,7 @@
 // The whole file is pure, side-effect-free JS so it can be memoised in React.
 // -----------------------------------------------------------------------------
 
-import { impliedVol, greeks, yearsToExpiry, ivRankVsVix } from "./blackScholes";
+import { impliedVol, greeks, yearsToExpiry, ivRankVsVix, expiryStillLive } from "./blackScholes";
 
 // Contract multiplier per index (roughly the lot size — good enough for a
 // relative-ordering GEX proxy; we only care about signs and magnitudes here).
@@ -187,11 +187,9 @@ export function computeSellCandidates({
   const spot = current?.price || current?.atm;
   const expiryISO = current?.expiry;
   const rawT = yearsToExpiry(expiryISO);
-  // If the selected expiry has already passed we cannot produce meaningful
-  // IV / greeks — the observed LTPs are intrinsic-only and any T > 0 we
-  // synthesise would give nonsense IVs. Surface a clear "pick a live weekly"
-  // message and abort scoring. The caller reads `expiryStale` in the result.
-  const expiryStale = rawT <= 0.0005; // < ~4 hours to expiry
+  // Stale only after market close on that expiry date — not ~4h before close
+  // (that false-fired all afternoon on weekly expiry day).
+  const expiryStale = !!expiryISO && !expiryStillLive(expiryISO);
   const T = rawT;
   const strikes = current?.strikes || [];
   // Update guards to return T-normalised dealer so the panel keeps a consistent shape.

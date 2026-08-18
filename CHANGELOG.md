@@ -1,5 +1,28 @@
 # Changelog
 
+## V7.01 — 2026-08-18
+
+Admin configuration reads the saved Mongo document every time you open it; Positions auto-refresh uses that value.
+
+- Opening Admin configuration always reloads settings from the database (not a stale API-worker copy that still showed 30s)
+- Positions auto-refresh (seconds) is saved and applied to the live book poller and header P&L
+- OI / straddle / pages / hours / desk flags apply from the same saved document
+
+## V7.00 — 2026-08-18
+
+Desk V7: one OI toast with the full read, a visible LIVE pulse, and a cleaner phone header.
+
+- OI toasts keep **Puts adding — bullish** and add Put/Call selling plus PE/CE crores on the same card
+- LIVE tile pulse is emerald (readable on the white badge)
+- Phone status rail hides **Market open · Updated Ns** so VIX/GIFT/indices keep the row
+- Header uses Outfit; ticker labels are a bit larger and less mono
+- First OI fetch still includes 1/3/5 windows so huge-shift can fire on the first tick
+- Sell / decay ideas stay live until **market close IST on expiry day** (not ~4h before close)
+- Position heatmap uses desk green/red fills; P&L border (not a red ring on every “too close” tile)
+- Side-panel OI Change uses the same OI-on/off chart as the main tab
+- Header Today P&L and Positions Today P&L share one book snapshot (they no longer drift by a few tens of rupees)
+- Open live legs keep GET /positions running on every dashboard page while the cash session is live
+
 ## V6.45 — 2026-08-18
 
 Desk paints in seconds: auth no longer blocks on a jammed API, and startup loads the active index first.

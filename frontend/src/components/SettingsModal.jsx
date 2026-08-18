@@ -32,6 +32,24 @@ const DASHBOARD_PAGES = [
 ];
 const ALL_PAGE_IDS = DASHBOARD_PAGES.map((p) => p.id);
 
+function normalizeLoadedSettings(d) {
+  const next = { ...(d || {}) };
+  for (const key of [
+    "threshold_pct",
+    "cooldown_seconds",
+    "compare_minutes",
+    "oi_poll_interval_seconds",
+    "straddle_poll_interval_seconds",
+    "positions_poll_interval_seconds",
+    "admin_session_ttl_minutes",
+  ]) {
+    if (next[key] == null || next[key] === "") continue;
+    const n = key === "threshold_pct" ? parseFloat(next[key]) : parseInt(next[key], 10);
+    if (Number.isFinite(n)) next[key] = n;
+  }
+  return next;
+}
+
 export default function SettingsModal({
   open,
   onOpenChange,
@@ -49,9 +67,12 @@ export default function SettingsModal({
     if (!open) return;
     setLoadError(null);
     setSettings(null);
-    api.get("/settings")
+    api.get("/settings", {
+      params: { _: Date.now() },
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    })
       .then((r) => {
-        const d = r.data || {};
+        const d = normalizeLoadedSettings(r.data || {});
         setSettings(d);
         const known = Array.isArray(d.known_indices) ? d.known_indices : [];
         const enabled = Array.isArray(d.enabled_indices) ? d.enabled_indices : [];
@@ -203,12 +224,8 @@ export default function SettingsModal({
           setSaving(false);
           return;
         }
-        onSaved?.(payload);
-        try {
-          window.dispatchEvent(new CustomEvent("oi-settings-saved", { detail: payload }));
-        } catch { /* noop */ }
         const { data } = await api.post("/settings", payload);
-        const saved = data || payload;
+        const saved = normalizeLoadedSettings(data || payload);
         setSettings(saved);
         toast.success("Settings saved — polling & alerts updated");
         onSaved?.(saved);
@@ -539,7 +556,7 @@ export default function SettingsModal({
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
                     Positions Auto-Refresh (seconds)
                     <InfoTip title="Positions Poll Interval">
-                      How often the Positions desk reloads open Kite positions. Enter any whole number of seconds (5–3600). Countdown shows on the Refresh button. Default 30s.
+                      How often the Positions desk (and header Today P&L) reloads the live Kite book. Saved to the database; opening this panel always reloads that value. Whole seconds, 5–3600. Default 30.
                     </InfoTip>
                   </Label>
                   <div className="flex items-center gap-2">

@@ -211,11 +211,13 @@ def test_admin_settings_update_and_effect(monkeypatch):
         "alert_indices_override_date": "2099-01-01",
         "oi_poll_interval_seconds": 30,
         "straddle_poll_interval_seconds": 60,
-        "positions_poll_interval_seconds": "",
+        "positions_poll_interval_seconds": 15,
     })
     assert r.status_code == 200, r.text
     data = r.json()
     assert data["oi_poll_interval_seconds"] == 30
+    assert data["positions_poll_interval_seconds"] == 15
     # GET /api/config should reflect the new poll interval
     cfg = client.get("/api/config").json()
     assert cfg["poll_interval_seconds"] == 30
+    assert cfg["positions_poll_interval_seconds"] == 15
