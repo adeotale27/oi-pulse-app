@@ -1114,7 +1114,7 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   if (inline) {
     return (
       <div
-        className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm font-mono-data text-[10px] tabular-nums"
+        className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm text-[11px] tabular-nums"
         data-testid="vix-metric"
         title="India VIX"
       >
@@ -1330,7 +1330,7 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
       {inline ? (
         <button
           type="button"
-          className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm font-mono-data text-[10px] tabular-nums hover:bg-slate-50 dark:hover:bg-slate-800"
+          className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm text-[11px] tabular-nums hover:bg-slate-50 dark:hover:bg-slate-800"
           onClick={() => isGift && onOpenSessions?.()}
           title={giftTooltip || label}
         >

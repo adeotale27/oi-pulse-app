@@ -4,13 +4,13 @@
  */
 export const RELEASE_NOTES = [
   {
-    version: "6.46",
+    version: "7.00",
     date: "2026-08-18",
     user: [
-      "OI toasts still say Puts adding — bullish, and also Put selling increase — bullish further, plus the old pressure line and PE/CE crores.",
+      "One OI toast with Puts adding — bullish, Put selling increase, the old pressure line, and PE/CE crores. LIVE pulse is green on the white tile. Phone no longer shows Market open / Updated on the top rail. Header type is Outfit.",
     ],
     admin: [
-      "First /change for the open index includes 1/3/5 lookbacks again so huge-shift is not delayed to the next poll.",
+      "V7.00 major bump (desk chrome + toast copy). First /change for the open index still includes 1/3/5 lookbacks.",
     ],
   },
   {

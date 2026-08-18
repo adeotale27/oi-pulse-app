@@ -1,13 +1,14 @@
 # Changelog
 
-## V6.46 — 2026-08-18
+## V7.00 — 2026-08-18
 
-OI toasts keep the short Puts-adding line and restore PE/CE size plus put-selling read.
+Desk V7: one OI toast with the full read, a visible LIVE pulse, and a cleaner phone header.
 
-- Headline stays **NIFTY · Puts adding — bullish** (or Calls adding — bearish)
-- Also **Put selling increase — bullish further**, the old pressure line, and **PE +xCr · CE +yCr**
-- Board reversal toasts again use `INDEX: … pressure … in last 15 mins` with PE/CE
-- First OI fetch includes 1/3/5 windows so huge-shift can fire on the first tick
+- OI toasts keep **Puts adding — bullish** and add Put/Call selling plus PE/CE crores on the same card
+- LIVE tile pulse is emerald (readable on the white badge)
+- Phone status rail hides **Market open · Updated Ns** so VIX/GIFT/indices keep the row
+- Header uses Outfit; ticker labels are a bit larger and less mono
+- First OI fetch still includes 1/3/5 windows so huge-shift can fire on the first tick
 
 ## V6.45 — 2026-08-18
 

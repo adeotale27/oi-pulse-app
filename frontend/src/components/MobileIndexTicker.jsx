@@ -121,12 +121,12 @@ export default function MobileIndexTicker({
             type="button"
             data-testid={i < items.length ? `mobile-ticker-${it.key}` : undefined}
             onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
-            className={`inline-flex items-center gap-1 shrink-0 font-mono-data text-[10px] tabular-nums ${
+            className={`inline-flex items-center gap-1 shrink-0 text-[11px] tabular-nums ${
               it.active ? "text-white font-bold" : "text-white/95"
             } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
           >
-            <span className="uppercase tracking-wider font-semibold text-white/80">{it.label}</span>
-            <span className="font-semibold">{it.price}</span>
+            <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
+            <span className="font-semibold tabular-nums">{it.price}</span>
             {it.pct != null && Number.isFinite(it.pct) && (
               <span className={pctCls(it.pct)}>
                 {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}
