@@ -70,7 +70,21 @@ function holidayCellLabel(h, { muhurat = false } = {}) {
 assert.notEqual(holidayCellLabel({ name: "Balipratipada" }), "Holi");
 assert.equal(holidayCellLabel({ name: "Balipratipada" }), "Balipratipada");
 assert.equal(holidayCellLabel({ name: "Diwali Laxmi Pujan* (Muhurat trading)", session: "muhurat" }), "Muh.");
-assert.ok(holidayCellLabel({ name: "Prakash Gurpurb Sri Guru Nanak Dev" }).startsWith("Prakash"));
+assert.equal(holidayCellLabel({ name: "Prakash Gurpurb Sri Guru Nanak Dev" }).startsWith("Prakash"), true);
+
+function isLongWeekendHoliday(iso) {
+  const wd = weekdayIST(iso);
+  // Friday → Fri–Sat–Sun; Monday → Sat–Sun–Mon.
+  return wd === 5 || wd === 1;
+}
+assert.equal(weekdayIST("2026-04-03"), 5, "Good Friday 2026");
+assert.equal(isLongWeekendHoliday("2026-04-03"), true, "Fri–Sat–Sun long weekend");
+assert.equal(weekdayIST("2026-09-14"), 1, "Ganesh Chaturthi 2026 is Monday");
+assert.equal(isLongWeekendHoliday("2026-09-14"), true, "Sat–Sun–Mon long weekend");
+assert.equal(weekdayIST("2026-10-02"), 5, "Gandhi Jayanti 2026 is Friday");
+assert.equal(isLongWeekendHoliday("2026-10-02"), true);
+assert.equal(weekdayIST("2026-03-03"), 2, "Holi 2026 is Tuesday");
+assert.equal(isLongWeekendHoliday("2026-03-03"), false, "mid-week holiday is not a long weekend");
 
 const RAW = [
   { date: "2026-05-01", name: "Maharashtra Day" },

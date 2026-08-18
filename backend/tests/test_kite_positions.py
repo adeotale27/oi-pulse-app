@@ -164,3 +164,53 @@ def test_booked_today_from_row_sums_exit_and_partial():
     assert booked_today_from_row({"exited": True, "booked_pnl": 8400}) == 8400.0
     assert booked_today_from_row({"exited": False, "realised": 12600, "pnl": 19000, "booked_pnl": 12600}) == 12600.0
     assert booked_today_from_row({"exited": False, "realised": 0, "pnl": 800, "booked_pnl": 0}) == 0.0
+
+
+def test_open_mtm_prefers_quote_over_stale_kite_pnl():
+    bits = booked_pnl_from_kite_row(
+        qty=-50,
+        buy_qty=0,
+        sell_qty=50,
+        buy_price=0,
+        sell_price=100,
+        pnl=800,
+        realised=0,
+        unrealised=800,
+        exited=False,
+        buy_value=0,
+        sell_value=5000,
+        last_price=80,
+        multiplier=1,
+        mark_to_market=True,
+    )
+    # (5000 - 0) + (-50 * 80) = 1000, not stale kite 800
+    assert bits["pnl"] == 1000.0
+    assert bits["pnl_source"] == "quote_mtm"
+
+
+def test_apply_live_ltp_updates_open_row():
+    from kite_positions import apply_live_ltp_to_open_rows
+    row = {
+        "exited": False,
+        "exchange": "NFO",
+        "tradingsymbol": "NIFTY2581824200PE",
+        "quantity": -50,
+        "buy_quantity": 0,
+        "sell_quantity": 50,
+        "buy_price": 0,
+        "sell_price": 100,
+        "pnl": 800,
+        "realised": 0,
+        "unrealised": 800,
+        "buy_value": 0,
+        "sell_value": 5000,
+        "last_price": 90,
+        "multiplier": 1,
+    }
+    apply_live_ltp_to_open_rows(
+        [row],
+        {"NFO:NIFTY2581824200PE": {"last_price": 80}},
+    )
+    assert row["last_price"] == 80
+    assert row["pnl"] == 1000.0
+

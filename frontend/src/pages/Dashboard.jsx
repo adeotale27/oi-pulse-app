@@ -2277,7 +2277,11 @@ export default function Dashboard() {
                 <div
                   className={`oi-panel oi-rise p-4 transition-all duration-700 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
-                  } ${activeTab === "oi-change" && compact && !showRightPanel ? "max-w-[72rem] mx-auto w-full" : ""}`}
+                  } ${
+                    (activeTab === "oi-change" || activeTab === "open-interest") && compact && !showRightPanel
+                      ? "max-w-[72rem] mx-auto w-full"
+                      : ""
+                  }`}
                   data-testid="oi-change-card"
                   style={
                     // Bias wash is OI-Change only — Positions / other tabs stay clean & independent.

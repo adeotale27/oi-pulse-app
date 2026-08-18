@@ -82,6 +82,9 @@ def merge_kite_net_day(net: Optional[list], day: Optional[list]) -> list[dict]:
                 alt = 0.0
             if abs(cur) < 1e-12 and abs(alt) > 1e-12:
                 row[field] = p.get(field)
+            elif field == "last_price" and abs(alt) > 1e-12:
+                # Day LTP is usually fresher than net during the session.
+                row[field] = p.get(field)
             elif field == "realised" and abs(alt) > abs(cur) + 1e-9:
                 # Today's square-off / partial close often lands on the day row.
                 row[field] = p.get(field)
@@ -117,6 +120,7 @@ def booked_pnl_from_kite_row(
     sell_value: float = 0.0,
     last_price: float = 0.0,
     multiplier: float = 1.0,
+    mark_to_market: bool = False,
 ) -> dict[str, Any]:
     """Normalise today's P&L so exited legs use booked money.
 
@@ -164,8 +168,12 @@ def booked_pnl_from_kite_row(
             "closed_quantity": matched,
         }
 
-    # Open: prefer live Kite pnl; fall back to official formula.
-    if abs(kite_pnl) > 1e-9:
+    # Open: Kite positions().pnl often lags quotes. Prefer official MTM when
+    # we just refreshed last_price from kite.quote.
+    if mark_to_market and value_pnl is not None:
+        open_pnl = value_pnl
+        source = "quote_mtm"
+    elif abs(kite_pnl) > 1e-9:
         open_pnl = kite_pnl
         source = "kite"
     elif value_pnl is not None:
@@ -208,6 +216,69 @@ def booked_pnl_from_kite_row(
         "partial": partial,
         "closed_quantity": matched,
     }
+
+
+def quote_last_price(quotes: Optional[dict], key: str) -> Optional[float]:
+    if not isinstance(quotes, dict) or not key:
+        return None
+    q = quotes.get(key)
+    if not isinstance(q, dict):
+        q = quotes.get(str(key).upper())
+    if not isinstance(q, dict):
+        return None
+    lp = q.get("last_price") or (q.get("ohlc") or {}).get("close")
+    try:
+        v = float(lp) if lp is not None else None
+    except (TypeError, ValueError):
+        return None
+    if v is None or v != v or v <= 0:
+        return None
+    return v
+
+
+def apply_live_ltp_to_open_rows(rows: list, quotes: Optional[dict]) -> None:
+    """Mark open legs to kite.quote LTP. Mutates rows in place."""
+    if not rows or not quotes:
+        return
+    for row in rows:
+        if not isinstance(row, dict) or row.get("exited"):
+            continue
+        ex = row.get("exchange")
+        ts = row.get("tradingsymbol")
+        if not ex or not ts:
+            continue
+        lp = quote_last_price(quotes, f"{ex}:{ts}")
+        if lp is None:
+            continue
+        try:
+            qty = int(row.get("quantity") or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty == 0:
+            row["last_price"] = lp
+            continue
+        bits = booked_pnl_from_kite_row(
+            qty=qty,
+            buy_qty=int(row.get("buy_quantity") or 0),
+            sell_qty=int(row.get("sell_quantity") or 0),
+            buy_price=float(row.get("buy_price") or 0),
+            sell_price=float(row.get("sell_price") or 0),
+            pnl=float(row.get("pnl") or 0),
+            realised=float(row.get("realised") or 0),
+            unrealised=float(row.get("unrealised") or 0),
+            exited=False,
+            buy_value=float(row.get("buy_value") or 0),
+            sell_value=float(row.get("sell_value") or 0),
+            last_price=lp,
+            multiplier=float(row.get("multiplier") or 1) or 1.0,
+            mark_to_market=True,
+        )
+        row["last_price"] = lp
+        row["pnl"] = bits["pnl"]
+        row["unrealised"] = bits["unrealised"]
+        row["realised"] = bits["realised"]
+        row["booked_pnl"] = bits["booked_pnl"]
+        row["pnl_source"] = bits["pnl_source"]
 
 
 def booked_today_from_row(row: Optional[dict]) -> float:

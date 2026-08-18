@@ -495,6 +495,7 @@ export default function PositionsPanel({
   const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
   const loadGen = useRef(0);
   const hasLiveRef = useRef(true);
+  const shownBookRef = useRef(false);
 
   const setInsights = useCallback((open) => {
     setInsightsOpen(open);
@@ -568,7 +569,7 @@ export default function PositionsPanel({
 
   const load = useCallback(async () => {
     const gen = ++loadGen.current;
-    setLoading(true);
+    if (!shownBookRef.current) setLoading(true);
     try {
       const { data } = await api.get("/positions", {
         params: { _: Date.now() },
@@ -606,13 +607,13 @@ export default function PositionsPanel({
         if (hard && (data.kite_connected === false || data.token_issue === true)) {
           setFunds(data.funds ?? null);
           setPnlToday(data.pnl_today ?? null);
-        } else {
-          if (data.funds) setFunds(data.funds);
-          if (data.pnl_today) setPnlToday(data.pnl_today);
-        }
+        else:
+          if (data.funds != null) setFunds(data.funds);
+          if (data.pnl_today != null) setPnlToday(data.pnl_today);
         const total = data?.pnl_today?.total;
         const open = next.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
         hasLiveRef.current = open > 0;
+        shownBookRef.current = true;
         if (Number.isFinite(Number(total))) {
           publishTodayPnl({ total: Number(total), open });
         }
