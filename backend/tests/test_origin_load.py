@@ -68,6 +68,17 @@ def test_poll_loop_does_not_reload_settings_every_tick():
     assert "reload_settings_from_db" not in src
 
 
+def test_auth_state_survives_missing_db():
+    src = _fn(SERVER, "auth_state")
+    assert "if db is None" in src
+
+
+def test_positions_kite_call_is_capped():
+    src = _fn(SERVER, "get_positions")
+    assert "wait_for" in src
+    assert "kite.positions" in src
+
+
 def test_seed_on_start_skips_unloaded_dump():
     src = _fn(TRACKER, "_seed_expiries_safe")
     assert "_loaded" in src

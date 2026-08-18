@@ -66,3 +66,16 @@ export function shouldWipeTokensOn401(url) {
 export async function sleep(ms) {
   await new Promise((r) => setTimeout(r, ms));
 }
+
+/** Never let boot wait forever on a hung origin (preview /auth/state 0-byte stall). */
+export function withTimeout(promise, ms, label = "timeout") {
+  let t;
+  const killer = new Promise((_, reject) => {
+    t = setTimeout(() => {
+      const err = new Error(label);
+      err.code = "ECONNABORTED";
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([Promise.resolve(promise), killer]).finally(() => clearTimeout(t));
+}

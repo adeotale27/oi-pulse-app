@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.05",
+    date: "2026-08-18",
+    user: [
+      "If the live API is stuck, the desk no longer sits on a black Loading screen. You get Retry instead of waiting forever.",
+    ],
+    admin: [
+      "AuthGate races /auth/state at 2.8s. GET /auth/state skips Mongo when db is None; find_one is wait_for 2s. GET /positions caps kite.positions at 10s and kite.quote at 8s.",
+    ],
+  },
+  {
     version: "7.04",
     date: "2026-08-18",
     user: [

@@ -1,5 +1,13 @@
 # Changelog
 
+## V7.05 — 2026-08-18
+
+Stop the dark “Loading…” screen when the origin hangs (preview /auth/state 0-byte stall).
+
+- Auth gate fetches `/auth/state` first with a 2.8s cap; Remember-me runs after paint
+- `/auth/state` returns immediately if Mongo is not up; settings/session reads are time-capped
+- Kite `positions()` / `quote()` on GET `/positions` wait at most 10s / 8s so they cannot pin the worker forever
+
 ## V7.04 — 2026-08-18
 
 Positions tiles are a horizontal scroller again. Booked P&L includes Kite Booked on still-open partials.
