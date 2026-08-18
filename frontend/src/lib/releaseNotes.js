@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.41",
+    date: "2026-08-18",
+    user: [
+      "Charges match Zerodha (₹20 per order, not per fill). LIVE + Market open sit together on the left. Positions Refresh pulls a fresh book. Disabled BNF stays clear, just not clickable.",
+    ],
+    admin: [
+      "Virtual contract note collapses fills by order_id. Positions poll for the whole cash session. PWA standalone asks once to enable notifications.",
+    ],
+  },
+  {
     version: "6.40",
     date: "2026-08-18",
     user: [

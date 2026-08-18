@@ -70,7 +70,10 @@ function HeaderTodayPnl({ enabled, status, pollMs = 15_000, className, compact =
   const load = useCallback(async () => {
     if (!enabled) return;
     try {
-      const { data } = await api.get("/positions");
+      const { data } = await api.get("/positions", {
+        params: { _: Date.now() },
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      });
       const rows = Array.isArray(data?.positions) ? data.positions : [];
       const open = rows.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
       const total = data?.pnl_today?.total;

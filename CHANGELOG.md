@@ -1,5 +1,16 @@
 # Changelog
 
+## V6.41 — 2026-08-18
+
+Brokerage counted per order; LIVE status sits next to the pill; Positions refresh.
+
+- Day charges use one Kite contract-note row per executed order (split fills were each billed ₹20)
+- LIVE rail: pulsing dot + LIVE, then Market open / Updated, then the ticker
+- Positions poll every interval during the session; Refresh is never stuck disabled
+- Disabled index tiles stay full colour, not clickable, hover explains they are off the desk
+- Home Screen: prompt to enable notifications; icon is `any` (no maskable cutout glow)
+- OI Change wash is lighter and the card is centered when both side panes are closed
+
 ## V6.40 — 2026-08-18
 
 Kite callback on striklenz.com; desk sounds; slim status; full-bleed icon.

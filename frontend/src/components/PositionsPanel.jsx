@@ -570,7 +570,10 @@ export default function PositionsPanel({
     const gen = ++loadGen.current;
     setLoading(true);
     try {
-      const { data } = await api.get("/positions");
+      const { data } = await api.get("/positions", {
+        params: { _: Date.now() },
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      });
       if (gen !== loadGen.current) return;
       if (data.connect_required) {
         setGuestNeedsConnect(true);
@@ -663,19 +666,14 @@ export default function PositionsPanel({
       catchupDoneRef.current = true;
     }
     const poll = () => {
-      const trading = isJournalSessionDayIST(todayIST());
+      const iso = todayIST();
+      if (!isJournalSessionDayIST(iso)) return;
       const mins = istMinutesOfDay();
-      const catchupAt = journalPositionsCatchupMinute();
-      if (trading && mins < catchupAt) {
-        catchupDoneRef.current = false;
-        if (hasLiveRef.current) load();
-        return;
-      }
-      if (trading && mins >= catchupAt && !catchupDoneRef.current) {
-        catchupDoneRef.current = true;
-        load();
-        loadBrokerage();
-      }
+      const open = specialSessionOpenMinute(iso) ?? getMarketOpenMinute();
+      const catchupAt = journalPositionsCatchupMinute(iso);
+      if (mins < open) return;
+      load();
+      if (mins >= catchupAt) loadBrokerage();
     };
     const id = setInterval(poll, pollMs);
     const catchId = setInterval(() => {
@@ -1241,7 +1239,7 @@ export default function PositionsPanel({
                 <div className="text-[11px] text-slate-500 mt-0.5">
                   Zerodha virtual contract note ·{" "}
                   {brokerage?.order_count != null
-                    ? `${brokerage.order_count} fill${brokerage.order_count === 1 ? "" : "s"}`
+                    ? `${brokerage.order_count} order${brokerage.order_count === 1 ? "" : "s"}`
                     : "today"}
                   {brokerage?.book?.source ? ` · via ${brokerage.book.source}` : ""}
                 </div>
@@ -1284,7 +1282,7 @@ export default function PositionsPanel({
                         : "No charge lines returned."}
                     </div>
                   )}
-                  {brokerage?.gst && (brokerage.gst.igst || brokerage.gst.cgst || brokerage.gst.sgst) ? (
+                  {brokerage?.gst && (Number(brokerage.gst.cgst) || Number(brokerage.gst.sgst)) ? (
                     <div className="rounded-sm bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 space-y-0.5">
                       <div className="font-semibold uppercase tracking-wider text-slate-400">GST detail</div>
                       {brokerage.gst.igst ? (
@@ -1439,7 +1437,7 @@ export default function PositionsPanel({
             )}
           </div>
           <span id="positions-tiles-anchor" className="inline-flex" data-testid="positions-tiles-anchor" />
-          <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} disabled={loading} data-testid="btn-refresh-positions">
+          <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
             {journalPositionsRefreshOn() && (
@@ -1711,7 +1709,7 @@ export default function PositionsPanel({
         {openRows.length > 0 && (
           <button
             type="button"
-            className="relative z-20 w-full min-h-11 inline-flex items-center justify-center gap-1 rounded-md border border-sky-200 bg-sky-50 py-2.5 text-[13px] font-semibold text-sky-800 touch-manipulation"
+            className="relative z-20 w-full min-h-11 inline-flex items-center justify-start gap-1.5 rounded-md border border-emerald-200 bg-emerald-50/90 py-2.5 pl-3 pr-3 text-[13px] font-semibold text-emerald-900 touch-manipulation"
             onClick={() => setLiveOpen((v) => !v)}
             data-testid="btn-toggle-live-positions-mobile"
           >
@@ -1949,11 +1947,11 @@ export default function PositionsPanel({
                 <tr data-testid="live-section-divider">
                   <td
                     colSpan={Math.max(shownCols.length, 1)}
-                    className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-800 bg-sky-50/80 border-y border-sky-100"
+                    className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-emerald-900 bg-emerald-50/90 border-y border-emerald-100"
                   >
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 hover:text-sky-950"
+                      className="inline-flex items-center justify-start gap-1.5 hover:text-emerald-950"
                       onClick={() => setLiveOpen((v) => !v)}
                       data-testid="btn-toggle-live-positions"
                     >
@@ -1991,10 +1989,10 @@ export default function PositionsPanel({
                     : r.exited
                     ? "bg-slate-100/70 text-slate-400 opacity-[0.58]"
                     : r.breachedAdjust
-                      ? "bg-rose-50/70"
+                      ? "bg-rose-50/80"
                       : idx % 2 === 0
                         ? "bg-white"
-                        : "bg-slate-50/40"
+                        : "bg-emerald-50/25"
                 }`}
               >
                 {colOn("product") && (
@@ -2092,11 +2090,11 @@ export default function PositionsPanel({
               <tr data-testid="live-section-divider">
                 <td
                   colSpan={Math.max(shownCols.length, 1)}
-                  className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-800 bg-sky-50/80 border-y border-sky-100"
+                  className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-emerald-900 bg-emerald-50/90 border-y border-emerald-100"
                 >
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 hover:text-sky-950"
+                    className="inline-flex items-center justify-start gap-1.5 hover:text-emerald-950"
                     onClick={() => setLiveOpen(true)}
                     data-testid="btn-toggle-live-positions"
                   >

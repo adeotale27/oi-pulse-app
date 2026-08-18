@@ -85,6 +85,77 @@ def test_trade_avg_backfill():
     assert stats["skipped_zero_price"] == 0
 
 
+def test_trades_same_order_collapse_to_one_row():
+    """Split fills of one order must not each attract ₹20 brokerage."""
+    trades = [
+        {
+            "trade_id": "t1",
+            "order_id": "9",
+            "exchange": "NFO",
+            "tradingsymbol": "NIFTY2581124150PE",
+            "transaction_type": "BUY",
+            "product": "NRML",
+            "quantity": 200,
+            "average_price": 3.0,
+            "fill_timestamp": "2026-08-10 10:00:01",
+        },
+        {
+            "trade_id": "t2",
+            "order_id": "9",
+            "exchange": "NFO",
+            "tradingsymbol": "NIFTY2581124150PE",
+            "transaction_type": "BUY",
+            "product": "NRML",
+            "quantity": 125,
+            "average_price": 4.0,
+            "fill_timestamp": "2026-08-10 10:00:02",
+        },
+    ]
+    params, stats = build_charge_params_from_trades(trades, today_ymd="2026-08-10")
+    assert len(params) == 1
+    assert params[0]["quantity"] == 325
+    assert abs(params[0]["average_price"] - (3.0 * 200 + 4.0 * 125) / 325) < 1e-9
+    assert stats["trades_used"] == 2
+
+
+def test_resolve_prefers_orders_when_priced():
+    orders = [
+        {
+            "order_id": "1",
+            "status": "COMPLETE",
+            "order_timestamp": "2026-08-10 10:00:00",
+            "exchange": "NFO",
+            "tradingsymbol": "NIFTY2581124150PE",
+            "transaction_type": "BUY",
+            "variety": "regular",
+            "product": "NRML",
+            "order_type": "MARKET",
+            "filled_quantity": 325,
+            "average_price": 3.55,
+        }
+    ]
+    trades = [
+        {
+            "trade_id": "t1",
+            "order_id": "1",
+            "quantity": 200,
+            "average_price": 3.55,
+            "fill_timestamp": "2026-08-10 10:00:01",
+        },
+        {
+            "trade_id": "t2",
+            "order_id": "1",
+            "quantity": 125,
+            "average_price": 3.55,
+            "fill_timestamp": "2026-08-10 10:00:02",
+        },
+    ]
+    params, stats = resolve_charge_params(orders, trades, today_ymd="2026-08-10")
+    assert len(params) == 1
+    assert params[0]["order_id"] == "1"
+    assert stats["source"] == "orders"
+
+
 def test_resolve_prefers_trades_when_orders_have_zero_avg():
     """Real desk case: COMPLETE orders with avg 0 still have trades with fill px."""
     orders = [
@@ -115,14 +186,14 @@ def test_resolve_prefers_trades_when_orders_have_zero_avg():
             "fill_timestamp": "2026-08-10 10:00:01",
         }
     ]
-    # Orders-only path yields nothing usable.
+    # Zero order average is filled from trades VWAP — still one order row.
     order_only, _ = build_charge_params(orders, today_ymd="2026-08-10")
     assert order_only == []
     params, stats = resolve_charge_params(orders, trades, today_ymd="2026-08-10")
     assert len(params) == 1
     assert params[0]["average_price"] == 3.55
-    assert stats["source"] == "trades"
-    assert stats["trades_used"] == 1
+    assert params[0]["order_id"] == "1"
+    assert stats["source"] == "orders"
 
 
 def test_build_from_trades_alone():

@@ -254,12 +254,12 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               onClick={selectable ? () => onSelectIndex?.(t.index) : undefined}
               data-testid={`ticker-${t.index}`}
               aria-disabled={selectable ? undefined : "true"}
-              title={selectable
-                ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
-                : `${s.short} is disabled — enable it in Admin configuration`}
+            title={selectable
+              ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
+              : `${s.short} is on the quote strip but not enabled for the desk — Admin can turn it on in Index management`}
               className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
                 !selectable
-                  ? "border-transparent opacity-40 cursor-not-allowed pointer-events-none"
+                  ? "border-transparent cursor-not-allowed"
                   : isActive
                   ? `${s.selectedBorder} border-2 bg-white shadow-sm dark:bg-slate-900`
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
@@ -337,10 +337,10 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
-            } ${selectable ? "hover:brightness-[0.99] transition-all" : "opacity-40 cursor-not-allowed pointer-events-none"} ${isActive && selectable ? "shadow-md" : ""}`}
+            } ${selectable ? "hover:brightness-[0.99] transition-all" : "cursor-not-allowed"} ${isActive && selectable ? "shadow-md" : ""}`}
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
-              : `${s.short} is disabled — enable it in Admin configuration`}
+              : `${s.short} is on the quote strip but not enabled for the desk — Admin can turn it on in Index management`}
           >
             <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label || ""} ${
               isHeader ? "text-[11px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"
