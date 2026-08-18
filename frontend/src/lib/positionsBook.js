@@ -58,6 +58,7 @@ export async function fetchPositionsBook({ force = false } = {}) {
   if (!force && lastPayload && Date.now() - lastAt < 900) return lastPayload;
   inflight = api
     .get("/positions", {
+      timeout: 12000,
       params: { _: Date.now() },
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
     })

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotify } from "@/hooks/useNotify";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, fetchConfig } from "@/lib/api";
 import { FNO_CLOSE_MINUTE, WEEKEND_START_MINUTE, REMINDER_MINUTES, hmFromMinutes, getMarketOpenMinute, getMarketOpenHm } from "@/lib/marketTimes";
 import {
   EVENT_WARNING_MINUTE,
@@ -83,10 +83,10 @@ export default function BigClock({ compact = false, secondSessionIst = null }) {
       return undefined;
     }
     let cancelled = false;
-    api.get("/config")
-      .then((r) => {
+    fetchConfig()
+      .then((data) => {
         if (cancelled) return;
-        const v = r?.data?.second_session_ist;
+        const v = data?.second_session_ist;
         if (v) setSessionHm(v);
       })
       .catch(() => { /* keep default */ });

@@ -48,18 +48,20 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
     if (!activeIndex) return undefined;
 
     let cancelled = false;
-
-    api
-      .get(`/events/${activeIndex}`)
-      .then((r) => {
-        if (!cancelled) setEvents(r.data.events || []);
-      })
-      .catch(() => {
-        if (!cancelled) setEvents([]);
-      });
+    const t = window.setTimeout(() => {
+      api
+        .get(`/events/${activeIndex}`, { timeout: 8000 })
+        .then((r) => {
+          if (!cancelled) setEvents(r.data.events || []);
+        })
+        .catch(() => {
+          if (!cancelled) setEvents([]);
+        });
+    }, 8000);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
     };
   }, [activeIndex]);
 

@@ -18,7 +18,7 @@ export const API = `${BACKEND_URL}/api`;
 // credentials mode. We authenticate via `X-Admin-Token` / `X-Guest-Token`
 // headers (see the request interceptor below) — no cookies are used — so
 // disabling withCredentials is safe.
-export const api = axios.create({ baseURL: API, timeout: 20000, withCredentials: false });
+export const api = axios.create({ baseURL: API, timeout: 12000, withCredentials: false });
 
 /** FastAPI `detail` can be a string, list of objects, or missing on timeout. */
 export function apiDetail(e, fallback = "Request failed") {
@@ -280,8 +280,31 @@ api.interceptors.response.use(
   },
 );
 
-export const fetchStatus = () => api.get("/status").then((r) => r.data);
+export const fetchStatus = () => api.get("/status", { timeout: 8000 }).then((r) => r.data);
 export const fetchOI = (idx) => api.get(`/oi/${idx}`).then((r) => r.data);
+
+let __configInflight = null;
+let __configCache = null;
+const CONFIG_TTL_MS = 15_000;
+
+/** One in-flight /config for Dashboard + BigClock (both used to stampede). */
+export function fetchConfig() {
+  const now = Date.now();
+  if (__configCache && now - __configCache.at < CONFIG_TTL_MS) {
+    return Promise.resolve(__configCache.data);
+  }
+  if (__configInflight) return __configInflight;
+  __configInflight = api
+    .get("/config", { timeout: 4000 })
+    .then((r) => {
+      __configCache = { data: r.data, at: Date.now() };
+      return r.data;
+    })
+    .finally(() => {
+      __configInflight = null;
+    });
+  return __configInflight;
+}
 export const fetchOIChange = (idx, minutes, opts = {}) => {
   const params = { minutes };
   if (opts.expiry) params.expiry = opts.expiry;

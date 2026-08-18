@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.06",
+    date: "2026-08-18",
+    user: [
+      "The desk no longer freezes while NIFTY expiries load. Charts and tiles keep working when Kite’s instrument list is refreshing in the background.",
+    ],
+    admin: [
+      "ensure_instruments_fresh uses asyncio.to_thread for kite.instruments(). GET /change Mongo is wait_for. Shared fetchConfig. Default HTTP timeout 12s.",
+    ],
+  },
+  {
     version: "7.05",
     date: "2026-08-18",
     user: [

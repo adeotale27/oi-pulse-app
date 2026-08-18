@@ -79,6 +79,12 @@ def test_positions_kite_call_is_capped():
     assert "kite.positions" in src
 
 
+def test_ensure_instruments_fresh_does_not_dump_on_event_loop():
+    src = _fn(TRACKER, "ensure_instruments_fresh")
+    assert "to_thread" in src
+    assert "reload_instruments(force=True)" not in src
+
+
 def test_seed_on_start_skips_unloaded_dump():
     src = _fn(TRACKER, "_seed_expiries_safe")
     assert "_loaded" in src

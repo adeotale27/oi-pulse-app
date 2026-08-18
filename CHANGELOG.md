@@ -1,5 +1,14 @@
 # Changelog
 
+## V7.06 — 2026-08-18
+
+Unstick the origin: the daily Kite instrument dump no longer runs on the FastAPI event loop.
+
+- Poller `ensure_instruments_fresh` loads instruments in a thread (was blocking every `/api/*` for 20s+)
+- `/oi/.../change` Mongo lookbacks are wait_for 3s; first snapshot read is 2s
+- Default Axios timeout 12s; `/expiries` 8s; one shared `/config` for Dashboard + clocks
+- Index-events tile waits 8s after paint so it is not in the boot stampede
+
 ## V7.05 — 2026-08-18
 
 Stop the dark “Loading…” screen when the origin hangs (preview /auth/state 0-byte stall).
