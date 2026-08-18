@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession } from "@/lib/api";
-import { isTransientHttpError, storedDeskSession, optimisticDeskAuthState, sleep, withTimeout } from "@/lib/authBoot";
+import { isTransientHttpError, storedDeskSession, optimisticDeskAuthState, withTimeout } from "@/lib/authBoot";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
