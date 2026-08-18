@@ -44,26 +44,28 @@ export default function DeskStatusRail({
 
   const phase = market?.phase || "post_close";
   const marketClosed = market && market.is_market_open === false;
+  const closedAtClock = formatIstClock(lastPulledAt || snapshotTs, false);
+  const sessionDate = dataStatus?.data_date || market?.session_anchor_date;
   const marketBits = (() => {
     if (!marketClosed) return null;
     const openHm = market.display_open_ist || "09:15";
-    const closeHm = market.display_close_ist || "15:40";
-    const title = market.banner_title || (
-      phase === "pre_open" ? "Not open yet"
-        : phase === "weekend" ? "Weekend"
-          : phase === "holiday" ? "NSE holiday"
-            : "Markets closed for the day"
+    const phaseIsClosed = phase === "post_close" || phase === "closed";
+    const title = (
+      phase === "pre_open" ? (market.banner_title || "Not open yet")
+        : phase === "weekend" ? (market.banner_title || "Weekend")
+          : phase === "holiday" ? (market.banner_title || "NSE holiday")
+            : `Market Closed${closedAtClock ? ` at ${closedAtClock}` : ""}`
     );
     const short =
       phase === "pre_open" ? `Opens ${openHm}`
         : phase === "weekend" ? `Resumes ${openHm}`
           : phase === "holiday" ? "Suspended"
-            : `Closed ${closeHm}`;
+            : "";
     const Icon = phase === "pre_open" ? Sunrise
       : phase === "weekend" || phase === "holiday" ? CalendarOff
-        : phase === "post_close" ? Moon
+        : phase === "post_close" || phaseIsClosed ? Moon
           : Clock;
-    return { title, short, Icon, sessionDate: dataStatus?.data_date || market.session_anchor_date };
+    return { title, short, Icon, always: phaseIsClosed || truth.mode === "LAST_SESSION" };
   })();
 
   // Only real missing-credentials / dead-token cases — not brief mode=offline flaps.
@@ -91,7 +93,9 @@ export default function DeskStatusRail({
           className={`font-mono-data font-semibold tracking-tight shrink-0 ${truth.mode === "LIVE" ? "hidden" : ""}`}
           data-testid="data-truth-asof"
         >
-          {asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel}
+          {truth.mode === "LAST_SESSION"
+            ? (sessionDate || truth.asOfLabel)
+            : (asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel)}
         </span>
         {truth.mode !== "LAST_SESSION" && truth.detail ? (
           <span className="opacity-90 shrink-0 whitespace-nowrap pr-3 hidden sm:inline" data-testid="data-truth-detail">
@@ -106,22 +110,19 @@ export default function DeskStatusRail({
 
         {marketBits && (
           <>
-            <span className="opacity-50 hidden md:inline ml-auto">·</span>
-            <span className="hidden md:inline-flex items-center gap-1 opacity-95 shrink-0" data-testid="market-status-banner">
+            <span className={`opacity-50 ${marketBits.always ? "inline" : "hidden md:inline"} ml-auto`}>·</span>
+            <span
+              className={`${marketBits.always ? "inline-flex" : "hidden md:inline-flex"} items-center gap-1 opacity-95 shrink-0`}
+              data-testid="market-status-banner"
+            >
               {(() => {
                 const Icon = marketBits.Icon;
                 return <Icon className="w-3 h-3 shrink-0" strokeWidth={2} />;
               })()}
-              <span className="font-semibold">{marketBits.title}</span>
-              <span className="opacity-80 hidden sm:inline">{marketBits.short}</span>
-              {marketBits.sessionDate && (
-                <span className="font-mono-data opacity-80 hidden md:inline">· {marketBits.sessionDate}</span>
-              )}
-              {lastPulledAt && (
-                <span className="font-mono-data opacity-70 hidden lg:inline">
-                  · snap {formatIstClock(lastPulledAt, false)}
-                </span>
-              )}
+              <span className="font-semibold whitespace-nowrap">{marketBits.title}</span>
+              {marketBits.short ? (
+                <span className="opacity-80 hidden sm:inline">{marketBits.short}</span>
+              ) : null}
             </span>
           </>
         )}

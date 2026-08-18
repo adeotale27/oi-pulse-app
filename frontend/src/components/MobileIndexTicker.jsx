@@ -104,7 +104,7 @@ export default function MobileIndexTicker({
   }, [extras, tickers, spotPrices, activeIndex, onSelectIndex, indices]);
 
   const giftSessions = extras?.windows?.gift?.sessions || GIFT_SESSION_WINDOWS;
-  const loop = [...items, ...items];
+  const copies = items.length ? [0, 1] : [0];
 
   return (
     <div className="min-w-0 overflow-hidden" data-testid="mobile-index-ticker">
@@ -114,28 +114,32 @@ export default function MobileIndexTicker({
         windows={giftSessions}
         serverIst={extras?.server_time_ist}
       />
-      <div className="oi-mobile-ticker-track gap-3 pr-6">
-        {loop.map((it, i) => (
-          <button
-            key={`${it.key}-${i}`}
-            type="button"
-            data-testid={i < items.length ? `mobile-ticker-${it.key}` : undefined}
-            onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
-            className={`inline-flex items-center gap-1 shrink-0 text-[11px] tabular-nums ${
-              it.active ? "text-white font-bold" : "text-white/95"
-            } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
-          >
-            <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
-            <span className="font-semibold tabular-nums">{it.price}</span>
-            {it.pct != null && Number.isFinite(it.pct) && (
-              <span className={pctCls(it.pct)}>
-                {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}
-              </span>
-            )}
-            <span className="text-white/30 pl-2" aria-hidden>
-              ·
-            </span>
-          </button>
+      <div className="oi-mobile-ticker-track">
+        {copies.map((copy) => (
+          <div key={copy} className="oi-mobile-ticker-copy" aria-hidden={copy > 0}>
+            {items.map((it) => (
+              <button
+                key={`${copy}-${it.key}`}
+                type="button"
+                data-testid={copy === 0 ? `mobile-ticker-${it.key}` : undefined}
+                onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
+                className={`inline-flex items-center gap-1 shrink-0 text-[11px] tabular-nums ${
+                  it.active ? "text-white font-bold" : "text-white/95"
+                } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
+              >
+                <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
+                <span className="font-semibold tabular-nums">{it.price}</span>
+                {it.pct != null && Number.isFinite(it.pct) && (
+                  <span className={pctCls(it.pct)}>
+                    {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}
+                  </span>
+                )}
+                <span className="text-white/30 pl-2" aria-hidden>
+                  ·
+                </span>
+              </button>
+            ))}
+          </div>
         ))}
       </div>
     </div>

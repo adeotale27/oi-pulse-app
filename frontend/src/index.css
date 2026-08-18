@@ -233,6 +233,15 @@ input[type="number"] {
   display: flex;
   width: max-content;
   animation: oi-ticker-scroll 28s linear infinite;
+  will-change: transform;
+}
+
+.oi-mobile-ticker-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-right: 1.5rem;
+  flex-shrink: 0;
 }
 
 .oi-mobile-ticker-track:active {
@@ -242,6 +251,9 @@ input[type="number"] {
 @media (prefers-reduced-motion: reduce) {
   .oi-mobile-ticker-track {
     animation: none;
+  }
+  .oi-mobile-ticker-copy + .oi-mobile-ticker-copy {
+    display: none;
   }
 }
 

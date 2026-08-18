@@ -85,11 +85,7 @@ export function buildDataTruth({
     return {
       mode: "LAST_SESSION",
       badge: "LAST SESSION",
-      asOfLabel: dataDate
-        ? `${dataDate}${asOfClock ? ` · ${asOfClock} IST` : ""}`
-        : asOfClock
-          ? `${asOfClock} IST`
-          : "Prior close",
+      asOfLabel: dataDate || (asOfClock ? `${asOfClock} IST` : "Prior close"),
       detail: "",
       tone: "session",
     };

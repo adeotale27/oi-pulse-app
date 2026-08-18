@@ -265,11 +265,30 @@ def apply_snapshot(
     live_session: bool = False,
     enabled_indices=None,
 ) -> Optional[Dict[str, Any]]:
-    """Fields to $set for P&L. None = leave stored P&L untouched (already locked / empty clobber)."""
+    """Fields to $set for P&L. None = leave stored P&L untouched (empty clobber).
+
+    After EOD lock, a non-empty same-day snap may still revise booked P&L (expiry
+    leftover hedges booked after 15:45). Notes / tags / screenshots are not in snap.
+    """
     now = now or now_ist()
     existing = existing or {}
     if existing.get("eod_locked"):
-        return None
+        if snapshot_is_empty(snap):
+            return None
+        exist_day = str(existing.get("date") or "")
+        snap_day = str(snap.get("date") or "")
+        if exist_day and snap_day and exist_day != snap_day:
+            return None
+        out = dict(snap)
+        _carry_charges(out, existing)
+        booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
+        out["booked_pnl"] = booked
+        out["eod_locked"] = True
+        out["eod_locked_at"] = existing.get("eod_locked_at") or datetime.now(timezone.utc).isoformat()
+        out["frozen_pnl"] = booked
+        if out.get("charges_total") is not None:
+            out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
+        return out
     lock = bool(force_lock or should_lock_eod(now, live_session=live_session, enabled_indices=enabled_indices))
     if snapshot_is_empty(snap):
         if _is_traded(existing) and lock:
@@ -412,6 +431,116 @@ def month_stats(days: List[Dict[str, Any]]) -> Dict[str, Any]:
         "trade_losses": tl,
         "trade_win_rate": trade_win_rate,
         "avg_win_loss_ratio": avg_wl,
+    }
+
+
+def _booked_legs(d: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        leg for leg in (d.get("legs") or [])
+        if isinstance(leg, dict) and (
+            leg.get("exited") or leg.get("partial") or abs(_num(leg.get("realised"))) > 0.009
+        )
+    ]
+
+
+def _leg_matches_index(leg: Dict[str, Any], index: str) -> bool:
+    want = str(index or "").strip().upper()
+    if not want or want in ("ALL", "ALL_INDICES", "*"):
+        return True
+    if want == "OTHER":
+        return _heatmap_index(leg) == "OTHER"
+    return _leg_index_label(leg) == want or _heatmap_index(leg) == want
+
+
+def period_stats(
+    days: List[Dict[str, Any]],
+    *,
+    start: str,
+    end: str,
+    index: Optional[str] = None,
+) -> Dict[str, Any]:
+    """From–to booked profit, Kite charges, and trade win % (optional index filter)."""
+    want = str(index or "").strip().upper()
+    if want in ("", "ALL", "ALL_INDICES", "*"):
+        want = None
+    rows = []
+    for d in days or []:
+        date_s = str(d.get("date") or "")
+        if len(date_s) < 10 or date_s < start or date_s > end:
+            continue
+        if not include_on_journal_calendar(d):
+            continue
+        rows.append(d)
+
+    booked = 0.0
+    charges = 0.0
+    brokerage = 0.0
+    charge_days = 0
+    wins = 0
+    losses = 0
+    traded_days = 0
+    win_days = 0
+    lose_days = 0
+    by_index: Dict[str, float] = {}
+
+    for d in rows:
+        legs = _booked_legs(d)
+        if want:
+            legs = [leg for leg in legs if _leg_matches_index(leg, want)]
+            day_booked = round(sum(
+                _num(leg.get("realised") if leg.get("realised") is not None else leg.get("pnl"))
+                for leg in legs
+            ), 2)
+            if not legs:
+                ip = _booked_index_pnl(d)
+                day_booked = round(_num(ip.get(want if want != "OTHER" else "OTHER")), 2)
+        else:
+            day_booked = round(day_pnl(d), 2)
+        if abs(day_booked) > 0.009 or legs:
+            traded_days += 1
+            if day_booked > 0:
+                win_days += 1
+            elif day_booked < 0:
+                lose_days += 1
+        booked += day_booked
+        for leg in legs:
+            rv = _num(leg.get("realised") if leg.get("realised") is not None else leg.get("pnl"))
+            if rv > 0:
+                wins += 1
+            elif rv < 0:
+                losses += 1
+            key = _leg_index_label(leg)
+            by_index[key] = round(by_index.get(key, 0.0) + rv, 2)
+        if d.get("charges_total") is not None:
+            charges += _num(d.get("charges_total"))
+            charge_days += 1
+        if d.get("brokerage") is not None:
+            brokerage += _num(d.get("brokerage"))
+
+    trade_n = wins + losses
+    win_rate = round(100.0 * wins / trade_n, 2) if trade_n else 0.0
+    day_win_rate = round(100.0 * win_days / traded_days, 2) if traded_days else 0.0
+    booked = round(booked, 2)
+    charges = round(charges, 2)
+    brokerage = round(brokerage, 2)
+    return {
+        "from": start,
+        "to": end,
+        "index": want or "ALL",
+        "booked_pnl": booked,
+        "charges_total": charges,
+        "brokerage": brokerage,
+        "booked_after_charges": round(booked - charges, 2) if not want else None,
+        "charges_are_all_indices": bool(want),
+        "charge_days": charge_days,
+        "win_trades": wins,
+        "loss_trades": losses,
+        "win_rate": win_rate,
+        "win_days": win_days,
+        "lose_days": lose_days,
+        "day_win_rate": day_win_rate,
+        "trading_days": traded_days,
+        "by_index": by_index,
     }
 
 

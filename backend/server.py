@@ -4816,7 +4816,9 @@ async def _snapshot_trade_journal(
     force_lock: bool = False,
     live_session: bool = False,
 ) -> None:
-    """Upsert today's booked P&L + brokerage; never clobber an EOD-locked day.
+    """Upsert today's booked P&L + brokerage.
+
+    Locked days may still revise booked P&L when Positions books leftover expiry hedges.
 
     Weekends and full holidays do not get a new journal date unless Kite is
     actually printing (Muhurat, or any surprise session with fills/quotes).
@@ -4961,6 +4963,43 @@ async def _journal_year_payload(y: int) -> Dict[str, Any]:
     }
 
 
+@api_router.get("/journal/period")
+async def journal_period(
+    start: str = Query(..., alias="from"),
+    end: str = Query(..., alias="to"),
+    index: Optional[str] = None,
+    _admin: bool = Depends(require_admin),
+):
+    """Booked profit, charges, and win % between two IST dates (optional index)."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", start) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end):
+        raise HTTPException(400, "Use YYYY-MM-DD for from and to")
+    if start > end:
+        raise HTTPException(400, "from must be on or before to")
+    try:
+        a = datetime.strptime(start, "%Y-%m-%d")
+        b = datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(400, "Invalid from/to date")
+    if (b - a).days > 400:
+        raise HTTPException(400, "Range too long (max 400 days)")
+    await _purge_closed_session_journal_autos()
+    docs = await db.trade_journal.find(
+        {"date": {"$gte": start, "$lte": end}},
+        {"_id": 0, "screenshots": 0},
+    ).to_list(length=420)
+    days = [journal.public_day(d, include_images=False) for d in docs]
+    days = [d for d in days if d]
+    want = (index or "").strip().upper() or None
+    return {
+        "from": start,
+        "to": end,
+        "index": want or "ALL",
+        "today": journal.ist_ymd(),
+        "stats": journal.period_stats(days, start=start, end=end, index=want),
+        "indices": list(journal.HEATMAP_INDICES),
+    }
+
+
 @api_router.get("/journal")
 async def journal_month(
     year: Optional[int] = None,
@@ -5011,6 +5050,12 @@ async def journal_day(day: str, _admin: bool = Depends(require_admin)):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         raise HTTPException(400, "Use YYYY-MM-DD")
     await _purge_closed_session_journal_autos()
+    if day == journal.ist_ymd():
+        try:
+            mid = await get_positions(None, "admin")
+            await _snapshot_trade_journal(mid)
+        except Exception:
+            logging.getLogger("server").debug("journal day snapshot skipped", exc_info=True)
     doc = await db.trade_journal.find_one({"date": day}, {"_id": 0})
     if not doc:
         return {"date": day, "empty": True, "tags": journal.DEFAULT_TAGS}

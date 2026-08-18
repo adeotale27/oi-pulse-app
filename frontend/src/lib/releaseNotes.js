@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.09",
+    date: "2026-08-18",
+    user: [
+      "Trade journal stays current after close and shows exact rupees (no rounded lakhs). Pick from–to dates and an index to see booked profit, charges, and win %. Closed bar: LAST SESSION, the date, then Market Closed at the last snapshot — indexes keep looping.",
+    ],
+    admin: [
+      "Locked journal rows revise booked P&L on the same IST day. GET /journal/{day} re-snapshots Positions. GET /journal/period?from&to&index.",
+    ],
+  },
+  {
     version: "7.08",
     date: "2026-08-18",
     user: [
