@@ -305,6 +305,7 @@ class OITracker:
         self._alerts_purged_for: Optional[str] = None
         self._fno_preload_task: Optional[asyncio.Task] = None
         self._instruments_lock = asyncio.Lock()
+        self._instruments_dump_task: Optional[asyncio.Task] = None
 
     def ensure_index_slots(self, ids: List[str]) -> None:
         for idx in ids:
@@ -316,7 +317,18 @@ class OITracker:
             self._refresh_tasks.setdefault(idx, None)
 
     async def load_settings(self):
-        doc = await self.db.settings.find_one({"_id": "alerts"})
+        try:
+            doc = await asyncio.wait_for(
+                self.db.settings.find_one({"_id": "alerts"}, maxTimeMS=2000),
+                timeout=3.0,
+            )
+        except TypeError:
+            doc = await asyncio.wait_for(
+                self.db.settings.find_one({"_id": "alerts"}),
+                timeout=3.0,
+            )
+        except Exception:
+            doc = None
         overlay_settings_doc(self.settings, doc)
         # Product default: do NOT kick admin at market close. Persist so UI +
         # /auth/state stay consistent after upgrades from the old True default.
@@ -337,14 +349,14 @@ class OITracker:
         try:
             from index_registry import bootstrap_registry
 
-            await bootstrap_registry(self.db, self.settings)
+            await asyncio.wait_for(bootstrap_registry(self.db, self.settings), timeout=5.0)
             self.ensure_index_slots(list(INDEX_CONFIG.keys()))
         except Exception as e:
             logger.warning("index registry bootstrap failed: %s", e)
         self._apply_mcx_desk_flag()
         try:
             from holiday_calendar import load_uploaded_holidays
-            await load_uploaded_holidays(self.db)
+            await asyncio.wait_for(load_uploaded_holidays(self.db), timeout=3.0)
         except Exception as e:
             logger.warning("load uploaded NSE holidays failed: %s", e)
 
@@ -522,6 +534,18 @@ class OITracker:
     def poll_interval_seconds(self) -> int:
         return max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
 
+    def effective_oi_poll_seconds(self) -> int:
+        """Admin may save 15s; until the Kite dump is in memory, floor at 30s.
+
+        A 15s cadence plus extra enabled names floods Kite and the GIL (pandas
+        dump) so /health and AuthGate stop answering.
+        """
+        raw = self.poll_interval_seconds()
+        loaded = bool(self.kite_service and getattr(self.kite_service, "_loaded", False))
+        if not loaded:
+            return max(30, raw)
+        return raw
+
     def stale_after_seconds(self) -> int:
         """Age before UI marks STALE while market is open.
 
@@ -559,6 +583,9 @@ class OITracker:
         if idx not in INDEX_CONFIG:
             return
         if self.mode != "kite" or not self.kite_service:
+            return
+        if not getattr(self.kite_service, "_loaded", False):
+            self.schedule_instruments_fresh()
             return
         if not (self.oi_session_open()):
             return
@@ -836,6 +863,15 @@ class OITracker:
             self._instruments_loaded_at = datetime.now(timezone.utc)
         return await self.persist_fno_underlyings()
 
+    def schedule_instruments_fresh(self) -> None:
+        """Kick the daily dump without awaiting it (HTTP / poll must stay live)."""
+        if self.mode != "kite" or not self.kite_service:
+            return
+        t = self._instruments_dump_task
+        if t is not None and not t.done():
+            return
+        self._instruments_dump_task = asyncio.create_task(self.ensure_instruments_fresh())
+
     async def ensure_instruments_fresh(self) -> None:
         """Reload Kite instruments at most once per IST trading day (expiry roll)."""
         if self.mode != "kite" or not self.kite_service:
@@ -1000,7 +1036,7 @@ class OITracker:
         was_open = False
         while self.running:
             try:
-                poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
+                poll_interval_seconds = self.effective_oi_poll_seconds()
                 await self._refresh_quote_session_flag()
                 await self._maybe_eod_telegram()
                 if self.oi_session_open():
@@ -1035,7 +1071,7 @@ class OITracker:
                 logger.exception("loop error: %s", e)
                 self.last_error = str(e)
                 await notifier.alert_tracker_error(str(e))
-                await asyncio.sleep(max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS))))
+                await asyncio.sleep(self.effective_oi_poll_seconds())
 
     async def _maybe_eod_telegram(self):
         """One session wrap at 15:15 IST: OI recap + next-session calendar. Never the book."""
@@ -1071,7 +1107,10 @@ class OITracker:
             return
         start_utc, _ = session_window_utc(dt.date(), dt)
         cutoff = start_utc.isoformat()
-        result = await self.db.alerts.delete_many({"created_at": {"$lt": cutoff}})
+        result = await asyncio.wait_for(
+            self.db.alerts.delete_many({"created_at": {"$lt": cutoff}}),
+            timeout=3.0,
+        )
         deleted = getattr(result, "deleted_count", 0) or 0
         self._alerts_purged_for = today
         if deleted:
@@ -1127,11 +1166,15 @@ class OITracker:
             return
 
         try:
-            await self.ensure_instruments_fresh()
+            self.schedule_instruments_fresh()
         except Exception as e:
-            logger.warning("ensure_instruments_fresh in poll: %s", e)
+            logger.warning("schedule_instruments_fresh in poll: %s", e)
 
         svc = self._get_service()
+        if not svc or not getattr(svc, "_loaded", False):
+            logger.info("[_poll_once] instruments dump not ready — serving cached snapshots this tick")
+            self.last_updated_at = datetime.now(timezone.utc).isoformat()
+            return
         enabled = [i for i in self.settings.get("enabled_indices", INDICES) if i in INDEX_CONFIG]
         try:
             from universe import without_paused_mcx

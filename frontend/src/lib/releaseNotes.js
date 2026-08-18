@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.07",
+    date: "2026-08-18",
+    user: [
+      "The desk opens even while live data is still warming up. If the API is slow you get Retry in about a second instead of a stuck black Loading screen.",
+    ],
+    admin: [
+      "Startup yields after Mongo ping; Kite dump is not awaited in the poller. GET /settings Mongo reload is ?reload=1 (Admin configuration). Dashboard uses /config. 15s OI poll floors to 30s until instruments load.",
+    ],
+  },
+  {
     version: "7.06",
     date: "2026-08-18",
     user: [

@@ -68,7 +68,7 @@ export default function SettingsModal({
     setLoadError(null);
     setSettings(null);
     api.get("/settings", {
-      params: { _: Date.now() },
+      params: { _: Date.now(), reload: 1 },
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
     })
       .then((r) => {

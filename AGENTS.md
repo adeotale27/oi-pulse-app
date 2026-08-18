@@ -1,6 +1,6 @@
 # StrikLenz — notes for humans and AI
 
-**Current version: V7.06** (`VERSION` at repo root).
+**Current version: V7.07** (`VERSION` at repo root).
 
 This is an Indian-market **open interest desk** branded **StrikLenz** (display name: repo-root `APP_NAME`). Indices: NIFTY, SENSEX, BANKNIFTY. FastAPI + MongoDB + React, live data from **Zerodha Kite Connect**.
 

@@ -1210,12 +1210,8 @@ export default function Dashboard() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await api.get("/settings", {
-        params: { _: Date.now() },
-        timeout: 6000,
-        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-      });
-      if (res.data) applyServerSettings(res.data);
+      const data = await fetchConfig();
+      if (data) applyServerSettings(data);
     } catch (e) {
       console.error("Failed to fetch settings", e);
     }

@@ -21,9 +21,9 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
-from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai
+from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai, DEFAULT_SETTINGS
 from oi_service import INDEX_CONFIG
-from universe import catalog_public
+from universe import catalog_public, DESK_IDS
 from vrp_service import compute_vrp
 from market_hours import (
     is_market_open, IST, MARKET_OPEN, is_weekend, display_hours, configure_hours,
@@ -78,6 +78,12 @@ async def k8s_health():
     return {"ok": True, "name": APP_NAME, "version": APP_VERSION, "version_label": APP_VERSION_LABEL}
 
 tracker = None
+
+
+def _live_settings() -> dict:
+    if tracker and isinstance(getattr(tracker, "settings", None), dict):
+        return tracker.settings
+    return dict(DEFAULT_SETTINGS)
 
 # Straddle sample retention (hours)
 STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
@@ -896,6 +902,15 @@ async def root():
 
 @api_router.get("/status")
 async def get_status(request: Request):
+    if not tracker:
+        return {
+            "running": False,
+            "mode": "offline",
+            "booting": True,
+            "app_version": APP_VERSION,
+            "app_version_label": APP_VERSION_LABEL,
+            "app_name": APP_NAME,
+        }
     # Best-effort bulletin probe (cached, non-blocking) so maintenance surfaces in-app.
     async def _probe_bulletin():
         try:
@@ -1249,49 +1264,36 @@ async def get_current_oi(index_name: str, expiry: Optional[str] = None):
         raise HTTPException(404, "Unknown index")
     # Do NOT mutate tracker.selected_expiry from a GET — that would switch the
     # shared background poller for every client. Expiry is a read filter only.
-    snap = tracker.last_snapshot.get(idx)
-    # if expiry mismatch or no snap, fetch on-demand (only when market is open)
-    if not snap or (expiry and snap.get("expiry") != expiry):
-        if not tracker.oi_session_open():
-            # Market closed → serve latest from DB, don't hit Kite.
-            doc = await db.oi_snapshots.find_one(
-                {"index": idx, **({"expiry": expiry} if expiry else {})},
-                sort=[("timestamp", -1)],
-                projection={"_id": 0},
+    # Never hit Kite on this path (instrument dump / chain quote blocks the origin).
+    snap = tracker.last_snapshot.get(idx) if tracker else None
+    if snap and expiry and snap.get("expiry") != expiry:
+        snap = None
+    if not snap:
+        try:
+            doc = await asyncio.wait_for(
+                db.oi_snapshots.find_one(
+                    {"index": idx, **({"expiry": expiry} if expiry else {})},
+                    sort=[("timestamp", -1)],
+                    projection={"_id": 0},
+                    maxTimeMS=1500,
+                ),
+                timeout=2.0,
             )
-            if doc:
-                snap = doc
-                if not expiry or doc.get("expiry") == tracker.selected_expiry.get(idx):
-                    tracker.last_snapshot[idx] = doc
-        else:
-            try:
-                svc = tracker._get_service()
-                if svc:
-                    # Use requested expiry for THIS fetch only; do not set_expiry.
-                    fetch_exp = expiry if expiry is not None else tracker.selected_expiry.get(idx)
-                    snap = await asyncio.to_thread(svc.get_snapshot, idx, fetch_exp)
-                    if snap:
-                        snap["mode"] = tracker.mode
-                        # Only update shared cache when expiry matches the poller's selection
-                        # (or no specific expiry was requested).
-                        if not expiry or snap.get("expiry") == tracker.selected_expiry.get(idx) or tracker.selected_expiry.get(idx) is None:
-                            tracker.last_snapshot[idx] = snap
-                            try:
-                                await _store_oi_snapshot(snap, index_name=idx)
-                            except Exception:
-                                pass
-                else:
-                    logger.info(f"get_current_oi: tracker offline, serving cached DB snapshot for {idx}")
-                    doc = await db.oi_snapshots.find_one(
-                        {"index": idx, **({"expiry": expiry} if expiry else {})},
-                        sort=[("timestamp", -1)],
-                        projection={"_id": 0},
-                    )
-                    if doc:
-                        snap = doc
-            except Exception as e:
-                logger.exception("get_current_oi live fetch failed for %s", idx)
-                raise HTTPException(503, _sanitize_public_error(str(e)) or "Data feed temporarily unavailable")
+        except TypeError:
+            doc = await asyncio.wait_for(
+                db.oi_snapshots.find_one(
+                    {"index": idx, **({"expiry": expiry} if expiry else {})},
+                    sort=[("timestamp", -1)],
+                    projection={"_id": 0},
+                ),
+                timeout=2.0,
+            )
+        except Exception:
+            doc = None
+        if doc:
+            snap = doc
+            if tracker and (not expiry or doc.get("expiry") == tracker.selected_expiry.get(idx)):
+                tracker.last_snapshot[idx] = doc
     if not snap:
         raise HTTPException(503, "No data yet")
     return snap
@@ -1302,7 +1304,7 @@ async def get_expiries(index_name: str):
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
-    all_dates = tracker.list_expiries(idx)
+    all_dates = tracker.list_expiries(idx) if tracker else []
 
     # Cap to the first 8 nearest unexpired (Kite instrument list can span
     # multiple years of monthlies which drowns the UI).
@@ -1320,15 +1322,18 @@ async def get_expiries(index_name: str):
             continue
     parsed = sorted({p for p in parsed_all if p >= today})[:8]
     if not parsed:
-        snap = (tracker.last_snapshot or {}).get(idx) or {}
+        snap = ((tracker.last_snapshot or {}) if tracker else {}).get(idx) or {}
         snap_exp = snap.get("expiry")
         if not snap_exp:
             try:
-                doc = await db.oi_snapshots.find_one(
-                    {"index": idx},
-                    sort=[("timestamp", -1)],
-                    projection={"expiry": 1, "_id": 0},
-                    maxTimeMS=1500,
+                doc = await asyncio.wait_for(
+                    db.oi_snapshots.find_one(
+                        {"index": idx},
+                        sort=[("timestamp", -1)],
+                        projection={"expiry": 1, "_id": 0},
+                        maxTimeMS=1500,
+                    ),
+                    timeout=2.0,
                 )
                 snap_exp = (doc or {}).get("expiry")
             except Exception:
@@ -1371,13 +1376,14 @@ async def get_expiries(index_name: str):
             "label": label,
         })
 
-    selected = tracker.selected_expiry.get(idx)
+    selected = tracker.selected_expiry.get(idx) if tracker else None
     # If tracker still points at a past / missing expiry, surface the nearest live one.
     if selected not in dates:
         selected = dates[0] if dates else None
         if selected:
             try:
-                tracker.set_expiry(idx, selected)
+                if tracker:
+                    tracker.set_expiry(idx, selected)
             except Exception:
                 pass
 
@@ -1404,18 +1410,22 @@ async def set_expiry(index_name: str, payload: ExpiryIn, _admin: bool = Depends(
 
 
 @api_router.get("/settings")
-async def get_settings():
+async def get_settings(reload: bool = Query(False)):
     # Keep weekday alert focus in sync (same as /config) so the desk never
     # reads a stale/null alert_enabled_indices and suppresses toasts.
-    try:
-        await tracker.reload_settings_from_db()
-    except Exception:
-        pass
-    try:
-        tracker._refresh_alert_indices_for_today()
-    except Exception:
-        pass
-    data = dict(tracker.settings or {})
+    # Mongo reload only when Admin configuration asks (?reload=true). The
+    # public Dashboard used to hit this every 60s and pin the origin.
+    if tracker and reload:
+        try:
+            await tracker.reload_settings_from_db()
+        except Exception:
+            pass
+    if tracker:
+        try:
+            tracker._refresh_alert_indices_for_today()
+        except Exception:
+            pass
+    data = dict(_live_settings())
     data.pop("_id", None)
     try:
         from universe import MCX_DESK_AVAILABLE, without_paused_mcx
@@ -1528,10 +1538,13 @@ async def _kite_instrument_rows():
     if not svc:
         raise HTTPException(503, "Connect Kite to discover instruments")
     try:
-        svc._load_instruments()
+        def _rows():
+            svc._load_instruments()
+            return svc.instrument_rows()
+
+        rows = await asyncio.wait_for(asyncio.to_thread(_rows), timeout=40)
     except Exception as e:
         raise HTTPException(503, f"Kite instruments unavailable: {e}")
-    rows = svc.instrument_rows()
     if not rows:
         raise HTTPException(
             400,
@@ -1668,7 +1681,10 @@ async def admin_enable_index(
         tracker.ensure_index_slots([key])
         try:
             if tracker.kite_service:
-                tracker.kite_service.reload_instruments(force=True)
+                await asyncio.wait_for(
+                    asyncio.to_thread(tracker.kite_service.reload_instruments, True),
+                    timeout=40,
+                )
                 await tracker.seed_default_expiries()
         except Exception as e:
             logger.warning("reload after enable %s: %s", key, e)
@@ -2129,17 +2145,18 @@ async def get_vrp(index_name: str, days: int = Query(30, ge=5, le=90)):
     # Resolve current IV (India VIX). We prefer the most recent snapshot's vix
     # value; fall back to any index's vix if the target index hasn't polled.
     iv_pct: Optional[float] = None
-    snap = tracker.last_snapshot.get(idx)
+    snap = tracker.last_snapshot.get(idx) if tracker else None
     if snap and snap.get("vix"):
         iv_pct = float(snap["vix"])
     else:
-        for k in ("NIFTY", "SENSEX", "BANKNIFTY"):
-            s = tracker.last_snapshot.get(k)
-            if s and s.get("vix"):
-                iv_pct = float(s["vix"])
-                break
+        if tracker:
+            for k in ("NIFTY", "SENSEX", "BANKNIFTY"):
+                s = tracker.last_snapshot.get(k)
+                if s and s.get("vix"):
+                    iv_pct = float(s["vix"])
+                    break
 
-    if tracker.mode != "kite" or not tracker.kite_service:
+    if not tracker or tracker.mode != "kite" or not tracker.kite_service:
         return {
             "index": idx,
             "iv": iv_pct,
@@ -2149,6 +2166,17 @@ async def get_vrp(index_name: str, days: int = Query(30, ge=5, le=90)):
             "tone": "slate",
             "series": [],
             "error": "not_in_kite_mode",
+        }
+    if not getattr(tracker.kite_service, "_loaded", False):
+        return {
+            "index": idx,
+            "iv": iv_pct,
+            "vrp": None,
+            "regime": "unknown",
+            "label": "—",
+            "tone": "slate",
+            "series": [],
+            "error": "instruments_not_ready",
         }
 
     return await compute_vrp(tracker.kite_service, db, idx, iv_pct, days=days)
@@ -2187,12 +2215,12 @@ async def get_straddle_tick(index_name: str, expiry: Optional[str] = None):
 
     snap = None
     try:
-        svc = tracker._get_service()
-        exp = expiry or tracker.selected_expiry.get(idx)
-        if svc and hasattr(svc, "get_atm_straddle_quote"):
+        svc = tracker._get_service() if tracker else None
+        exp = expiry or (tracker.selected_expiry.get(idx) if tracker else None)
+        if svc and getattr(svc, "_loaded", False) and hasattr(svc, "get_atm_straddle_quote"):
             snap = await asyncio.to_thread(svc.get_atm_straddle_quote, idx, exp)
         if not snap:
-            cached = tracker.last_snapshot.get(idx)
+            cached = tracker.last_snapshot.get(idx) if tracker else None
             if cached and (not expiry or cached.get("expiry") == expiry):
                 snap = cached
     except Exception as e:
@@ -2254,16 +2282,20 @@ async def get_straddle(index_name: str, expiry: Optional[str] = None, position: 
         raise HTTPException(404, "Unknown index")
 
     # Fetch a fresh snapshot if we don't have one cached
-    snap = tracker.last_snapshot.get(idx)
+    snap = tracker.last_snapshot.get(idx) if tracker else None
     if not snap or (expiry and snap.get("expiry") != expiry):
         try:
-            svc = tracker._get_service()
-            if not svc:
-                # Fall back to DB cache when offline / no live client.
-                doc = await db.oi_snapshots.find_one(
-                    {"index": idx, **({"expiry": expiry} if expiry else {})},
-                    sort=[("timestamp", -1)],
-                    projection={"_id": 0},
+            svc = tracker._get_service() if tracker else None
+            if not svc or not getattr(svc, "_loaded", False):
+                # Fall back to DB cache when offline / dump not ready.
+                doc = await asyncio.wait_for(
+                    db.oi_snapshots.find_one(
+                        {"index": idx, **({"expiry": expiry} if expiry else {})},
+                        sort=[("timestamp", -1)],
+                        projection={"_id": 0},
+                        maxTimeMS=1500,
+                    ),
+                    timeout=2.0,
                 )
                 if doc:
                     snap = doc
@@ -2668,17 +2700,19 @@ async def clear_alerts(_admin: bool = Depends(require_admin)):
 
 @api_router.get("/config")
 async def get_config():
+    s = _live_settings()
     if tracker:
         try:
             tracker._refresh_alert_indices_for_today()
+            s = tracker.settings
         except Exception:
             pass
-    poll_interval_seconds = max(1, int(tracker.settings.get("oi_poll_interval_seconds", 15)))
-    straddle_poll = max(1, int(tracker.settings.get("straddle_poll_interval_seconds", 60)))
-    positions_poll = max(1, int(tracker.settings.get("positions_poll_interval_seconds", 30)))
+    poll_interval_seconds = max(1, int(s.get("oi_poll_interval_seconds", 15)))
+    straddle_poll = max(1, int(s.get("straddle_poll_interval_seconds", 60)))
+    positions_poll = max(1, int(s.get("positions_poll_interval_seconds", 30)))
     open_hm, close_hm = display_hours()
     from universe import without_paused_mcx
-    raw_enabled = tracker.settings.get("enabled_indices", list(INDEX_CONFIG.keys()))
+    raw_enabled = s.get("enabled_indices", list(INDEX_CONFIG.keys()))
     return {
         "indices": INDEX_CONFIG,
         "poll_interval_seconds": poll_interval_seconds,
@@ -2686,19 +2720,19 @@ async def get_config():
         "straddle_poll_interval_seconds": straddle_poll,
         "positions_poll_interval_seconds": positions_poll,
         "enabled_indices": without_paused_mcx(raw_enabled, INDEX_CONFIG),
-        "mcx_desk_on": bool(tracker.settings.get("mcx_desk_on")),
-        "straddle_enabled_indices": tracker.settings.get("straddle_enabled_indices", STRADDLE_INDICES),
-        "alert_enabled_indices": tracker.settings.get("alert_enabled_indices"),
-        "visible_pages": tracker.settings.get("visible_pages"),
-        "admin_visible_pages": tracker.settings.get("admin_visible_pages"),
-        "market_open_ist": tracker.settings.get("market_open_ist", open_hm),
-        "market_close_ist": tracker.settings.get("market_close_ist", close_hm),
-        "second_session_ist": tracker.settings.get("second_session_ist", "12:00"),
-        "show_strike_range": bool(tracker.settings.get("show_strike_range", False)),
-        "show_writer_defense": bool(tracker.settings.get("show_writer_defense", True)),
-        "show_suggestion": bool(tracker.settings.get("show_suggestion", True)),
-        "show_chart_signals": bool(tracker.settings.get("show_chart_signals", False)),
-        **resolve_desk_ai(tracker.settings),
+        "mcx_desk_on": bool(s.get("mcx_desk_on")),
+        "straddle_enabled_indices": s.get("straddle_enabled_indices", STRADDLE_INDICES),
+        "alert_enabled_indices": s.get("alert_enabled_indices"),
+        "visible_pages": s.get("visible_pages"),
+        "admin_visible_pages": s.get("admin_visible_pages"),
+        "market_open_ist": s.get("market_open_ist", open_hm),
+        "market_close_ist": s.get("market_close_ist", close_hm),
+        "second_session_ist": s.get("second_session_ist", "12:00"),
+        "show_strike_range": bool(s.get("show_strike_range", False)),
+        "show_writer_defense": bool(s.get("show_writer_defense", True)),
+        "show_suggestion": bool(s.get("show_suggestion", True)),
+        "show_chart_signals": bool(s.get("show_chart_signals", False)),
+        **resolve_desk_ai(s),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "universe": catalog_public(),
         "known_indices": without_paused_mcx(list(INDEX_CONFIG.keys()), INDEX_CONFIG),
@@ -5737,8 +5771,10 @@ async def _startup():
 
 
 async def _boot():
-    # Initialize MongoDB client and db here to avoid creating connection objects at import time.
-    global client, db
+    # Bind HTTP first: assign tracker as soon as Mongo pings, then indexes/Kite
+    # continue on another task so /health /auth/state never wait on create_index
+    # or kite.instruments().
+    global client, db, tracker
     try:
         mongo_url = os.environ['MONGO_URL']
         client = AsyncIOMotorClient(
@@ -5752,9 +5788,13 @@ async def _boot():
         logger.exception(f"Failed to initialize MongoDB client: {e}")
         return
 
-    # Ensure indexes for fast history / retention queries.
+    _notifier_boot.set_db(db)
+    tracker = OITracker(db)
+    asyncio.create_task(_boot_rest())
+
+
+async def _ensure_mongo_indexes():
     try:
-        # Unique compound key prevents duplicate ticks for the same market sample.
         await db.oi_snapshots.create_index(
             [("index", 1), ("expiry", 1), ("timestamp", 1)],
             unique=True,
@@ -5781,31 +5821,35 @@ async def _boot():
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 
-    global tracker
-    _notifier_boot.set_db(db)
-    tracker = OITracker(db)
 
+async def _seed_last_snapshots():
     try:
-        await asyncio.wait_for(tracker.load_credentials(), timeout=20)
-    except Exception as e:
-        logger.warning("load_credentials on startup: %s", e)
-    try:
-        await asyncio.wait_for(tracker.load_settings(), timeout=10)
-    except Exception as e:
-        logger.warning("load_settings on startup: %s", e)
-    await tracker.start()
-    # Seed in-memory last_snapshot from DB so weekend/holiday/cold-restart
-    # serves Friday (or last session) immediately without waiting for a poll.
-    try:
-        enabled = tracker.settings.get("enabled_indices") or list(INDEX_CONFIG.keys())
-        for idx in enabled:
+        wanted = list(DESK_IDS)
+        extra = [i for i in (tracker.settings.get("enabled_indices") or []) if i not in wanted]
+        for idx in wanted + extra[:2]:
             if idx in tracker.last_snapshot:
                 continue
-            doc = await db.oi_snapshots.find_one(
-                {"index": idx},
-                sort=[("timestamp", -1)],
-                projection={"_id": 0},
-            )
+            try:
+                doc = await asyncio.wait_for(
+                    db.oi_snapshots.find_one(
+                        {"index": idx},
+                        sort=[("timestamp", -1)],
+                        projection={"_id": 0},
+                        maxTimeMS=800,
+                    ),
+                    timeout=1.2,
+                )
+            except TypeError:
+                doc = await asyncio.wait_for(
+                    db.oi_snapshots.find_one(
+                        {"index": idx},
+                        sort=[("timestamp", -1)],
+                        projection={"_id": 0},
+                    ),
+                    timeout=1.2,
+                )
+            except Exception:
+                doc = None
             if doc:
                 tracker.last_snapshot[idx] = doc
         logger.info(
@@ -5815,38 +5859,38 @@ async def _boot():
         )
     except Exception as e:
         logger.warning(f"last_snapshot seed skipped: {e}")
+
+
+async def _boot_rest():
+    global straddle_sampler_task, poll_watchdog_task, journal_eod_task
+    await _ensure_mongo_indexes()
+    try:
+        await asyncio.wait_for(tracker.load_credentials(), timeout=20)
+    except Exception as e:
+        logger.warning("load_credentials on startup: %s", e)
+    try:
+        await asyncio.wait_for(tracker.load_settings(), timeout=10)
+    except Exception as e:
+        logger.warning("load_settings on startup: %s", e)
+    await tracker.start()
+    await _seed_last_snapshots()
     extra_tickers.attach_db(db)
-    # Prefer Kite for GIFT NIFTY (NSEIX:GIFT NIFTY) + India VIX when LIVE.
     extra_tickers.attach_kite_provider(
         lambda: tracker.kite_service.kite if tracker and tracker.mode == "kite" and tracker.kite_service else None
     )
     await extra_tickers.start()
     fii_dii.attach_db(db)
     await fii_dii.start()
-    global straddle_sampler_task, poll_watchdog_task, journal_eod_task
     straddle_sampler_task = asyncio.create_task(_straddle_sampler())
     poll_watchdog_task = asyncio.create_task(_market_day_poll_watchdog())
     journal_eod_task = asyncio.create_task(_journal_eod_lock_loop())
     logger.info(
         "Started browser-independent OI/straddle writers + market-day poll watchdog"
     )
-
-    # Report how much of today's session data we already have so operators
-    # can immediately see whether continuity was preserved across a restart.
     try:
-        from market_hours import IST
-        today_ist = datetime.now(IST).date()
-        start_utc = datetime.combine(today_ist, datetime.min.time()).replace(tzinfo=IST).astimezone(timezone.utc)
-        today_count = await db.oi_snapshots.count_documents(
-            {"created_at": {"$gte": start_utc.isoformat()}}
-        )
-        logger.info(
-            f"OI Tracker started in {tracker.mode} mode | "
-            f"today's snapshots already stored: {today_count} "
-            f"(polling resumes immediately)"
-        )
-    except Exception:
         logger.info(f"OI Tracker started in {tracker.mode} mode")
+    except Exception:
+        pass
 
 
 @app.on_event("shutdown")

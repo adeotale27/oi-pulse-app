@@ -174,6 +174,33 @@ export default function AuthGate({ children }) {
     import("@/pages/Dashboard");
   }, []);
   useEffect(() => {
+    const failOpen = setTimeout(() => {
+      setState((s) => {
+        if (!s.loading) return s;
+        const stored = storedDeskSession();
+        if (stored) {
+          return {
+            loading: false,
+            requires_login: false,
+            public_access_open: true,
+            is_admin: !!stored.is_admin,
+            is_guest: !!stored.is_guest,
+            needs_guest_name: false,
+          };
+        }
+        return {
+          loading: false,
+          auth_unavailable: true,
+          requires_login: false,
+          is_admin: false,
+          is_guest: false,
+          needs_guest_name: false,
+        };
+      });
+    }, 1500);
+    return () => clearTimeout(failOpen);
+  }, []);
+  useEffect(() => {
     const bump = () => { lastActivityRef.current = Date.now(); };
     window.addEventListener("mousemove", bump);
     window.addEventListener("keydown", bump);

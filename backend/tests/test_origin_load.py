@@ -85,6 +85,53 @@ def test_ensure_instruments_fresh_does_not_dump_on_event_loop():
     assert "reload_instruments(force=True)" not in src
 
 
+def test_poll_once_does_not_await_instrument_dump():
+    src = _fn(TRACKER, "_poll_once")
+    assert "schedule_instruments_fresh" in src
+    assert "await self.ensure_instruments_fresh" not in src
+
+
+def test_get_current_oi_never_hits_kite():
+    i = SERVER.index("async def get_current_oi")
+    j = SERVER.index("async def get_expiries")
+    src = SERVER[i:j]
+    assert "get_snapshot" not in src
+    assert "maxTimeMS" in src
+
+
+def test_get_settings_mongo_reload_is_opt_in():
+    i = SERVER.index("async def get_settings")
+    j = SERVER.index("async def update_settings")
+    src = SERVER[i:j]
+    assert "reload: bool" in src
+    assert "if tracker and reload" in src
+
+
+def test_boot_assigns_tracker_before_indexes():
+    i = SERVER.index("async def _boot():")
+    j = SERVER.index("async def _ensure_mongo_indexes")
+    src = SERVER[i:j]
+    assert "tracker = OITracker(db)" in src
+    assert "create_task(_boot_rest())" in src
+    assert "await db.oi_snapshots.create_index" not in src
+
+
+def test_kite_instrument_rows_off_loop():
+    i = SERVER.index("async def _kite_instrument_rows")
+    j = SERVER.find("\n@api_router.", i + 1)
+    src = SERVER[i:j]
+    assert "to_thread" in src
+    assert "svc._load_instruments()" in src
+
+
+def test_vrp_does_not_dump_instruments():
+    vrp = (ROOT / "vrp_service.py").read_text(encoding="utf-8")
+    i = vrp.index("def _index_token")
+    j = vrp.find("\ndef ", i + 1)
+    src = vrp[i:j]
+    assert "_load_instruments" not in src
+
+
 def test_seed_on_start_skips_unloaded_dump():
     src = _fn(TRACKER, "_seed_expiries_safe")
     assert "_loaded" in src
