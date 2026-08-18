@@ -24,7 +24,7 @@ export default function OiPulseLogo({ className = "w-6 h-6", pulse = true }) {
           <stop offset="100%" stopColor="#0EA5E9" />
         </linearGradient>
       </defs>
-      <rect x="0" y="0" width="48" height="48" rx="10" ry="10" fill={`url(#${gid})`} />
+      <rect x="1" y="1" width="46" height="46" rx="9.5" ry="9.5" fill={`url(#${gid})`} stroke="#FFFFFF" strokeWidth="1" />
       <path
         d="M4 24 H12 L16 24 L20 10 L24 38 L28 18 L32 24 H42"
         fill="none"

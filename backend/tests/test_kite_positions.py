@@ -143,7 +143,7 @@ def test_partial_close_books_kite_realised():
     assert bits["pnl"] == 19000.0
 
 
-def test_partial_close_falls_back_to_pnl_minus_unrealised():
+def test_partial_close_falls_back_to_matched_buy_sell():
     bits = booked_pnl_from_kite_row(
         qty=-650,
         buy_qty=195,
@@ -154,9 +154,27 @@ def test_partial_close_falls_back_to_pnl_minus_unrealised():
         realised=0,
         unrealised=6400.0,
         exited=False,
+        last_price=50.0,
+        mark_to_market=True,
     )
     assert bits["partial"] is True
-    assert bits["booked_pnl"] == 12600.0
+    # (80 - 40) * 195 — closed lots only, not pnl minus a lagging unrealised.
+    assert bits["booked_pnl"] == 7800.0
+    # MTM can move; booked must not.
+    bits2 = booked_pnl_from_kite_row(
+        qty=-650,
+        buy_qty=195,
+        sell_qty=845,
+        buy_price=40.0,
+        sell_price=80.0,
+        pnl=19000.0,
+        realised=0,
+        unrealised=6400.0,
+        exited=False,
+        last_price=20.0,
+        mark_to_market=True,
+    )
+    assert bits2["booked_pnl"] == bits["booked_pnl"]
 
 
 def test_booked_today_from_row_sums_exit_and_partial():
@@ -186,6 +204,29 @@ def test_open_mtm_prefers_quote_over_stale_kite_pnl():
     # (5000 - 0) + (-50 * 80) = 1000, not stale kite 800
     assert bits["pnl"] == 1000.0
     assert bits["pnl_source"] == "quote_mtm"
+    assert bits["booked_pnl"] == 0.0
+
+
+def test_open_mtm_does_not_move_booked_when_ltp_changes():
+    kwargs = dict(
+        qty=-25,
+        buy_qty=25,
+        sell_qty=50,
+        buy_price=80,
+        sell_price=100,
+        pnl=0,
+        realised=500,
+        unrealised=0,
+        exited=False,
+        buy_value=2000,
+        sell_value=5000,
+        multiplier=1,
+        mark_to_market=True,
+    )
+    a = booked_pnl_from_kite_row(**kwargs, last_price=90)
+    b = booked_pnl_from_kite_row(**kwargs, last_price=40)
+    assert a["booked_pnl"] == b["booked_pnl"] == 500.0
+    assert a["pnl"] != b["pnl"]
 
 
 def test_apply_live_ltp_updates_open_row():
