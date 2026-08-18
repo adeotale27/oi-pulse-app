@@ -2196,7 +2196,7 @@ export default function Dashboard() {
             <div
               className={`hidden md:flex items-center gap-2 flex-nowrap shrink-0 min-w-0 w-full ${
                 infoTilesOpen ? "mb-2 sm:mb-3" : "mb-0"
-              }`}
+              } ${!showRightPanel ? "max-w-[min(72rem,100%)] mx-auto" : ""}`}
               data-testid="dashboard-chrome-row"
             >
               <div className="min-w-0 flex-1 flex items-center overflow-visible">
@@ -2269,6 +2269,7 @@ export default function Dashboard() {
                   }}
                 >
                 {(dayBiasSummary || changeSummary) && (
+                  <div className={!showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""}>
                   <SentimentBar
                     ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}
                     peDelta={dayBiasSummary?.pe ?? changeSummary?.pe ?? 0}
@@ -2276,6 +2277,7 @@ export default function Dashboard() {
                     wholeDay
                     sessionMinutes={dayBiasSummary?.minutes}
                   />
+                  </div>
                 )}
                 {activeTab === "oi-change" && !historyReady && (() => {
                   // Live countdown: available minutes grows by (now - fetchedAt).
@@ -2289,7 +2291,7 @@ export default function Dashboard() {
                   return (
                     <div
                       data-testid="history-warming-banner"
-                      className="rounded-md border border-slate-200 bg-slate-50 text-slate-600 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-700 px-3 py-1.5 text-[11px] flex items-center gap-2 flex-wrap"
+                      className="rounded-md border border-slate-200 bg-slate-50 text-slate-600 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-700 px-3 py-1.5 text-[11px] flex items-center gap-2 flex-wrap max-w-[min(72rem,100%)] mx-auto w-full"
                     >
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
                       {previous ? (
@@ -2309,9 +2311,7 @@ export default function Dashboard() {
                   className={`oi-panel oi-rise p-4 transition-all duration-700 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
                   } ${
-                    (activeTab === "oi-change" || activeTab === "open-interest") && compact && !showRightPanel
-                      ? "max-w-[72rem] mx-auto w-full"
-                      : ""
+                    !showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""
                   }`}
                   data-testid="oi-change-card"
                   style={
@@ -2771,6 +2771,7 @@ export default function Dashboard() {
 
                   {(tabOn("straddle")) && (
                     <TabsContent value="straddle" className="mt-0">
+                    <div className={!showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""}>
                     <div className="hidden md:block text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
                     <StraddleChart
                       key={`tab-${activeIndex}-${selectedExpiry || "auto"}`}
@@ -2782,6 +2783,7 @@ export default function Dashboard() {
                       maxPoints={7200}
                       useWs={true}
                     />
+                    </div>
                   </TabsContent>
                   )}
 
@@ -2805,9 +2807,9 @@ export default function Dashboard() {
                       />
                     </TabsContent>
                   )}
-                </div>
 
-                <div className="oi-panel p-3 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                {(activeTab === "oi-change" || activeTab === "open-interest") && (
+                <div className="mt-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2 flex-wrap">
                   <div data-testid="footer-refresh">
                     OI last pulled —{" "}
                     <span className="font-mono-data text-slate-900">
@@ -2818,13 +2820,16 @@ export default function Dashboard() {
                           : "—"}
                     </span>
                   </div>
-                  <div className="text-slate-500">
-                    Auto-refresh every {Math.round(pollMs / 1000)}s ·{" "}
-                    <span className="font-mono-data">
-                      {status?.mode === "kite" ? "Live" : "Offline / Historical data"}
+                  <div className="text-slate-500 inline-flex items-center gap-2">
+                    Auto-refresh every {Math.round(pollMs / 1000)}s
+                    <span className="inline-flex items-center rounded-sm bg-white border border-slate-200 px-1.5 py-0.5 font-mono-data text-emerald-800 dark:bg-slate-900 dark:border-slate-700 dark:text-emerald-300">
+                      {status?.mode === "kite" ? "Live" : "Offline"}
                     </span>
                   </div>
                 </div>
+                )}
+                </div>
+
                 {activeTab === "open-interest" && showWriterDefense && (
                   <WriterDefenseMap
                     current={filteredCurrent}

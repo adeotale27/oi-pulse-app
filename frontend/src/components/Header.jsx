@@ -348,6 +348,17 @@ export default function Header({
   const [refreshing, setRefreshing] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   useEffect(() => {
+    if (!mobileToolsOpen) return undefined;
+    const onDown = (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-testid='mobile-admin-tools'], [data-testid='tablet-admin-tools'], [data-testid='btn-mobile-tools'], [data-testid='btn-tablet-tools']")) return;
+      setMobileToolsOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [mobileToolsOpen]);
+  useEffect(() => {
     const open = () => setMobileToolsOpen(true);
     const toggle = () => setMobileToolsOpen((v) => !v);
     const close = () => setMobileToolsOpen(false);
@@ -475,23 +486,6 @@ export default function Header({
         )}
         <div className="flex items-center gap-1 shrink-0 ml-auto">
           {deskAiChipMobile}
-          {isAdmin && (
-            <Button
-              data-testid="btn-mobile-tools"
-              size="sm"
-              aria-pressed={mobileToolsOpen}
-              onClick={() => setMobileToolsOpen((v) => !v)}
-              className={`rounded-sm h-8 w-8 p-0 ${
-                mobileToolsOpen
-                  ? "bg-slate-900 text-white hover:bg-slate-800"
-                  : "bg-emerald-600 text-white hover:bg-emerald-700"
-              }`}
-              title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings"}
-            >
-              <Settings2 className="w-4 h-4" />
-              <span className="sr-only">Settings</span>
-            </Button>
-          )}
           <Button
             data-testid="btn-toggle-compact-mobile"
             variant="outline" size="sm" className={toolBtn}
@@ -547,6 +541,23 @@ export default function Header({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          {isAdmin && (
+            <Button
+              data-testid="btn-mobile-tools"
+              size="sm"
+              aria-pressed={mobileToolsOpen}
+              onClick={() => setMobileToolsOpen((v) => !v)}
+              className={`rounded-sm h-8 w-8 p-0 ${
+                mobileToolsOpen
+                  ? "bg-slate-900 text-white hover:bg-slate-800"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }`}
+              title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings"}
+            >
+              <Settings2 className="w-4 h-4" />
+              <span className="sr-only">Settings</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -568,17 +579,6 @@ export default function Header({
             >
               <X className="w-4 h-4" />
             </button>
-          </div>
-          <div className="w-full basis-full">
-            <AdminControls
-              variant="panel"
-              assumedAdmin={isAdmin}
-              publicAccessOpen={
-                publicAccessOpen != null
-                  ? !!publicAccessOpen
-                  : !!authState.public_access_open
-              }
-            />
           </div>
           <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
@@ -626,6 +626,17 @@ export default function Header({
             <Download className="w-4 h-4 mr-1.5" />
             CSV
           </Button>
+          <div className="w-full basis-full">
+            <AdminControls
+              variant="panel"
+              assumedAdmin={isAdmin}
+              publicAccessOpen={
+                publicAccessOpen != null
+                  ? !!publicAccessOpen
+                  : !!authState.public_access_open
+              }
+            />
+          </div>
         </div>
       )}
 
@@ -999,7 +1010,7 @@ export default function Header({
 
       {/* Tablet (md–lg): admin Tools row — phone uses the slim mobile header above */}
       {isAdmin && (
-        <div className="hidden md:flex lg:hidden px-3 pb-2 items-center gap-2" data-testid="tablet-tools-bar">
+        <div className="hidden md:flex lg:hidden px-3 pb-2 items-center gap-2 justify-end" data-testid="tablet-tools-bar">
           <Button
             data-testid="btn-tablet-tools"
             size="sm"
@@ -1025,17 +1036,6 @@ export default function Header({
         >
           <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
             Admin tools
-          </div>
-          <div className="w-full basis-full">
-            <AdminControls
-              variant="panel"
-              assumedAdmin={isAdmin}
-              publicAccessOpen={
-                publicAccessOpen != null
-                  ? !!publicAccessOpen
-                  : !!authState.public_access_open
-              }
-            />
           </div>
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
             <Settings2 className="w-4 h-4 mr-1.5" />
@@ -1083,6 +1083,17 @@ export default function Header({
             <Download className="w-4 h-4 mr-1.5" />
             CSV
           </Button>
+          <div className="w-full basis-full">
+            <AdminControls
+              variant="panel"
+              assumedAdmin={isAdmin}
+              publicAccessOpen={
+                publicAccessOpen != null
+                  ? !!publicAccessOpen
+                  : !!authState.public_access_open
+              }
+            />
+          </div>
         </div>
       )}
       </div>

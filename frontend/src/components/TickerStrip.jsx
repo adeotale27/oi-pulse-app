@@ -223,13 +223,11 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
     : null;
   const indexSelectable = (idx) => !enabledSet || enabledSet.has(idx);
   const disabledToastAt = useRef(0);
-  const toastDisabledIndex = (short) => {
+  const toastDisabledIndex = (name) => {
     const now = Date.now();
     if (now - disabledToastAt.current < 8000) return;
     disabledToastAt.current = now;
-    toast.message(`${short} is on the quote strip but not enabled for the desk`, {
-      description: "Admin can turn it on in Index management",
-    });
+    toast.message(`${name} is on the quote strip but not enabled for the desk`);
   };
 
   if (loading && !tickers.length) {
@@ -266,8 +264,8 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               aria-disabled={selectable ? undefined : "true"}
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
-              : `${s.short} is on the quote strip but not enabled for the desk — Admin can turn it on in Index management`}
-              onMouseEnter={selectable ? undefined : () => toastDisabledIndex(s.short)}
+              : `${s.label} is on the quote strip but not enabled for the desk`}
+              onMouseEnter={selectable ? undefined : () => toastDisabledIndex(s.label)}
               className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
                 !selectable
                   ? "border-transparent"
@@ -349,10 +347,10 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
             } ${selectable ? "hover:brightness-[0.99] transition-all" : ""} ${isActive && selectable ? "shadow-md" : ""}`}
-            onMouseEnter={selectable ? undefined : () => toastDisabledIndex(s.short)}
+            onMouseEnter={selectable ? undefined : () => toastDisabledIndex(s.label)}
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
-              : `${s.short} is on the quote strip but not enabled for the desk — Admin can turn it on in Index management`}
+              : `${s.label} is on the quote strip but not enabled for the desk`}
           >
             <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label || ""} ${
               isHeader ? "text-[11px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"

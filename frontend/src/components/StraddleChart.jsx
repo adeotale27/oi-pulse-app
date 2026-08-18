@@ -504,7 +504,7 @@ export default function StraddleChart({
     <div className="w-full" data-testid="straddle-chart">
       <div className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm overflow-hidden">
         <div className="px-3 py-2 md:px-5 md:py-3 border-b border-slate-100 flex items-center justify-between bg-white">
-          <div>
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] md:text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{index}</div>
             <h2 className="text-sm md:text-lg font-bold text-slate-900 leading-tight">Straddle Premium</h2>
           </div>
@@ -520,7 +520,9 @@ export default function StraddleChart({
                 : "Loading…"}
             </div>
             <div className="hidden md:block text-[10px] text-slate-400 mt-0.5">
-              {Math.round(bucketMs / 1000)}s chart · live {Math.round(livePollMs / 1000)}s
+              <span className="inline-flex items-center rounded-sm bg-white border border-slate-200 px-1.5 py-0.5 text-slate-600">
+                {Math.round(bucketMs / 1000)}s chart · live {Math.round(livePollMs / 1000)}s
+              </span>
             </div>
           </div>
         </div>
@@ -593,24 +595,24 @@ export default function StraddleChart({
         </div>
 
         {/* FinanceDeft-style summary strip */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-x-4 gap-y-3 px-5 py-3 border-t border-slate-200 bg-slate-50/90 text-[12px]">
-          <div>
+        <div className="flex flex-wrap gap-x-5 gap-y-3 px-4 py-3 border-t border-slate-200 bg-slate-50/90 text-[12px]">
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Straddle Price</div>
             <div className="font-mono font-bold text-teal-700 text-base tabular-nums">
               {meta?.premium != null ? Number(meta.premium).toFixed(2) : "—"}
             </div>
           </div>
-          <div>
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">{index} Spot</div>
             <div className="font-mono font-semibold text-slate-900 tabular-nums">
               {meta?.underlying != null ? Number(meta.underlying).toFixed(2) : "—"}
             </div>
           </div>
-          <div>
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Straddle Strike</div>
             <div className="font-mono font-semibold text-slate-900 tabular-nums">{meta?.strike ?? "—"}</div>
           </div>
-          <div>
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">
               {meta?.strike != null ? `${meta.strike}CE` : "CE"}
             </div>
@@ -618,7 +620,7 @@ export default function StraddleChart({
               {meta?.ce_ltp != null ? Number(meta.ce_ltp).toFixed(2) : "—"}
             </div>
           </div>
-          <div>
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">
               {meta?.strike != null ? `${meta.strike}PE` : "PE"}
             </div>
@@ -626,11 +628,11 @@ export default function StraddleChart({
               {meta?.pe_ltp != null ? Number(meta.pe_ltp).toFixed(2) : "—"}
             </div>
           </div>
-          <div>
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Days to Expiry</div>
             <div className="font-mono font-semibold text-slate-900 tabular-nums">{dte ?? "—"}</div>
           </div>
-          <div>
+          <div className="min-w-[6.5rem] shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Last Updated</div>
             <div className="font-mono font-semibold text-slate-800 text-[11px]">{lastUpdated ?? "—"}</div>
           </div>
