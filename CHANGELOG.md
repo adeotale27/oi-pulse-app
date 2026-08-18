@@ -1,5 +1,9 @@
 # Changelog
 
+## V7.10 — 2026-08-18
+
+Journal money on phone uses short rounded labels (₹47.5k) so calendar tiles fit; desktop still shows exact paisa.
+
 ## V7.09 — 2026-08-18
 
 Trade journal stays in sync after close, shows exact rupees, and adds a from–to totals strip. Closed-session rail is LAST SESSION + date + Market Closed at last snapshot.

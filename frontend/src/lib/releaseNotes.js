@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.10",
+    date: "2026-08-18",
+    user: [
+      "On the phone, journal P&L uses short rounded figures so the calendar fits; on desktop you still see exact rupees and paisa.",
+    ],
+    admin: [
+      "journalMoney: compactPnl on <md, exactPnl on desktop. Tooltip on tiles still has the exact amount.",
+    ],
+  },
+  {
     version: "7.09",
     date: "2026-08-18",
     user: [
