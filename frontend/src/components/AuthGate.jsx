@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession } from "@/lib/api";
-import { isTransientHttpError, storedDeskSession, optimisticDeskAuthState, sleep } from "@/lib/authBoot";
+import { isTransientHttpError, storedDeskSession, optimisticDeskAuthState, withTimeout } from "@/lib/authBoot";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,43 +55,18 @@ export default function AuthGate({ children }) {
       const rememberTok = (() => {
         try { return localStorage.getItem("oi_admin_remember_token"); } catch (_) { return null; }
       })();
-      // Only skip remember when we already have a *session* token.
       const hasSessionAdmin = (() => {
         try { return !!sessionStorage.getItem("oi_admin_token"); } catch (_) { return false; }
       })();
-      if (rememberTok && !hasSessionAdmin) {
-        try {
-          const { data: rem } = await api.post("/auth/remember-login", { remember_token: rememberTok }, { timeout: 4000 });
-          if (rem?.token) {
-            persistAdminSession(rem.token);
-          }
-        } catch (err) {
-          // Soft IP/UA mismatch or expired — only drop token on hard expiry/invalid
-          if (isTransientHttpError(err)) {
-            /* origin busy — keep remember token and continue to /auth/state */
-          } else {
-          const detail = String(err?.response?.data?.detail || "");
-          if (/expired|invalid|missing/i.test(detail)) {
-            try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
-          }
-          }
-        }
-      }
 
+      // /auth/state first so a hung Remember-me cannot pin the dark Loading screen.
       let data;
       let lastErr;
-      // One retry only — a jammed origin used to sit on "Loading…" for 3×8s.
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const res = await api.get("/auth/state", { timeout: 5000 });
-          data = res.data;
-          lastErr = null;
-          break;
-        } catch (err) {
-          lastErr = err;
-          if (!isTransientHttpError(err) || attempt === 1) break;
-          await sleep(250);
-        }
+      try {
+        const res = await withTimeout(api.get("/auth/state", { timeout: 2500 }), 2800, "auth state timeout");
+        data = res.data;
+      } catch (err) {
+        lastErr = err;
       }
       if (!data) throw lastErr || new Error("auth state unavailable");
 
@@ -112,7 +87,7 @@ export default function AuthGate({ children }) {
         clearAdminAuth({ clearRemember: false });
         toast.success(`Welcome back, ${data.auto_guest_name || data.suggested_guest_name || "guest"}`);
         // Re-fetch so is_guest is true with the new header token.
-        const { data: again } = await api.get("/auth/state", { timeout: 5000 });
+        const { data: again } = await withTimeout(api.get("/auth/state", { timeout: 2500 }), 2800, "auth state timeout");
         setState({ loading: false, ...again });
         try {
           window.__oi_last_auth_state = again;
@@ -135,6 +110,32 @@ export default function AuthGate({ children }) {
         window.__oi_last_auth_state = data;
         window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: data }));
       } catch (_) { /* noop */ }
+
+      if (rememberTok && !hasSessionAdmin && !data?.is_admin) {
+        try {
+          const { data: rem } = await withTimeout(
+            api.post("/auth/remember-login", { remember_token: rememberTok }, { timeout: 2000 }),
+            2200,
+            "remember-login timeout",
+          );
+          if (rem?.token) {
+            persistAdminSession(rem.token);
+            const { data: again } = await withTimeout(api.get("/auth/state", { timeout: 2500 }), 2800, "auth state timeout");
+            setState({ loading: false, ...again });
+            try {
+              window.__oi_last_auth_state = again;
+              window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: again }));
+            } catch (_) { /* noop */ }
+          }
+        } catch (err) {
+          if (!isTransientHttpError(err)) {
+            const detail = String(err?.response?.data?.detail || "");
+            if (/expired|invalid|missing/i.test(detail)) {
+              try { localStorage.removeItem("oi_admin_remember_token"); } catch (_) {}
+            }
+          }
+        }
+      }
     } catch (err) {
       if (isTransientHttpError(err)) {
         let last = null;

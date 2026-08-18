@@ -183,11 +183,26 @@ def _extract_bearer(request: Request, header: str) -> str:
     return ""
 
 
+async def _find_one_capped(coll, query, timeout=2.0):
+    """Mongo find_one that cannot pin the event loop when the cluster is stuck."""
+    if coll is None:
+        return None
+    try:
+        return await asyncio.wait_for(coll.find_one(query, maxTimeMS=1500), timeout=timeout)
+    except TypeError:
+        try:
+            return await asyncio.wait_for(coll.find_one(query), timeout=timeout)
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
 async def _admin_from_request(request: Request):
     tok = _extract_bearer(request, "x-admin-token")
     if not tok:
         return None
-    sess = await db.admin_sessions.find_one({"_id": tok})
+    sess = await _find_one_capped(db.admin_sessions, {"_id": tok})
     if not sess:
         return None
     try:
@@ -506,7 +521,7 @@ async def _guest_from_request(request: Request):
     open_, _ = await _get_public_access_state()
     if not open_:
         return None
-    sess = await db.guest_sessions.find_one({"_id": tok})
+    sess = await _find_one_capped(db.guest_sessions, {"_id": tok})
     if not sess:
         return None
     if sess.get("revoked_at"):
@@ -587,7 +602,9 @@ def _next_market_close_ist() -> datetime:
 
 
 async def _get_public_access_state():
-    doc = await db.settings.find_one({"_id": "public_access"}) or {}
+    if db is None:
+        return False, None
+    doc = await _find_one_capped(db.settings, {"_id": "public_access"}) or {}
     open_ = bool(doc.get("open", False))
     exp = doc.get("expires_at")
     expires_at_iso = None
@@ -611,7 +628,9 @@ async def _get_public_access_state():
 
 
 async def _get_guest_require_approval() -> bool:
-    doc = await db.settings.find_one({"_id": "public_access"}) or {}
+    if db is None:
+        return False
+    doc = await _find_one_capped(db.settings, {"_id": "public_access"}) or {}
     return require_approval_flag(doc)
 
 
@@ -3134,6 +3153,20 @@ async def auth_guest_logout(request: Request):
 @api_router.get("/auth/state")
 async def auth_state(request: Request):
     """Public endpoint — returns app-access state for the caller."""
+    if db is None:
+        return {
+            "requires_login": False,
+            "public_access_open": True,
+            "public_access_expires_at": None,
+            "is_admin": False,
+            "is_guest": False,
+            "guest_name": None,
+            "needs_guest_name": False,
+            "auth_unavailable": True,
+            "suggested_guest_name": None,
+            "auto_guest_token": None,
+            "is_ip_blocked": False,
+        }
     open_, expires_at_iso = await _get_public_access_state()
     admin_sess = await _admin_from_request(request)
     is_admin = admin_sess is not None
@@ -3172,7 +3205,7 @@ async def auth_state(request: Request):
     ip = _client_ip(request)
     if needs_guest_name and ip:
         try:
-            row = await db.guest_ip_names.find_one({"_id": ip})
+            row = await _find_one_capped(db.guest_ip_names, {"_id": ip})
             if row and row.get("name"):
                 suggested_guest_name = row["name"]
         except Exception:
@@ -4147,7 +4180,7 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
         kite = tracker.kite_service.kite
 
     try:
-        raw = await asyncio.to_thread(kite.positions)
+        raw = await asyncio.wait_for(asyncio.to_thread(kite.positions), timeout=10)
         net = raw.get("net", []) if isinstance(raw, dict) else (raw or [])
         day = raw.get("day", []) if isinstance(raw, dict) else []
         if role == "admin":
@@ -4391,7 +4424,8 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
             if not keys:
                 continue
             try:
-                quotes.update(await asyncio.to_thread(kite.quote, keys) or {})
+                quoted = await asyncio.wait_for(asyncio.to_thread(kite.quote, keys), timeout=8)
+                quotes.update(quoted or {})
             except Exception as e:
                 logger.warning("positions %s kite.quote failed: %s", label, e)
 
