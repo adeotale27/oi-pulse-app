@@ -527,9 +527,9 @@ export default function StraddleChart({
           </div>
         </div>
 
-        <div className="px-1 py-2 md:px-4 md:py-3 h-[230px] md:h-[360px] bg-white relative">
+        <div className="px-1 pt-2 pb-1 md:px-4 md:pt-3 md:pb-2 h-[280px] md:h-[460px] bg-white relative">
           <ResponsiveContainer>
-            <LineChart data={chartPoints} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+            <LineChart data={chartPoints} margin={{ top: 10, right: 12, left: 0, bottom: 18 }}>
               <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical={false} />
               <XAxis
                 dataKey="ts"
@@ -543,6 +543,7 @@ export default function StraddleChart({
                 axisLine={false}
                 tickLine={false}
                 allowDataOverflow
+                height={28}
               />
               <YAxis
                 yAxisId="premium"
@@ -559,7 +560,6 @@ export default function StraddleChart({
                 yAxisId="premium"
                 type="monotone"
                 dataKey="premium"
-                name="Straddle Price"
                 stroke="#14b8a6"
                 dot={false}
                 strokeWidth={2.25}
@@ -586,12 +586,6 @@ export default function StraddleChart({
               )}
             </LineChart>
           </ResponsiveContainer>
-          <div className="hidden md:flex absolute bottom-3 left-1/2 -translate-x-1/2 items-center gap-4 text-[11px] text-slate-600 bg-white/90 px-3 py-1 rounded-full border border-slate-100">
-            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-500" />Straddle Price</span>
-          </div>
-          <div className="pointer-events-none hidden md:block absolute bottom-10 right-6 text-[10px] text-slate-400">
-            {chartWindow.label}
-          </div>
         </div>
 
         {/* FinanceDeft-style summary strip */}

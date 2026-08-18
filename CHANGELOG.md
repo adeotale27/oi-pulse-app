@@ -7,7 +7,8 @@ Quiet the false Bank Nifty toast, keep booked profit still, and use the pulse ma
 - Disabled indices on the quote strip no longer toast on hover (scrolling was firing “BANK NIFTY is on the quote strip…”)
 - Positions “too close” strip only shows when shorts are actually inside the warn band
 - Profit booked today no longer moves with live LTP (closed cash only)
-- Kite Positions uses the pulse mark; home-screen icon is the pulse with a thin white border
+- Kite Positions uses the pulse mark; home-screen icon is the same pulse, sharper, with a very thin white rim
+- Straddle chart is taller (more plot, no floating “Straddle Price” pill)
 
 ## V7.01 — 2026-08-18
 
