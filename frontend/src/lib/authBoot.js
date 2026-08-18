@@ -27,6 +27,32 @@ export function storedDeskSession() {
   return null;
 }
 
+/** Session tokens only — Remember-me still needs /auth/remember-login before API calls. */
+export function liveDeskSession() {
+  try {
+    if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("oi_admin_token")) {
+      return { is_admin: true, is_guest: false };
+    }
+    if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("oi_guest_token")) {
+      return { is_admin: false, is_guest: true };
+    }
+  } catch (_) { /* noop */ }
+  return null;
+}
+
+export function optimisticDeskAuthState() {
+  const live = liveDeskSession();
+  if (!live) return null;
+  return {
+    loading: false,
+    requires_login: false,
+    public_access_open: true,
+    is_admin: !!live.is_admin,
+    is_guest: !!live.is_guest,
+    needs_guest_name: false,
+  };
+}
+
 export function shouldWipeTokensOn401(url) {
   const u = String(url || "");
   if (!u.includes("/auth/")) return false;

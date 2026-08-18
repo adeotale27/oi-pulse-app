@@ -43,7 +43,12 @@ def test_ws_spot_does_not_quote_kite():
     assert "last_snapshot" in src
 
 
-def test_list_expiries_does_not_dump_kite():
+def test_get_oi_change_lookbacks_are_gathered():
+    i = SERVER.index("async def get_oi_change")
+    j = SERVER.index("async def get_history")
+    src = SERVER[i:j]
+    assert "asyncio.gather" in src
+    assert "maxTimeMS" in src or "maxTimeMS" in SERVER
     oi = (ROOT / "oi_service.py").read_text(encoding="utf-8")
     i = oi.index("    def list_expiries(")
     j = oi.find("\n    def ", i + 1)

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { api, fetchExtras, subscribeExtras, unsubscribeExtras } from "@/lib/api";
+import { api, subscribeExtras, unsubscribeExtras } from "@/lib/api";
 import { GIFT_SESSION_WINDOWS } from "@/lib/marketTimes";
 import { DESK_IDS, INDEX_SHORT } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
@@ -54,11 +54,8 @@ export default function MobileIndexTicker({
 
   useEffect(() => {
     let alive = true;
-    fetchExtras()
-      .then((d) => { if (alive && d) setExtras(d); })
-      .catch(() => {});
     const onData = (d) => { if (alive && d) setExtras(d); };
-    subscribeExtras(onData);
+    subscribeExtras(onData, { delayMs: 5000 });
     return () => {
       alive = false;
       unsubscribeExtras(onData);

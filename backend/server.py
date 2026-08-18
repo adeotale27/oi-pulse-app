@@ -1750,11 +1750,20 @@ async def _find_previous_snapshot(
         window_query["expiry"] = expiry
 
     # ASC → earliest in window ≈ closest to the N-min-ago boundary.
-    prev_doc = await db.oi_snapshots.find_one(
-        window_query,
-        sort=[("timestamp", 1)],
-        projection={"_id": 0},
-    )
+    # Cap query time so a missing index cannot pin the event loop for 20s.
+    try:
+        prev_doc = await db.oi_snapshots.find_one(
+            window_query,
+            sort=[("timestamp", 1)],
+            projection={"_id": 0},
+            maxTimeMS=4000,
+        )
+    except TypeError:
+        prev_doc = await db.oi_snapshots.find_one(
+            window_query,
+            sort=[("timestamp", 1)],
+            projection={"_id": 0},
+        )
 
     history_ready = True
     elapsed_min_val: Optional[float] = None
@@ -1904,23 +1913,11 @@ async def get_oi_change(
     if not current_ts:
         raise HTTPException(503, "No current data")
 
-    prev_doc, history_ready, available_min = await _find_previous_snapshot(
-        idx, current_ts, minutes, expiry
-    )
-
-    # Batch extra windows for huge-shift monitor (one round-trip).
-    # Also accepts the token "session" → lookback from today's session open
-    # (whole-day bias for the sentiment bar — independent of the UI timeframe pill).
-    also_windows: Dict[str, Any] = {}
+    extra_mins = []
     if also:
-        extra_mins = []
-        want_session = False
         for part in also.split(","):
             part = part.strip()
-            if not part:
-                continue
-            if part.lower() == "session":
-                want_session = True
+            if not part or part.lower() == "session":
                 continue
             try:
                 m = int(part)
@@ -1928,46 +1925,57 @@ async def get_oi_change(
                     extra_mins.append(m)
             except ValueError:
                 continue
-        if want_session:
-            sess_m = _session_elapsed_minutes(current_ts)
-            if sess_m != minutes:
-                extra_mins.append(sess_m)
-            # Always expose under stable key "session" for the frontend.
-            p, ready, avail = await _find_previous_snapshot(idx, current_ts, sess_m, expiry)
-            also_windows["session"] = {
-                "previous": p,
-                "minutes": sess_m,
-                "history_ready": ready,
-                "available_history_minutes": avail,
-                "label": "session",
-            }
-        # Deduplicate while preserving order
-        seen = set()
-        for m in extra_mins:
-            if m in seen:
-                continue
-            seen.add(m)
-            # Skip if we already stored this as session with same minutes
-            if also_windows.get("session", {}).get("minutes") == m:
-                continue
-            p, ready, avail = await _find_previous_snapshot(idx, current_ts, m, expiry)
-            also_windows[str(m)] = {
-                "previous": p,
-                "minutes": m,
-                "history_ready": ready,
-                "available_history_minutes": avail,
-            }
 
-    # If caller didn't ask for session, still attach it — cheap (one extra DB read)
-    # and keeps whole-day bias available on every change response.
-    if "session" not in also_windows:
-        sess_m = _session_elapsed_minutes(current_ts)
-        p, ready, avail = await _find_previous_snapshot(idx, current_ts, sess_m, expiry)
-        also_windows["session"] = {
+    sess_m = _session_elapsed_minutes(current_ts)
+    # Timeframe + session + huge-shift lookbacks in parallel — serial full-chain
+    # Mongo reads were pinning /change (and the rest of the API) for 20s+.
+    jobs = [("prev", minutes, None)]
+    if sess_m != minutes:
+        jobs.append(("session", sess_m, {"label": "session"}))
+    seen = {minutes, sess_m}
+    for m in extra_mins:
+        if m in seen:
+            continue
+        seen.add(m)
+        jobs.append((str(m), m, {}))
+
+    async def _lookback_job(key: str, lookback: int, extra: Optional[dict]):
+        p, ready, avail = await _find_previous_snapshot(idx, current_ts, lookback, expiry)
+        payload = {
             "previous": p,
-            "minutes": sess_m,
+            "minutes": lookback,
             "history_ready": ready,
             "available_history_minutes": avail,
+        }
+        if extra:
+            payload.update(extra)
+        return key, payload
+
+    gathered = await asyncio.gather(
+        *[_lookback_job(k, m, extra) for k, m, extra in jobs],
+        return_exceptions=True,
+    )
+    also_windows: Dict[str, Any] = {}
+    prev_doc = None
+    history_ready = False
+    available_min = 0.0
+    for item in gathered:
+        if isinstance(item, Exception):
+            logger.warning("[get_oi_change] lookback failed: %s", item)
+            continue
+        key, payload = item
+        if key == "prev":
+            prev_doc = payload["previous"]
+            history_ready = payload["history_ready"]
+            available_min = payload["available_history_minutes"]
+            continue
+        also_windows[key] = payload
+    if "session" not in also_windows:
+        also_windows["session"] = {
+            "previous": prev_doc,
+            "minutes": sess_m,
+            "history_ready": history_ready,
+            "available_history_minutes": available_min,
             "label": "session",
         }
 

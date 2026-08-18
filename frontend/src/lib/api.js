@@ -286,7 +286,8 @@ export const fetchOIChange = (idx, minutes, opts = {}) => {
   const params = { minutes };
   if (opts.expiry) params.expiry = opts.expiry;
   if (opts.also) params.also = Array.isArray(opts.also) ? opts.also.join(",") : opts.also;
-  return api.get(`/oi/${idx}/change`, { params }).then((r) => r.data);
+  const timeout = opts.timeout;
+  return api.get(`/oi/${idx}/change`, timeout ? { params, timeout } : { params }).then((r) => r.data);
 };
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
 export const fetchTickers = () => api.get("/tickers").then((r) => r.data);
