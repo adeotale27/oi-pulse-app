@@ -7,10 +7,10 @@ export const RELEASE_NOTES = [
     version: "6.45",
     date: "2026-08-18",
     user: [
-      "The desk opens from a saved session instead of sitting on Loading for a minute. The chart you are on fills first; other indices catch up a few seconds later. Funds available matches Kite Available margin (not the negative cash line).",
+      "The desk opens from a saved session instead of sitting on Loading for a minute. The chart you are on fills first; other indices catch up a few seconds later. Funds available matches Kite Available margin (not the negative cash line). OI toasts still say Puts adding — bullish, and also Put selling increase plus PE/CE crores.",
     ],
     admin: [
-      "AuthGate no longer waits 3×8s on /auth/state. /change lookbacks gather in parallel with maxTimeMS so Mongo cannot pin the origin. CSP allows data: alert beeps.",
+      "AuthGate no longer waits 3×8s on /auth/state. /change lookbacks gather in parallel with maxTimeMS so Mongo cannot pin the origin. CSP allows data: alert beeps. Funds tile uses kite.margins equity.net (Available margin).",
     ],
   },
   {

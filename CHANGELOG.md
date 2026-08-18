@@ -10,6 +10,7 @@ Desk paints in seconds: auth no longer blocks on a jammed API, and startup loads
 - `/oi/.../change` lookbacks run in parallel with a 4s Mongo cap so one slow query cannot stall the origin
 - Alert beep `data:` audio is allowed by CSP (`media-src`)
 - Positions **Funds available** is Kite Available margin (`equity.net` ≈ cash + collateral), not the debit Available cash figure
+- OI toasts keep the short **Puts adding — bullish** line and again show Put/Call selling + PE/CE crores (same as the old pressure toast)
 
 ## V6.44 — 2026-08-18
 

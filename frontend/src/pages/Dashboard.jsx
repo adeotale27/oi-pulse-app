@@ -72,7 +72,7 @@ import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert, unlockSounds } from "@/lib/sounds";
 import { flushHiddenAlerts, surfaceAlert } from "@/lib/alertSurface";
 import { applyUploadedHolidays } from "@/lib/holidays";
-import { hugeShiftToastCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
+import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
@@ -871,7 +871,7 @@ export default function Dashboard() {
     ].join(",");
     const minutes = resolveMinutes(timeframeRef.current);
     const bootLite = !oiWarmRestRef.current;
-    const also = bootLite ? "session" : alsoFull;
+    const also = alsoFull;
 
     try {
       const fetchOne = async (idx) => {
@@ -1056,17 +1056,26 @@ export default function Dashboard() {
       for (const a of fresh.reverse()) {
         const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
         const toastFn = isBullish ? toast.success : toast.error;
-        const title = a.message || `OI alert · ${a.index}`;
-        const desc = [
-          a.index,
-          a.direction,
-          a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
-          a.atm != null ? `ATM ${a.atm}` : null,
-        ].filter(Boolean).join(" · ");
+        const tf = timeframeRef.current;
+        const winLabel = ({
+          1: "1 min", 3: "3 mins", 5: "5 mins", 10: "10 mins", 15: "15 mins",
+          30: "30 mins", 60: "1 Hr", 120: "2 Hrs", 180: "3 Hrs", full: "Full Day",
+        })[tf] || (tf != null ? `${tf} mins` : "15 mins");
+        const { title, description: desc } = oiBoardAlertCopy({
+          index: a.index,
+          direction: a.direction,
+          windowLabel: winLabel,
+          strikes: a.strikes,
+        });
         surfaceAlert({
           toastFn,
           title,
-          description: desc,
+          description: desc || [
+            a.index,
+            a.direction,
+            a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
+            a.atm != null ? `ATM ${a.atm}` : null,
+          ].filter(Boolean).join(" · "),
           duration: 8000,
           soundKind: "reversal",
           playSound: playForAlert,
@@ -1312,7 +1321,7 @@ export default function Dashboard() {
     },
     5000,
     [loadAlerts, status?.market?.is_market_open],
-    { status, dedupeKey: "dash-alerts", delayMs: 6000 },
+    { status, dedupeKey: "dash-alerts", delayMs: 2500 },
   );
 
   // When index changes, hydrate from warm cache immediately so the chart never goes cold.
@@ -1624,6 +1633,8 @@ export default function Dashboard() {
         index: activeIndex,
         bullish: changeSummary.bullish,
         windowLabel: timeframeLabel,
+        pe: changeSummary.pe,
+        ce: changeSummary.ce,
       });
       surfaceAlert({
         toastFn: changeSummary.bullish ? toast.success : toast.error,
@@ -1670,6 +1681,8 @@ export default function Dashboard() {
         side: which,
         pct: pctVal,
         windowLabel: timeframeLabel,
+        pe: changeSummary.pe,
+        ce: changeSummary.ce,
       });
       const isBull = (which === "PE" && pctVal >= 0) || (which === "CE" && pctVal < 0);
       surfaceAlert({
