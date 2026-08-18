@@ -1,6 +1,7 @@
 import { AlertTriangle, X, Rewind } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { hugeShiftCopy } from "@/lib/oiAlertCopy";
 
 function fmt(v) {
   if (v == null) return "—";
@@ -12,18 +13,9 @@ function fmt(v) {
   return `${sign}${Math.round(abs)}`;
 }
 
-function sideMeta(side, value) {
-  // CE build => bearish (call writing / sellers). PE build => bullish (put writing).
-  const build = value > 0;
-  if (side === "CE" && build) return { tone: "rose",  headline: "Massive CALL OI build-up", read: "Aggressive Call writing near ATM — bearish pressure / stiff resistance forming." };
-  if (side === "CE" && !build) return { tone: "emerald", headline: "Massive CALL OI unwind", read: "Call writers exiting near ATM — resistance breaking, bullish tilt." };
-  if (side === "PE" && build) return { tone: "emerald", headline: "Massive PUT OI build-up", read: "Aggressive Put writing near ATM — bullish pressure / strong support forming." };
-  return { tone: "rose",  headline: "Massive PUT OI unwind", read: "Put writers covering near ATM — support cracking, bearish tilt." };
-}
-
-export default function HugeShiftModal({ shift, onClose, onReplayAtMoment }) {
+export default function HugeShiftModal({ shift, onClose, onCloseAll, onReplayAtMoment }) {
   if (!shift) return null;
-  const meta = sideMeta(shift.side, shift.value);
+  const meta = hugeShiftCopy(shift.side, shift.value);
   const toneBg = meta.tone === "emerald" ? "bg-emerald-50 border-emerald-300" : "bg-rose-50 border-rose-300";
   const toneText = meta.tone === "emerald" ? "text-emerald-800" : "text-rose-800";
   const bookmarkTs = shift.snapshotTs || shift.at;
@@ -32,75 +24,48 @@ export default function HugeShiftModal({ shift, onClose, onReplayAtMoment }) {
     jumpLabel = bookmarkTs ? new Date(bookmarkTs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
   } catch { jumpLabel = ""; }
   return (
-    <Dialog open={!!shift} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog open={!!shift} onOpenChange={(v) => { if (!v) (onCloseAll || onClose)?.(); }}>
       <DialogContent
         data-testid="huge-shift-modal"
-        className={`max-w-lg border-2 ${toneBg} rounded-xl shadow-2xl`}
+        hideClose={false}
+        className={`max-w-lg border-2 ${toneBg} rounded-xl shadow-2xl max-h-[min(88dvh,36rem)] overflow-y-auto max-md:w-[calc(100vw-1.25rem)] max-md:max-w-none max-md:p-4`}
       >
         <DialogHeader>
-          <DialogTitle className={`flex items-center gap-2 ${toneText} text-xl`}>
-            <AlertTriangle className="w-6 h-6 animate-pulse" />
-            HUGE OI SHIFT · {shift.index}
+          <DialogTitle className={`flex items-center gap-2 ${toneText} text-base sm:text-lg`}>
+            <AlertTriangle className="w-5 h-5 animate-pulse shrink-0" />
+            Big OI move · {shift.index}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className={`text-lg font-bold ${toneText}`}>{meta.headline}</div>
+        <div className="space-y-2">
+          <div className={`text-base font-bold ${toneText}`}>{meta.headline}</div>
           <div className="text-sm text-slate-700">{meta.read}</div>
 
-          <div className="grid grid-cols-3 gap-2 pt-2">
+          <div className="grid grid-cols-3 gap-2 pt-1">
             <Stat label="Window" value={`${shift.window} min`} />
-            <Stat label="Side" value={shift.side} />
-            <Stat label={`Δ ${shift.side} OI`} value={fmt(shift.value)} tone={meta.tone} />
-            <Stat label="ATM" value={shift.atm?.toLocaleString?.() ?? shift.atm} />
-            <Stat label="Spot" value={shift.price?.toFixed?.(2)} />
-            <Stat label="Time" value={new Date(shift.at).toLocaleTimeString()} />
+            <Stat label="Side" value={shift.side === "CE" ? "Calls" : "Puts"} />
+            <Stat label="OI change" value={fmt(shift.value)} tone={meta.tone} />
           </div>
-
-          {shift.contributing?.length ? (
-            <div className="pt-2">
-              <div className="text-[11px] uppercase tracking-widest text-slate-500 mb-1">Contributing strikes (ATM ± 1)</div>
-              <div className="rounded-md border border-slate-200 bg-white overflow-hidden text-xs font-mono-data">
-                <table className="w-full">
-                  <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider">
-                    <tr>
-                      <th className="text-left px-3 py-1.5">Strike</th>
-                      <th className="text-right px-3 py-1.5">Δ Call OI</th>
-                      <th className="text-right px-3 py-1.5">Δ Put OI</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shift.contributing.map((c) => (
-                      <tr key={c.strike} className="border-t border-slate-100">
-                        <td className="px-3 py-1.5 text-slate-900 font-semibold">{c.strike}</td>
-                        <td className={`px-3 py-1.5 text-right ${c.ce_delta >= 0 ? "text-rose-600" : "text-emerald-600"}`}>{fmt(c.ce_delta)}</td>
-                        <td className={`px-3 py-1.5 text-right ${c.pe_delta >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{fmt(c.pe_delta)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
         </div>
-        <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-end">
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
           {bookmarkTs && onReplayAtMoment && (
             <Button
               data-testid="btn-replay-huge-shift"
               variant="outline"
               onClick={() => onReplayAtMoment(bookmarkTs)}
-              className="rounded-sm border-slate-300"
+              className="rounded-sm border-slate-300 min-h-11"
               title={`Open session replay parked at ${jumpLabel || "this moment"}`}
             >
               <Rewind className="w-4 h-4 mr-1" />
-              {jumpLabel ? `Jump to ${jumpLabel}` : "Replay at this moment"}
+              {jumpLabel ? `Jump to ${jumpLabel}` : "Replay"}
             </Button>
           )}
           <Button
             data-testid="btn-ack-huge-shift"
-            onClick={onClose}
-            className={meta.tone === "emerald" ? "bg-emerald-600 hover:bg-emerald-700 rounded-sm" : "bg-rose-600 hover:bg-rose-700 rounded-sm"}
+            onClick={onCloseAll || onClose}
+            className={`${meta.tone === "emerald" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"} rounded-sm min-h-11`}
           >
-            <X className="w-4 h-4 mr-1" /> Acknowledge & Close
+            <X className="w-4 h-4 mr-1" />
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

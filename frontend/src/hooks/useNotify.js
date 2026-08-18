@@ -85,7 +85,10 @@ export function useNotify() {
   const push = useCallback((title, body) => {
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       try {
-        new Notification(title, { body, silent: true });
+        new Notification(title, {
+          body,
+          silent: typeof window !== "undefined" && !window.matchMedia("(pointer: coarse)").matches,
+        });
       } catch (e) {
         console.error("Notification failed", e);
       }

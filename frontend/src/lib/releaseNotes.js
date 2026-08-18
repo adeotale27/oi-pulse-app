@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.43",
+    date: "2026-08-18",
+    user: [
+      "OI Change and Open Interest start at ±5 strikes. Phone charts are tighter. Alerts close with one tap; wording is shorter (Puts/Calls adding). Tap the desk once so alert sounds can play on iPhone.",
+    ],
+    admin: [
+      "Huge-shift no longer stacks toasts under a Radix dialog. iOS uses an HTMLAudio beep because Web Audio stays silent in Silent Mode.",
+    ],
+  },
+  {
     version: "6.42",
     date: "2026-08-18",
     user: [

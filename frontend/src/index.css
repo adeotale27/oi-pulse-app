@@ -242,3 +242,13 @@ input[type="number"] {
     animation: none;
   }
 }
+
+/* Keep toasts tappable while a Radix dialog has pointer-events: none on body. */
+[data-sonner-toaster] {
+  pointer-events: auto !important;
+  z-index: 90;
+}
+[data-sonner-toast] [data-close-button] {
+  width: 1.75rem !important;
+  height: 1.75rem !important;
+}

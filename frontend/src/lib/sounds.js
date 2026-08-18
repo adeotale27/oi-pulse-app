@@ -1,6 +1,8 @@
 // Per-alert-type sound preferences persisted in localStorage.
 // Each key maps to a sound-pattern id defined below.
 
+import { ALERT_BEEP_WAV } from "./alertBeep";
+
 export const SOUND_PATTERNS = [
   { id: "beep",    label: "Single beep (soft)" },
   { id: "double",  label: "Double beep" },
@@ -34,14 +36,43 @@ export function saveSoundPrefs(p) {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (_) { /* noop */ }
 }
 
+function isIosLike() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/i.test(ua)
+    || (navigator.platform === "MacIntel" && Number(navigator.maxTouchPoints || 0) > 1);
+}
+
 // Player accepts the pattern id and plays via a shared AudioContext.
 let ctxRef = null;
+let htmlBeep = null;
 function ensureCtx() {
   if (typeof window === "undefined") return null;
   try {
     if (!ctxRef) ctxRef = new (window.AudioContext || window.webkitAudioContext)();
     return ctxRef;
   } catch { return null; }
+}
+
+function ensureHtmlBeep() {
+  if (typeof Audio === "undefined") return null;
+  if (!htmlBeep) {
+    htmlBeep = new Audio(ALERT_BEEP_WAV);
+    htmlBeep.preload = "auto";
+    htmlBeep.setAttribute("playsinline", "true");
+  }
+  return htmlBeep;
+}
+
+function playHtmlBeep() {
+  const a = ensureHtmlBeep();
+  if (!a) return;
+  try {
+    a.currentTime = 0;
+    a.volume = 0.7;
+    const p = a.play();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch { /* autoplay lock */ }
 }
 
 function beepOne(ctx, t0, freq, dur, gain = 0.25, type = "sine") {
@@ -57,9 +88,25 @@ function beepOne(ctx, t0, freq, dur, gain = 0.25, type = "sine") {
 }
 
 export function unlockSounds() {
+  const a = ensureHtmlBeep();
+  if (a) {
+    try {
+      a.muted = true;
+      a.volume = 0;
+      const p = a.play();
+      if (p && typeof p.then === "function") {
+        p.then(() => {
+          a.pause();
+          a.currentTime = 0;
+          a.muted = false;
+          a.volume = 0.7;
+        }).catch(() => {});
+      }
+    } catch { /* noop */ }
+  }
   const ctx = ensureCtx();
   if (!ctx) return Promise.resolve(false);
-  if (ctx.state === "suspended") {
+  if (ctx.state === "suspended" || ctx.state === "interrupted") {
     return ctx.resume().then(() => true).catch(() => false);
   }
   return Promise.resolve(true);
@@ -124,5 +171,22 @@ export function playPattern(id) {
 export function playForAlert(kind) {
   const prefs = loadSoundPrefs();
   const pattern = prefs[kind] || DEFAULT_SOUND_PREFS[kind] || "beep";
-  playPattern(pattern);
+  if (pattern === "none") return;
+  const run = () => {
+    if (isIosLike()) {
+      playHtmlBeep();
+      if (pattern === "double" || pattern === "alarm" || pattern === "chime" || pattern === "siren") {
+        setTimeout(playHtmlBeep, 170);
+      }
+      if (pattern === "alarm" || pattern === "siren") setTimeout(playHtmlBeep, 340);
+      return;
+    }
+    playPattern(pattern);
+  };
+  const ctx = ensureCtx();
+  if (ctx && (ctx.state === "suspended" || ctx.state === "interrupted")) {
+    ctx.resume().then(run).catch(() => { if (isIosLike()) playHtmlBeep(); });
+    return;
+  }
+  run();
 }

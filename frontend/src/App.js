@@ -43,7 +43,7 @@ function App() {
       <Suspense fallback={null}>
         <AboutAppModal />
       </Suspense>
-      <Toaster position="top-right" richColors closeButton visibleToasts={2} />
+      <Toaster />
       <PwaNotifyPrompt />
     </div>
   );
