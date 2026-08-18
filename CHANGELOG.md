@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.46 — 2026-08-18
+
+OI toasts keep the short Puts-adding line and restore PE/CE size plus put-selling read.
+
+- Headline stays **NIFTY · Puts adding — bullish** (or Calls adding — bearish)
+- Also **Put selling increase — bullish further**, the old pressure line, and **PE +xCr · CE +yCr**
+- Board reversal toasts again use `INDEX: … pressure … in last 15 mins` with PE/CE
+- First OI fetch includes 1/3/5 windows so huge-shift can fire on the first tick
+
 ## V6.45 — 2026-08-18
 
 Desk paints in seconds: auth no longer blocks on a jammed API, and startup loads the active index first.
@@ -10,7 +19,6 @@ Desk paints in seconds: auth no longer blocks on a jammed API, and startup loads
 - `/oi/.../change` lookbacks run in parallel with a 4s Mongo cap so one slow query cannot stall the origin
 - Alert beep `data:` audio is allowed by CSP (`media-src`)
 - Positions **Funds available** is Kite Available margin (`equity.net` ≈ cash + collateral), not the debit Available cash figure
-- OI toasts keep the short **Puts adding — bullish** line and again show Put/Call selling + PE/CE crores (same as the old pressure toast)
 
 ## V6.44 — 2026-08-18
 
