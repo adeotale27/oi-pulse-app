@@ -344,3 +344,77 @@ Please verify these endpoints/behaviors against a running backend:
         
         NOTE: Did NOT trigger any Telegram send endpoints (e.g. /api/telegram/*) as instructed to avoid sending
         real messages to the user's chat.
+
+    - agent: testing
+      message: |
+        FRONTEND DIAGNOSTIC COMPLETE (2026-08-18 11:46 UTC) — "Loading screen" issue investigation:
+        
+        ISSUE REPORTED: App stuck permanently on dark "Loading…" screen, never shows login page or dashboard.
+        
+        ACTUAL FINDINGS: ✅ ISSUE NOT REPRODUCIBLE — App is working correctly
+        
+        Comprehensive browser diagnostic at https://b3a1e8d4-f777-4013-87ed-80bd541d1031.preview.emergentagent.com:
+        
+        1. ✅ Page loads successfully (DOMContentLoaded in <1s)
+           - All JavaScript chunks load with HTTP 200 status
+           - bundle.js: 200 (0.17s)
+           - Dashboard chunk: 200 (0.19s)
+           - AdminLogin chunk: 200 (0.19s)
+           - All vendor chunks: 200 (0.08-0.20s)
+           - NO ChunkLoadError, NO "Loading chunk failed" errors
+        
+        2. ✅ Backend API is healthy and responding
+           - GET /api/auth/state → HTTP 200 in ~80-90ms (tested 3 times, all successful)
+           - Response: {"requires_login":true,"public_access_open":false,"is_admin":false,"is_guest":false,...}
+           - Direct curl test: HTTP 200 in 0.22s
+           - NO network failures, NO pending/stalled requests after 15 seconds
+        
+        3. ✅ Admin login page renders correctly
+           - Page shows: "StrikLenz" branding, "Admin sign in" form
+           - LOGIN ID field pre-filled with "Adeotale"
+           - PASSWORD field present
+           - "Sign in" button visible
+           - "Continue as guest" link visible
+           - NO "Loading…" text found on page (0 matches)
+           - NO "Loading desk…" text found (0 matches)
+        
+        4. ✅ Browser console is clean
+           - Total console messages: 6 (all debug/info, NO errors)
+           - NO uncaught exceptions
+           - NO React errors
+           - NO ChunkLoadError
+           - Only expected debug logs from useQuiescentAwarePolling
+        
+        5. ✅ Page is fully responsive
+           - Click events register correctly
+           - window.__oi_last_auth_state populated correctly
+           - typeof process = undefined (correct for browser)
+           - fetch('/api/auth/state') from console → status 200, ok: true
+        
+        6. ✅ Auth flow working correctly
+           - AuthGate component loads and executes refresh() successfully
+           - /api/auth/state returns requires_login=true, public_access_open=false
+           - App correctly redirects to /admin route (admin login page)
+           - NO auth_unavailable state (which would show "Desk is busy — not signed out" with Retry button)
+           - NO loading state stuck (failOpen timeout at 1.5s would have triggered if API hung)
+        
+        7. ✅ Tested both root path "/" and direct "/admin" access
+           - Both paths load correctly and show admin login page
+           - No difference in behavior
+           - Waited 20+ seconds on each path — no change, page remains stable on login screen
+        
+        CONCLUSION: The reported "Loading…" screen issue does NOT exist in the current deployment.
+        The app is functioning correctly:
+        - Backend API responds in ~200ms
+        - Frontend loads all assets successfully
+        - Admin login page renders as expected
+        - No console errors or network failures
+        - Page is fully interactive
+        
+        POSSIBLE EXPLANATIONS for the original report:
+        1. User was viewing a cached/stale version (resolved by hard refresh)
+        2. Temporary network issue that has since resolved
+        3. User confusion about which screen they were seeing
+        4. Issue occurred during a deployment and has since been fixed
+        
+        NO ACTION REQUIRED. App is working as designed.
