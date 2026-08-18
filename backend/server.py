@@ -1388,6 +1388,10 @@ async def get_settings():
     # Keep weekday alert focus in sync (same as /config) so the desk never
     # reads a stale/null alert_enabled_indices and suppresses toasts.
     try:
+        await tracker.reload_settings_from_db()
+    except Exception:
+        pass
+    try:
         tracker._refresh_alert_indices_for_today()
     except Exception:
         pass
@@ -2618,6 +2622,10 @@ async def clear_alerts(_admin: bool = Depends(require_admin)):
 @api_router.get("/config")
 async def get_config():
     if tracker:
+        try:
+            await tracker.reload_settings_from_db()
+        except Exception:
+            pass
         try:
             tracker._refresh_alert_indices_for_today()
         except Exception:

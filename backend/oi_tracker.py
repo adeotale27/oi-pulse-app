@@ -219,6 +219,45 @@ DEFAULT_SETTINGS = {
     "alert_indices_override_date": None,  # IST date string when user last overrode
 }
 
+_INT_SETTING_KEYS = (
+    "cooldown_seconds",
+    "compare_minutes",
+    "oi_poll_interval_seconds",
+    "straddle_poll_interval_seconds",
+    "positions_poll_interval_seconds",
+    "admin_session_ttl_minutes",
+)
+_FLOAT_SETTING_KEYS = ("threshold_pct",)
+
+
+def coerce_settings_types(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """JSON/Mongo may store poll seconds as str or float — keep ints for the admin form."""
+    if not isinstance(settings, dict):
+        return settings
+    for key in _INT_SETTING_KEYS:
+        raw = settings.get(key)
+        if raw is None or raw == "":
+            continue
+        try:
+            settings[key] = int(raw)
+        except (TypeError, ValueError):
+            pass
+    for key in _FLOAT_SETTING_KEYS:
+        raw = settings.get(key)
+        if raw is None or raw == "":
+            continue
+        try:
+            settings[key] = float(raw)
+        except (TypeError, ValueError):
+            pass
+    return settings
+
+
+def overlay_settings_doc(settings: Dict[str, Any], doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if doc:
+        settings.update({k: v for k, v in doc.items() if k != "_id"})
+    return coerce_settings_types(settings)
+
 
 class OITracker:
     def __init__(self, db):
@@ -278,8 +317,7 @@ class OITracker:
 
     async def load_settings(self):
         doc = await self.db.settings.find_one({"_id": "alerts"})
-        if doc:
-            self.settings.update({k: v for k, v in doc.items() if k != "_id"})
+        overlay_settings_doc(self.settings, doc)
         # Product default: do NOT kick admin at market close. Persist so UI +
         # /auth/state stay consistent after upgrades from the old True default.
         if self.settings.get("expire_admin_on_market_close") is True:
@@ -309,6 +347,14 @@ class OITracker:
             await load_uploaded_holidays(self.db)
         except Exception as e:
             logger.warning("load uploaded NSE holidays failed: %s", e)
+
+    async def reload_settings_from_db(self):
+        """Re-read Admin configuration from Mongo so every API worker matches the saved doc."""
+        doc = await self.db.settings.find_one({"_id": "alerts"})
+        overlay_settings_doc(self.settings, doc)
+        self._apply_market_hours()
+        self._apply_mcx_desk_flag()
+        return self.settings
 
     def _apply_mcx_desk_flag(self):
         """Apply Admin MCX on/off. Does not wipe Enable ticks; poll/UI skip majors when off."""
@@ -377,6 +423,7 @@ class OITracker:
             "mcx_desk_on",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}
+        coerce_settings_types(clean)
         if "desk_ai_show" in clean:
             show = bool(clean["desk_ai_show"])
             clean["desk_ai_admin"] = show
@@ -386,6 +433,7 @@ class OITracker:
             clean["alert_indices_override_date"] = now_ist().date().isoformat()
         prev_enabled = list(self.settings.get("enabled_indices") or [])
         self.settings.update(clean)
+        coerce_settings_types(self.settings)
         await self.db.settings.update_one(
             {"_id": "alerts"}, {"$set": clean}, upsert=True
         )
@@ -938,6 +986,10 @@ class OITracker:
         was_open = False
         while self.running:
             try:
+                try:
+                    await self.reload_settings_from_db()
+                except Exception:
+                    pass
                 poll_interval_seconds = max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
                 await self._refresh_quote_session_flag()
                 await self._maybe_eod_telegram()

@@ -39,3 +39,11 @@ export function openLiveCount(payload) {
 export const POSITIONS_BOOK_LIVE_MS = 5000;
 export const POSITIONS_BOOK_IDLE_MS = 15000;
 export const POSITIONS_BOOK_BOOT_MS = 1500;
+export const POSITIONS_BOOK_MIN_MS = 5000;
+export const POSITIONS_BOOK_MAX_MS = 3_600_000;
+
+export function clampPositionsBookPollMs(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return POSITIONS_BOOK_LIVE_MS;
+  return Math.max(POSITIONS_BOOK_MIN_MS, Math.min(POSITIONS_BOOK_MAX_MS, Math.round(n)));
+}

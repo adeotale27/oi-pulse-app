@@ -9,15 +9,15 @@ import {
   shouldPollPositionsBook,
   openLiveCount,
   POSITIONS_BOOK_LIVE_MS,
-  POSITIONS_BOOK_IDLE_MS,
   POSITIONS_BOOK_BOOT_MS,
+  clampPositionsBookPollMs,
 } from "./positionsBookPoll";
 
 export {
   shouldPollPositionsBook,
   openLiveCount,
   POSITIONS_BOOK_LIVE_MS,
-  POSITIONS_BOOK_IDLE_MS,
+  clampPositionsBookPollMs,
 };
 
 let inflight = null;
@@ -25,6 +25,7 @@ let lastPayload = null;
 let lastAt = 0;
 let timer = null;
 let startCount = 0;
+let pollMs = POSITIONS_BOOK_LIVE_MS;
 const listeners = new Set();
 
 function notify(payload) {
@@ -81,7 +82,7 @@ function scheduleNext() {
   } else if (!session) {
     ms = 60_000;
   } else {
-    ms = openLiveCount(lastPayload) > 0 ? POSITIONS_BOOK_LIVE_MS : POSITIONS_BOOK_IDLE_MS;
+    ms = pollMs;
   }
   timer = setTimeout(() => {
     const liveNow = shouldPollPositionsBook();
@@ -93,6 +94,12 @@ function scheduleNext() {
       done();
     }
   }, ms);
+}
+
+/** Admin Positions auto-refresh (ms). Used while the cash session is live. */
+export function setPositionsBookPollMs(ms) {
+  pollMs = clampPositionsBookPollMs(ms);
+  if (startCount > 0) scheduleNext();
 }
 
 /** Keep GET /positions alive on every dashboard page while the cash session is live. */

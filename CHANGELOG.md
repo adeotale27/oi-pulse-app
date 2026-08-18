@@ -1,5 +1,13 @@
 # Changelog
 
+## V7.01 — 2026-08-18
+
+Admin configuration reads the saved Mongo document every time you open it; Positions auto-refresh uses that value.
+
+- Opening Admin configuration always reloads settings from the database (not a stale API-worker copy that still showed 30s)
+- Positions auto-refresh (seconds) is saved and applied to the live book poller and header P&L
+- OI / straddle / pages / hours / desk flags apply from the same saved document
+
 ## V7.00 — 2026-08-18
 
 Desk V7: one OI toast with the full read, a visible LIVE pulse, and a cleaner phone header.

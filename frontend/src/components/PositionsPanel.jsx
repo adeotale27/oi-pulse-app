@@ -79,8 +79,7 @@ import {
   stopPositionsBookPolling,
   subscribePositionsBook,
   openLiveCount,
-  POSITIONS_BOOK_LIVE_MS,
-  POSITIONS_BOOK_IDLE_MS,
+  setPositionsBookPollMs,
 } from "@/lib/positionsBook";
 import { optionSide, optionSideLabel } from "@/lib/optionSide";
 
@@ -504,6 +503,9 @@ export default function PositionsPanel({
     align: "right",
   });
   const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
+  useEffect(() => {
+    setPositionsBookPollMs(pollMs);
+  }, [pollMs]);
   const loadGen = useRef(0);
   const hasLiveRef = useRef(true);
   const shownBookRef = useRef(false);
@@ -631,9 +633,8 @@ export default function PositionsPanel({
       setErrorHard(false);
     }
     setLastRefresh(new Date().toISOString());
-    const tickMs = openLiveCount(data) > 0 ? POSITIONS_BOOK_LIVE_MS : POSITIONS_BOOK_IDLE_MS;
-    setSecsLeft(Math.max(1, Math.round(tickMs / 1000)));
-  }, [isGuest]);
+    setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
+  }, [isGuest, pollMs]);
 
   const load = useCallback(async (opts) => {
     const gen = ++loadGen.current;
@@ -716,8 +717,7 @@ export default function PositionsPanel({
 
   useEffect(() => {
     if (!kiteReady || !journalPositionsRefreshOn()) return undefined;
-    const tickMs = hasLiveRef.current ? POSITIONS_BOOK_LIVE_MS : POSITIONS_BOOK_IDLE_MS;
-    setSecsLeft(Math.max(1, Math.round(tickMs / 1000)));
+    setSecsLeft(Math.max(1, Math.round(pollMs / 1000)));
     const id = setInterval(() => {
       setSecsLeft((s) => Math.max(0, s - 1));
     }, 1000);

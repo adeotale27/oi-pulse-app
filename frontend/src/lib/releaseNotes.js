@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.01",
+    date: "2026-08-18",
+    user: [
+      "Admin Positions auto-refresh is saved and used on the desk. Opening configuration shows the value from the database.",
+    ],
+    admin: [
+      "GET /settings and /config re-read Mongo so multi-worker memory cannot keep a default 30s. Positions poll uses positions_poll_interval_seconds (min 5s) while the cash session is live.",
+    ],
+  },
+  {
     version: "7.00",
     date: "2026-08-18",
     user: [
