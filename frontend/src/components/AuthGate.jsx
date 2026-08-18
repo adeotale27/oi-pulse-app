@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { api, clearGuestAuth, clearAdminAuth, persistGuestAuth, persistAdminSession } from "@/lib/api";
-import { isTransientHttpError, storedDeskSession, sleep } from "@/lib/authBoot";
+import { isTransientHttpError, storedDeskSession, optimisticDeskAuthState, sleep } from "@/lib/authBoot";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,9 @@ import AuthShell from "@/components/AuthShell";
  * market close unless Settings → expire_admin_on_market_close is explicitly ON.
  */
 export default function AuthGate({ children }) {
-  const [state, setState] = useState({ loading: true, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false });
+  const [state, setState] = useState(() => optimisticDeskAuthState() || {
+    loading: true, requires_login: true, is_admin: false, is_guest: false, needs_guest_name: false,
+  });
   const [guestName, setGuestName] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingRequest, setPendingRequest] = useState(() => {
@@ -59,7 +61,7 @@ export default function AuthGate({ children }) {
       })();
       if (rememberTok && !hasSessionAdmin) {
         try {
-          const { data: rem } = await api.post("/auth/remember-login", { remember_token: rememberTok }, { timeout: 8000 });
+          const { data: rem } = await api.post("/auth/remember-login", { remember_token: rememberTok }, { timeout: 4000 });
           if (rem?.token) {
             persistAdminSession(rem.token);
           }
@@ -78,16 +80,17 @@ export default function AuthGate({ children }) {
 
       let data;
       let lastErr;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      // One retry only — a jammed origin used to sit on "Loading…" for 3×8s.
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const res = await api.get("/auth/state", { timeout: 8000 });
+          const res = await api.get("/auth/state", { timeout: 5000 });
           data = res.data;
           lastErr = null;
           break;
         } catch (err) {
           lastErr = err;
-          if (!isTransientHttpError(err) || attempt === 2) break;
-          await sleep(400 * (attempt + 1));
+          if (!isTransientHttpError(err) || attempt === 1) break;
+          await sleep(250);
         }
       }
       if (!data) throw lastErr || new Error("auth state unavailable");
@@ -109,7 +112,7 @@ export default function AuthGate({ children }) {
         clearAdminAuth({ clearRemember: false });
         toast.success(`Welcome back, ${data.auto_guest_name || data.suggested_guest_name || "guest"}`);
         // Re-fetch so is_guest is true with the new header token.
-        const { data: again } = await api.get("/auth/state", { timeout: 8000 });
+        const { data: again } = await api.get("/auth/state", { timeout: 5000 });
         setState({ loading: false, ...again });
         try {
           window.__oi_last_auth_state = again;

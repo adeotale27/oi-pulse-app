@@ -662,8 +662,10 @@ export default function PositionsPanel({
 
   useEffect(() => {
     if (!kiteReady || !pollEnabled) return undefined;
-    load();
-    loadBrokerage();
+    const bootId = setTimeout(() => {
+      load();
+      loadBrokerage();
+    }, 8000);
     const mins0 = istMinutesOfDay();
     if (isJournalSessionDayIST(todayIST()) && mins0 >= journalPositionsCatchupMinute()) {
       catchupDoneRef.current = true;
@@ -692,6 +694,7 @@ export default function PositionsPanel({
       if (journalPositionsRefreshOn()) loadBrokerage();
     }, Math.max(pollMs * 4, 120_000));
     return () => {
+      clearTimeout(bootId);
       clearInterval(id);
       clearInterval(catchId);
       clearInterval(chargesId);

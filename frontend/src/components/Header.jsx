@@ -322,7 +322,7 @@ export default function Header({
         return next;
       });
     };
-    const unsub = subscribeExtras(onExtras, { immediate: true, pollMs: 30_000, delayMs: 2000 });
+    const unsub = subscribeExtras(onExtras, { immediate: true, pollMs: 30_000, delayMs: 5000 });
     return () => { alive = false; unsub(); };
   }, []);
 

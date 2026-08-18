@@ -363,7 +363,7 @@ export default function Dashboard() {
       console.error("fetchVRP failed", e);
     }
   }, [activeIndex]);
-  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status, delayMs: 4000, dedupeKey: "dash-vrp" });
+  useQuiescentAwarePolling(fetchVrp, 5 * 60_000, [fetchVrp, status?.market?.is_market_open], { status, delayMs: 10000, dedupeKey: "dash-vrp" });
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
@@ -374,9 +374,12 @@ export default function Dashboard() {
   }, [notifEnabled, pushOs]);
 
   useEffect(() => {
-    api.get("/holidays").then((r) => {
-      if (r.data?.source === "upload") applyUploadedHolidays(r.data.holidays || []);
-    }).catch(() => {});
+    const t = window.setTimeout(() => {
+      api.get("/holidays").then((r) => {
+        if (r.data?.source === "upload") applyUploadedHolidays(r.data.holidays || []);
+      }).catch(() => {});
+    }, 6000);
+    return () => clearTimeout(t);
   }, []);
 
   // Poll status
@@ -851,6 +854,7 @@ export default function Dashboard() {
 
   // Poll OI for ALL enabled indices in the background; UI updates only for the active tab.
   const oiInflightRef = useRef(false);
+  const oiWarmRestRef = useRef(false);
   const loadOI = useCallback(async () => {
     if (oiInflightRef.current) {
       pendingOiReloadRef.current = true;
@@ -861,11 +865,13 @@ export default function Dashboard() {
     const gen = ++oiReqGenRef.current;
     oiInflightRef.current = true;
     setOiLoading(true);
-    const also = [
+    const alsoFull = [
       ...(oiSettings.hugeShiftWindows || [1, 3, 5]),
       "session", // whole-day bias (9:15 → now) — independent of timeframe pill
     ].join(",");
     const minutes = resolveMinutes(timeframeRef.current);
+    const bootLite = !oiWarmRestRef.current;
+    const also = bootLite ? "session" : alsoFull;
 
     try {
       const fetchOne = async (idx) => {
@@ -877,6 +883,7 @@ export default function Dashboard() {
           const data = await fetchOIChange(idx, minutes, {
             expiry: exp || undefined,
             also,
+            timeout: bootLite ? 12000 : 20000,
           });
           oiCacheRef.current[idx] = {
             current: data.current,
@@ -933,9 +940,21 @@ export default function Dashboard() {
         setOiLoading(false);
         ensureExpiryForIndex(active).catch(() => {});
         const rest = (enabledIndicesRef.current || []).filter((i) => i && i !== active && !isMcxMajorId(i));
-        for (const idx of rest) {
-          if (gen !== oiReqGenRef.current) return;
-          await fetchOne(idx);
+        if (!oiWarmRestRef.current) {
+          oiWarmRestRef.current = true;
+          const later = rest.slice();
+          window.setTimeout(() => {
+            (async () => {
+              for (const idx of later) {
+                await fetchOne(idx);
+              }
+            })().catch(() => {});
+          }, 4000);
+        } else {
+          for (const idx of rest) {
+            if (gen !== oiReqGenRef.current) return;
+            await fetchOne(idx);
+          }
         }
       }
     } catch (e) {
@@ -965,7 +984,7 @@ export default function Dashboard() {
       setExpiryReady(false);
       setSelectedExpiry(null);
     }
-    ensureExpiryForIndex(activeIndex, { force: true }).then((entry) => {
+    ensureExpiryForIndex(activeIndex).then((entry) => {
       if (cancelled || !entry) return;
       setExpiries(entry.list || []);
       setExpiriesMeta(entry.meta || []);
@@ -1259,10 +1278,10 @@ export default function Dashboard() {
     };
   }, []);
 
-  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 4000 });
+  useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 8000 });
 
-  useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status", delayMs: 250 });
-  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-oi" });
+  useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status", delayMs: 800 });
+  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-oi", delayMs: 0 });
   // Force an IMMEDIATE refetch whenever the user picks a different timeframe,
   // index, or expiry. Skip the first mount (poller already loads) and skip when
   // the expiry picker merely catches up to a snapshot we already painted.
@@ -1286,14 +1305,14 @@ export default function Dashboard() {
     if (expiryCaughtUp) return;
     loadOI();
   }, [timeframe, activeIndex, selectedExpiry, loadOI]);
-  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 0, allowDuringQuiescent: true });
+  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 2500, allowDuringQuiescent: true });
   useQuiescentAwarePolling(
     async () => {
       await loadAlerts();
     },
     5000,
     [loadAlerts, status?.market?.is_market_open],
-    { status, dedupeKey: "dash-alerts", delayMs: 2500 },
+    { status, dedupeKey: "dash-alerts", delayMs: 6000 },
   );
 
   // When index changes, hydrate from warm cache immediately so the chart never goes cold.

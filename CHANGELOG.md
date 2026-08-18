@@ -1,5 +1,15 @@
 # Changelog
 
+## V6.45 — 2026-08-18
+
+Desk paints in seconds: auth no longer blocks on a jammed API, and startup loads the active index first.
+
+- Returning admin/guest sessions skip the full-screen Loading wait and refresh auth in the background
+- First OI pull is the open tab only (other indices + huge-shift windows fill a few seconds later)
+- Alerts, tickers, VIX extras, VRP, and settings no longer fire at the same instant as the first chart
+- `/oi/.../change` lookbacks run in parallel with a 4s Mongo cap so one slow query cannot stall the origin
+- Alert beep `data:` audio is allowed by CSP (`media-src`)
+
 ## V6.44 — 2026-08-18
 
 Positions Refresh fetches a full book; desk charts stay centered; admin tools reorder.

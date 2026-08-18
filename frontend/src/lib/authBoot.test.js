@@ -1,4 +1,4 @@
-import { isTransientHttpError, shouldWipeTokensOn401 } from "./authBoot.js";
+import { isTransientHttpError, shouldWipeTokensOn401, optimisticDeskAuthState, liveDeskSession } from "./authBoot.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg || "assert failed");
@@ -14,4 +14,6 @@ assert(!shouldWipeTokensOn401("/oi/NIFTY/change"));
 assert(!shouldWipeTokensOn401("/auth/state"));
 assert(!shouldWipeTokensOn401("/auth/remember-login"));
 assert(shouldWipeTokensOn401("/auth/logout"));
+assert(optimisticDeskAuthState() == null);
+assert(liveDeskSession() == null);
 console.log("authBoot ok");
