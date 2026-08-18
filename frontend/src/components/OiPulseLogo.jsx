@@ -2,17 +2,17 @@ import { useId } from "react";
 import { APP_NAME } from "@/lib/appVersion";
 
 /**
- * Desk logo — crisp geometric mark.
- * Stable gradient id (no Math.random) so the icon never flickers on re-render.
+ * Full-bleed desk mark (no inset / white padding). iOS home-screen icons
+ * must fill the canvas; the OS applies the rounded mask.
  */
-export default function OiPulseLogo({ className = "w-6 h-6" }) {
+export default function OiPulseLogo({ className = "w-6 h-6", pulse = true }) {
   const reactId = useId().replace(/:/g, "");
   const gid = `oi-logo-grad-${reactId}`;
   return (
     <svg
       viewBox="0 0 48 48"
       xmlns="http://www.w3.org/2000/svg"
-      className={className}
+      className={`${pulse ? "oi-brand-pulse" : ""} ${className}`.trim()}
       aria-label={APP_NAME}
       role="img"
       shapeRendering="geometricPrecision"
@@ -24,20 +24,16 @@ export default function OiPulseLogo({ className = "w-6 h-6" }) {
           <stop offset="100%" stopColor="#0EA5E9" />
         </linearGradient>
       </defs>
-
-      <rect x="2" y="2" width="44" height="44" rx="11" ry="11" fill={`url(#${gid})`} />
-
-      {/* ECG-style pulse: flat → spike up → spike down → flat → live dot */}
+      <rect x="0" y="0" width="48" height="48" rx="0" ry="0" fill={`url(#${gid})`} />
       <path
-        d="M7 25 H14 L17 25 L20 12 L24 36 L28 20 L31 25 H38"
+        d="M4 24 H12 L16 24 L20 10 L24 38 L28 18 L32 24 H42"
         fill="none"
         stroke="#FFFFFF"
         strokeWidth="2.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="39.5" cy="25" r="2.6" fill="#FFFFFF" />
-      <circle cx="39.5" cy="25" r="4.2" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1" />
+      <circle cx="43" cy="24" r="2.4" fill="#FFFFFF" />
     </svg>
   );
 }

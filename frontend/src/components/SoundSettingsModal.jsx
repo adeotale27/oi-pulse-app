@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Volume2, Play } from "lucide-react";
 import { toast } from "sonner";
-import { SOUND_PATTERNS, DEFAULT_SOUND_PREFS, loadSoundPrefs, saveSoundPrefs, playPattern } from "@/lib/sounds";
+import { SOUND_PATTERNS, DEFAULT_SOUND_PREFS, loadSoundPrefs, saveSoundPrefs, playPattern, unlockSounds } from "@/lib/sounds";
 
 const ALERT_KINDS = [
   { key: "reversal",    label: "OI Reversal (server alerts)",       hint: "Fires when the backend detects a directional OI reversal on the currently viewed index." },
@@ -21,7 +21,12 @@ export default function SoundSettingsModal({ open, onOpenChange }) {
     if (open) setPrefs(loadSoundPrefs());
   }, [open]);
 
-  const setKind = (k, v) => setPrefs((p) => ({ ...p, [k]: v }));
+      const setKind = (k, v) => setPrefs((p) => ({ ...p, [k]: v }));
+
+  const preview = async (id) => {
+    await unlockSounds();
+    playPattern(id);
+  };
 
   const save = () => {
     saveSoundPrefs(prefs);
@@ -66,7 +71,7 @@ export default function SoundSettingsModal({ open, onOpenChange }) {
               <Button
                 size="sm" variant="outline"
                 className="h-8 rounded-sm dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700"
-                onClick={() => playPattern(prefs[k.key] || "beep")}
+                onClick={() => preview(prefs[k.key] || "beep")}
                 data-testid={`sound-play-${k.key}`}
                 title="Preview"
               >

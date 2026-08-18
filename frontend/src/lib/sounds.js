@@ -56,10 +56,20 @@ function beepOne(ctx, t0, freq, dur, gain = 0.25, type = "sine") {
   o.start(t0); o.stop(t0 + dur + 0.05);
 }
 
+export function unlockSounds() {
+  const ctx = ensureCtx();
+  if (!ctx) return Promise.resolve(false);
+  if (ctx.state === "suspended") {
+    return ctx.resume().then(() => true).catch(() => false);
+  }
+  return Promise.resolve(true);
+}
+
 export function playPattern(id) {
   if (id === "none") return;
   const ctx = ensureCtx();
   if (!ctx) return;
+  const run = () => {
   const now = ctx.currentTime;
   switch (id) {
     case "beep":
@@ -103,6 +113,12 @@ export function playPattern(id) {
       break;
     default: beepOne(ctx, now, 880, 0.12, 0.2);
   }
+  };
+  if (ctx.state === "suspended") {
+    ctx.resume().then(run).catch(() => {});
+    return;
+  }
+  run();
 }
 
 export function playForAlert(kind) {

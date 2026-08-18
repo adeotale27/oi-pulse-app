@@ -81,7 +81,7 @@ Spot and straddle WS endpoints (see `frontend/src/lib/spotWs.js`, `straddleWs.js
 | **yfinance** (optional paths) | Auxiliary market data where configured |
 | **Google Fonts** | Inter in `index.html` (only browser third-party on the desk) |
 
-The browser talks only to **this origin** (`/api`, `/ws`). Failed calls to `https://aaisnamkeen.com/api/...` **are this app** on the production host (Cloudflare 520/524 = origin too slow or crashed). `sc.ecombullet.com` is **not** in this repo — another tab, extension, or Emergent leftover.
+The browser talks only to **this origin** (`/api`, `/ws`). Production is **https://striklenz.com**. Failed calls to `https://striklenz.com/api/...` **are this app** behind Cloudflare when origin is slow (520/524). `aaisnamkeen.com` is a retired host — Kite redirects must not land there. `sc.ecombullet.com` is **not** in this repo.
 
 No synthetic OI backfill in production Fresh Pull — only real Kite ticks (or empty DB offline).
 

@@ -384,6 +384,7 @@ class OITracker:
         # Explicit alert-index change → mark as today's override
         if "alert_enabled_indices" in clean:
             clean["alert_indices_override_date"] = now_ist().date().isoformat()
+        prev_enabled = list(self.settings.get("enabled_indices") or [])
         self.settings.update(clean)
         await self.db.settings.update_one(
             {"_id": "alerts"}, {"$set": clean}, upsert=True
@@ -392,7 +393,8 @@ class OITracker:
             self._apply_market_hours()
         if "mcx_desk_on" in clean:
             self._apply_mcx_desk_flag()
-        if "enabled_indices" in clean:
+        next_enabled = list(self.settings.get("enabled_indices") or [])
+        if "enabled_indices" in clean and next_enabled != prev_enabled:
             try:
                 await self.seed_default_expiries()
             except Exception as e:

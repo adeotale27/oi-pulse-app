@@ -75,9 +75,9 @@ export default function DeskStatusRail({
       data-testid="desk-status-rail"
       role="status"
       aria-live="polite"
-      className={`w-full border-b ${tone.bar} px-3 sm:px-4 py-1`}
+      className={`w-full border-b ${tone.bar} pl-1.5 pr-2 sm:pl-2 sm:pr-3 py-0.5`}
     >
-      <div className={`flex items-center gap-2 sm:gap-3 text-xs sm:text-sm min-w-0 ${mobileTicker ? "flex-nowrap" : "flex-wrap"}`}>
+      <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll">
         <span
           className={`inline-flex items-center gap-1.5 font-bold tracking-wide uppercase px-1.5 py-0.5 rounded-sm shrink-0 ${tone.badge}`}
           data-testid="data-truth-badge"
@@ -121,7 +121,7 @@ export default function DeskStatusRail({
           </>
         )}
 
-        <span className="opacity-70 hidden xl:inline truncate" data-testid="data-truth-detail">
+        <span className="opacity-70 hidden xl:inline truncate shrink-0" data-testid="data-truth-detail">
           · {truth.detail}
         </span>
 

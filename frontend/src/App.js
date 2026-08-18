@@ -26,14 +26,7 @@ function App() {
         <Suspense fallback={<BootFallback />}>
         <Routes>
           <Route path="/admin" element={<AdminLogin />} />
-          <Route
-            path="/kite-callback"
-            element={
-              <AuthGate>
-                <KiteCallback />
-              </AuthGate>
-            }
-          />
+          <Route path="/kite-callback" element={<KiteCallback />} />
           <Route
             path="/*"
             element={
@@ -49,7 +42,7 @@ function App() {
       <Suspense fallback={null}>
         <AboutAppModal />
       </Suspense>
-      <Toaster position="top-right" richColors closeButton />
+      <Toaster position="top-right" richColors closeButton visibleToasts={2} />
     </div>
   );
 }

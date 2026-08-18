@@ -58,6 +58,7 @@ export default function AdminControls({
   const [guestPages, setGuestPages] = useState([]);
   const prevPendingRef = useRef(null);
   const publicAccessOpenRef = useRef(publicAccessOpen);
+  const togglingPublicRef = useRef(false);
   useEffect(() => {
     publicAccessOpenRef.current = publicAccessOpen;
   }, [publicAccessOpen]);
@@ -169,6 +170,7 @@ export default function AdminControls({
 
   useEffect(() => {
     if (publicAccessOpen == null) return;
+    if (togglingPublicRef.current) return;
     setState((prev) => {
       if (!prev?.is_admin) return prev;
       if (prev.public_access_open === !!publicAccessOpen) return prev;
@@ -217,11 +219,14 @@ export default function AdminControls({
   const requireApproval = state?.guest_require_approval !== false;
   const pending = Number(state?.pending_access_count || 0);
 
-  const togglePublic = async () => {
+  const togglePublic = async (on) => {
+    const next = typeof on === "boolean" ? on : !publicOn;
+    togglingPublicRef.current = true;
+    setState((prev) => (prev ? { ...prev, public_access_open: next } : prev));
     setBusy(true);
     try {
       const { data } = await api.post("/auth/public-access", {
-        open: !publicOn,
+        open: next,
       });
       const queue = data.require_approval !== false;
       toast.success(
@@ -233,8 +238,10 @@ export default function AdminControls({
       );
       await refresh();
     } catch (e) {
+      setState((prev) => (prev ? { ...prev, public_access_open: !next } : prev));
       toast.error(e?.response?.data?.detail || "Toggle failed");
     } finally {
+      togglingPublicRef.current = false;
       setBusy(false);
     }
   };
@@ -366,7 +373,7 @@ export default function AdminControls({
       <Switch
         data-testid="admin-public-toggle"
         checked={publicOn}
-        onCheckedChange={togglePublic}
+        onCheckedChange={(on) => togglePublic(on)}
         disabled={busy}
       />
       {pending > 0 && (

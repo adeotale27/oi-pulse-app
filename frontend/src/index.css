@@ -212,6 +212,20 @@ input[type="number"] {
   100% { transform: translateX(-50%); }
 }
 
+@keyframes oi-brand-pulse-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.45)); }
+  50% { filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.95)); }
+}
+
+.oi-brand-pulse {
+  animation: oi-brand-pulse-glow 1.6s ease-in-out infinite;
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oi-brand-pulse { animation: none; }
+}
+
 .oi-mobile-ticker-track {
   display: flex;
   width: max-content;

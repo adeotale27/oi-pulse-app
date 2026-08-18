@@ -1,5 +1,16 @@
 # Changelog
 
+## V6.40 — 2026-08-18
+
+Kite callback on striklenz.com; desk sounds; slim status; full-bleed icon.
+
+- Kite login bounce ignores retired aaisnamkeen.com and completes on striklenz.com (`/kite-callback` is not behind AuthGate)
+- Notifications can be turned **off**; alert sounds unlock Web Audio (missing `playForAlert` import was silencing them)
+- Background tab: one summary toast instead of a pile; huge-shift modals do not stack 7–8 deep
+- Always one slim top status rail (scrolls); MARKETS LIVE no longer duplicates in the header; disabled indices are not clickable in the header
+- Admin configuration applies on save immediately (no expiry re-seed unless enabled indices changed)
+- Home-screen icon is full-bleed green with a pulse glow on the in-app mark
+
 ## V6.39 — 2026-08-17
 
 Show Kite overnight maintenance on Positions; slimmer phone chrome.

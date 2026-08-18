@@ -203,11 +203,18 @@ export default function SettingsModal({
           setSaving(false);
           return;
         }
+        onSaved?.(payload);
+        try {
+          window.dispatchEvent(new CustomEvent("oi-settings-saved", { detail: payload }));
+        } catch { /* noop */ }
         const { data } = await api.post("/settings", payload);
         const saved = data || payload;
         setSettings(saved);
         toast.success("Settings saved — polling & alerts updated");
         onSaved?.(saved);
+        try {
+          window.dispatchEvent(new CustomEvent("oi-settings-saved", { detail: saved }));
+        } catch { /* noop */ }
       } else {
         toast.success("Local thresholds saved");
       }
