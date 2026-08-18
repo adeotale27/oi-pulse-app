@@ -1,5 +1,14 @@
 # Changelog
 
+## V7.04 — 2026-08-18
+
+Positions tiles are a horizontal scroller again. Booked P&L includes Kite Booked on still-open partials.
+
+- Insight tiles row scrolls sideways (not a 2×4 wrap)
+- Kite Connect often puts the whole MTM in `unrealised` with `realised` at 0; we no longer treat that as Booked ₹0
+- Open legs that were bought/sold today use matched buy/sell for Booked, same as the Kite Booked column
+- Unbooked = Total P&L − Booked (Kite Unbooked)
+
 ## V7.03 — 2026-08-18
 
 Restore the full huge-OI-shift card and match Kite Booked / Unbooked / Total P&L.

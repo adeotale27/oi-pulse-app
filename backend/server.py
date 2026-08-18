@@ -4417,25 +4417,11 @@ async def get_positions(request: Request, role: str = Depends(require_desk_user)
     open_pnl = round(sum(_row_day_pnl(r) for r in out if not r.get("exited")), 2)
     exited_pnl = round(sum(_row_day_pnl(r) for r in out if r.get("exited")), 2)
     booked_today = round(sum(booked_today_from_row(r) for r in out), 2)
-    unbooked = 0.0
-    for r in out:
-        if r.get("exited"):
-            continue
-        try:
-            u = float(r.get("unrealised") or 0)
-        except (TypeError, ValueError):
-            u = 0.0
-        if u != u:
-            u = 0.0
-        unbooked += u
-    unbooked = round(unbooked, 2)
-    booked_on_open = round(booked_today - exited_pnl, 2)
-    if abs(unbooked) < 1e-9 and abs(open_pnl) > 1e-9:
-        # Kite sometimes leaves unrealised at 0 and only fills pnl.
-        unbooked = round(open_pnl - booked_on_open, 2)
-    kite_total = round(booked_today + unbooked, 2)
-    if abs(booked_today) < 1e-9 and abs(unbooked) < 1e-9:
-        kite_total = round(open_pnl + exited_pnl, 2)
+    # Kite Total P&L = sum of the P/L column. Booked is realised on closed +
+    # still-open partials. Unbooked is the rest (not raw API unrealised — that
+    # field is often the whole MTM).
+    kite_total = round(open_pnl + exited_pnl, 2)
+    unbooked = round(kite_total - booked_today, 2)
     pnl_today = {
         "open": unbooked,
         "exited": exited_pnl,

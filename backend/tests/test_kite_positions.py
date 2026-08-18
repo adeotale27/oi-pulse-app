@@ -232,6 +232,63 @@ def test_booked_today_from_row_sums_exit_and_partial():
     assert booked_today_from_row({"exited": False, "realised": 0, "pnl": 800, "booked_pnl": 0}) == 0.0
 
 
+def test_open_partial_when_api_dumps_pnl_into_unrealised():
+    """Kite UI Booked on a still-open short; API realised=0, unrealised=full pnl."""
+    bits = booked_pnl_from_kite_row(
+        qty=-195,
+        buy_qty=325,
+        sell_qty=520,
+        buy_price=21.15,
+        sell_price=43.58,
+        pnl=8167.0,
+        realised=0,
+        unrealised=8167.0,
+        exited=False,
+        last_price=1.70,
+        multiplier=1,
+    )
+    assert bits["partial"] is True
+    assert bits["booked_pnl"] == round((43.58 - 21.15) * 325, 2)
+    assert abs(bits["unrealised"] - (8167.0 - bits["booked_pnl"])) < 0.02
+
+
+def test_kite_style_book_totals():
+    """Closed booked + open partial booked = Kite Booked; rest is Unbooked."""
+    from kite_positions import booked_today_from_row
+
+    closed = [
+        {"exited": True, "booked_pnl": v, "pnl": v, "realised": v}
+        for v in (-910, -2158, -523, 5168, -3790, 7608, -2509, 562, 4141, 12851)
+    ]
+    open_partial = booked_pnl_from_kite_row(
+        qty=-195,
+        buy_qty=325,
+        sell_qty=520,
+        buy_price=21.15,
+        sell_price=43.58,
+        pnl=8167.0,
+        realised=0,
+        unrealised=8167.0,
+        exited=False,
+    )
+    open_plain = booked_pnl_from_kite_row(
+        qty=-520,
+        buy_qty=0,
+        sell_qty=520,
+        buy_price=0,
+        sell_price=7.75,
+        pnl=3250.0,
+        realised=0,
+        unrealised=3250.0,
+        exited=False,
+    )
+    booked = sum(booked_today_from_row(r) for r in closed)
+    booked += booked_today_from_row({**open_partial, "exited": False})
+    booked += booked_today_from_row({**open_plain, "exited": False})
+    assert booked_today_from_row({**open_plain, "exited": False}) == 0.0
+    assert booked == sum(r["booked_pnl"] for r in closed) + round((43.58 - 21.15) * 325, 2)
+
+
 def test_open_mtm_prefers_quote_over_stale_kite_pnl():
     bits = booked_pnl_from_kite_row(
         qty=-50,
