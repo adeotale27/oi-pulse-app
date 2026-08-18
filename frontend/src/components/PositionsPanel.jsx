@@ -567,9 +567,10 @@ export default function PositionsPanel({
     }
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const gen = ++loadGen.current;
-    if (!shownBookRef.current) setLoading(true);
+    const force = !!(opts && opts.force);
+    if (force || !shownBookRef.current) setLoading(true);
     try {
       const { data } = await api.get("/positions", {
         params: { _: Date.now() },
@@ -607,9 +608,10 @@ export default function PositionsPanel({
         if (hard && (data.kite_connected === false || data.token_issue === true)) {
           setFunds(data.funds ?? null);
           setPnlToday(data.pnl_today ?? null);
-        else:
+        } else {
           if (data.funds != null) setFunds(data.funds);
           if (data.pnl_today != null) setPnlToday(data.pnl_today);
+        }
         const total = data?.pnl_today?.total;
         const open = next.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
         hasLiveRef.current = open > 0;
@@ -1438,7 +1440,7 @@ export default function PositionsPanel({
             )}
           </div>
           <span id="positions-tiles-anchor" className="inline-flex" data-testid="positions-tiles-anchor" />
-          <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load(); loadBrokerage(); }} data-testid="btn-refresh-positions">
+          <Button size="sm" variant="outline" className="h-7 rounded-sm bg-white min-h-[28px] px-2" onClick={() => { load({ force: true }); loadBrokerage(); }} data-testid="btn-refresh-positions">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
             Refresh
             {journalPositionsRefreshOn() && (

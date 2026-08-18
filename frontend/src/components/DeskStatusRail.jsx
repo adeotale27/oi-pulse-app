@@ -77,9 +77,9 @@ export default function DeskStatusRail({
       aria-live="polite"
       className={`w-full border-b ${tone.bar} py-0.5`}
     >
-      <div className="flex items-center gap-1.5 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll px-1">
+      <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll px-1.5">
         <span
-          className="inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 text-white"
+          className={`inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 rounded-sm px-1.5 py-0.5 ${tone.badge}`}
           data-testid="data-truth-badge"
         >
           {(truth.mode === "LIVE" || truth.mode === "STALE") && (
@@ -87,8 +87,8 @@ export default function DeskStatusRail({
           )}
           {truth.badge}
         </span>
-        <span className="opacity-90 shrink-0 whitespace-nowrap" data-testid="data-truth-detail">
-          · {truth.detail}
+        <span className="opacity-90 shrink-0 whitespace-nowrap pr-3" data-testid="data-truth-detail">
+          {truth.detail}
         </span>
         <span
           className="hidden font-mono-data font-semibold truncate tracking-tight"

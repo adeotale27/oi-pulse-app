@@ -1,5 +1,16 @@
 # Changelog
 
+## V6.44 — 2026-08-18
+
+Positions Refresh fetches a full book; desk charts stay centered; admin tools reorder.
+
+- Refresh on Positions always pulls the latest book (polls stay quiet once the table is on screen)
+- OI last pulled sits under the OI card; bias, tabs, and Events share the same centered width as the charts
+- LIVE is a white tile; ticker has a gap after Market open / Updated
+- Straddle stats wrap instead of clipping; green Settings sits at the far right
+- Admin tools: config through CSV above Public; Sign out last; click outside closes
+- Disabled-index toast says Bank Nifty (not BNF) and drops the Index management line
+
 ## V6.43 — 2026-08-18
 
 Phone OI charts default to ±5 strikes; alerts close and sound on iOS.

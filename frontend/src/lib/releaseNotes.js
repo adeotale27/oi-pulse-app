@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.44",
+    date: "2026-08-18",
+    user: [
+      "Positions Refresh pulls a full live book. OI last pulled sits under the chart. LIVE is a white tile. Straddle numbers no longer clip. Green Settings is on the far right. Admin tools close when you tap outside.",
+    ],
+    admin: [
+      "Admin tools: configuration through CSV sit above Public; Sign out stays last. Disabled-index toast no longer mentions Index management.",
+    ],
+  },
+  {
     version: "6.43",
     date: "2026-08-18",
     user: [
