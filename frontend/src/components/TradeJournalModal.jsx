@@ -26,25 +26,23 @@ import { holidayCellLabel, holidayShortName, isHoliday, isJournalSessionDayIST, 
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
 import { HEATMAP_IDS, INDEX_SHORT, DESK_IDS } from "@/lib/universe";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
+import { compactPnl, exactPnl, fmtInr } from "@/lib/journalMoney";
 import InfoTip from "@/components/InfoTip";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function fmtInr(v, dp = 2) {
+function Money({ v, privacy, signed = true }) {
+  if (privacy) return "••••";
   if (v == null || Number.isNaN(Number(v))) return "—";
-  const n = Number(v);
-  const abs = Math.abs(n);
-  const body = abs.toLocaleString("en-IN", { maximumFractionDigits: dp, minimumFractionDigits: dp });
-  return `${n < 0 ? "−" : ""}₹${body}`;
-}
-
-function compactPnl(v) {
-  const n = Number(v) || 0;
-  const sign = n < 0 ? "−" : n > 0 ? "+" : "";
-  const body = Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${sign}₹${body}`;
+  const exact = signed ? exactPnl(v) : fmtInr(v);
+  return (
+    <span title={exact}>
+      <span className="md:hidden">{compactPnl(v)}</span>
+      <span className="hidden md:inline">{exact}</span>
+    </span>
+  );
 }
 
 function cellPnl(doc) {
@@ -486,13 +484,13 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Booked profit</div>
                   <div className={`text-[15px] sm:text-lg font-bold font-mono-data leading-tight ${Number(periodStats.booked_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    {privacy ? "••••" : fmtInr(periodStats.booked_pnl)}
+                    {privacy ? "••••" : <Money v={periodStats.booked_pnl} />}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Charges & taxes</div>
                   <div className="text-[15px] sm:text-lg font-bold font-mono-data text-slate-800 leading-tight">
-                    {privacy ? "••••" : fmtInr(periodStats.charges_total)}
+                    {privacy ? "••••" : <Money v={periodStats.charges_total} signed={false} />}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
                     {periodStats.charges_are_all_indices ? "Kite charges are for the whole book, not this index" : "Brokerage + taxes on stored days"}
@@ -510,7 +508,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <div className="rounded-xl border border-violet-100 bg-violet-50/50 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">After charges</div>
                   <div className={`text-[15px] sm:text-lg font-bold font-mono-data leading-tight ${Number(periodStats.booked_after_charges) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    {privacy ? "••••" : (periodStats.booked_after_charges == null ? "—" : fmtInr(periodStats.booked_after_charges))}
+                    {privacy ? "••••" : (periodStats.booked_after_charges == null ? "—" : <Money v={periodStats.booked_after_charges} />)}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
                     {periodStats.trading_days || 0} booked days
@@ -522,7 +520,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   {Object.entries(periodStats.by_index).map(([idx, v]) => (
                     <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                       {INDEX_SHORT[idx] || idx}
-                      <span className={`font-mono-data ${Number(v) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{privacy ? "••••" : compactPnl(v)}</span>
+                      <span className={`font-mono-data ${Number(v) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{privacy ? "••••" : <Money v={v} />}</span>
                     </span>
                   ))}
                 </div>
@@ -537,7 +535,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Month booked</div>
                   <div className={`text-lg font-bold font-mono-data leading-tight ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    {privacy ? "••••" : compactPnl(stats.net_pnl)}
+                    {privacy ? "••••" : <Money v={stats.net_pnl} />}
                   </div>
                 </div>
                 <div className="text-right text-[11px] text-slate-600 leading-snug">
@@ -564,8 +562,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     <div className="bg-rose-400" style={{ width: `${(100 * avgLoss) / barTotal}%` }} />
                   </div>
                   <div className="flex justify-between text-[10px] mt-1 font-semibold">
-                    <span className="text-emerald-800">{privacy ? "••••" : compactPnl(avgWin)}</span>
-                    <span className="text-rose-700">{privacy ? "••••" : compactPnl(-avgLoss)}</span>
+                    <span className="text-emerald-800">{privacy ? "••••" : <Money v={avgWin} />}</span>
+                    <span className="text-rose-700">{privacy ? "••••" : <Money v={-avgLoss} />}</span>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
@@ -599,7 +597,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <div className="hidden md:flex items-center gap-2 text-sm">
                   <span className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Monthly stats</span>
                   <span className={`font-semibold font-mono-data ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    {privacy ? "••••" : compactPnl(stats.net_pnl)}
+                    {privacy ? "••••" : <Money v={stats.net_pnl} />}
                   </span>
                   <span className="text-[12px] text-slate-500">{stats.trading_days || 0} days</span>
                 </div>
@@ -692,14 +690,14 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           {showBook ? (
                             <>
                               <div className={`mt-2 text-[17px] font-bold font-mono-data leading-tight ${tone.amt}`}>
-                                {privacy ? "••••" : compactPnl(pnl)}
+                                {privacy ? "••••" : exactPnl(pnl)}
                               </div>
                               <div className={`text-[10px] font-semibold uppercase tracking-wide mt-0.5 ${tone.invert ? "text-white/75" : "text-slate-500"}`}>
                                 Booked
                               </div>
                               {doc.charges_total > 0 && !privacy ? (
                                 <div className={`text-[10px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
-                                  after charges {compactPnl(doc.booked_after_charges ?? (pnl - Number(doc.charges_total || 0)))}
+                                  after charges {exactPnl(doc.booked_after_charges ?? (pnl - Number(doc.charges_total || 0)))}
                                 </div>
                               ) : null}
                               <div className={`text-[12px] mt-0.5 ${tone.invert ? "text-white/80" : "text-slate-500"}`}>
@@ -752,7 +750,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     <div key={w.label} className="flex-1 min-h-[5rem] rounded-3xl border border-slate-200 bg-white px-2.5 py-2.5 shadow-sm flex flex-col">
                       <div className="text-[10px] font-semibold text-slate-700">{w.label}</div>
                       <div className={`text-[15px] font-bold font-mono-data leading-tight ${w.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                        {privacy ? "••••" : compactPnl(w.pnl)}
+                        {privacy ? "••••" : exactPnl(w.pnl)}
                       </div>
                       <div className="mt-auto">
                         <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium px-1.5 py-0.5">
@@ -786,7 +784,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </Button>
                 <div className="flex-1" />
                 <span className={`font-semibold font-mono-data ${Number(yearStats?.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                  {privacy ? "••••" : compactPnl(yearStats?.net_pnl)}
+                  {privacy ? "••••" : <Money v={yearStats?.net_pnl} />}
                 </span>
                 <span className="text-[12px] text-slate-500">{yearStats?.trading_days || 0} days</span>
               </div>
@@ -862,7 +860,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         <td className="p-2 font-semibold text-slate-700">{idx}</td>
                         {(heat?.by_index?.[idx] || Array(12).fill(0)).map((v, i) => (
                           <td key={i} className={`p-1.5 text-center font-mono-data font-semibold ${heatCell(v, heatMax)}`}>
-                            {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : compactPnl(v))}
+                            {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : exactPnl(v))}
                           </td>
                         ))}
                       </tr>
@@ -871,7 +869,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       <td className="p-2 font-semibold text-slate-500">Others</td>
                       {(heat.other || Array(12).fill(0)).map((v, i) => (
                         <td key={i} className={`p-1.5 text-center font-mono-data font-semibold ${heatCell(v, heatMax)}`}>
-                          {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : compactPnl(v))}
+                          {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : exactPnl(v))}
                         </td>
                       ))}
                     </tr>
@@ -879,7 +877,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       <td className="p-2 font-semibold">Month</td>
                       {(heat?.month_nets || Array(12).fill(0)).map((v, i) => (
                         <td key={i} className={`p-1.5 text-center font-mono-data font-bold ${heatCell(v, heatMax)}`}>
-                          {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : compactPnl(v))}
+                          {Math.abs(Number(v) || 0) < 0.01 ? "—" : (privacy ? "••••" : exactPnl(v))}
                         </td>
                       ))}
                     </tr>
@@ -924,18 +922,23 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   <div className="text-sm font-semibold">
                     {new Date(`${dayDoc.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                   </div>
-                  <div className={`text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    Booked {privacy ? "••••" : fmtInr(dayDoc.booked_pnl ?? dayDoc.pnl_exited)}
+                  <div className={`text-[18px] md:text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    Booked {privacy ? "••••" : <Money v={dayDoc.booked_pnl ?? dayDoc.pnl_exited} signed={false} />}
                     {dayDoc.eod_locked ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-violet-600">Locked 15:45</span> : <span className="ml-2 text-[10px] font-medium text-slate-400">Live until 15:45 IST</span>}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5" data-testid="journal-after-charges">
                     {privacy
                       ? "after charges ••••"
                       : dayDoc.charges_total != null
-                        ? `after charges ${fmtInr(dayDoc.booked_after_charges ?? ((Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) || 0) - Number(dayDoc.charges_total)))}`
+                        ? (
+                          <>
+                            after charges{" "}
+                            <Money v={dayDoc.booked_after_charges ?? ((Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) || 0) - Number(dayDoc.charges_total))} signed={false} />
+                          </>
+                        )
                         : "charges pending"}
                     {dayDoc.brokerage != null && !privacy ? (
-                      <span className="ml-2 text-slate-400">· brokerage {fmtInr(dayDoc.brokerage)}</span>
+                      <span className="ml-2 text-slate-400">· brokerage <Money v={dayDoc.brokerage} signed={false} /></span>
                     ) : null}
                   </div>
                 </div>
@@ -971,8 +974,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <Stat label="Winners" value={dayDoc.win_trades} />
                 <Stat label="Losers" value={dayDoc.loss_trades} />
                 <Stat label="Winrate" value={dayDoc.winrate != null ? `${dayDoc.winrate.toFixed(1)}%` : "—"} />
-                <Stat label="Brokerage" value={privacy ? "••••" : fmtInr(dayDoc.brokerage)} />
-                <Stat label="All charges" value={privacy ? "••••" : fmtInr(dayDoc.charges_total)} />
+                <Stat label="Brokerage" value={privacy ? "••••" : <Money v={dayDoc.brokerage} signed={false} />} />
+                <Stat label="All charges" value={privacy ? "••••" : <Money v={dayDoc.charges_total} signed={false} />} />
               </div>
 
               {(dayDoc.legs || []).filter((leg) => leg.exited || leg.partial || Math.abs(Number(leg.realised) || 0) > 0.009).length > 0 && (
@@ -984,7 +987,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         {leg.partial ? " · partial" : ""}
                       </span>
                       <span className={`font-mono-data ${(leg.realised ?? leg.pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                        {privacy ? "••••" : fmtInr(leg.realised ?? leg.pnl)}
+                        {privacy ? "••••" : <Money v={leg.realised ?? leg.pnl} />}
                       </span>
                     </div>
                   ))}
