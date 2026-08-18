@@ -126,6 +126,19 @@ def overnight_book_notice() -> Optional[dict]:
     }
 
 
+def stale_overnight_notice(notice: Optional[dict]) -> bool:
+    """True after 07:00 IST so the overnight book banner cannot stick into cash open."""
+    if not notice or not notice.get("active"):
+        return False
+    from datetime import datetime, timezone, timedelta
+    ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    if ist.hour < 7:
+        return False
+    src = str(notice.get("source") or "")
+    msg = str(notice.get("message") or "")
+    return src == "overnight_ist" or "7:00 AM" in msg
+
+
 def merge_maintenance(
     current: Optional[dict],
     *,
@@ -137,9 +150,14 @@ def merge_maintenance(
     Never clear a sticky kite_api notice just because the bulletin scrape failed
     or returned inactive — only a successful kite call should clear API notices.
     """
+    if stale_overnight_notice(current):
+        current = None
     from_api = notice_from_error(api_error, source="kite_api") if api_error else None
     if from_api:
-        return from_api
+        if stale_overnight_notice(from_api):
+            from_api = None
+        else:
+            return from_api
     if bulletin and bulletin.get("active") and bulletin.get("message"):
         return bulletin
     # Keep sticky API / bulletin notices; do not clear on scrape error / inactive.

@@ -1498,6 +1498,13 @@ class OITracker:
         kite_ok = self.mode == "kite" and self.kite_service is not None and not token_bad
         last_ok = self._last_successful_poll_at.isoformat() if self._last_successful_poll_at else None
         maint = self.kite_maintenance if isinstance(self.kite_maintenance, dict) else None
+        try:
+            from kite_maintenance import stale_overnight_notice
+            if stale_overnight_notice(maint):
+                self.kite_maintenance = None
+                maint = None
+        except Exception:
+            pass
         return {
             "running": self.running,
             "mode": self.mode,
