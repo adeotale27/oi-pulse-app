@@ -438,7 +438,7 @@ export default function AdminControls({
             data-testid="admin-menu-logout"
             variant="outline"
             size="sm"
-            className="w-full justify-start h-9 text-rose-700 hover:text-rose-800"
+            className="w-full justify-start h-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
             onClick={logout}
           >
             <LogOut className="w-3.5 h-3.5 mr-2" />

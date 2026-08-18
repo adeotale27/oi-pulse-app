@@ -112,8 +112,8 @@ export default function MarketEventsBadge({ onClick }) {
           ref={panelRef}
           data-testid="events-dropdown"
           role="menu"
-          className="fixed w-72 rounded-md border border-slate-200 bg-white shadow-xl z-[240] max-h-96 overflow-y-auto"
-          style={{ top: pos.top, left: pos.left }}
+          className="fixed rounded-md border border-slate-200 bg-white shadow-xl z-[240] overflow-y-auto overscroll-contain"
+          style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="px-3 py-2 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 flex items-center justify-between">

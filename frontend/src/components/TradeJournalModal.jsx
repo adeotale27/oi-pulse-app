@@ -39,8 +39,8 @@ function Money({ v, privacy, signed = true }) {
   const exact = signed ? exactPnl(v) : fmtInr(v);
   return (
     <span title={exact}>
-      <span className="md:hidden">{compactPnl(v)}</span>
-      <span className="hidden md:inline">{exact}</span>
+      <span className="lg:hidden">{compactPnl(v)}</span>
+      <span className="hidden lg:inline">{exact}</span>
     </span>
   );
 }
@@ -400,11 +400,11 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="z-[80] max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-full max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none sm:rounded-2xl border-slate-200"
+        className="z-[80] max-w-[min(96vw,78rem)] max-h-[94vh] overflow-y-auto p-0 gap-0 max-lg:left-0 max-lg:top-0 max-lg:translate-x-0 max-lg:translate-y-0 max-lg:w-full max-lg:max-w-none max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:rounded-none sm:rounded-2xl lg:rounded-2xl border-slate-200"
         data-testid="trade-journal-modal"
       >
-        <div className="px-4 sm:px-5 pt-4 pb-3 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)]">
-          <DialogHeader>
+        <div className="px-4 sm:px-5 pt-4 pb-3 pr-12 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)]">
+          <DialogHeader className="text-left space-y-1.5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
                 <BookOpen className="w-4 h-4" />
@@ -439,31 +439,31 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
           </div>
         </div>
 
-        <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 max-md:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+        <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 max-lg:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           {!focused && (
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2" data-testid="journal-period-panel">
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <div className="grid grid-cols-2 gap-2 min-w-0 sm:flex sm:flex-wrap sm:items-end">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 min-w-0">
                   From
                   <input
                     type="date"
                     value={periodFrom}
                     onChange={(e) => setPeriodFrom(e.target.value)}
-                    className="mt-0.5 block h-8 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
+                    className="mt-0.5 block h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
                     data-testid="journal-period-from"
                   />
                 </label>
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 min-w-0">
                   To
                   <input
                     type="date"
                     value={periodTo}
                     onChange={(e) => setPeriodTo(e.target.value)}
-                    className="mt-0.5 block h-8 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
+                    className="mt-0.5 block h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
                     data-testid="journal-period-to"
                   />
                 </label>
-                <div className="flex flex-wrap gap-1">
+                <div className="col-span-2 flex flex-wrap gap-1 min-w-0">
                   {periodChips.map((id) => (
                     <button
                       key={id}
@@ -480,7 +480,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </div>
                 {periodLoading ? <span className="text-[11px] text-slate-400">Updating…</span> : null}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Booked profit</div>
                   <div className={`text-[15px] sm:text-lg font-bold font-mono-data leading-tight ${Number(periodStats.booked_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
@@ -531,7 +531,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
             <>
               {!focused && (
               <>
-              <div className="md:hidden rounded-xl border border-emerald-200 bg-white px-3 py-2 flex items-center justify-between gap-2 shadow-sm">
+              <div className="lg:hidden rounded-xl border border-emerald-200 bg-white px-3 py-2 flex items-center justify-between gap-2 shadow-sm min-w-0">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Month booked</div>
                   <div className={`text-lg font-bold font-mono-data leading-tight ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
@@ -543,7 +543,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   <div>{stats.win_rate ?? 0}% day wins · PF {stats.profit_factor ?? "—"}</div>
                 </div>
               </div>
-              <div className="hidden md:grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="hidden lg:grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
                   <Gauge pct={stats.trade_win_rate} />
                   <div>
@@ -594,7 +594,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </Button>
                 <div className="flex-1" />
                 {!focused && (
-                <div className="hidden md:flex items-center gap-2 text-sm">
+                <div className="hidden lg:flex items-center gap-2 text-sm">
                   <span className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Monthly stats</span>
                   <span className={`font-semibold font-mono-data ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                     {privacy ? "••••" : <Money v={stats.net_pnl} />}
@@ -615,15 +615,15 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 className="flex gap-2 min-w-0"
               >
               <div className="min-w-0 flex-1">
-                  <div className="grid grid-cols-7 gap-0.5 md:gap-2 text-[10px] md:text-[12px] uppercase tracking-wide text-slate-500 font-semibold mb-1">
+                  <div className="grid grid-cols-7 gap-0.5 lg:gap-2 text-[10px] lg:text-[12px] uppercase tracking-wide text-slate-500 font-semibold mb-1">
                     {WEEKDAYS.map((d, i) => (
                       <div key={d} className="text-center">
-                        <span className="md:hidden">{WEEKDAYS_SHORT[i]}</span>
-                        <span className="hidden md:inline">{d}</span>
+                        <span className="lg:hidden">{WEEKDAYS_SHORT[i]}</span>
+                        <span className="hidden lg:inline">{d}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-7 gap-0.5 md:gap-2" data-testid="journal-calendar">
+                  <div className="grid grid-cols-7 gap-0.5 lg:gap-2" data-testid="journal-calendar">
                     {cells.map((c, i) => {
                       if (!c) return <div key={`e-${i}`} />;
                       const doc = byDate.get(c.iso);
@@ -654,22 +654,22 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                           type="button"
                           onClick={() => openDay(c.iso)}
                           data-testid={`journal-cell-${c.iso}`}
-                          className={`rounded-md md:rounded-3xl border p-1 md:p-2.5 min-h-[56px] md:min-h-[118px] text-left transition-all md:hover:shadow-lg md:hover:-translate-y-0.5 ${tone.box} ${
-                            isSel ? "ring-2 ring-emerald-500 shadow-md" : "md:shadow-sm"
+                          className={`rounded-md lg:rounded-3xl border p-1 lg:p-2.5 min-h-[52px] lg:min-h-[118px] text-left transition-all lg:hover:shadow-lg lg:hover:-translate-y-0.5 ${tone.box} ${
+                            isSel ? "ring-2 ring-emerald-500 shadow-md" : "lg:shadow-sm"
                           }`}
                         >
                           <div className={`flex justify-between items-start ${tone.invert ? "text-white/80" : "text-slate-600"}`}>
-                            <span className={`font-semibold text-[11px] md:text-[15px] leading-none ${tone.invert ? "text-white" : "text-slate-800"}`}>{c.day}</span>
+                            <span className={`font-semibold text-[11px] lg:text-[15px] leading-none ${tone.invert ? "text-white" : "text-slate-800"}`}>{c.day}</span>
                             <span className="flex items-center gap-0.5">
-                              {isToday ? <span className="h-1.5 w-1.5 md:h-2 md:w-2 rounded-full bg-sky-500" title="Today" /> : null}
-                              <span className="hidden md:flex items-center gap-0.5">
+                              {isToday ? <span className="h-1.5 w-1.5 lg:h-2 lg:w-2 rounded-full bg-sky-500" title="Today" /> : null}
+                              <span className="hidden lg:flex items-center gap-0.5">
                                 {hasNote ? <FileText className="w-3 h-3" /> : null}
                                 {doc?.screenshot_count > 0 ? <span title="Has screenshot">🖼</span> : null}
                                 {doc?.eod_locked && session ? <span title="Locked after last Positions refresh" className="text-[8px] font-bold">EOD</span> : null}
                               </span>
                             </span>
                           </div>
-                          <div className="md:hidden mt-1 min-w-0">
+                          <div className="lg:hidden mt-1 min-w-0">
                             {showBook ? (
                               <div className={`text-[11px] font-bold font-mono-data leading-tight truncate ${tone.amt}`}>
                                 {privacy ? "··" : compactPnl(pnl)}
@@ -686,7 +686,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                               <div className="h-3" />
                             )}
                           </div>
-                          <div className="hidden md:block">
+                          <div className="hidden lg:block">
                           {showBook ? (
                             <>
                               <div className={`mt-2 text-[17px] font-bold font-mono-data leading-tight ${tone.amt}`}>
@@ -730,7 +730,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     })}
                   </div>
                   <div
-                    className="md:hidden mt-2 grid gap-1"
+                    className="lg:hidden mt-2 grid gap-1"
                     style={{ gridTemplateColumns: `repeat(${Math.max(weeks.length, 1)}, minmax(0, 1fr))` }}
                     data-testid="journal-weekly-recap-mobile"
                   >
@@ -744,7 +744,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     ))}
                   </div>
                 </div>
-                <div className="hidden md:flex w-[9rem] shrink-0 flex-col gap-2" data-testid="journal-weekly-recap">
+                <div className="hidden lg:flex w-[9rem] shrink-0 flex-col gap-2" data-testid="journal-weekly-recap">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold px-0.5">Weekly recap</div>
                   {weeks.map((w) => (
                     <div key={w.label} className="flex-1 min-h-[5rem] rounded-3xl border border-slate-200 bg-white px-2.5 py-2.5 shadow-sm flex flex-col">
@@ -788,7 +788,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </span>
                 <span className="text-[12px] text-slate-500">{yearStats?.trading_days || 0} days</span>
               </div>
-              <div className="md:hidden space-y-1.5" data-testid="journal-year-heatmap-mobile">
+              <div className="lg:hidden space-y-1.5" data-testid="journal-year-heatmap-mobile">
                 {MONTH_SHORT.map((m, i) => {
                   const net = Number(heat?.month_nets?.[i] || 0);
                   const days = heat?.months?.[i]?.trading_days || 0;
@@ -835,7 +835,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   );
                 })}
               </div>
-              <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <div className="hidden lg:block overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 <table className="w-full text-[11px] min-w-[40rem]">
                   <thead>
                     <tr className="text-slate-600 bg-slate-50">
@@ -897,14 +897,14 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 16 }}
               transition={{ duration: 0.24 }}
-              className="flex flex-col md:flex-row gap-3 items-stretch md:items-start"
+              className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-start"
               data-testid="journal-day-focus"
             >
               <button
                 type="button"
                 onClick={() => openDay(selected)}
                 data-testid="journal-focus-date"
-                className="shrink-0 w-full md:w-[6.5rem] rounded-2xl border-2 border-emerald-500 bg-emerald-600 text-white px-3 py-3 text-left shadow-md hover:bg-emerald-700"
+                className="shrink-0 w-full lg:w-[6.5rem] rounded-2xl border-2 border-emerald-500 bg-emerald-600 text-white px-3 py-3 text-left shadow-md hover:bg-emerald-700"
                 title="Click to return to calendar"
               >
                 <div className="text-[10px] uppercase tracking-wide text-emerald-100 font-semibold">Selected</div>

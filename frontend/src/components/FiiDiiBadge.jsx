@@ -222,8 +222,8 @@ export default function FiiDiiBadge({ isAdmin = false }) {
           ref={panelRef}
           data-testid="fiidii-dropdown"
           role="menu"
-          className="fixed z-[240] w-[22rem] overflow-hidden rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"
-          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-[240] overflow-hidden overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"
+          style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
         >
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
             <span>Capital Market · ₹ crores</span>

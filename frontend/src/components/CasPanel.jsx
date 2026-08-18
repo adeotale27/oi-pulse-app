@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import InfoTip from "@/components/InfoTip";
+import PageBrandTitle from "@/components/PageBrandTitle";
 import {
   AlertTriangle,
   Bug,
@@ -13,7 +14,6 @@ import {
   FlaskConical,
   Play,
   Square,
-  Zap,
   RefreshCw,
   Shield,
   ClipboardCheck,
@@ -354,9 +354,8 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   return (
     <div className="space-y-4" data-testid="cas-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-amber-600" />
-          <h2 className="text-sm font-semibold text-slate-900">CAS Expiry</h2>
+        <div className="flex items-center gap-2 min-w-0">
+          <PageBrandTitle title="CAS Expiry" testId="cas-page-title" />
           <InfoTip title="What is CAS?" testId="cas-guide-tip">
             {GUIDE}
           </InfoTip>

@@ -167,8 +167,8 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
           ref={panelRef}
           data-testid="market-impact-dropdown"
           role="menu"
-          className="fixed z-[240] w-72 bg-white dark:bg-slate-800 rounded-md shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
-          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-[240] bg-white dark:bg-slate-800 rounded-md shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden overflow-y-auto overscroll-contain"
+          style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
         >
           <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
             <span>Upcoming index events</span>

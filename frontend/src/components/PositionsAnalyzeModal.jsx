@@ -364,14 +364,14 @@ function CompactSlider({
       ) : null}
       <Slider value={[value]} min={min} max={max} step={step} disabled={disabled} onValueChange={(vals) => onChange(vals[0])} data-testid={testId} />
       {presets.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div className="mt-2 flex flex-nowrap gap-1 overflow-x-auto oi-hover-scroll pb-0.5">
           {presets.map((p) => (
             <button
               key={p.id}
               type="button"
               disabled={disabled}
               onClick={() => onChange(p.value)}
-              className={`h-6 px-2 rounded-full text-[10px] font-semibold border ${
+              className={`h-6 px-1.5 sm:px-2 rounded-full text-[10px] font-semibold border shrink-0 ${
                 Math.abs(value - p.value) <= (step || 1) * 0.6
                   ? "border-emerald-500 bg-emerald-50 text-emerald-900"
                   : "border-slate-200 bg-slate-50 text-slate-600"
@@ -589,7 +589,9 @@ export default function PositionsAnalyzeModal({
     const levels = [
       { id: "m2", label: "−2%", x: spot * 0.98 },
       { id: "m1", label: "−1%", x: spot * 0.99 },
+      { id: "m05", label: "−0.5%", x: spot * 0.995 },
       { id: "spot", label: "Spot", x: spot },
+      { id: "p05", label: "+0.5%", x: spot * 1.005 },
       { id: "p1", label: "+1%", x: spot * 1.01 },
       { id: "p2", label: "+2%", x: spot * 1.02 },
     ];
@@ -887,7 +889,9 @@ export default function PositionsAnalyzeModal({
               : [
                   { id: "m2", label: "−2%", value: Math.round(spot * 0.98), testId: "spot-preset-m2" },
                   { id: "m1", label: "−1%", value: Math.round(spot * 0.99), testId: "spot-preset-m1" },
+                  { id: "m05", label: "−0.5%", value: Math.round(spot * 0.995), testId: "spot-preset-m05" },
                   { id: "now", label: "Spot", value: Math.round(spot), testId: "spot-preset-now" },
+                  { id: "p05", label: "+0.5%", value: Math.round(spot * 1.005), testId: "spot-preset-p05" },
                   { id: "p1", label: "+1%", value: Math.round(spot * 1.01), testId: "spot-preset-p1" },
                   { id: "p2", label: "+2%", value: Math.round(spot * 1.02), testId: "spot-preset-p2" },
                 ]

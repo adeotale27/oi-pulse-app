@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.11",
+    date: "2026-08-18",
+    user: [
+      "On the phone the top bar is just the moving indexes — LAST SESSION, the date, and Market Closed stay on larger screens. Dashboard pages show the desk mark beside the title (not Index Risk). Analyze can jump ±0.5%. Sign out is red. Journal lines up on tablet. Event tiles open a shorter list on the phone.",
+    ],
+    admin: [
+      "DeskStatusRail hides badge/as-of/market-closed below md. PageBrandTitle on OI/straddle/alerts/activity/events/CAS. Portaled info-tile menus clamp width and max-height. Journal chrome uses lg for the desktop calendar.",
+    ],
+  },
+  {
     version: "7.10",
     date: "2026-08-18",
     user: [

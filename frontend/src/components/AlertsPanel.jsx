@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Bell, X, TrendingUp, TrendingDown, Filter } from "lucide-react";
+import { X, TrendingUp, TrendingDown, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import PageBrandTitle from "@/components/PageBrandTitle";
 
 function formatTime(iso) {
   try {
@@ -84,9 +85,8 @@ export default function AlertsPanel({
       data-testid="alerts-panel"
     >
       <div className="p-3 border-b border-slate-200 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <Bell className="w-4 h-4 text-slate-600" />
-          <span className="text-sm font-semibold">Alerts</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <PageBrandTitle title="Alerts" testId="alerts-page-title" />
           {filtered.length > 0 && (
             <span className="text-[10px] font-mono-data bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-sm">
               {filtered.length}

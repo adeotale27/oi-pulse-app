@@ -39,6 +39,7 @@ import UploadModal from "@/components/UploadModal";
 import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
 import CasPanel from "@/components/CasPanel";
+import PageBrandTitle from "@/components/PageBrandTitle";
 import SellCandidatesPanel from "@/components/SellCandidatesPanel";
 import RightPanel from "@/components/RightPanel";
 import {
@@ -2344,10 +2345,11 @@ export default function Dashboard() {
                   {(tabOn("oi-change")) && (
                     <TabsContent value="oi-change" className="mt-0">
                       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <div className="text-base font-semibold text-slate-900">
-                          OI Change on {formatDayLabel(current?.timestamp)}
-                        </div>
+                      <div className="flex items-center gap-4 flex-wrap min-w-0">
+                        <PageBrandTitle
+                          title={`OI Change on ${formatDayLabel(current?.timestamp)}`}
+                          testId="oi-change-page-title"
+                        />
                         <Popover>
                           <PopoverTrigger asChild>
                             <button
@@ -2628,7 +2630,12 @@ export default function Dashboard() {
 
                   {(tabOn("open-interest")) && (
                     <TabsContent value="open-interest" className="mt-0">
-                      <div className="text-sm font-semibold mb-2">{activeIndex} Absolute Open Interest</div>
+                      <PageBrandTitle
+                        kicker={activeIndex}
+                        title="Absolute Open Interest"
+                        className="mb-2"
+                        testId="open-interest-page-title"
+                      />
                     {isMobile && (
                       <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" data-testid="oi-tab-strike-around">
                         <StrikeAroundChips
@@ -2650,7 +2657,12 @@ export default function Dashboard() {
 
                   {(tabOn("strike-table")) && (
                     <TabsContent value="strike-table" className="mt-0">
-                    <div className="text-sm font-semibold mb-2">{activeIndex} Strike-wise OI Table</div>
+                    <PageBrandTitle
+                      kicker={activeIndex}
+                      title="Strike-wise OI Table"
+                      className="mb-2"
+                      testId="strike-table-page-title"
+                    />
                     <StrikeTable
                       current={filteredCurrent}
                       previous={previous}
@@ -2670,8 +2682,12 @@ export default function Dashboard() {
 
                   {(tabOn("sell-candidates")) && (
                     <TabsContent value="sell-candidates" className="mt-0">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm font-semibold">{activeIndex} Sell Candidates — safest strikes to short</div>
+                    <div className="flex items-center justify-between mb-2 gap-2 min-w-0">
+                      <PageBrandTitle
+                        kicker={activeIndex}
+                        title="Sell Candidates — safest strikes to short"
+                        testId="sell-candidates-page-title"
+                      />
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         Timeframe: <b>{timeframeLabel}</b> · auto-recomputes every 60s
                       </div>
@@ -2694,7 +2710,12 @@ export default function Dashboard() {
 
                   {(tabOn("buildup")) && (
                     <TabsContent value="buildup" className="mt-0">
-                    <div className="text-sm font-semibold mb-2">{activeIndex} Long / Short Build-up</div>
+                    <PageBrandTitle
+                      kicker={activeIndex}
+                      title="Long / Short Build-up"
+                      className="mb-2"
+                      testId="buildup-page-title"
+                    />
                     <BuildupTable
                       current={filteredCurrent}
                       previous={previous}
@@ -2752,7 +2773,6 @@ export default function Dashboard() {
 
                   {(tabOn("alerts")) && (
                     <TabsContent value="alerts" className="mt-0">
-                    <div className="text-sm font-semibold mb-2">All Alerts</div>
                     <AlertsPanel
                       alerts={focusedAlerts}
                       onClear={handleClearAlerts}
@@ -2765,7 +2785,6 @@ export default function Dashboard() {
 
                   {(tabOn("activity")) && (
                     <TabsContent value="activity" className="mt-0">
-                    <div className="text-sm font-semibold mb-2">Unusual Activity Feed</div>
                     <ActivityFeed
                       events={activity.filter((e) => e.index === activeIndex)}
                       activeIndex={activeIndex}
@@ -2785,7 +2804,6 @@ export default function Dashboard() {
                   {(tabOn("straddle")) && (
                     <TabsContent value="straddle" className="mt-0">
                     <div className={!showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""}>
-                    <div className="hidden md:block text-sm font-semibold mb-4">{activeIndex} Straddle Premium</div>
                     <StraddleChart
                       key={`tab-${activeIndex}-${selectedExpiry || "auto"}`}
                       index={activeIndex}
