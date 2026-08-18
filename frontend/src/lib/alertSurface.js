@@ -18,17 +18,22 @@ export function surfaceAlert({
   pushFn,
   pushTitle,
   pushBody,
+  skipToast = false,
 }) {
   try { pushFn?.(pushTitle, pushBody); } catch { /* noop */ }
   if (deskTabHidden()) {
-    hiddenCount += 1;
-    hiddenLast = { toastFn, title, description, duration };
+    if (!skipToast) {
+      hiddenCount += 1;
+      hiddenLast = { toastFn, title, description, duration };
+    }
     pendingSound = soundKind || pendingSound;
     return "queued";
   }
-  toastFn(title, { description, duration });
+  if (!skipToast) {
+    toastFn(title, { description, duration });
+  }
   try { if (soundKind) playSound?.(soundKind); } catch { /* noop */ }
-  return "shown";
+  return skipToast ? "sound" : "shown";
 }
 
 export function flushHiddenAlerts({ toast, playSound }) {

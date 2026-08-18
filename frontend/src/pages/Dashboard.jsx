@@ -72,6 +72,7 @@ import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert, unlockSounds } from "@/lib/sounds";
 import { flushHiddenAlerts, surfaceAlert } from "@/lib/alertSurface";
 import { applyUploadedHolidays } from "@/lib/holidays";
+import { hugeShiftToastCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
@@ -135,16 +136,21 @@ function loadChangeAlertPct() {
   } catch { return CHANGE_ALERT_PCT_DEFAULT; }
 }
 
-const STRIKES_AROUND_KEY = "oiStrikesAround";
+const STRIKES_AROUND_KEY = "oiStrikesAround.v2";
 const STRIKES_AROUND_ALLOWED = [2, 5, 10, 15, 20, 25];
 function loadStrikesAround() {
   try {
-    const raw = localStorage.getItem(STRIKES_AROUND_KEY);
-    if (raw === "all") return "all";
-    const n = Number(raw);
-    if (STRIKES_AROUND_ALLOWED.includes(n)) return n;
+    const v2 = localStorage.getItem(STRIKES_AROUND_KEY);
+    if (v2 === "all") return "all";
+    const n2 = Number(v2);
+    if (v2 != null && STRIKES_AROUND_ALLOWED.includes(n2)) return n2;
+    const v1 = localStorage.getItem("oiStrikesAround");
+    if (v1 === "all") return "all";
+    const n1 = Number(v1);
+    // Old default was 10 — move everyone to ±5 once; keep 2/15/20/25 picks.
+    if (STRIKES_AROUND_ALLOWED.includes(n1) && n1 !== 10) return n1;
   } catch { /* noop */ }
-  return 10;
+  return 5;
 }
 
 function formatDayLabel(iso) {
@@ -255,6 +261,7 @@ export default function Dashboard() {
   const [layoutNonce, setLayoutNonce] = useState(0);
   const [hugeShift, setHugeShift] = useState(null);   // currently shown modal
   const hugeShiftQueueRef = useRef([]);                // queued shifts if multiple fire back-to-back
+  const hugeShiftOpenRef = useRef(false);
   const [activity, setActivity] = useState([]);       // unusual activity feed events
   const [activityFilter, setActivityFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("oi-change");
@@ -385,10 +392,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     const unlock = () => { unlockSounds(); };
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
+    window.addEventListener("pointerdown", unlock, { capture: true });
+    window.addEventListener("touchstart", unlock, { capture: true, passive: true });
+    window.addEventListener("keydown", unlock);
     return () => {
-      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("pointerdown", unlock, { capture: true });
+      window.removeEventListener("touchstart", unlock, { capture: true });
       window.removeEventListener("keydown", unlock);
     };
   }, []);
@@ -1023,7 +1032,7 @@ export default function Dashboard() {
         // After clear/empty sentinel (""), treat entire current page as new
         // but cap so we do not spam a huge backlog.
         fresh.push(a);
-        if (fresh.length >= 5) break;
+        if (fresh.length >= 1) break;
       }
       for (const a of fresh.reverse()) {
         const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
@@ -1335,7 +1344,7 @@ export default function Dashboard() {
       setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
       return;
     }
-    const n = Number(strikesAround) || 10;
+    const n = Number(strikesAround) || 5;
     const lo = Math.max(0, atmIdx - n);
     const hi = Math.min(sorted.length - 1, atmIdx + n);
     setStrikeRange({ min: sorted[lo].strike, max: sorted[hi].strike });
@@ -1396,7 +1405,7 @@ export default function Dashboard() {
       setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
       return;
     }
-    const count = Number(n) || 10;
+    const count = Number(n) || 5;
     const lo = Math.max(0, atmIdx - count);
     const hi = Math.min(sorted.length - 1, atmIdx + count);
     setStrikeRange({ min: sorted[lo].strike, max: sorted[hi].strike });
@@ -1592,11 +1601,11 @@ export default function Dashboard() {
       now - lastLocalAlertRef.current > ALERT_COOLDOWN_MS
     ) {
       lastLocalAlertRef.current = now;
-      const dir = changeSummary.bullish
-        ? "Bullish pressure (Put OI building)"
-        : "Bearish pressure (Call OI building)";
-      const msg = `${activeIndex}: ${dir} in last ${timeframeLabel}`;
-      const desc = `PE ${formatDelta(changeSummary.pe)} · CE ${formatDelta(changeSummary.ce)}`;
+      const { title: msg, description: desc } = oiPressureCopy({
+        index: activeIndex,
+        bullish: changeSummary.bullish,
+        windowLabel: timeframeLabel,
+      });
       surfaceAlert({
         toastFn: changeSummary.bullish ? toast.success : toast.error,
         title: msg,
@@ -1637,10 +1646,12 @@ export default function Dashboard() {
       lastPctAlertRef.current = now;
       const which = cePctAbs >= pePctAbs ? "CE" : "PE";
       const pctVal = which === "CE" ? changeSummary.cePct : changeSummary.pePct;
-      const arrow = pctVal >= 0 ? "▲" : "▼";
-      const title = `${activeIndex} · ${which} OI ${arrow} ${Math.abs(pctVal).toFixed(2)}% in ${timeframeLabel}`;
-      const desc = `CE ${formatDelta(changeSummary.ce)} (${(changeSummary.cePct || 0).toFixed(2)}%) · PE ${formatDelta(changeSummary.pe)} (${(changeSummary.pePct || 0).toFixed(2)}%)`;
-      // Direction color: PE up = bullish (green); CE up = bearish (red).
+      const { title, description: desc } = oiPctCopy({
+        index: activeIndex,
+        side: which,
+        pct: pctVal,
+        windowLabel: timeframeLabel,
+      });
       const isBull = (which === "PE" && pctVal >= 0) || (which === "CE" && pctVal < 0);
       surfaceAlert({
         toastFn: isBull ? toast.success : toast.error,
@@ -1671,16 +1682,25 @@ export default function Dashboard() {
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
   const emitHugeShiftNotify = useCallback((shift) => {
+    const copy = hugeShiftToastCopy({
+      index: shift.index,
+      side: shift.side,
+      value: shift.value,
+      window: shift.window,
+    });
     surfaceAlert({
       toastFn: toast.error,
-      title: `HUGE OI SHIFT · ${shift.index}`,
-      description: `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
+      title: copy.title,
+      description: copy.description,
       duration: 8000,
       soundKind: "huge_shift",
       playSound: playForAlert,
       pushFn: push,
-      pushTitle: `HUGE OI SHIFT · ${shift.index}`,
-      pushBody: `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
+      pushTitle: copy.title,
+      pushBody: copy.description,
+      // Modal is the UI while the desk is open; a toast on top cannot be tapped
+      // (Radix dialog sets body pointer-events: none).
+      skipToast: true,
     });
     try {
       api.post("/telegram/huge-shift", {
@@ -1730,30 +1750,40 @@ export default function Dashboard() {
     // Always notify immediately (toast path = desktop Notification + Telegram + sound)
     // even when another modal is already open — queue only delays the modal UI.
     emitHugeShiftNotify(shift);
+    try { toast.dismiss(); } catch { /* noop */ }
+    const nextShift = { ...shift, snapshotTs: bookmarkTs };
     if (typeof document !== "undefined" && document.hidden) {
       hugeShiftQueueRef.current = [];
-      setHugeShift({ ...shift, snapshotTs: bookmarkTs });
+      hugeShiftOpenRef.current = true;
+      setHugeShift(nextShift);
       return;
     }
-    if (hugeShift) {
-      hugeShiftQueueRef.current = hugeShiftQueueRef.current.slice(-2);
-      hugeShiftQueueRef.current.push({ ...shift, snapshotTs: bookmarkTs, notified: true });
+    if (hugeShiftOpenRef.current) {
+      hugeShiftQueueRef.current = [nextShift];
       return;
     }
-    setHugeShift({ ...shift, snapshotTs: bookmarkTs });
-  }, [activeIndex, hugeShift, pushActivity, changeBundle, current?.timestamp, indexInAlertFocus, emitHugeShiftNotify]);
+    hugeShiftOpenRef.current = true;
+    setHugeShift(nextShift);
+  }, [activeIndex, pushActivity, changeBundle, current?.timestamp, indexInAlertFocus, emitHugeShiftNotify]);
 
   const dismissHugeShift = useCallback(() => {
+    hugeShiftOpenRef.current = false;
     setHugeShift(null);
-    // Small delay so the dialog exit animation completes before the next one.
     setTimeout(() => {
       const next = hugeShiftQueueRef.current.shift();
       if (next) {
+        try { toast.dismiss(); } catch { /* noop */ }
+        hugeShiftOpenRef.current = true;
         setHugeShift(next);
-        // Sound again when the next modal surfaces (Notification/TG already sent on detect).
         try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
       }
     }, 250);
+  }, []);
+
+  const dismissAllHugeShifts = useCallback(() => {
+    hugeShiftQueueRef.current = [];
+    hugeShiftOpenRef.current = false;
+    setHugeShift(null);
   }, []);
 
   const replayHugeShiftMoment = useCallback((ts) => {
@@ -1761,6 +1791,7 @@ export default function Dashboard() {
     setReplayJumpTs(ts);
     setReplayOpen(true);
     setActiveTab("oi-change");
+    hugeShiftOpenRef.current = false;
     setHugeShift(null);
     hugeShiftQueueRef.current = [];
   }, []);
@@ -2360,8 +2391,9 @@ export default function Dashboard() {
                       </div>
                     </div>
                     {isMobile && (
-                      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
                         <StrikeAroundChips
+                          dense
                           strikesAround={strikesAround}
                           onChange={applyStrikesAround}
                         />
@@ -2374,7 +2406,7 @@ export default function Dashboard() {
                           <span>PCR <b className={Number(current.pcr) >= 1 ? "text-emerald-800" : "text-rose-800"}>{Number(current.pcr).toFixed(2)}</b></span>
                         )}
                         {typeof strikesAround === "number" && (
-                          <span className="text-slate-600">showing ±{strikesAround} strikes</span>
+                          <span className="text-slate-600 hidden sm:inline">showing ±{strikesAround} strikes</span>
                         )}
                         <Popover>
                           <PopoverTrigger asChild>
@@ -2415,6 +2447,7 @@ export default function Dashboard() {
                     >
                     <OIChart
                       key={activeIndex}
+                      compact={isMobile}
                       current={current?.index && current.index !== activeIndex ? null : filteredCurrent}
                       previous={current?.index && current.index !== activeIndex ? null : (replayFrame || previous)}
                       atm={current?.atm}
@@ -2584,14 +2617,16 @@ export default function Dashboard() {
                     <TabsContent value="open-interest" className="mt-0">
                       <div className="text-sm font-semibold mb-2">{activeIndex} Absolute Open Interest</div>
                     {isMobile && (
-                      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" data-testid="oi-tab-strike-around">
+                      <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" data-testid="oi-tab-strike-around">
                         <StrikeAroundChips
+                          dense
                           strikesAround={strikesAround}
                           onChange={applyStrikesAround}
                         />
                       </div>
                     )}
                     <OIChart
+                      compact={isMobile}
                       current={filteredCurrent}
                       previous={null}
                       atm={current?.atm}
@@ -2991,6 +3026,7 @@ export default function Dashboard() {
       <HugeShiftModal
         shift={hugeShift}
         onClose={dismissHugeShift}
+        onCloseAll={dismissAllHugeShifts}
         onReplayAtMoment={replayHugeShiftMoment}
       />
 

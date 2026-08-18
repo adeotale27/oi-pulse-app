@@ -26,7 +26,7 @@ function formatTime(iso) {
   }
 }
 
-export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap }) {
+export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false }) {
   const spotPrice = current?.price ?? null;
   const data = useMemo(() => {
     if (!current) return [];
@@ -80,7 +80,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
 
   if (!current) {
     return (
-      <div className="h-96 flex items-center justify-center text-slate-400 text-sm">
+      <div className={`${compact ? "h-[240px]" : "h-96"} flex items-center justify-center text-slate-400 text-sm`}>
         Loading data…
       </div>
     );
@@ -88,12 +88,18 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
 
   const ct = currentTime || current?.timestamp;
   const pt = prevTime || previous?.timestamp;
+  const tickEvery = compact && data.length > 7 ? 1 : 0;
+  const chartH = compact ? "h-[240px]" : "h-[440px]";
 
   return (
     <div className="w-full" data-testid="oi-chart">
-      <div className="w-full h-[440px]">
+      <div className={`w-full ${chartH}`}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 20 }} barCategoryGap="18%">
+          <BarChart
+            data={data}
+            margin={compact ? { top: 8, right: 4, left: 0, bottom: 4 } : { top: 20, right: 20, left: 10, bottom: 20 }}
+            barCategoryGap={compact ? "12%" : "18%"}
+          >
             {/* SVG patterns for the "increase" striped fills and the "decrease" outlined bars. */}
             <defs>
               <pattern id="pe-stripes" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
@@ -108,21 +114,22 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
             <CartesianGrid stroke="#E2E8F0" vertical={false} />
             <XAxis
               dataKey="strike"
-              tick={{ fontSize: 11, fill: "#475569" }}
+              tick={{ fontSize: compact ? 9 : 11, fill: "#475569" }}
               axisLine={{ stroke: "#CBD5E1" }}
               tickLine={false}
-              angle={-40}
-              textAnchor="end"
-              height={60}
-              interval={0}
+              angle={compact ? 0 : -40}
+              textAnchor={compact ? "middle" : "end"}
+              height={compact ? 28 : 60}
+              interval={tickEvery}
             />
             <YAxis
-              tick={{ fontSize: 11, fill: "#475569" }}
+              tick={{ fontSize: compact ? 9 : 11, fill: "#475569" }}
               axisLine={{ stroke: "#CBD5E1" }}
               tickLine={false}
               tickFormatter={formatOI}
-              width={64}
-              label={{
+              width={compact ? 40 : 64}
+              hide={false}
+              label={compact ? undefined : {
                 value: "Call / Put OI",
                 angle: -90,
                 position: "insideLeft",
@@ -136,7 +143,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
             />
             <Legend
               verticalAlign="bottom"
-              content={<CustomLegend showOI={showOI} />}
+              content={<CustomLegend showOI={showOI} compact={compact} />}
             />
             {atm && (
               <ReferenceLine
@@ -145,12 +152,14 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
                 strokeDasharray="4 4"
                 strokeWidth={1.2}
                 label={{
-                  value: spotPrice
+                  value: compact
+                    ? `ATM ${atm}`
+                    : (spotPrice
                     ? `ATM ${atm}  ·  ₹${Number(spotPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-                    : `ATM ${atm}`,
+                    : `ATM ${atm}`),
                   position: "top",
                   fill: "#0F172A",
-                  fontSize: 11,
+                  fontSize: compact ? 10 : 11,
                   fontWeight: 600,
                   fontFamily: "JetBrains Mono",
                 }}
@@ -280,7 +289,7 @@ function TipRow({ color, label, value, muted, isDelta, deltaPositive }) {
   );
 }
 
-function CustomLegend({ showOI }) {
+function CustomLegend({ showOI, compact }) {
   const items = showOI
     ? [
         { label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
@@ -295,7 +304,7 @@ function CustomLegend({ showOI }) {
         { label: "Call OI chg", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: CALL_RED }} /> },
       ];
   return (
-    <div className="pt-3 text-xs text-slate-600" style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
+    <div className={`${compact ? "pt-1 text-[10px]" : "pt-3 text-xs"} text-slate-600`} style={{ fontFamily: "Outfit" }} data-testid="oi-legend">
       <div className="flex items-center justify-center gap-x-5 gap-y-2 flex-wrap">
         {items.map((it, i) => (
           <div key={i} className="flex items-center gap-1.5">

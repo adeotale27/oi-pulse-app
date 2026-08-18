@@ -1,5 +1,14 @@
 # Changelog
 
+## V6.43 — 2026-08-18
+
+Phone OI charts default to ±5 strikes; alerts close and sound on iOS.
+
+- OI Change and Open Interest default to ATM ±5 (phone and desktop); phone chart is shorter with upright strike labels
+- One toast at a time, below the header; huge-shift uses a short closable card (not a toast stuck under a dialog)
+- OI Change toasts use short copy (Puts/Calls adding or up/down %)
+- Phone alert sound: keep Web Audio unlocked on tap; iOS plays an HTML beep (Silent Mode still mutes unless the ringer is on)
+
 ## V6.42 — 2026-08-18
 
 Open-leg P&L marks to live quotes; OI + Open Interest stay centered when panes close.
