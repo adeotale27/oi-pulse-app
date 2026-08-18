@@ -145,12 +145,24 @@ def booked_pnl_from_kite_row(
     if matched > 0 and (buy_price or sell_price):
         computed = (float(sell_price) - float(buy_price)) * matched * mult
 
-    if exited:
-        # Kite Positions "Booked" is `realised` (qty=0 → same as pnl). Do not
-        # prefer sell_value-buy_value over that — overnight history can diverge.
+    def _booked_from_kite_fields():
+        """Kite Positions Booked column.
+
+        The Connect API often puts the whole P&L into ``unrealised`` and leaves
+        ``realised`` at 0. Treat that as “no split” and do not book 0.
+        """
         if abs(kite_realised) > 1e-9:
-            booked = kite_realised
-            source = "realised"
+            return kite_realised, "realised"
+        if abs(kite_unrealised) > 1e-9 and abs(kite_unrealised - kite_pnl) > max(1.0, 0.02 * abs(kite_pnl or 1.0)):
+            return kite_pnl - kite_unrealised, "kite_pnl_minus_unrealised"
+        return None, None
+
+    if exited:
+        # Flat row: Kite Booked = P/L (qty term is 0). Prefer realised, then pnl.
+        split, split_src = _booked_from_kite_fields()
+        if split is not None:
+            booked = split
+            source = split_src or "realised"
         elif abs(kite_pnl) > 1e-9:
             booked = kite_pnl
             source = "pnl"
@@ -186,16 +198,12 @@ def booked_pnl_from_kite_row(
         source = "buy_sell"
 
     partial = matched > 0
-    # Open booked = Kite "Booked" column. Use Kite realised, or kite pnl minus
-    # kite unrealised (same snapshot — not quote MTM minus a lagging unrealised).
     booked = 0.0
     booked_source = source
-    if abs(kite_realised) > 1e-9:
-        booked = kite_realised
-        booked_source = "realised"
-    elif abs(kite_unrealised) > 1e-9:
-        booked = kite_pnl - kite_unrealised
-        booked_source = "kite_pnl_minus_unrealised"
+    split, split_src = _booked_from_kite_fields()
+    if split is not None:
+        booked = split
+        booked_source = split_src or "realised"
     elif matched > 0 and abs(computed) > 1e-9:
         booked = computed
         booked_source = "buy_sell"
@@ -203,13 +211,21 @@ def booked_pnl_from_kite_row(
         booked = sv - bv
         booked_source = "buy_sell_value_closed"
 
+    api_split = split_src == "kite_pnl_minus_unrealised" or (
+        abs(kite_realised) > 1e-9 and abs(kite_unrealised) > 1e-9
+        and abs(kite_unrealised - kite_pnl) > max(1.0, 0.02 * abs(kite_pnl or 1.0))
+    )
+    if mark_to_market:
+        unrealised_out = open_pnl - booked
+    elif api_split:
+        unrealised_out = kite_unrealised
+    else:
+        unrealised_out = open_pnl - booked
+
     return {
         "pnl": round(open_pnl, 2),
         "realised": round(booked, 2),
-        "unrealised": round(
-            kite_unrealised if abs(kite_unrealised) > 1e-9 else (open_pnl - booked),
-            2,
-        ),
+        "unrealised": round(unrealised_out, 2),
         "booked_pnl": round(booked, 2),
         "pnl_source": booked_source if partial else source,
         "partial": partial,

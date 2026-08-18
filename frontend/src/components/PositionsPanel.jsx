@@ -1632,8 +1632,8 @@ export default function PositionsPanel({
             privacyMode
               ? "Masked"
               : stats.exitedCount > 0
-                ? `Kite Booked · ${stats.exitedCount} closed`
-                : "Kite Booked (realised)"
+                ? `Kite Booked · closed + partials`
+                : "Kite Booked (incl. partials)"
           }
           tip={(
             <p>
@@ -2579,15 +2579,15 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
         ? "border-amber-300 bg-amber-50 text-amber-950"
         : "border-slate-300 bg-white text-slate-900";
   return (
-    <div className={`rounded-xl border px-3 py-2.5 md:py-3 h-full min-h-[6.5rem] flex flex-col gap-1 shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+    <div className={`rounded-xl border px-2.5 py-1.5 md:py-2 h-full min-h-[4.75rem] md:min-h-0 flex flex-col gap-0.5 shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
       <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1 pr-4 leading-none">
         {label}
         {tip && (
           <InfoTip title={label} size="xs">{tip}</InfoTip>
         )}
       </div>
-      <div className="text-[18px] md:text-[20px] font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
-      {hint && <div className="text-[11px] text-slate-600 leading-snug">{hint}</div>}
+      <div className="text-[15px] md:text-[17px] font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
+      {hint && <div className="text-[10px] text-slate-600 leading-tight line-clamp-2">{hint}</div>}
     </div>
   );
 }

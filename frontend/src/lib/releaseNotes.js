@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.04",
+    date: "2026-08-18",
+    user: [
+      "Positions tiles are the sideways scroller again. Profit booked today includes Kite Booked on legs you only partly closed (not just fully exited). Unbooked is Total minus Booked, like Kite.",
+    ],
+    admin: [
+      "When API realised=0 and unrealised equals pnl, booked falls through to matched buy/sell. pnl_today.unbooked = total − booked, not sum of the unrealised field.",
+    ],
+  },
+  {
     version: "7.03",
     date: "2026-08-18",
     user: [
