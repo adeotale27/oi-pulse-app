@@ -8,7 +8,8 @@ Quiet the false Bank Nifty toast, keep booked profit still, and use the pulse ma
 - Positions “too close” strip only shows when shorts are actually inside the warn band
 - Profit booked today no longer moves with live LTP (closed cash only)
 - Kite Positions uses the pulse mark; home-screen icon is the same pulse, sharper, with a very thin white rim
-- Straddle chart is taller (more plot, no floating “Straddle Price” pill)
+- GET `/config` and the OI poller no longer wait on Mongo; a stuck DB cannot freeze every `/api/*` call
+- First OI `/change` is one lookback (20s budget); 1/3/5 windows fill 2.5s later so the rest of the desk is not queued behind it
 
 ## V7.01 — 2026-08-18
 

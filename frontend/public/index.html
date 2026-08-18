@@ -9,10 +9,11 @@
         <meta name="referrer" content="strict-origin-when-cross-origin" />
         <meta
           http-equiv="Content-Security-Policy"
-          content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' data:; connect-src 'self' ws: wss: https:; worker-src 'self' blob:"
+          content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; script-src-elem 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' data:; connect-src 'self' ws: wss: https:; worker-src 'self' blob:"
         />
 
         <!-- App Icons -->
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="%REACT_APP_APP_NAME%" />
         <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />

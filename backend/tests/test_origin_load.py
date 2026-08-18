@@ -56,6 +56,18 @@ def test_get_oi_change_lookbacks_are_gathered():
     assert "_load_instruments" not in src
 
 
+def test_get_config_does_not_reload_mongo():
+    i = SERVER.index("async def get_config")
+    j = SERVER.index("\n@api_router.", i + 1)
+    src = SERVER[i:j]
+    assert "reload_settings_from_db" not in src
+
+
+def test_poll_loop_does_not_reload_settings_every_tick():
+    src = _fn(TRACKER, "_loop")
+    assert "reload_settings_from_db" not in src
+
+
 def test_seed_on_start_skips_unloaded_dump():
     src = _fn(TRACKER, "_seed_expiries_safe")
     assert "_loaded" in src
