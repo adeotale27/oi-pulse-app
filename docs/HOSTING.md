@@ -1,6 +1,6 @@
 # Hosting StrikLenz off Emergent
 
-This is the ops roadmap if you want the desk on **your** machine and **your** GoDaddy domain (`aaisnamkeen.com` or similar), instead of Emergent’s preview / k8s.
+This is the ops roadmap if you want the desk on **your** machine and **your** domain (`striklenz.com`), instead of Emergent’s preview / k8s.
 
 **Short answers**
 
@@ -177,7 +177,7 @@ Do **not** use GoDaddy’s parked/forwarding page. That breaks `/api`.
 
 After DNS:
 
-1. Set `CORS_ORIGINS=https://aaisnamkeen.com,https://www.aaisnamkeen.com` (real hosts only).
+1. Set `CORS_ORIGINS=https://striklenz.com,https://www.striklenz.com` (real hosts only). Set Kite Connect redirect URL to `https://striklenz.com/kite-callback` (not aaisnamkeen.com).
 2. Zerodha developer console: add `https://YOUR_DOMAIN` login/redirect URLs (publisher + guest Kite).
 3. Open the desk, login, Fresh Pull, journal, Positions.
 

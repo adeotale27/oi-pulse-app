@@ -12,7 +12,11 @@ export function useNotify() {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (Ctx) audioCtxRef.current = new Ctx();
     }
-    return audioCtxRef.current;
+    const ctx = audioCtxRef.current;
+    if (ctx && ctx.state === "suspended") {
+      try { ctx.resume(); } catch { /* autoplay lock until a click */ }
+    }
+    return ctx;
   };
 
   const beep = useCallback((freq = 880, duration = 0.18) => {
@@ -81,17 +85,17 @@ export function useNotify() {
   const push = useCallback((title, body) => {
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       try {
-        new Notification(title, { body, silent: false });
+        new Notification(title, { body, silent: true });
       } catch (e) {
         console.error("Notification failed", e);
       }
     }
   }, []);
 
-  useEffect(() => {
-    // preload permission state
-    requestPermission();
-  }, [requestPermission]);
+  const permission = () => {
+    if (typeof Notification === "undefined") return "unsupported";
+    return Notification.permission;
+  };
 
-  return { beep, alarm, siren, push, requestPermission };
+  return { beep, alarm, siren, push, requestPermission, permission };
 }

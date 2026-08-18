@@ -123,10 +123,10 @@ export default function MobileIndexTicker({
             key={`${it.key}-${i}`}
             type="button"
             data-testid={i < items.length ? `mobile-ticker-${it.key}` : undefined}
-            onClick={it.onClick || undefined}
+            onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
             className={`inline-flex items-center gap-1 shrink-0 font-mono-data text-[10px] tabular-nums ${
               it.active ? "text-white font-bold" : "text-white/95"
-            } ${it.onClick ? "cursor-pointer" : "cursor-default"}`}
+            } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
           >
             <span className="uppercase tracking-wider font-semibold text-white/80">{it.label}</span>
             <span className="font-semibold">{it.price}</span>

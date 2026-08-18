@@ -6,6 +6,12 @@ import { toast } from "sonner";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import { APP_NAME } from "@/lib/appVersion";
 
+const CANONICAL_HOST = "striklenz.com";
+
+function isLegacyKiteHost(host) {
+  return String(host || "").toLowerCase().includes("aaisnamkeen");
+}
+
 /**
  * Kite Connect redirect target. Exchange request_token server-side
  * (never stored in the browser) then return to Positions.
@@ -16,6 +22,12 @@ export default function KiteCallback() {
   const [msg, setMsg] = useState("Connecting your Zerodha account…");
 
   useEffect(() => {
+    if (typeof window !== "undefined" && isLegacyKiteHost(window.location.hostname)) {
+      const dest = new URL(`https://${CANONICAL_HOST}/kite-callback`);
+      dest.search = window.location.search;
+      window.location.replace(dest.toString());
+      return undefined;
+    }
     const status = params.get("status");
     const token = params.get("request_token");
     if (status && status !== "success") {

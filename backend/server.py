@@ -4001,17 +4001,8 @@ async def kite_user_callback(
 ):
     """Kite Connect redirect helper — bounce to the SPA with the one-time token."""
     from fastapi.responses import RedirectResponse
-    origin = (
-        os.environ.get("FRONTEND_URL")
-        or os.environ.get("APP_ORIGIN")
-        or os.environ.get("PUBLIC_APP_URL")
-        or ""
-    ).rstrip("/")
-    if not origin:
-        # Same host SPA (typical nginx: /api + /)
-        origin = str(request.base_url).rstrip("/")
-        if origin.endswith("/api"):
-            origin = origin[: -4]
+    from kite_callback_origin import kite_spa_origin
+    origin = kite_spa_origin(request)
     qs = []
     if request_token:
         qs.append(f"request_token={request_token}")
@@ -4030,7 +4021,7 @@ async def kite_user_login_url(_role: str = Depends(require_desk_user)):
         raise HTTPException(400, "Publisher Kite app is not configured (API key + secret).")
     return {
         "login_url": f"https://kite.zerodha.com/connect/login?v=3&api_key={key}",
-        "hint": "Set the Kite Connect redirect URL to this site (e.g. https://your-host/kite-callback).",
+        "hint": "Set the Kite Connect redirect URL to https://striklenz.com/kite-callback (not aaisnamkeen.com).",
     }
 
 

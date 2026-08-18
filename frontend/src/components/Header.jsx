@@ -155,6 +155,7 @@ export default function Header({
   spotPrices,
   tickerData,
   lastPulledAt,
+  enabledIndices = null,
   darkMode,
   onToggleDark,
   compact,
@@ -520,21 +521,12 @@ export default function Header({
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 {darkMode ? "Light mode" : "Dark mode"}
               </DropdownMenuItem>
-              {typeof onToggleSlimStatusRail === "function" && (
-                <DropdownMenuItem
-                  data-testid="mobile-menu-slim-status"
-                  onSelect={(e) => { e.preventDefault(); onToggleSlimStatusRail(); }}
-                >
-                  <PanelLeftClose className="w-4 h-4" />
-                  {slimStatusRail ? "Stacked status banners" : "One slim status bar"}
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem
                 data-testid="mobile-menu-notifications"
                 onSelect={(e) => { e.preventDefault(); onToggleNotif?.(); }}
               >
                 {notifEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-                {notifEnabled ? "Notifications on" : "Enable notifications"}
+                {notifEnabled ? "Turn notifications off" : "Turn notifications on"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 data-testid="mobile-menu-sounds"
@@ -664,6 +656,7 @@ export default function Header({
             onSelectIndex={onSelectIndex}
             spotPrices={spotPrices}
             tickers={Array.isArray(tickerData) ? tickerData : null}
+            enabledIndices={enabledIndices}
           />
         </div>
 
@@ -704,6 +697,7 @@ export default function Header({
               )}
             </div>
           )}
+          {(!slimStatusRail) && (
           <div className={`flex items-stretch gap-0.5 shrink-0 ${headerRail ? "flex-row items-center" : "flex-col"}`} data-testid="kite-status-stack">
             <Badge
               data-testid="mode-badge"
@@ -736,6 +730,7 @@ export default function Header({
               </span>
             )}
           </div>
+          )}
 
           {isGuestUser && (
             (() => {
@@ -817,21 +812,12 @@ export default function Header({
                   {headerRail ? "Normal header (tiles)" : "Slim header"}
                 </DropdownMenuItem>
               )}
-              {typeof onToggleSlimStatusRail === "function" && (
-                <DropdownMenuItem
-                  data-testid="menu-toggle-slim-status"
-                  onSelect={(e) => { e.preventDefault(); onToggleSlimStatusRail(); }}
-                >
-                  <PanelLeftClose className="w-4 h-4" />
-                  {slimStatusRail ? "Stacked status banners" : "One slim status bar"}
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem
                 data-testid="menu-toggle-notifications"
                 onSelect={(e) => { e.preventDefault(); onToggleNotif?.(); }}
               >
                 {notifEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-                {notifEnabled ? "Notifications on" : "Enable notifications"}
+                {notifEnabled ? "Turn notifications off" : "Turn notifications on"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 data-testid="menu-open-sounds"

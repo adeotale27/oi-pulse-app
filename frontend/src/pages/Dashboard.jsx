@@ -5,10 +5,7 @@ import OIChart from "@/components/OIChart";
 import TimeframePills from "@/components/TimeframePills";
 import AlertsPanel from "@/components/AlertsPanel";
 import GuestBanner from "@/components/GuestBanner";
-import MarketStatusBanner from "@/components/MarketStatusBanner";
 import DeskStatusRail from "@/components/DeskStatusRail";
-import DataTruthStrip from "@/components/DataTruthStrip";
-import KiteTokenBanner from "@/components/KiteTokenBanner";
 import KiteMaintenanceBanner from "@/components/KiteMaintenanceBanner";
 import StrikeTable from "@/components/StrikeTable";
 import SentimentBar from "@/components/SentimentBar";
@@ -72,6 +69,8 @@ import { useNotify } from "@/hooks/useNotify";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
+import { playForAlert, unlockSounds } from "@/lib/sounds";
+import { flushHiddenAlerts, surfaceAlert } from "@/lib/alertSurface";
 import { applyUploadedHolidays } from "@/lib/holidays";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
@@ -109,6 +108,20 @@ function pageAllowed(id, { isAdmin, visiblePages, adminPages }) {
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
+const NOTIF_LS = "oiDeskNotif";
+
+function loadNotifEnabled() {
+  try {
+    const v = localStorage.getItem(NOTIF_LS);
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch { /* noop */ }
+  try {
+    return typeof Notification !== "undefined" && Notification.permission === "granted";
+  } catch {
+    return false;
+  }
+}
 const ALERT_COOLDOWN_MS = 60000;
 // User-configurable "OI change" toast threshold — fires when |PE change| OR
 // |CE change| exceeds this percentage of the previous OI in the selected
@@ -219,7 +232,7 @@ export default function Dashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [indexManagerOpen, setIndexManagerOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
-  const [notifEnabled, setNotifEnabled] = useState(false);
+  const [notifEnabled, setNotifEnabled] = useState(loadNotifEnabled);
   const [flash, setFlash] = useState(false);
   const [expiries, setExpiries] = useState([]);
   const [expiriesMeta, setExpiriesMeta] = useState([]);
@@ -279,13 +292,6 @@ export default function Dashboard() {
       if (stored === "1" || stored === "0") return stored === "1";
     } catch { /* noop */ }
     // Default normal (tall colorful tiles) — slim is hard to read; toggle in View.
-    return false;
-  });
-  const [slimStatusRail, setSlimStatusRail] = useState(() => {
-    try {
-      const stored = localStorage.getItem("oiSlimStatusRail");
-      if (stored === "1" || stored === "0") return stored === "1";
-    } catch { /* noop */ }
     return false;
   });
   const infoTilesAutoOpenRef = useRef(null);
@@ -354,7 +360,11 @@ export default function Dashboard() {
 
   const lastAlertIdRef = useRef(null);
   const lastLocalAlertRef = useRef(0);
-  const { alarm, siren, push, requestPermission } = useNotify();
+  const { alarm, siren, push: pushOs, requestPermission } = useNotify();
+  const push = useCallback((title, body) => {
+    if (!notifEnabled) return;
+    pushOs(title, body);
+  }, [notifEnabled, pushOs]);
 
   useEffect(() => {
     api.get("/holidays").then((r) => {
@@ -372,9 +382,26 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem("oiHeaderRail", headerRail ? "1" : "0"); } catch (_) { /* noop */ }
   }, [headerRail]);
+
   useEffect(() => {
-    try { localStorage.setItem("oiSlimStatusRail", slimStatusRail ? "1" : "0"); } catch (_) { /* noop */ }
-  }, [slimStatusRail]);
+    const unlock = () => { unlockSounds(); };
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) return;
+      unlockSounds();
+      flushHiddenAlerts({ toast, playSound: playForAlert });
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   // Weekday 15:15 IST — force-open holiday/FII/event tiles so next-day risk is visible.
   useEffect(() => {
@@ -478,8 +505,15 @@ export default function Dashboard() {
   useEffect(() => {
     const onSaved = (e) => {
       const settings = e?.detail;
-      if (Array.isArray(settings?.visible_pages)) setVisiblePages(settings.visible_pages);
-      if (Array.isArray(settings?.admin_visible_pages)) setAdminVisiblePages(settings.admin_visible_pages);
+      if (!settings || typeof settings !== "object") return;
+      if (Array.isArray(settings.visible_pages)) setVisiblePages(settings.visible_pages);
+      if (Array.isArray(settings.admin_visible_pages)) setAdminVisiblePages(settings.admin_visible_pages);
+      if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
+        setEnabledIndices(normalizeEnabledIndices(settings.enabled_indices, !!settings.mcx_desk_on));
+      }
+      if (Array.isArray(settings.alert_enabled_indices) && settings.alert_enabled_indices.length) {
+        setAlertEnabledIndices(settings.alert_enabled_indices);
+      }
     };
     window.addEventListener("oi-settings-saved", onSaved);
     return () => window.removeEventListener("oi-settings-saved", onSaved);
@@ -994,17 +1028,24 @@ export default function Dashboard() {
       for (const a of fresh.reverse()) {
         const isBullish = a.direction?.toLowerCase().includes("bullish") || a.severity === "info";
         const toastFn = isBullish ? toast.success : toast.error;
-        toastFn(a.message || `OI alert · ${a.index}`, {
-          description: [
-            a.index,
-            a.direction,
-            a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
-            a.atm != null ? `ATM ${a.atm}` : null,
-          ].filter(Boolean).join(" · "),
+        const title = a.message || `OI alert · ${a.index}`;
+        const desc = [
+          a.index,
+          a.direction,
+          a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
+          a.atm != null ? `ATM ${a.atm}` : null,
+        ].filter(Boolean).join(" · ");
+        surfaceAlert({
+          toastFn,
+          title,
+          description: desc,
           duration: 8000,
+          soundKind: "reversal",
+          playSound: playForAlert,
+          pushFn: push,
+          pushTitle: `OI Reversal · ${a.index}`,
+          pushBody: a.direction || a.message || "OI alert",
         });
-        playForAlert("reversal");
-        push(`OI Reversal · ${a.index}`, a.direction || a.message || "OI alert");
       }
       if (fresh.length) {
         setFlash(true);
@@ -1313,10 +1354,21 @@ export default function Dashboard() {
   }, [current, strikeRange]);
 
   const handleToggleNotif = async () => {
+    await unlockSounds();
+    if (notifEnabled) {
+      setNotifEnabled(false);
+      try { localStorage.setItem(NOTIF_LS, "0"); } catch { /* noop */ }
+      toast.message("Desk notifications off");
+      return;
+    }
     const perm = await requestPermission();
-    setNotifEnabled(perm === "granted");
-    if (perm === "granted") toast.success("Desktop notifications enabled");
-    else if (perm === "denied") toast.error("Notifications blocked by browser");
+    if (perm === "denied") {
+      toast.error("Notifications blocked by browser");
+      return;
+    }
+    setNotifEnabled(true);
+    try { localStorage.setItem(NOTIF_LS, "1"); } catch { /* noop */ }
+    toast.success(perm === "granted" ? "Desktop notifications on" : "In-app alerts on (browser permission pending)");
   };
 
   const handleClearAlerts = async () => {
@@ -1545,10 +1597,17 @@ export default function Dashboard() {
         : "Bearish pressure (Call OI building)";
       const msg = `${activeIndex}: ${dir} in last ${timeframeLabel}`;
       const desc = `PE ${formatDelta(changeSummary.pe)} · CE ${formatDelta(changeSummary.ce)}`;
-      if (changeSummary.bullish) toast.success(msg, { description: desc, duration: 6000 });
-      else toast.error(msg, { description: desc, duration: 6000 });
-      try { playForAlert("reversal"); } catch (_) { /* noop */ }
-      try { push(`OI Change · ${activeIndex}`, msg); } catch (_) { /* noop */ }
+      surfaceAlert({
+        toastFn: changeSummary.bullish ? toast.success : toast.error,
+        title: msg,
+        description: desc,
+        duration: 6000,
+        soundKind: "reversal",
+        playSound: playForAlert,
+        pushFn: push,
+        pushTitle: `OI Change · ${activeIndex}`,
+        pushBody: msg,
+      });
       try {
         pushActivity({
           type: "oi-intensity",
@@ -1583,10 +1642,17 @@ export default function Dashboard() {
       const desc = `CE ${formatDelta(changeSummary.ce)} (${(changeSummary.cePct || 0).toFixed(2)}%) · PE ${formatDelta(changeSummary.pe)} (${(changeSummary.pePct || 0).toFixed(2)}%)`;
       // Direction color: PE up = bullish (green); CE up = bearish (red).
       const isBull = (which === "PE" && pctVal >= 0) || (which === "CE" && pctVal < 0);
-      if (isBull) toast.success(title, { description: desc, duration: 7000 });
-      else toast.error(title, { description: desc, duration: 7000 });
-      try { playForAlert("reversal"); } catch (_) { /* noop */ }
-      try { push(`OI Change Alert · ${activeIndex}`, title); } catch (_) { /* noop */ }
+      surfaceAlert({
+        toastFn: isBull ? toast.success : toast.error,
+        title,
+        description: desc,
+        duration: 7000,
+        soundKind: "reversal",
+        playSound: playForAlert,
+        pushFn: push,
+        pushTitle: `OI Change Alert · ${activeIndex}`,
+        pushBody: title,
+      });
       try {
         pushActivity({
           type: "oi-change-alert",
@@ -1605,13 +1671,17 @@ export default function Dashboard() {
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
   const emitHugeShiftNotify = useCallback((shift) => {
-    try { playForAlert("huge_shift"); } catch (_) { /* noop */ }
-    try {
-      push(
-        `HUGE OI SHIFT · ${shift.index}`,
-        `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
-      );
-    } catch (_) { /* noop */ }
+    surfaceAlert({
+      toastFn: toast.error,
+      title: `HUGE OI SHIFT · ${shift.index}`,
+      description: `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
+      duration: 8000,
+      soundKind: "huge_shift",
+      playSound: playForAlert,
+      pushFn: push,
+      pushTitle: `HUGE OI SHIFT · ${shift.index}`,
+      pushBody: `${shift.side} ${shift.value > 0 ? "build" : "unwind"} in last ${shift.window} min`,
+    });
     try {
       api.post("/telegram/huge-shift", {
         index: shift.index,
@@ -1660,9 +1730,13 @@ export default function Dashboard() {
     // Always notify immediately (toast path = desktop Notification + Telegram + sound)
     // even when another modal is already open — queue only delays the modal UI.
     emitHugeShiftNotify(shift);
-    // If a modal is already showing, queue this one; user must acknowledge
-    // each in turn so nothing gets missed.
+    if (typeof document !== "undefined" && document.hidden) {
+      hugeShiftQueueRef.current = [];
+      setHugeShift({ ...shift, snapshotTs: bookmarkTs });
+      return;
+    }
     if (hugeShift) {
+      hugeShiftQueueRef.current = hugeShiftQueueRef.current.slice(-2);
       hugeShiftQueueRef.current.push({ ...shift, snapshotTs: bookmarkTs, notified: true });
       return;
     }
@@ -1910,8 +1984,7 @@ export default function Dashboard() {
           onConnectKite={startUserKite}
         />
       )}
-      {slimStatusRail ? (
-        <DeskStatusRail
+      <DeskStatusRail
           dataStatus={dataStatus}
           marketOpen={status?.market?.is_market_open === true}
           mode={status?.mode}
@@ -1923,28 +1996,6 @@ export default function Dashboard() {
           onOpenCreds={() => setCredsOpen(true)}
           mobileTicker={mobileIndexTicker}
         />
-      ) : (
-        <>
-          <DataTruthStrip
-            dataStatus={dataStatus}
-            marketOpen={status?.market?.is_market_open === true}
-            mode={status?.mode}
-            snapshotTs={current?.timestamp || dataStatus?.as_of}
-            emphasize={!!authState.is_guest}
-            mobileTicker={mobileIndexTicker}
-          />
-          <MarketStatusBanner
-            market={status?.market}
-            lastPulledAt={lastPulledAt}
-            dataDate={dataStatus?.data_date || status?.market?.session_anchor_date}
-          />
-          <KiteTokenBanner
-            status={status}
-            isAdmin={authState.is_admin}
-            onOpenCreds={() => setCredsOpen(true)}
-          />
-        </>
-      )}
       <KiteMaintenanceBanner status={status} />
       <GuestHolidayCalendarBanner
         isAdmin={!!authState.is_admin}
@@ -1989,6 +2040,7 @@ export default function Dashboard() {
         activeIndex={activeIndex}
         onSelectIndex={setActiveIndex}
         tickerData={Object.values(tickerQuotes)}
+        enabledIndices={enabledIndices}
         lastPulledAt={lastPulledAt}
         darkMode={darkMode}
         onToggleDark={() => setDarkMode((v) => !v)}
@@ -1996,8 +2048,7 @@ export default function Dashboard() {
         onToggleCompact={() => setCompact((v) => !v)}
         headerRail={headerRail}
         onToggleHeaderRail={() => setHeaderRail((v) => !v)}
-        slimStatusRail={slimStatusRail}
-        onToggleSlimStatusRail={() => setSlimStatusRail((v) => !v)}
+        slimStatusRail
         positionsPollMs={positionsPollMs}
         positionsPublic={tabOn("positions")}
         showDeskAi={deskAiShow}

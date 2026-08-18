@@ -166,7 +166,7 @@ function headerTileTone(indexKey, up, flat, isActive) {
   };
 }
 
-export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default", tickers: tickersProp = null }) {
+export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default", tickers: tickersProp = null, enabledIndices = null }) {
   const [tickersLocal, setTickersLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(tickersProp == null);
   const owned = tickersProp != null;
@@ -217,6 +217,10 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
 
   const many = displayTickers.length > INDEX_CHIP_CAP;
   useDragScroll(scrollerRef, many && (isHeader || isRail));
+  const enabledSet = Array.isArray(enabledIndices) && enabledIndices.length
+    ? new Set(enabledIndices)
+    : null;
+  const indexSelectable = (idx) => !enabledSet || enabledSet.has(idx);
 
   if (loading && !tickers.length) {
     return (
@@ -238,18 +242,25 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
           const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
           const toneCls = flat ? "text-slate-600 dark:text-slate-300" : up ? "text-emerald-600" : "text-rose-600";
           const isActive = t.index === activeIndex;
+          const selectable = indexSelectable(t.index);
           const shortLabel = s.short;
           const ltpLabel = fmtLtp(t.ltp, 2);
           const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
+          const Tag = selectable ? "button" : "div";
           return (
-            <button
+            <Tag
               key={t.index}
-              type="button"
-              onClick={() => onSelectIndex?.(t.index)}
+              type={selectable ? "button" : undefined}
+              onClick={selectable ? () => onSelectIndex?.(t.index) : undefined}
               data-testid={`ticker-${t.index}`}
-              title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
+              aria-disabled={selectable ? undefined : "true"}
+              title={selectable
+                ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
+                : `${s.short} is disabled — enable it in Admin configuration`}
               className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[10px] font-mono-data tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
-                isActive
+                !selectable
+                  ? "border-transparent opacity-40 cursor-not-allowed pointer-events-none"
+                  : isActive
                   ? `${s.selectedBorder} border-2 bg-white shadow-sm dark:bg-slate-900`
                   : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
               }`}
@@ -274,7 +285,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   ? "(0.00%)"
                   : `(${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%)`}
               </span>
-            </button>
+            </Tag>
           );
         })}
       </div>
@@ -311,20 +322,25 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const shortLabel = s.short;
         const useCompact = dense || isHeader;
         const ltpLabel = fmtLtp(t.ltp, 2);
+        const selectable = indexSelectable(t.index);
+        const TileTag = selectable ? "button" : "div";
         return (
-          <button
+          <TileTag
             key={t.index}
-            type="button"
-            onClick={() => onSelectIndex?.(t.index)}
+            type={selectable ? "button" : undefined}
+            onClick={selectable ? () => onSelectIndex?.(t.index) : undefined}
             data-testid={`ticker-${t.index}`}
+            aria-disabled={selectable ? undefined : "true"}
             className={`text-left rounded-md border-2 ${tones.shell} ${
               isHeader
                 ? `px-2 py-1.5 shrink-0 ${many ? "min-w-[6.5rem] max-w-[9.5rem] snap-start" : "min-w-[7.25rem] max-w-[11rem]"}`
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
-            } hover:brightness-[0.99] transition-all ${isActive ? "shadow-md" : ""}`}
-            title={`Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`}
+            } ${selectable ? "hover:brightness-[0.99] transition-all" : "opacity-40 cursor-not-allowed pointer-events-none"} ${isActive && selectable ? "shadow-md" : ""}`}
+            title={selectable
+              ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
+              : `${s.short} is disabled — enable it in Admin configuration`}
           >
             <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-bold ${tones.label || ""} ${
               isHeader ? "text-[11px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"
@@ -356,7 +372,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 </span>
               </div>
             </div>
-          </button>
+          </TileTag>
         );
       })}
     </div>

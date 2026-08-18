@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "6.40",
+    date: "2026-08-18",
+    user: [
+      "Kite login returns to striklenz.com. Desk alert sounds play again. Notifications can be turned off. Alerts from another tab collapse to one summary. The top LIVE bar stays one slim scrolling row. Home-screen icon is full green (no white frame) and the in-app mark pulses.",
+    ],
+    admin: [
+      "Kite Connect redirect URL: https://striklenz.com/kite-callback. Saving Admin configuration applies pages immediately and no longer re-seeds expiries unless enabled indices changed. Disabled indices are not clickable in the header ticker.",
+    ],
+  },
+  {
     version: "6.39",
     date: "2026-08-17",
     user: [

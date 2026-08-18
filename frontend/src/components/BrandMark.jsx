@@ -19,7 +19,7 @@ export default function BrandMark({
       data-testid="brand-about-trigger"
       title={`About ${APP_NAME} ${APP_VERSION_LABEL}`}
     >
-      <OiPulseLogo className={logoClassName || (compact ? "w-6 h-6" : "w-8 h-8")} />
+      <OiPulseLogo className={logoClassName || (compact ? "w-6 h-6 rounded-md overflow-hidden" : "w-8 h-8 rounded-lg overflow-hidden")} />
       <div className="leading-tight min-w-0">
         <div
           className={`${compact ? "text-sm" : "text-base"} font-semibold tracking-tight bg-gradient-to-r from-emerald-600 via-emerald-700 to-sky-600 bg-clip-text text-transparent`}
