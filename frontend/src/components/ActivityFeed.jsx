@@ -1,6 +1,7 @@
 import { Radio, TrendingUp, TrendingDown, Building2, Flame, ConstructionIcon } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import PageBrandTitle from "@/components/PageBrandTitle";
 
 function relTime(iso) {
   const diff = Math.max(0, Date.now() - new Date(iso).getTime());
@@ -39,9 +40,8 @@ export default function ActivityFeed({ events, onClear, activeIndex, filter, onS
   return (
     <div className="bg-white border border-slate-200 rounded-md" data-testid="activity-feed">
       <div className="p-3 border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Radio className="w-4 h-4 text-slate-600" />
-          <span className="text-sm font-semibold">Unusual Activity</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <PageBrandTitle title="Unusual Activity" testId="activity-page-title" />
           {activeIndex && (
             <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm">{activeIndex}</span>
           )}

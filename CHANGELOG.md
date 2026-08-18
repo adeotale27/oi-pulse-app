@@ -1,5 +1,16 @@
 # Changelog
 
+## V7.11 — 2026-08-18
+
+Phone status bar shows only the moving indexes (no LAST SESSION, date, or Market Closed). Page titles use the desk mark. Analyze adds ±0.5%. Journal layout fits tablet. Sign out is red. Event tile menus stay short on phone.
+
+- Closed-session rail on phone: ticker only; LAST SESSION / session date / Market Closed stay on tablet and desktop
+- Page mark (same as Kite Positions) on Straddle Premium, OI Change, Open Interest, Strike Table, Sell Candidates, Build-up, Alerts, Activity, Events, CAS — not Index Risk
+- Analyze spot presets include −0.5% and +0.5%
+- Holiday / FII / Events / Impact dropdowns clamp to the viewport so they do not cover the phone chart
+- Trade journal is full-screen through tablet (`lg`); compact calendar until desktop; date fields and stats grid align
+- Admin Sign out is rose red
+
 ## V7.10 — 2026-08-18
 
 Journal money on phone uses short rounded labels (₹47.5k) so calendar tiles fit; desktop still shows exact paisa.

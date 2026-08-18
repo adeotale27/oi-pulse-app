@@ -18,19 +18,22 @@ export default function usePortaledMenu({
   /** Ignore outside taps this long after open (iOS synthetic mouse closes instantly). */
   guardMs = 400,
 }) {
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 288, maxHeight: 320 });
 
   const place = useCallback(() => {
     const el = anchorRef?.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    let left = align === "left" ? r.left : r.right - width;
+    const gutter = 8;
+    const panelW = Math.min(width, Math.max(160, window.innerWidth - gutter * 2));
+    let left = align === "left" ? r.left : r.right - panelW;
     left = Math.min(
-      Math.max(8, left),
-      Math.max(8, window.innerWidth - width - 8),
+      Math.max(gutter, left),
+      Math.max(gutter, window.innerWidth - panelW - gutter),
     );
     const top = Math.round(r.bottom + offset);
-    setPos({ top, left: Math.round(left) });
+    const maxHeight = Math.max(140, Math.min(window.innerHeight - top - gutter, window.innerHeight * 0.48));
+    setPos({ top, left: Math.round(left), width: Math.round(panelW), maxHeight: Math.round(maxHeight) });
   }, [anchorRef, align, width, offset]);
 
   useLayoutEffect(() => {

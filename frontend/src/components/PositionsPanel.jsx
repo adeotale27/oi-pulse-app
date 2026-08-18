@@ -1219,9 +1219,9 @@ export default function PositionsPanel({
   return (
     <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md" pulse={false} />
-          <div className="text-sm font-semibold text-slate-900">Kite Positions</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md shrink-0" pulse={false} />
+          <div className="text-sm font-semibold text-slate-900 leading-tight">Kite Positions</div>
           <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
             {stats.openCount} open
           </span>

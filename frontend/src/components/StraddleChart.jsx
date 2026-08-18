@@ -12,6 +12,7 @@ import {
 import { fetchStraddleTick, fetchStraddleHistory } from "../lib/api";
 import { isMarketQuiescent, getMarketOpenMinute, getMarketCloseMinute, getMarketOpenHm, getMarketCloseHm } from "@/lib/marketTimes";
 import { sessionAnchorDateIST } from "@/lib/holidays";
+import PageBrandTitle from "@/components/PageBrandTitle";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 /** Chart display resolution — denser than admin persistence when live ticks arrive. */
@@ -504,10 +505,12 @@ export default function StraddleChart({
     <div className="w-full" data-testid="straddle-chart">
       <div className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm overflow-hidden">
         <div className="px-3 py-2 md:px-5 md:py-3 border-b border-slate-100 flex items-center justify-between bg-white">
-          <div className="min-w-[6.5rem] shrink-0">
-            <div className="text-[10px] md:text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{index}</div>
-            <h2 className="text-sm md:text-lg font-bold text-slate-900 leading-tight">Straddle Premium</h2>
-          </div>
+          <PageBrandTitle
+            kicker={index}
+            title="Straddle Premium"
+            titleClassName="text-sm md:text-lg font-bold text-slate-900"
+            testId="straddle-page-title"
+          />
           <div className="text-right">
             <div className="text-[11px] md:text-xs font-mono text-slate-500">
               {meta

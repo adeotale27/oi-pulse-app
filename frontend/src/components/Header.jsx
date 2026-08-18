@@ -948,6 +948,7 @@ export default function Header({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-admin-sign-out"
+                  className="text-rose-600 focus:text-rose-700 focus:bg-rose-50"
                   onSelect={async (e) => {
                     e.preventDefault();
                     try { await api.post("/auth/logout"); } catch (_) {}
@@ -956,7 +957,7 @@ export default function Header({
                     window.location.reload();
                   }}
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-4 h-4 text-rose-600" />
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>

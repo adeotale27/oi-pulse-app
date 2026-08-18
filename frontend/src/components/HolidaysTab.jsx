@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { CalendarDays, PartyPopper } from "lucide-react";
 import { allHolidays, todayIST, formatDatePretty, daysBetweenIST, subscribeHolidays } from "@/lib/holidays";
 import { upcomingEvents, eventBadgeTone } from "@/lib/econCalendar";
+import PageBrandTitle from "@/components/PageBrandTitle";
 
 export default function HolidaysTab() {
   const today = todayIST();
@@ -12,6 +13,7 @@ export default function HolidaysTab() {
 
   return (
     <div className="space-y-6" data-testid="holidays-tab">
+      <PageBrandTitle title="Events" className="mb-1" testId="events-page-title" />
       <div>
         <div className="flex items-center gap-2 mb-3">
           <CalendarDays className="w-4 h-4 text-slate-700" />

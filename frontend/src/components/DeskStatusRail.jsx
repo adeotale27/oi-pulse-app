@@ -65,7 +65,7 @@ export default function DeskStatusRail({
       : phase === "weekend" || phase === "holiday" ? CalendarOff
         : phase === "post_close" || phaseIsClosed ? Moon
           : Clock;
-    return { title, short, Icon, always: phaseIsClosed || truth.mode === "LAST_SESSION" };
+    return { title, short, Icon };
   })();
 
   // Only real missing-credentials / dead-token cases — not brief mode=offline flaps.
@@ -81,7 +81,7 @@ export default function DeskStatusRail({
     >
       <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll px-1.5">
         <span
-          className={`inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 rounded-sm px-1.5 py-0.5 ${tone.badge}`}
+          className={`hidden md:inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 rounded-sm px-1.5 py-0.5 ${tone.badge}`}
           data-testid="data-truth-badge"
         >
           {(truth.mode === "LIVE" || truth.mode === "STALE") && (
@@ -90,7 +90,7 @@ export default function DeskStatusRail({
           {truth.badge}
         </span>
         <span
-          className={`font-mono-data font-semibold tracking-tight shrink-0 ${truth.mode === "LIVE" ? "hidden" : ""}`}
+          className={`hidden md:inline font-mono-data font-semibold tracking-tight shrink-0 ${truth.mode === "LIVE" ? "md:hidden" : ""}`}
           data-testid="data-truth-asof"
         >
           {truth.mode === "LAST_SESSION"
@@ -98,7 +98,7 @@ export default function DeskStatusRail({
             : (asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel)}
         </span>
         {truth.mode !== "LAST_SESSION" && truth.detail ? (
-          <span className="opacity-90 shrink-0 whitespace-nowrap pr-3 hidden sm:inline" data-testid="data-truth-detail">
+          <span className="opacity-90 shrink-0 whitespace-nowrap pr-3 hidden md:inline" data-testid="data-truth-detail">
             {truth.detail}
           </span>
         ) : null}
@@ -110,9 +110,9 @@ export default function DeskStatusRail({
 
         {marketBits && (
           <>
-            <span className={`opacity-50 ${marketBits.always ? "inline" : "hidden md:inline"} ml-auto`}>·</span>
+            <span className="opacity-50 hidden md:inline ml-auto">·</span>
             <span
-              className={`${marketBits.always ? "inline-flex" : "hidden md:inline-flex"} items-center gap-1 opacity-95 shrink-0`}
+              className="hidden md:inline-flex items-center gap-1 opacity-95 shrink-0"
               data-testid="market-status-banner"
             >
               {(() => {
@@ -121,7 +121,7 @@ export default function DeskStatusRail({
               })()}
               <span className="font-semibold whitespace-nowrap">{marketBits.title}</span>
               {marketBits.short ? (
-                <span className="opacity-80 hidden sm:inline">{marketBits.short}</span>
+                <span className="opacity-80 hidden lg:inline">{marketBits.short}</span>
               ) : null}
             </span>
           </>
