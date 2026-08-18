@@ -9,6 +9,9 @@ Desk V7: one OI toast with the full read, a visible LIVE pulse, and a cleaner ph
 - Phone status rail hides **Market open · Updated Ns** so VIX/GIFT/indices keep the row
 - Header uses Outfit; ticker labels are a bit larger and less mono
 - First OI fetch still includes 1/3/5 windows so huge-shift can fire on the first tick
+- Sell / decay ideas stay live until **market close IST on expiry day** (not ~4h before close)
+- Position heatmap uses desk green/red fills; P&L border (not a red ring on every “too close” tile)
+- Side-panel OI Change uses the same OI-on/off chart as the main tab
 
 ## V6.45 — 2026-08-18
 

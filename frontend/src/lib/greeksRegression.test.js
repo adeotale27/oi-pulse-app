@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { impliedVol, greeks, yearsToExpiry } from "./blackScholes.js";
+import { impliedVol, greeks, yearsToExpiry, expiryStillLive } from "./blackScholes.js";
 import { resolvePositionSpot } from "./positionPayoff.js";
 
 const T = yearsToExpiry("2026-08-11", Date.parse("2026-08-10T07:30:00Z"));
@@ -26,5 +26,8 @@ assert.equal(
   resolvePositionSpot({ index: "NIFTY" }, { NIFTY: { price: 24605, atm: 24600 } }, 1),
   24605,
 );
+
+assert.equal(expiryStillLive("2026-08-18", Date.parse("2026-08-18T13:43:00+05:30")), true);
+assert.equal(expiryStillLive("2026-08-18", Date.parse("2026-08-18T15:41:00+05:30")), false);
 
 console.log("greeksRegression.test.js: all assertions passed");
