@@ -16,6 +16,7 @@ from trade_journal import (
     iso_is_trading_day,
     is_closed_session_auto_snapshot,
     include_on_journal_calendar,
+    period_stats,
 )
 
 
@@ -532,3 +533,102 @@ def test_carry_charges_recomputes_after_charges_from_booked():
     assert out2["booked_after_charges"] == round(800.0 - 120.5, 2)
     patched = apply_charges({"booked_pnl": 20674}, {"brokerage": 40, "charges_total": 185.25})
     assert patched["booked_after_charges"] == round(20674 - 185.25, 2)
+
+
+def test_apply_snapshot_revises_locked_same_day_booked():
+    """Expiry leftover settle after 15:45 must update the frozen journal row."""
+    existing = {
+        "date": "2026-08-18",
+        "pnl_total": 50076.0,
+        "pnl_exited": 50076.0,
+        "booked_pnl": 50076.0,
+        "frozen_pnl": 50076.0,
+        "trade_count": 15,
+        "exited_count": 15,
+        "eod_locked": True,
+        "eod_locked_at": "2026-08-18T10:15:00+00:00",
+        "went_well": "held",
+        "charges_total": 2228.4,
+        "brokerage": 1060.25,
+    }
+    snap = snapshot_from_positions({
+        "open_count": 0,
+        "exited_count": 16,
+        "pnl_today": {"open": 0, "exited": 47489.15, "booked": 47489.15, "total": 47489.15},
+        "positions": [
+            {
+                "tradingsymbol": "NIFTY2681823250PE",
+                "index": "NIFTY",
+                "side": "PE",
+                "quantity": 0,
+                "exited": True,
+                "booked_pnl": 47489.15,
+                "pnl": 47489.15,
+            },
+        ],
+    }, date="2026-08-18")
+    out = apply_snapshot(existing, snap)
+    assert out is not None
+    assert out["eod_locked"] is True
+    assert out["eod_locked_at"] == existing["eod_locked_at"]
+    assert out["booked_pnl"] == 47489.15
+    assert out["frozen_pnl"] == 47489.15
+    assert out["charges_total"] == 2228.4
+    assert out["booked_after_charges"] == round(47489.15 - 2228.4, 2)
+    empty = snapshot_from_positions({"positions": [], "pnl_today": {"total": 0, "open": 0, "exited": 0}})
+    assert apply_snapshot(existing, empty) is None
+
+
+def test_period_stats_from_to_and_index_filter():
+    days = [
+        {
+            "date": "2026-08-17",
+            "booked_pnl": 1000.25,
+            "pnl_exited": 1000.25,
+            "exited_count": 2,
+            "charges_total": 100.10,
+            "brokerage": 40.05,
+            "legs": [
+                {"tradingsymbol": "NIFTY1", "index": "NIFTY", "exited": True, "realised": 800.25, "pnl": 800.25},
+                {"tradingsymbol": "SENSEX1", "index": "SENSEX", "exited": True, "realised": 200.00, "pnl": 200.00},
+            ],
+        },
+        {
+            "date": "2026-08-18",
+            "booked_pnl": -50.50,
+            "pnl_exited": -50.50,
+            "exited_count": 1,
+            "charges_total": 25.25,
+            "brokerage": 10.00,
+            "legs": [
+                {"tradingsymbol": "NIFTY2", "index": "NIFTY", "exited": True, "realised": -50.50, "pnl": -50.50},
+            ],
+        },
+        {
+            "date": "2026-08-19",
+            "booked_pnl": 9.99,
+            "pnl_exited": 9.99,
+            "exited_count": 1,
+            "charges_total": 1.00,
+            "legs": [
+                {"tradingsymbol": "BANKNIFTY1", "index": "BANKNIFTY", "exited": True, "realised": 9.99, "pnl": 9.99},
+            ],
+        },
+    ]
+    all_s = period_stats(days, start="2026-08-17", end="2026-08-18")
+    assert all_s["booked_pnl"] == 949.75
+    assert all_s["charges_total"] == 125.35
+    assert all_s["brokerage"] == 50.05
+    assert all_s["booked_after_charges"] == round(949.75 - 125.35, 2)
+    assert all_s["win_trades"] == 2
+    assert all_s["loss_trades"] == 1
+    assert all_s["win_rate"] == round(100.0 * 2 / 3, 2)
+    assert all_s["trading_days"] == 2
+    nifty = period_stats(days, start="2026-08-17", end="2026-08-18", index="NIFTY")
+    assert nifty["booked_pnl"] == 749.75
+    assert nifty["win_trades"] == 1
+    assert nifty["loss_trades"] == 1
+    assert nifty["win_rate"] == 50.0
+    assert nifty["charges_are_all_indices"] is True
+    assert nifty["charges_total"] == 125.35
+    assert nifty["booked_after_charges"] is None

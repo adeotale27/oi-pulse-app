@@ -1,5 +1,14 @@
 # Changelog
 
+## V7.09 — 2026-08-18
+
+Trade journal stays in sync after close, shows exact rupees, and adds a from–to totals strip. Closed-session rail is LAST SESSION + date + Market Closed at last snapshot.
+
+- Same-day journal P&L can revise after EOD lock (leftover expiry hedges). Opening a day re-snapshots Positions.
+- Journal money uses paisa (no ₹2.2k / lakhs rounding). From–to panel: exact booked profit, charges, win %, index filter (NIFTY / SENSEX / BANKNIFTY).
+- Slim bar: yellow LAST SESSION, session date, moon **Market Closed at** last snap. Dropped “for the day”, “Closed 15:40”, and “snap 15:40”.
+- Index ticker loops: what scrolls off one side comes back on the other.
+
 ## V7.08 — 2026-08-18
 
 Book leftover 0.05 expiry hedges after the cash session so Profit booked and the journal match Today P&L.

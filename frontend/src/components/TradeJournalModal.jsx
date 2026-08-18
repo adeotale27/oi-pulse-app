@@ -16,6 +16,7 @@ import {
   fetchJournalMonth,
   fetchJournalYear,
   fetchJournalDay,
+  fetchJournalPeriod,
   saveJournalDay,
   addJournalScreenshot,
   deleteJournalScreenshot,
@@ -23,7 +24,7 @@ import {
 import { toast } from "sonner";
 import { holidayCellLabel, holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
-import { HEATMAP_IDS, INDEX_SHORT } from "@/lib/universe";
+import { HEATMAP_IDS, INDEX_SHORT, DESK_IDS } from "@/lib/universe";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import InfoTip from "@/components/InfoTip";
 
@@ -31,7 +32,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function fmtInr(v, dp = 0) {
+function fmtInr(v, dp = 2) {
   if (v == null || Number.isNaN(Number(v))) return "—";
   const n = Number(v);
   const abs = Math.abs(n);
@@ -42,10 +43,8 @@ function fmtInr(v, dp = 0) {
 function compactPnl(v) {
   const n = Number(v) || 0;
   const sign = n < 0 ? "−" : n > 0 ? "+" : "";
-  const abs = Math.abs(n);
-  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(1)}L`;
-  if (abs >= 1000) return `${sign}₹${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`;
-  return `${sign}₹${Math.round(abs)}`;
+  const body = Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${sign}₹${body}`;
 }
 
 function cellPnl(doc) {
@@ -177,6 +176,14 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const [dayDoc, setDayDoc] = useState(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [periodFrom, setPeriodFrom] = useState(() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+  const [periodTo, setPeriodTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [periodIndex, setPeriodIndex] = useState("ALL");
+  const [periodData, setPeriodData] = useState(null);
+  const [periodLoading, setPeriodLoading] = useState(false);
 
   const loadMonth = useCallback(async (y, m) => {
     setLoading(true);
@@ -208,6 +215,18 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     if (!open) return;
     loadYear(year);
   }, [open, year, loadYear]);
+
+  useEffect(() => {
+    if (!open || !periodFrom || !periodTo) return;
+    if (periodFrom > periodTo) return;
+    let cancelled = false;
+    setPeriodLoading(true);
+    fetchJournalPeriod(periodFrom, periodTo, periodIndex)
+      .then((d) => { if (!cancelled) setPeriodData(d); })
+      .catch((e) => { if (!cancelled) toast.error(e?.response?.data?.detail || "Could not load period totals"); })
+      .finally(() => { if (!cancelled) setPeriodLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, periodFrom, periodTo, periodIndex]);
 
   const byDate = useMemo(() => {
     const m = new Map();
@@ -377,6 +396,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     return s || {};
   }, [yearData, heat]);
   const focused = !!(selected && dayDoc && tab === "calendar");
+  const periodStats = periodData?.stats || {};
+  const periodChips = ["ALL", ...DESK_IDS];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -421,6 +442,93 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
         </div>
 
         <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 max-md:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+          {!focused && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2" data-testid="journal-period-panel">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  From
+                  <input
+                    type="date"
+                    value={periodFrom}
+                    onChange={(e) => setPeriodFrom(e.target.value)}
+                    className="mt-0.5 block h-8 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
+                    data-testid="journal-period-from"
+                  />
+                </label>
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  To
+                  <input
+                    type="date"
+                    value={periodTo}
+                    onChange={(e) => setPeriodTo(e.target.value)}
+                    className="mt-0.5 block h-8 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
+                    data-testid="journal-period-to"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {periodChips.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPeriodIndex(id)}
+                      data-testid={`journal-period-index-${id}`}
+                      className={`h-8 px-2.5 rounded-full text-[11px] font-semibold border ${
+                        periodIndex === id ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-200"
+                      }`}
+                    >
+                      {id === "ALL" ? "All indices" : (INDEX_SHORT[id] || id)}
+                    </button>
+                  ))}
+                </div>
+                {periodLoading ? <span className="text-[11px] text-slate-400">Updating…</span> : null}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Booked profit</div>
+                  <div className={`text-[15px] sm:text-lg font-bold font-mono-data leading-tight ${Number(periodStats.booked_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    {privacy ? "••••" : fmtInr(periodStats.booked_pnl)}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Charges & taxes</div>
+                  <div className="text-[15px] sm:text-lg font-bold font-mono-data text-slate-800 leading-tight">
+                    {privacy ? "••••" : fmtInr(periodStats.charges_total)}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {periodStats.charges_are_all_indices ? "Kite charges are for the whole book, not this index" : "Brokerage + taxes on stored days"}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Win %</div>
+                  <div className="text-[15px] sm:text-lg font-bold font-mono-data text-slate-900 leading-tight">
+                    {Number(periodStats.win_rate || 0).toFixed(2)}%
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {periodStats.win_trades || 0} wins · {periodStats.loss_trades || 0} losses
+                  </div>
+                </div>
+                <div className="rounded-xl border border-violet-100 bg-violet-50/50 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">After charges</div>
+                  <div className={`text-[15px] sm:text-lg font-bold font-mono-data leading-tight ${Number(periodStats.booked_after_charges) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    {privacy ? "••••" : (periodStats.booked_after_charges == null ? "—" : fmtInr(periodStats.booked_after_charges))}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {periodStats.trading_days || 0} booked days
+                  </div>
+                </div>
+              </div>
+              {periodIndex === "ALL" && periodStats.by_index && Object.keys(periodStats.by_index).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(periodStats.by_index).map(([idx, v]) => (
+                    <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                      {INDEX_SHORT[idx] || idx}
+                      <span className={`font-mono-data ${Number(v) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{privacy ? "••••" : compactPnl(v)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {tab === "calendar" && (
             <>
               {!focused && (
@@ -817,17 +925,17 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                     {new Date(`${dayDoc.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                   </div>
                   <div className={`text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                    Booked {privacy ? "••••" : fmtInr(dayDoc.booked_pnl ?? dayDoc.pnl_exited, 0)}
+                    Booked {privacy ? "••••" : fmtInr(dayDoc.booked_pnl ?? dayDoc.pnl_exited)}
                     {dayDoc.eod_locked ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-violet-600">Locked 15:45</span> : <span className="ml-2 text-[10px] font-medium text-slate-400">Live until 15:45 IST</span>}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5" data-testid="journal-after-charges">
                     {privacy
                       ? "after charges ••••"
                       : dayDoc.charges_total != null
-                        ? `after charges ${fmtInr(dayDoc.booked_after_charges ?? ((Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) || 0) - Number(dayDoc.charges_total)), 0)}`
+                        ? `after charges ${fmtInr(dayDoc.booked_after_charges ?? ((Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) || 0) - Number(dayDoc.charges_total)))}`
                         : "charges pending"}
                     {dayDoc.brokerage != null && !privacy ? (
-                      <span className="ml-2 text-slate-400">· brokerage {fmtInr(dayDoc.brokerage, 0)}</span>
+                      <span className="ml-2 text-slate-400">· brokerage {fmtInr(dayDoc.brokerage)}</span>
                     ) : null}
                   </div>
                 </div>
@@ -863,8 +971,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <Stat label="Winners" value={dayDoc.win_trades} />
                 <Stat label="Losers" value={dayDoc.loss_trades} />
                 <Stat label="Winrate" value={dayDoc.winrate != null ? `${dayDoc.winrate.toFixed(1)}%` : "—"} />
-                <Stat label="Brokerage" value={privacy ? "••••" : fmtInr(dayDoc.brokerage, 0)} />
-                <Stat label="All charges" value={privacy ? "••••" : fmtInr(dayDoc.charges_total, 0)} />
+                <Stat label="Brokerage" value={privacy ? "••••" : fmtInr(dayDoc.brokerage)} />
+                <Stat label="All charges" value={privacy ? "••••" : fmtInr(dayDoc.charges_total)} />
               </div>
 
               {(dayDoc.legs || []).filter((leg) => leg.exited || leg.partial || Math.abs(Number(leg.realised) || 0) > 0.009).length > 0 && (
@@ -876,7 +984,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         {leg.partial ? " · partial" : ""}
                       </span>
                       <span className={`font-mono-data ${(leg.realised ?? leg.pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                        {privacy ? "••••" : compactPnl(leg.realised ?? leg.pnl)}
+                        {privacy ? "••••" : fmtInr(leg.realised ?? leg.pnl)}
                       </span>
                     </div>
                   ))}

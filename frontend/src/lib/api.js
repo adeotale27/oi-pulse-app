@@ -318,6 +318,8 @@ export const fetchJournalMonth = (year, month) =>
   api.get("/journal", { params: { year, month } }).then((r) => r.data);
 export const fetchJournalYear = (year) =>
   api.get(`/journal/year/${year}`).then((r) => r.data);
+export const fetchJournalPeriod = (from, to, index) =>
+  api.get("/journal/period", { params: { from, to, ...(index && index !== "ALL" ? { index } : {}) } }).then((r) => r.data);
 export const fetchJournalDay = (day) =>
   api.get(`/journal/${day}`).then((r) => r.data);
 export const saveJournalDay = (day, body) =>
