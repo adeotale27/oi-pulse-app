@@ -146,15 +146,17 @@ def booked_pnl_from_kite_row(
         computed = (float(sell_price) - float(buy_price)) * matched * mult
 
     if exited:
-        if value_pnl is not None and abs(value_pnl) > 1e-9:
-            booked = value_pnl
-            source = "buy_sell_value"
-        elif abs(kite_realised) > 1e-9:
+        # Kite Positions "Booked" is `realised` (qty=0 → same as pnl). Do not
+        # prefer sell_value-buy_value over that — overnight history can diverge.
+        if abs(kite_realised) > 1e-9:
             booked = kite_realised
             source = "realised"
         elif abs(kite_pnl) > 1e-9:
             booked = kite_pnl
             source = "pnl"
+        elif value_pnl is not None and abs(value_pnl) > 1e-9:
+            booked = value_pnl
+            source = "buy_sell_value"
         else:
             booked = computed
             source = "buy_sell"
@@ -184,12 +186,16 @@ def booked_pnl_from_kite_row(
         source = "buy_sell"
 
     partial = matched > 0
-    # Open booked = today's closed cash only. Quote LTP must not move this number.
+    # Open booked = Kite "Booked" column. Use Kite realised, or kite pnl minus
+    # kite unrealised (same snapshot — not quote MTM minus a lagging unrealised).
     booked = 0.0
     booked_source = source
     if abs(kite_realised) > 1e-9:
         booked = kite_realised
         booked_source = "realised"
+    elif abs(kite_unrealised) > 1e-9:
+        booked = kite_pnl - kite_unrealised
+        booked_source = "kite_pnl_minus_unrealised"
     elif matched > 0 and abs(computed) > 1e-9:
         booked = computed
         booked_source = "buy_sell"
@@ -266,11 +272,15 @@ def apply_live_ltp_to_open_rows(rows: list, quotes: Optional[dict]) -> None:
             multiplier=float(row.get("multiplier") or 1) or 1.0,
             mark_to_market=True,
         )
+        try:
+            keep_booked = float(row["booked_pnl"]) if row.get("booked_pnl") is not None else bits["booked_pnl"]
+        except (TypeError, ValueError):
+            keep_booked = bits["booked_pnl"]
         row["last_price"] = lp
         row["pnl"] = bits["pnl"]
-        row["unrealised"] = bits["unrealised"]
-        row["realised"] = bits["realised"]
-        row["booked_pnl"] = bits["booked_pnl"]
+        row["booked_pnl"] = round(keep_booked, 2)
+        row["realised"] = round(keep_booked, 2)
+        row["unrealised"] = round(bits["pnl"] - keep_booked, 2)
         row["pnl_source"] = bits["pnl_source"]
 
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## V7.03 — 2026-08-18
+
+Restore the full huge-OI-shift card and match Kite Booked / Unbooked / Total P&L.
+
+- Big OI move modal again shows ATM, spot, time, Δ Call/Put OI per strike, and larger tiles (not three tiny chips)
+- Positions insight tiles wrap in a 2×4 grid with readable numbers
+- Profit booked today uses Kite `realised` (or kite P&L minus unrealised), not buy/sell averages or live LTP
+- Today P&L hint is Unbooked + Booked, the same split as Kite Positions
+
 ## V7.02 — 2026-08-18
 
 Quiet the false Bank Nifty toast, keep booked profit still, and use the pulse mark on the home screen.

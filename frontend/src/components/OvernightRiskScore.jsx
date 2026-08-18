@@ -62,7 +62,7 @@ export default function OvernightRiskScore({ vix, netDelta, positionsCount, minu
         : "border-emerald-300 bg-emerald-50 text-emerald-950";
 
   return (
-    <div className={`rounded-xl border px-2.5 py-2 h-full flex flex-col gap-0.5 shadow-sm ${cls}`} data-testid="overnight-risk">
+    <div className={`rounded-xl border px-3 py-2.5 h-full min-h-[6.5rem] flex flex-col gap-1 shadow-sm ${cls}`} data-testid="overnight-risk">
       <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1 pr-4 leading-none">
         Overnight risk
         <InfoTip title="Overnight risk" size="xs" testId="overnight-risk-tip">

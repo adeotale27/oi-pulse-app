@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.03",
+    date: "2026-08-18",
+    user: [
+      "Huge OI shift again shows ATM, spot, time, and the contributing strikes. Positions tiles are larger. Profit booked today matches Kite Booked (not a mix of exited MTM and live LTP). Today P&L shows Unbooked and Booked like Kite.",
+    ],
+    admin: [
+      "booked_pnl prefers Kite realised, then kite pnl minus unrealised. GET /positions pnl_today.booked/unbooked/total is taken before quote MTM. Quote LTP still updates open-leg P&L in the table without rewriting booked.",
+    ],
+  },
+  {
     version: "7.02",
     date: "2026-08-18",
     user: [

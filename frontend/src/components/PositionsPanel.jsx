@@ -937,29 +937,25 @@ export default function PositionsPanel({
       }
     }
     if (pnlToday && typeof pnlToday === "object") {
-      const openN = Number(pnlToday.open);
+      const openN = Number(pnlToday.unbooked ?? pnlToday.open);
       const exitedN = Number(pnlToday.exited);
       const totalN = Number(pnlToday.total);
-      // Prefer server totals; never use `x || fallback` (0 is a valid P&L).
+      const bookedN = Number(pnlToday.booked);
       if (Number.isFinite(openN)) openPnl = openN;
-      if (Number.isFinite(exitedN)) {
-        exitedPnl = exitedN;
-        const bookedN = Number(pnlToday.booked);
-        if (Number.isFinite(bookedN)) {
-          bookedToday = bookedN;
-        } else {
-          // Server exited total is full square-offs; add realised on still-open legs.
-          bookedToday = exitedN;
-          for (const r of rows) {
-            if (r.exited) continue;
-            const realised = Number(r.realised);
-            if (Number.isFinite(realised) && Math.abs(realised) > 1e-9) {
-              bookedToday += realised;
-            }
+      if (Number.isFinite(exitedN)) exitedPnl = exitedN;
+      if (Number.isFinite(bookedN)) {
+        bookedToday = bookedN;
+      } else if (Number.isFinite(exitedN)) {
+        bookedToday = exitedN;
+        for (const r of rows) {
+          if (r.exited) continue;
+          const realised = Number(r.realised);
+          if (Number.isFinite(realised) && Math.abs(realised) > 1e-9) {
+            bookedToday += realised;
           }
         }
       }
-      netPnl = Number.isFinite(totalN) ? totalN : openPnl + exitedPnl;
+      netPnl = Number.isFinite(totalN) ? totalN : (Number.isFinite(bookedN) ? bookedN + openPnl : openPnl + exitedPnl);
     } else {
       netPnl = openPnl + exitedPnl;
     }
@@ -1524,25 +1520,17 @@ export default function PositionsPanel({
           hint={
             privacyMode
               ? "Masked"
-              : stats.exitedCount > 0
-                ? `Open ₹ ${fmt(stats.openPnl, 0)} · Exited ₹ ${fmt(stats.exitedPnl, 0)}`
-                : brokerage?.charges_total != null && Number(brokerage.charges_total) > 0
-                  ? `After charges ₹ ${fmt(stats.netPnl - Number(brokerage.charges_total), 2)}`
-                  : brokerage?.charges_total === 0
-                    ? "No day charges yet"
-                    : brokerage?.error
-                      ? "Charges temporarily unavailable"
-                      : "Open + booked exits"
+              : `Unbooked ₹ ${fmt(stats.openPnl, 0)} · Booked ₹ ${fmt(stats.bookedToday, 0)}`
           }
           tip={(
             <div className="space-y-1.5">
               <p>
-                <b>Today P&amp;L</b> = open positions + same-day <b>exited</b> booked P&amp;L
-                (exited legs stay in the list until end of day).
+                <b>Today P&amp;L</b> matches Kite <b>Total P&amp;L</b> = Booked + Unbooked.
+                Booked is realised on closed and partial legs; Unbooked is open MTM.
               </p>
               {!privacyMode && (
                 <p>
-                  Open: ₹ {fmt(stats.openPnl, 0)} · Exited: ₹ {fmt(stats.exitedPnl, 0)}
+                  Unbooked: ₹ {fmt(stats.openPnl, 0)} · Booked: ₹ {fmt(stats.bookedToday, 0)}
                   {brokerage?.charges_total != null
                     ? ` · Day charges ₹ ${fmt(brokerage.charges_total, 0)}`
                     : ""}
@@ -1644,14 +1632,13 @@ export default function PositionsPanel({
             privacyMode
               ? "Masked"
               : stats.exitedCount > 0
-                ? `${stats.exitedCount} exited · realised`
-                : "No exits booked yet"
+                ? `Kite Booked · ${stats.exitedCount} closed`
+                : "Kite Booked (realised)"
           }
           tip={(
             <p>
-              Realised money locked in today from <b>squared-off</b> legs (plus any partial
-              closes still showing as open). Separate from Still to earn, which is premium not
-              yet decayed.
+              Same as Kite Positions <b>Booked</b>: realised on squared-off legs plus
+              partial closes that are still open. Not live LTP.
             </p>
           )}
         />
@@ -2592,15 +2579,15 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
         ? "border-amber-300 bg-amber-50 text-amber-950"
         : "border-slate-300 bg-white text-slate-900";
   return (
-    <div className={`rounded-xl border px-2.5 py-1.5 md:py-2 h-full min-h-[4.75rem] md:min-h-0 flex flex-col gap-0.5 shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+    <div className={`rounded-xl border px-3 py-2.5 md:py-3 h-full min-h-[6.5rem] flex flex-col gap-1 shadow-sm ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
       <div className="text-[10px] uppercase tracking-wide text-slate-700 font-semibold inline-flex items-center gap-1 pr-4 leading-none">
         {label}
         {tip && (
           <InfoTip title={label} size="xs">{tip}</InfoTip>
         )}
       </div>
-      <div className="text-[15px] md:text-[17px] font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
-      {hint && <div className="text-[10px] text-slate-600 leading-tight line-clamp-2">{hint}</div>}
+      <div className="text-[18px] md:text-[20px] font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
+      {hint && <div className="text-[11px] text-slate-600 leading-snug">{hint}</div>}
     </div>
   );
 }
