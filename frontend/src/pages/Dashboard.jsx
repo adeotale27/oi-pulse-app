@@ -2277,15 +2277,15 @@ export default function Dashboard() {
                 <div
                   className={`oi-panel oi-rise p-4 transition-all duration-700 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
-                  }`}
+                  } ${activeTab === "oi-change" && compact && !showRightPanel ? "max-w-[72rem] mx-auto w-full" : ""}`}
                   data-testid="oi-change-card"
                   style={
                     // Bias wash is OI-Change only — Positions / other tabs stay clean & independent.
                     activeTab === "oi-change" && changeSummary
                       ? {
                           backgroundColor: changeSummary.bullish
-                            ? `rgba(22,163,74,${(changeSummary.intensity * 0.35).toFixed(3)})`
-                            : `rgba(220,38,38,${(changeSummary.intensity * 0.35).toFixed(3)})`,
+                            ? `rgba(22,163,74,${(changeSummary.intensity * 0.16).toFixed(3)})`
+                            : `rgba(220,38,38,${(changeSummary.intensity * 0.16).toFixed(3)})`,
                           boxShadow: changeSummary.intensity > 0.5
                             ? `0 0 0 2px ${changeSummary.bullish ? "rgba(22,163,74,0.35)" : "rgba(220,38,38,0.35)"} inset`
                             : undefined,

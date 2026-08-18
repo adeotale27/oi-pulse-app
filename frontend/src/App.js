@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AuthGate from "@/components/AuthGate";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
+import PwaNotifyPrompt from "@/components/PwaNotifyPrompt";
 
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
@@ -43,6 +44,7 @@ function App() {
         <AboutAppModal />
       </Suspense>
       <Toaster position="top-right" richColors closeButton visibleToasts={2} />
+      <PwaNotifyPrompt />
     </div>
   );
 }

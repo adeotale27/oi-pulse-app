@@ -213,13 +213,14 @@ input[type="number"] {
 }
 
 @keyframes oi-brand-pulse-glow {
-  0%, 100% { filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.45)); }
-  50% { filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.95)); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.35); }
+  50% { box-shadow: 0 0 10px 2px rgba(16, 185, 129, 0.55); }
 }
 
 .oi-brand-pulse {
-  animation: oi-brand-pulse-glow 1.6s ease-in-out infinite;
+  animation: oi-brand-pulse-glow 1.8s ease-in-out infinite;
   display: block;
+  border-radius: 0.4rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

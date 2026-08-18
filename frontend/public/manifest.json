@@ -1,7 +1,7 @@
 {
   "name": "StrikLenz",
   "short_name": "StrikLenz",
-  "version": "6.40",
+  "version": "6.41",
   "display": "standalone",
   "background_color": "#059669",
   "theme_color": "#059669",
@@ -16,7 +16,7 @@
       "src": "logo512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "apple-touch-icon.png",

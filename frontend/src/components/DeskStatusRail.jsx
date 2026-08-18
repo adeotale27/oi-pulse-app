@@ -75,17 +75,20 @@ export default function DeskStatusRail({
       data-testid="desk-status-rail"
       role="status"
       aria-live="polite"
-      className={`w-full border-b ${tone.bar} pl-1.5 pr-2 sm:pl-2 sm:pr-3 py-0.5`}
+      className={`w-full border-b ${tone.bar} py-0.5`}
     >
-      <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll">
+      <div className="flex items-center gap-1.5 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll px-1">
         <span
-          className={`inline-flex items-center gap-1.5 font-bold tracking-wide uppercase px-1.5 py-0.5 rounded-sm shrink-0 ${tone.badge}`}
+          className="inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 text-white"
           data-testid="data-truth-badge"
         >
           {(truth.mode === "LIVE" || truth.mode === "STALE") && (
             <span className={`w-1.5 h-1.5 rounded-full ${tone.pulse} ${truth.mode === "LIVE" ? "animate-pulse" : ""}`} />
           )}
           {truth.badge}
+        </span>
+        <span className="opacity-90 shrink-0 whitespace-nowrap" data-testid="data-truth-detail">
+          · {truth.detail}
         </span>
         <span
           className="hidden font-mono-data font-semibold truncate tracking-tight"
@@ -120,10 +123,6 @@ export default function DeskStatusRail({
             </span>
           </>
         )}
-
-        <span className="opacity-70 hidden xl:inline truncate shrink-0" data-testid="data-truth-detail">
-          · {truth.detail}
-        </span>
 
         {showKite && (
           <span className="ml-auto inline-flex items-center gap-1.5 shrink-0" data-testid="kite-token-banner">

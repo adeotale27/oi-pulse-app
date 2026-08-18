@@ -198,7 +198,6 @@ def build_charge_params_from_trades(
     Trades always carry a non-zero fill price for executed quantity.
     """
     orders_by_id = orders_by_id or {}
-    params: list[dict] = []
     stats = {
         "trades_today": 0,
         "trades_used": 0,
@@ -206,6 +205,11 @@ def build_charge_params_from_trades(
         "trades_skipped_other_day": 0,
         "source": "trades",
     }
+    # One virtual-note row per order_id. Zerodha F&O brokerage is ₹20 per
+    # executed *order*, not per exchange fill — sending every trade_id
+    # double-counts brokerage (and GST on that brokerage).
+    buckets: dict[str, dict] = {}
+    orphan = 0
 
     for t in trades or []:
         if not isinstance(t, dict):
@@ -218,9 +222,9 @@ def build_charge_params_from_trades(
             continue
         stats["trades_today"] += 1
         try:
-            qty = int(float(t.get("quantity") or 0))
+            qty = float(t.get("quantity") or 0)
         except (TypeError, ValueError):
-            qty = 0
+            qty = 0.0
         try:
             avg = float(t.get("average_price") or t.get("price") or 0)
         except (TypeError, ValueError):
@@ -230,21 +234,45 @@ def build_charge_params_from_trades(
             continue
 
         oid = str(t.get("order_id") or "").strip()
+        if not oid:
+            orphan += 1
+            oid = str(t.get("trade_id") or f"t{orphan}")
         parent = orders_by_id.get(oid) or {}
-        # Unique id per fill — Kite only needs a non-empty string here.
-        row_id = str(t.get("trade_id") or oid or f"t{len(params) + 1}")
+        b = buckets.get(oid)
+        if not b:
+            b = {
+                "order_id": oid,
+                "exchange": t.get("exchange") or parent.get("exchange") or "NFO",
+                "tradingsymbol": t.get("tradingsymbol") or parent.get("tradingsymbol"),
+                "transaction_type": t.get("transaction_type") or parent.get("transaction_type") or "BUY",
+                "variety": parent.get("variety") or "regular",
+                "product": t.get("product") or parent.get("product") or "NRML",
+                "order_type": parent.get("order_type") or "MARKET",
+                "_notional": 0.0,
+                "_qty": 0.0,
+            }
+            buckets[oid] = b
+        b["_notional"] += avg * qty
+        b["_qty"] += qty
+        stats["trades_used"] += 1
+
+    params: list[dict] = []
+    for b in buckets.values():
+        qty = int(round(b["_qty"]))
+        avg = (b["_notional"] / b["_qty"]) if b["_qty"] else 0.0
+        if qty <= 0 or avg <= 0:
+            continue
         params.append({
-            "order_id": row_id,
-            "exchange": t.get("exchange") or parent.get("exchange") or "NFO",
-            "tradingsymbol": t.get("tradingsymbol") or parent.get("tradingsymbol"),
-            "transaction_type": t.get("transaction_type") or parent.get("transaction_type") or "BUY",
-            "variety": parent.get("variety") or "regular",
-            "product": t.get("product") or parent.get("product") or "NRML",
-            "order_type": parent.get("order_type") or "MARKET",
+            "order_id": b["order_id"],
+            "exchange": b["exchange"],
+            "tradingsymbol": b["tradingsymbol"],
+            "transaction_type": b["transaction_type"],
+            "variety": b["variety"],
+            "product": b["product"],
+            "order_type": b["order_type"],
             "quantity": qty,
             "average_price": avg,
         })
-        stats["trades_used"] += 1
 
     return params, stats
 
@@ -335,24 +363,30 @@ def resolve_charge_params(
     *,
     today_ymd: str,
 ) -> tuple[list[dict], dict[str, Any]]:
-    """Prefer trades (fill prices) over COMPLETE orders for day charges."""
-    orders_by_id = index_orders_by_id(orders)
-    trade_params, trade_stats = build_charge_params_from_trades(
-        trades, today_ymd=today_ymd, orders_by_id=orders_by_id
-    )
-    if trade_params:
-        # Still count open orders for the chip hint.
-        _, order_stats = build_charge_params(orders, today_ymd=today_ymd)
-        stats = {**order_stats, **trade_stats, "source": "trades"}
-        return trade_params, stats
+    """One charge row per executed order (not per fill).
 
+    COMPLETE orders with a usable average are preferred (matches Zerodha
+    brokerage). Otherwise collapse kite.trades() by order_id so split
+    fills do not each attract ₹20.
+    """
+    orders_by_id = index_orders_by_id(orders)
     order_params, order_stats = build_charge_params(
         orders,
         today_ymd=today_ymd,
         trade_avgs=trade_avg_by_order(trades),
     )
-    stats = {**trade_stats, **order_stats, "source": "orders"}
-    return order_params, stats
+    if order_params:
+        _, trade_stats = build_charge_params_from_trades(
+            trades, today_ymd=today_ymd, orders_by_id=orders_by_id
+        )
+        stats = {**trade_stats, **order_stats, "source": "orders"}
+        return order_params, stats
+
+    trade_params, trade_stats = build_charge_params_from_trades(
+        trades, today_ymd=today_ymd, orders_by_id=orders_by_id
+    )
+    stats = {**order_stats, **trade_stats, "source": "trades"}
+    return trade_params, stats
 
 
 def aggregate_contract_notes(notes: Optional[Iterable[dict]]) -> dict:
