@@ -57,7 +57,7 @@ export default function RightPanel({
   showOI,
   suggestion,
   // straddle poll interval (ms) supplied by parent/dashboard
-  straddlePollMs = 60000,
+  straddlePollMs = 15000,
   uploadRefreshKey = 0,
   vixOpen = null,
   vrp = null,

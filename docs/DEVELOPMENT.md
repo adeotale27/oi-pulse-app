@@ -72,6 +72,7 @@ Copy this into the PR. Do not ship with boxes unchecked.
 - [ ] **Phone + existing chrome** — ship the same control on phone. Fit extra names into the **existing** header / sidebar / sticky index row (`INDEX_CHIP_CAP` = 3: dropdown or slide, do not grow those panes). The phone index picker must be able to select the new name so its OI loads. Do not invent a larger window.
 - [ ] **Enable path** — first Kite dump can exceed 20s; Index management Enable/inspect uses a 90s timeout. Admin configuration ticks must keep extras already enabled (union `known_indices` with `enabled_indices`).
 - [ ] **Desk AI** — if the name is MCX and it is the selected index, Desk AI loads that commodity tape; NSE selection keeps the cash heavyweight tape.
+- [ ] **Admin config first** — before hardcoding an interval or similar, check SettingsModal / `DEFAULT_SETTINGS`. Use the saved value end to end.
 - [ ] Catalog lockstep: `backend/universe.py` **and** `frontend/src/lib/universe.js` (quote hint, `session_group`, `pollable`).
 - [ ] Tests: hours (DST vs standard if MCX), symbol prefix, journal OTHER, universe catalog.
 - [ ] Version lockstep per [VERSIONING.md](./VERSIONING.md).
@@ -110,6 +111,7 @@ Every finished change: bump version → PR → **merge to `main`**. Do not leave
 2. Reuse `universe`, `holidays`, payoff helpers.
 3. Keep `data-testid`s.
 4. Run the nearest tests.
+5. **Admin configuration first.** For any interval, hours, threshold, page tick, or other tunable: search `DEFAULT_SETTINGS` / SettingsModal / `POST /settings` before hardcoding. Wire UI, sampler, REST, WS, and countdowns to the saved value (clamp only to the allowed range, never a tighter secret cap).
 
 ## Add a UI component
 

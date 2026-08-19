@@ -16,8 +16,20 @@ export function formatIstClock(iso, withSeconds = false) {
   }
 }
 
+/** Admin straddle ticks: 15 / 30 / 60 / 120 seconds. */
+export const STRADDLE_POLL_MAX_MS = 120_000;
+export const POLL_MIN_MS = 5_000;
+export const DEFAULT_POLL_MS = 15_000;
+
+/** Use the admin interval; only clamp to the SettingsModal range. */
+export function clampConfiguredPollMs(ms, fallbackMs = DEFAULT_POLL_MS, maxMs = STRADDLE_POLL_MAX_MS) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return fallbackMs;
+  return Math.max(POLL_MIN_MS, Math.min(maxMs, Math.round(n)));
+}
+
 /** Seconds until the next poll, given snapshot age and poll cadence. */
-export function nextRefreshInSeconds(ageSeconds, pollMs = 15000) {
+export function nextRefreshInSeconds(ageSeconds, pollMs = DEFAULT_POLL_MS) {
   const pollS = Math.max(1, Math.round(Number(pollMs) / 1000) || 15);
   const age = Math.max(0, Math.round(Number(ageSeconds) || 0));
   const rem = pollS - (age % pollS);
@@ -41,7 +53,7 @@ export function buildDataTruth({
   mode, // kite | offline
   snapshotTs,
   now = new Date(),
-  pollMs = 15000,
+  pollMs = DEFAULT_POLL_MS,
 } = {}) {
   const ds = dataStatus || {};
   const kite = mode === "kite";

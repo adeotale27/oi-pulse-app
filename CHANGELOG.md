@@ -1,5 +1,12 @@
 # Changelog
 
+## V7.14 — 2026-08-19
+
+Straddle (and other) poll intervals follow Admin configuration. 60s is 60s — not silently capped at 15s in the chart or 30s in the sampler.
+
+- Chart REST poll, countdown, sampler, tick cache, and WS use `straddle_poll_interval_seconds`
+- Checklist: before hardcoding a number, check whether Admin already has that setting
+
 ## V7.13 — 2026-08-19
 
 LIVE rail, straddle, and Positions show countdown to the next poll. Straddle last price sits above the end dot. Past NSE holidays collapse. CALL/PUT chips sit beside NRML when the screen allows.

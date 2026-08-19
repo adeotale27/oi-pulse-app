@@ -58,6 +58,10 @@ Forbidden: UI importing backend paths; Kite calls from React; duplicating `DESK_
 
 Keep functions doing one job. Giant files (`Dashboard.jsx`, `server.py`, `PositionsPanel.jsx`) are known debt — **split only when you are already changing that area**, and preserve test ids / API paths.
 
+## Admin configuration
+
+If a value is on the Admin configuration form (`DEFAULT_SETTINGS` / `POST /settings`), every consumer (poll loop, REST, WS, countdown copy) must use that saved value. Clamp only to the range the form already allows. Do not add a tighter hardcoded cap (e.g. straddle 15s/30s when admin can pick 60/120).
+
 ## Errors and logging
 
 - Backend: `logging.getLogger(__name__)`. No empty `except:`. Catch Kite/network, log type + message, return safe JSON.

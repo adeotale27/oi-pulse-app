@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.14",
+    date: "2026-08-19",
+    user: [
+      "Straddle refresh follows the interval you pick in Admin configuration (15 / 30 / 60 / 120 seconds), including the live 15s label on the chart.",
+    ],
+    admin: [
+      "Removed the 15s UI cap and 30s sampler cap on straddle_poll_interval_seconds. clamp_straddle_poll_seconds / clampConfiguredPollMs only enforce 5–120s. DEVELOPMENT.md: check Admin config before hardcoding.",
+    ],
+  },
+  {
     version: "7.13",
     date: "2026-08-19",
     user: [

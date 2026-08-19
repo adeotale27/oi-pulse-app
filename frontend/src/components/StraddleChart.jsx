@@ -13,13 +13,11 @@ import { fetchStraddleTick, fetchStraddleHistory } from "../lib/api";
 import { isMarketQuiescent, getMarketOpenMinute, getMarketCloseMinute, getMarketOpenHm, getMarketCloseHm } from "@/lib/marketTimes";
 import { sessionAnchorDateIST } from "@/lib/holidays";
 import PageBrandTitle from "@/components/PageBrandTitle";
-import { nextRefreshInSeconds } from "@/lib/dataTruth";
+import { clampConfiguredPollMs, nextRefreshInSeconds } from "@/lib/dataTruth";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 /** Chart display resolution — denser than admin persistence when live ticks arrive. */
 const CHART_BUCKET_MS = 15_000;
-/** Live REST poll when WS is unavailable — keep the line moving like FinanceDeft. */
-const LIVE_POLL_MS = 15_000;
 
 function formatTimeShort(ts) {
   try {
@@ -239,7 +237,7 @@ export default function StraddleChart({
   expiry = null,
   position = "long",
   qty = 1,
-  pollMs = 15000,
+  pollMs = 15000, // overwritten by admin straddle_poll_interval_seconds via Dashboard
   maxPoints = 7200,
   useWs = true,
 }) {
@@ -249,9 +247,8 @@ export default function StraddleChart({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const wsRef = useRef(null);
   const tradeDateRef = useRef(tradeDate);
-  // Display bucket stays dense; admin pollMs only hints persistence / REST cadence.
   const bucketMs = CHART_BUCKET_MS;
-  const livePollMs = Math.max(5_000, Math.min(LIVE_POLL_MS, Number(pollMs) || LIVE_POLL_MS));
+  const livePollMs = clampConfiguredPollMs(pollMs);
 
   useEffect(() => {
     tradeDateRef.current = tradeDate;

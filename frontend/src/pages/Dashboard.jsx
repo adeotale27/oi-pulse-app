@@ -1146,7 +1146,7 @@ export default function Dashboard() {
   }, []);
 
   // ---- Straddle + Positions poll intervals (from API settings) ----
-  const [straddlePollMs, setStraddlePollMs] = useState(15000); // dense chart default 15s
+  const [straddlePollMs, setStraddlePollMs] = useState(15000); // until /config: then straddle_poll_interval_seconds
   const [positionsPollMs, setPositionsPollMs] = useState(30000);
 
   // Other expiries fill after first OI paint inside loadOI (do not stampede /expiries here).
