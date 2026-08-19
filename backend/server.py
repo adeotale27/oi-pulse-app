@@ -23,6 +23,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 from oi_lookup import prefer_newer_snapshot
 from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai, DEFAULT_SETTINGS
+from poll_intervals import clamp_straddle_poll_seconds
 from oi_service import INDEX_CONFIG
 from universe import catalog_public, DESK_IDS
 from vrp_service import compute_vrp
@@ -459,15 +460,10 @@ async def _straddle_sampler():
     """
     while True:
         try:
-            try:
-                poll_interval_seconds = int(
-                    tracker.settings.get(
-                        "straddle_poll_interval_seconds", STRADDLE_SAMPLE_INTERVAL_SECONDS
-                    )
-                )
-            except Exception:
-                poll_interval_seconds = STRADDLE_SAMPLE_INTERVAL_SECONDS
-            poll_interval_seconds = max(5, min(30, int(poll_interval_seconds)))
+            poll_interval_seconds = clamp_straddle_poll_seconds(
+                tracker.settings if tracker else None,
+                default=STRADDLE_SAMPLE_INTERVAL_SECONDS,
+            )
 
             enabled = tracker.settings.get("straddle_enabled_indices") if tracker else None
             if not enabled:
@@ -2204,10 +2200,7 @@ async def get_straddle_tick(index_name: str, expiry: Optional[str] = None):
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
 
-    try:
-        interval = max(5, min(30, int(tracker.settings.get("straddle_poll_interval_seconds", 15))))
-    except Exception:
-        interval = 15
+    interval = clamp_straddle_poll_seconds(tracker.settings if tracker else None)
 
     # Prefer sampler cache when fresh — avoids N clients × Kite quotes.
     cached_q = getattr(tracker, "last_straddle_quote", {}).get(idx)
@@ -2536,9 +2529,8 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
     try:
         while True:
             try:
-                poll_interval_seconds = max(
-                    5,
-                    min(30, int(tracker.settings.get("straddle_poll_interval_seconds", 15))),
+                poll_interval_seconds = clamp_straddle_poll_seconds(
+                    tracker.settings if tracker else None,
                 )
                 from market_hours import is_market_open as is_market_open_fn
                 if not is_market_open_fn(datetime.now(IST)):
@@ -2723,7 +2715,7 @@ async def get_config():
         except Exception:
             pass
     poll_interval_seconds = max(1, int(s.get("oi_poll_interval_seconds", 15)))
-    straddle_poll = max(1, int(s.get("straddle_poll_interval_seconds", 60)))
+    straddle_poll = clamp_straddle_poll_seconds(s)
     positions_poll = max(1, int(s.get("positions_poll_interval_seconds", 30)))
     open_hm, close_hm = display_hours()
     from universe import without_paused_mcx

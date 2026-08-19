@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 
 from oi_service import INDEX_CONFIG, KiteService
 from universe import DESK_IDS
+from poll_intervals import clamp_straddle_poll_seconds
 # Import MockService only in development when explicitly enabled so production
 # deployments never accidentally import demo generators.
 try:
@@ -533,6 +534,9 @@ class OITracker:
 
     def poll_interval_seconds(self) -> int:
         return max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
+
+    def straddle_poll_interval_seconds(self) -> int:
+        return clamp_straddle_poll_seconds(self.settings)
 
     def effective_oi_poll_seconds(self) -> int:
         """Admin may save 15s; until the Kite dump is in memory, floor at 30s.
@@ -1327,11 +1331,7 @@ class OITracker:
 
     async def _store_straddle_sample(self, index_name: str, snap: Dict[str, Any]):
         try:
-            # Chart density capped at 30s even if admin picks 60/120 (FinanceDeft-style).
-            try:
-                interval = max(5, min(30, int(self.settings.get("straddle_poll_interval_seconds", 15))))
-            except Exception:
-                interval = 15
+            interval = self.straddle_poll_interval_seconds()
             now_utc = datetime.now(timezone.utc)
             last = self._last_straddle_sample_at.get(index_name)
             if last is not None and (now_utc - last).total_seconds() < max(3, interval - 2):

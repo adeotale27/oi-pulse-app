@@ -533,7 +533,7 @@ export default function SettingsModal({
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
                     Straddle Data Pull Interval
                     <InfoTip title="Straddle Poll Interval">
-                      How often to sample ATM straddle premium for the intraday chart. Default 15s (dense, FinanceDeft-style).
+                      How often the straddle chart and sampler pull ATM premium. Uses this value as-is (15 / 30 / 60 / 120 seconds).
                     </InfoTip>
                   </Label>
                   <div className="flex gap-2">

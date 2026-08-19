@@ -1,6 +1,6 @@
 {
   "name": "oi-pulse",
-  "version": "7.0.13",
+  "version": "7.0.14",
   "private": true,
   "dependencies": {
     "@hookform/resolvers": "5.0.1",

@@ -26,7 +26,7 @@ export default function DeskStatusRail({
   isAdmin = false,
   onOpenCreds,
   mobileTicker = null,
-  pollMs = 15000,
+  pollMs = 15000, // Dashboard passes oi_poll_interval_seconds
 }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
