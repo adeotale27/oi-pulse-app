@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.16",
+    date: "2026-08-19",
+    user: [
+      "Last 15 mins (or 5, 10, …) is the last 15 minutes from the current tick, updated on every poll. You should not see a warming-up countdown when the session already has that history.",
+    ],
+    admin: [
+      "_find_previous_snapshot looks at or before now−N (session-open floor). history_ready is true when that baseline exists. oi_change_lookback.pick_baseline_ts.",
+    ],
+  },
+  {
     version: "7.15",
     date: "2026-08-19",
     user: [

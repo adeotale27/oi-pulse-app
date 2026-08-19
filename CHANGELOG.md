@@ -1,5 +1,12 @@
 # Changelog
 
+## V7.16 — 2026-08-19
+
+OI Change Last N mins is now−N through now, sliding every poll. It does not wait to “warm up” 15 minutes after a refresh.
+
+- Baseline is the snapshot at or before now−N (today’s 09:15 floor). 10:29:45 + 15 min → ~10:14:45–10:29:45; next poll at 10:30 → ~10:15–10:30
+- Dropped the 80% window warmup that kept the blue “Full compare in …” banner
+
 ## V7.15 — 2026-08-19
 
 Poll intervals are read from Admin configuration in Mongo. The straddle chart bucket and “live Ns” label use that saved value (60s stays 60s).

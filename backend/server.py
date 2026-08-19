@@ -28,6 +28,7 @@ from poll_intervals import (
     clamp_oi_poll_seconds,
     clamp_positions_poll_seconds,
 )
+from oi_change_lookback import lookback_floor
 from oi_service import INDEX_CONFIG
 from universe import catalog_public, DESK_IDS
 from vrp_service import compute_vrp
@@ -1794,73 +1795,75 @@ async def _latest_oi_snapshot(idx: str, expiry: Optional[str] = None) -> Optiona
         return None
 
 
+async def _oi_snapshot_find_one(filt: dict, sort_dir: int):
+    """One oi_snapshots row. sort_dir: 1 oldest, -1 newest. Never hits Kite."""
+    if db is None:
+        return None
+    sort = [("timestamp", sort_dir)]
+    try:
+        return await asyncio.wait_for(
+            db.oi_snapshots.find_one(
+                filt, sort=sort, projection={"_id": 0}, maxTimeMS=2500,
+            ),
+            timeout=3.0,
+        )
+    except TypeError:
+        try:
+            return await asyncio.wait_for(
+                db.oi_snapshots.find_one(filt, sort=sort, projection={"_id": 0}),
+                timeout=3.0,
+            )
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
 async def _find_previous_snapshot(
     idx: str,
     current_ts: str,
     minutes: int,
     expiry: Optional[str],
 ) -> tuple:
-    """Find the earliest snapshot in [max(anchor−N, session_open), current_ts).
+    """Baseline for Change-in-OI: snapshot at or before now−N (session-open floor).
 
-    Returns (prev_doc, history_ready, available_history_minutes).
+    Sliding window — 15 min at 10:29:45 uses ~10:14:45; next poll at 10:30 uses
+    ~10:15. Does not wait to accumulate N minutes after a restart.
     """
     try:
         anchor = datetime.fromisoformat(current_ts)
     except Exception:
         anchor = datetime.now(timezone.utc)
-    target = anchor - timedelta(minutes=minutes)
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
     session_open = _session_open_utc_for_anchor(anchor)
-    # Clamp lookback to today's session so previous-day OI never contaminates Δ.
-    if target < session_open:
-        target = session_open
+    floor = lookback_floor(anchor, minutes, session_open)
 
-    window_query = {
-        "index": idx,
-        "timestamp": {"$gte": target.isoformat(), "$lt": current_ts},
-    }
+    base = {"index": idx}
     if expiry:
-        window_query["expiry"] = expiry
+        base["expiry"] = expiry
 
-    # ASC → earliest in window ≈ closest to the N-min-ago boundary.
-    # Cap query time so a missing index cannot pin the event loop for 20s.
-    try:
-        prev_doc = await asyncio.wait_for(
-            db.oi_snapshots.find_one(
-                window_query,
-                sort=[("timestamp", 1)],
-                projection={"_id": 0},
-                maxTimeMS=2500,
-            ),
-            timeout=3.0,
+    # Prefer the last tick at or before the lookback instant (true now−N).
+    prev_doc = await _oi_snapshot_find_one(
+        {**base, "timestamp": {"$gte": session_open.isoformat(), "$lte": floor.isoformat()}},
+        -1,
+    )
+    # Gap at exactly now−N: take the first tick after the floor, still before now.
+    if not prev_doc:
+        prev_doc = await _oi_snapshot_find_one(
+            {**base, "timestamp": {"$gt": floor.isoformat(), "$lt": current_ts}},
+            1,
         )
-    except TypeError:
-        try:
-            prev_doc = await asyncio.wait_for(
-                db.oi_snapshots.find_one(
-                    window_query,
-                    sort=[("timestamp", 1)],
-                    projection={"_id": 0},
-                ),
-                timeout=3.0,
-            )
-        except Exception:
-            prev_doc = None
-    except Exception:
-        prev_doc = None
 
-    history_ready = True
+    history_ready = prev_doc is not None
     elapsed_min_val: Optional[float] = None
     if prev_doc and current_ts:
         try:
             prev_ts_dt = datetime.fromisoformat(prev_doc.get("timestamp"))
             cur_ts_dt = datetime.fromisoformat(current_ts)
             elapsed_min_val = (cur_ts_dt - prev_ts_dt).total_seconds() / 60.0
-            if elapsed_min_val < 0.8 * minutes:
-                history_ready = False
         except Exception:
             pass
-    elif not prev_doc:
-        history_ready = False
 
     return prev_doc, history_ready, round(elapsed_min_val, 2) if elapsed_min_val is not None else 0.0
 
@@ -1944,8 +1947,9 @@ async def get_oi_change(
         the sole writer; if cache is stale we kick a single-flight refresh and
         still return the latest known snapshot immediately.
       * GET never mutates tracker.selected_expiry.
-      * Lookback is clamped to today's session open so previous-day OI cannot
-        leak into Change-in-OI.
+      * Lookback is the snapshot at or before now−N (clamped to today's session
+        open). The window slides every poll — it does not wait to accumulate N
+        minutes after a restart.
       * `also=1,3,5` returns extra baselines in one round-trip (huge-shift).
     """
     idx = index_name.upper()

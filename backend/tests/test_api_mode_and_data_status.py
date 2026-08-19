@@ -24,13 +24,9 @@ class FakeTracker:
     def _get_service(self):
         return None
     def snapshot_age_seconds(self, snap):
-        if not snap or not snap.get("timestamp"):
-            return None
-        try:
-            ts = datetime.fromisoformat(snap["timestamp"])
-            return (datetime.now(timezone.utc) - ts).total_seconds()
-        except Exception:
-            return None
+        return 0.0
+    def oi_session_open(self):
+        return False
     def request_background_refresh(self, index_name, expiry=None):
         return None
 
@@ -153,16 +149,32 @@ def test_change_batches_also_windows(monkeypatch):
     class MultiWindowCollection:
         async def find_one(self, query, sort=None, projection=None):
             ts_q = (query or {}).get("timestamp") or {}
-            if not isinstance(ts_q, dict) or "$gte" not in ts_q:
+            if not isinstance(ts_q, dict):
                 return None
-            gte = datetime.fromisoformat(ts_q["$gte"])
-            # Pick the earliest baseline that fits the window start
-            age_min = (now - gte).total_seconds() / 60.0
-            if age_min >= 2.5:
-                return prev_3
-            if age_min >= 0.5:
-                return prev_1
-            return None
+            docs = [prev_1, prev_3]
+
+            def parse(iso):
+                return datetime.fromisoformat(iso)
+
+            hits = []
+            for d in docs:
+                t = parse(d["timestamp"])
+                ok = True
+                if "$gte" in ts_q:
+                    ok = ok and t >= parse(ts_q["$gte"])
+                if "$lte" in ts_q:
+                    ok = ok and t <= parse(ts_q["$lte"])
+                if "$gt" in ts_q:
+                    ok = ok and t > parse(ts_q["$gt"])
+                if "$lt" in ts_q:
+                    ok = ok and t < parse(ts_q["$lt"])
+                if ok:
+                    hits.append(d)
+            if not hits:
+                return None
+            reverse = bool(sort and sort[0][1] == -1)
+            hits.sort(key=lambda d: d["timestamp"], reverse=reverse)
+            return hits[0]
         async def update_one(self, *args, **kwargs):
             return None
 
@@ -177,6 +189,67 @@ def test_change_batches_also_windows(monkeypatch):
     assert "3" in payload["also_windows"]
     assert payload["also_windows"]["1"]["previous"]["timestamp"] == prev_1["timestamp"]
     assert payload["also_windows"]["3"]["previous"]["timestamp"] == prev_3["timestamp"]
+
+
+def test_change_15min_uses_snapshot_from_15_min_ago_not_warmup(monkeypatch):
+    """Last 15 mins is now−15 → now, not 'minutes since the process started'."""
+    ft = FakeTracker()
+    # 10:30 IST on a session day — 15-min lookback stays inside 09:15–now.
+    now = datetime(2026, 8, 19, 5, 0, 0, tzinfo=timezone.utc)
+    cur_ts = now.isoformat()
+    old = {
+        "index": "NIFTY",
+        "timestamp": (now - timedelta(minutes=16)).isoformat(),
+        "strikes": [],
+    }
+    recent = {
+        "index": "NIFTY",
+        "timestamp": (now - timedelta(minutes=4)).isoformat(),
+        "strikes": [],
+    }
+    ft.last_snapshot["NIFTY"] = {"index": "NIFTY", "timestamp": cur_ts, "strikes": []}
+
+    class Store:
+        docs = [old, recent]
+
+        async def find_one(self, query, sort=None, projection=None):
+            ts_q = (query or {}).get("timestamp") or {}
+            if not isinstance(ts_q, dict):
+                return None
+
+            def parse(iso):
+                return datetime.fromisoformat(iso)
+
+            hits = []
+            for d in self.docs:
+                t = parse(d["timestamp"])
+                ok = True
+                if "$gte" in ts_q:
+                    ok = ok and t >= parse(ts_q["$gte"])
+                if "$lte" in ts_q:
+                    ok = ok and t <= parse(ts_q["$lte"])
+                if "$gt" in ts_q:
+                    ok = ok and t > parse(ts_q["$gt"])
+                if "$lt" in ts_q:
+                    ok = ok and t < parse(ts_q["$lt"])
+                if ok:
+                    hits.append(d)
+            if not hits:
+                return None
+            reverse = bool(sort and sort[0][1] == -1)
+            hits.sort(key=lambda d: d["timestamp"], reverse=reverse)
+            return hits[0]
+
+    monkeypatch.setattr(server, "tracker", ft)
+    monkeypatch.setattr(server, "db", type("DB", (), {"oi_snapshots": Store()}))
+    monkeypatch.setattr(server, "is_market_open", lambda: False)
+    client = TestClient(server.app)
+    r = client.get("/api/oi/NIFTY/change", params={"minutes": 15})
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["previous"]["timestamp"] == old["timestamp"]
+    assert payload["history_ready"] is True
+    assert payload["available_history_minutes"] >= 15
 
 
 def test_tracker_metrics_exist(monkeypatch):
