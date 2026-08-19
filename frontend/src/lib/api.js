@@ -287,6 +287,10 @@ let __configInflight = null;
 let __configCache = null;
 const CONFIG_TTL_MS = 15_000;
 
+export function invalidateConfigCache() {
+  __configCache = null;
+}
+
 /** One in-flight /config for Dashboard + BigClock (both used to stampede). */
 export function fetchConfig() {
   const now = Date.now();
@@ -361,3 +365,9 @@ export const completeUserKiteSession = (request_token) =>
 export const disconnectUserKite = () =>
   api.post("/kite/user/disconnect").then((r) => r.data);
 export const setMode = (mode) => api.post("/mode", { mode }).then((r) => r.data);
+
+if (typeof window !== "undefined") {
+  window.addEventListener("oi-settings-saved", () => {
+    invalidateConfigCache();
+  });
+}

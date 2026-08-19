@@ -36,7 +36,7 @@ export function openLiveCount(payload) {
   return rows.filter((r) => !r.exited && Number(r.quantity) !== 0).length;
 }
 
-export const POSITIONS_BOOK_LIVE_MS = 5000;
+export const POSITIONS_BOOK_LIVE_MS = 30000;
 export const POSITIONS_BOOK_IDLE_MS = 15000;
 export const POSITIONS_BOOK_BOOT_MS = 1500;
 export const POSITIONS_BOOK_MIN_MS = 5000;

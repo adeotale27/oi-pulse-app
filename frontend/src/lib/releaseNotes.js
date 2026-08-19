@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.15",
+    date: "2026-08-19",
+    user: [
+      "Straddle chart speed matches Admin configuration. If you set 60 seconds, the chart and the live label both show 60s.",
+    ],
+    admin: [
+      "GET /config and the straddle sampler overlay poll seconds from Mongo settings. Chart bucket = straddle_poll_interval_seconds. oi-settings-saved invalidates fetchConfig cache.",
+    ],
+  },
+  {
     version: "7.14",
     date: "2026-08-19",
     user: [
