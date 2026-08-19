@@ -1,5 +1,12 @@
 # Changelog
 
+## V7.12 — 2026-08-19
+
+OI Change paints as soon as a poll lands — any enabled index, no timeframe click.
+
+- Live poll no longer waits on the other indices before the next refresh.
+- `/change` takes a newer Mongo tick when in-memory cache is stale (open session included).
+
 ## V7.11 — 2026-08-18
 
 Phone status bar shows only the moving indexes (no LAST SESSION, date, or Market Closed). Page titles use the desk mark. Analyze adds ±0.5%. Journal layout fits tablet. Sign out is red. Event tile menus stay short on phone.

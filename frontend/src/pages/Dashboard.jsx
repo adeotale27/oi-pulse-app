@@ -857,6 +857,7 @@ export default function Dashboard() {
   // Poll OI for ALL enabled indices in the background; UI updates only for the active tab.
   const oiInflightRef = useRef(false);
   const oiWarmRestRef = useRef(false);
+  const oiRestInflightRef = useRef(false);
   const loadOI = useCallback(async () => {
     if (oiInflightRef.current) {
       pendingOiReloadRef.current = true;
@@ -873,10 +874,9 @@ export default function Dashboard() {
     ].join(",");
     const minutes = resolveMinutes(timeframeRef.current);
     const bootLite = !oiWarmRestRef.current;
-    const also = alsoFull;
 
     try {
-      const fetchOne = async (idx) => {
+      const fetchOne = async (idx, { withAlso } = {}) => {
         const exp =
           idx === active
             ? (selectedExpiryRef.current || expiryByIndexRef.current[idx]?.selected || undefined)
@@ -884,7 +884,7 @@ export default function Dashboard() {
         try {
           const data = await fetchOIChange(idx, minutes, {
             expiry: exp || undefined,
-            also: bootLite && idx === active ? undefined : also,
+            also: withAlso ? alsoFull : undefined,
             timeout: 20000,
           });
           oiCacheRef.current[idx] = {
@@ -912,7 +912,7 @@ export default function Dashboard() {
       };
 
       if (active) {
-        const first = await fetchOne(active);
+        const first = await fetchOne(active, { withAlso: !bootLite });
         if (gen !== oiReqGenRef.current) return;
         if (first.ok && first.data) {
           applyOiPayload(first.data, { pulse: true });
@@ -959,21 +959,24 @@ export default function Dashboard() {
           }, 2500);
         }
         const rest = (enabledIndicesRef.current || []).filter((i) => i && i !== active && !isMcxMajorId(i));
+        const warmRest = () => {
+          if (!rest.length || oiRestInflightRef.current) return;
+          oiRestInflightRef.current = true;
+          (async () => {
+            try {
+              for (const idx of rest) {
+                await fetchOne(idx, { withAlso: false });
+              }
+            } finally {
+              oiRestInflightRef.current = false;
+            }
+          })().catch(() => {});
+        };
         if (!oiWarmRestRef.current) {
           oiWarmRestRef.current = true;
-          const later = rest.slice();
-          window.setTimeout(() => {
-            (async () => {
-              for (const idx of later) {
-                await fetchOne(idx);
-              }
-            })().catch(() => {});
-          }, 4000);
+          window.setTimeout(warmRest, 4000);
         } else {
-          for (const idx of rest) {
-            if (gen !== oiReqGenRef.current) return;
-            await fetchOne(idx);
-          }
+          warmRest();
         }
       }
     } catch (e) {
