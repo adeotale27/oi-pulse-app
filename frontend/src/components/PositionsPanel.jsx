@@ -211,7 +211,15 @@ function ProductBadge({ product, exited }) {
   );
 }
 
-/** CALL / PUT chip beside NRML so the side is always visible. */
+/** CALL / PUT chip: beside NRML when there is room, under it on a tight product column. */
+function ProductSidePair({ row, exited }) {
+  return (
+    <div className="inline-flex flex-col items-start gap-0.5 sm:flex-row sm:flex-nowrap sm:items-center sm:gap-1">
+      <ProductBadge product={row.product} exited={exited} />
+      <OptionSideBadge row={row} exited={exited} />
+    </div>
+  );
+}
 function OptionSideBadge({ row, exited }) {
   const side = optionSide(row);
   const label = optionSideLabel(side);
@@ -1770,8 +1778,7 @@ export default function PositionsPanel({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
-                    <ProductBadge product={r.product} exited={r.exited} />
-                    <OptionSideBadge row={r} exited={r.exited} />
+                    <ProductSidePair row={r} exited={r.exited} />
                     {r.exited ? (
                       <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
                     ) : null}
@@ -1851,8 +1858,7 @@ export default function PositionsPanel({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
-                    <ProductBadge product={r.product} exited />
-                    <OptionSideBadge row={r} exited />
+                    <ProductSidePair row={r} exited />
                     <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
                   </div>
                   <div className="text-base font-semibold truncate text-slate-400">{positionLabel(r)}</div>
@@ -2029,11 +2035,8 @@ export default function PositionsPanel({
                 }`}
               >
                 {colOn("product") && (
-                  <td className="px-2 py-1">
-                    <div className="inline-flex items-center gap-1 flex-wrap">
-                      <ProductBadge product={r.product} exited={r.exited} />
-                      <OptionSideBadge row={r} exited={r.exited} />
-                    </div>
+                  <td className="px-2 py-1 min-w-[7.25rem]">
+                    <ProductSidePair row={r} exited={r.exited} />
                   </td>
                 )}
                 {colOn("instrument") && (
@@ -2448,7 +2451,9 @@ export default function PositionsPanel({
       )}
 
       {lastRefresh && (
-        <div className="text-[10px] text-slate-400 text-right">Last refresh {new Date(lastRefresh).toLocaleTimeString()}</div>
+        <div className="text-[10px] text-slate-400 text-right" data-testid="positions-last-refresh">
+          Next refresh ({secsLeft}s)
+        </div>
       )}
 
       <BookRadarPanel open={oiRiskOpen} onClose={closeRadar}>

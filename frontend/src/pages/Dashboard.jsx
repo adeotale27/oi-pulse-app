@@ -2043,6 +2043,7 @@ export default function Dashboard() {
           isAdmin={!!authState.is_admin}
           onOpenCreds={() => setCredsOpen(true)}
           mobileTicker={mobileIndexTicker}
+          pollMs={pollMs}
         />
       <KiteMaintenanceBanner status={status} />
       <GuestHolidayCalendarBanner
