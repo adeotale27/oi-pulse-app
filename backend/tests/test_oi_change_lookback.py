@@ -27,6 +27,17 @@ def test_window_slides_with_current_time():
     assert b == t1 - timedelta(minutes=15)
 
 
+def test_lookback_keeps_odd_seconds_not_rounded():
+    current = datetime(2026, 8, 19, 10, 27, 47, tzinfo=IST)
+    session_open = datetime(2026, 8, 19, 9, 15, tzinfo=IST)
+    floor = lookback_floor(current, 15, session_open)
+    assert floor == datetime(2026, 8, 19, 10, 12, 47, tzinfo=IST)
+    baseline = datetime(2026, 8, 19, 10, 12, 47, tzinfo=IST)
+    picked = pick_baseline_ts([baseline, current], current, 15, session_open)
+    assert picked == baseline
+    assert picked.second == 47
+
+
 def test_before_full_window_uses_session_open():
     current = datetime(2026, 8, 19, 9, 20, tzinfo=IST)
     session_open = datetime(2026, 8, 19, 9, 15, tzinfo=IST)

@@ -1023,23 +1023,6 @@ class OITracker:
         except Exception as e:
             logger.error("watchdog forced poll failed: %s", e)
 
-    def _seconds_until_next_poll_boundary(self, interval_seconds: int) -> float:
-        """Return the fractional delay to the next aligned poll boundary.
-
-        Examples for a 15s poll interval:
-          - at 09:46:47 → sleep until 09:47:00 (13s)
-          - at 09:47:00 → sleep until 09:47:15 (15s)
-        """
-        # Use IST-aware clock so boundary alignment matches market timestamps
-        # regardless of the server's local timezone.
-        now = now_ist()
-        now_seconds = now.second + (now.microsecond / 1_000_000.0)
-        remainder = now_seconds % interval_seconds
-        wait = interval_seconds - remainder
-        if wait >= interval_seconds:
-            wait = interval_seconds
-        return max(0.0, wait)
-
     async def _refresh_quote_session_flag(self) -> None:
         """Kite has no holidays/session-open API — use a fresh index last_trade_time."""
         dt = now_ist()
@@ -1073,8 +1056,9 @@ class OITracker:
           * Else → poll only while NSE cash/F&O is in session (regular hours or
             Muhurat; Kite last_trade_time covers unlisted specials). Outside the
             window, sleep 60s and re-check. Announce open/close to Telegram once/day.
-          * Polls are aligned to the selected cadence (15/30/60s) so each sample lands on the
-            next clock boundary rather than drifting after the previous request finishes.
+          * Polls every configured interval (15/30/60s) after the previous cycle,
+            keeping wall-clock seconds (10:27:47, then 10:28:02). Not snapped to
+            :00 / :15 / :30 clock marks.
         """
         was_open = False
         while self.running:
@@ -1092,15 +1076,13 @@ class OITracker:
                         except Exception as e:
                             logger.warning("purge prior-session alerts failed: %s", e)
                         was_open = True
-                        # Warm immediately — do not wait for the next clock boundary.
-                        await self._poll_once()
-                        continue
-                    await asyncio.sleep(self._seconds_until_next_poll_boundary(poll_interval_seconds))
+                    cycle_started = asyncio.get_running_loop().time()
+                    await self._poll_once()
                     if not self.running:
                         break
-                    if not (self.oi_session_open()):
-                        continue
-                    await self._poll_once()
+                    elapsed = asyncio.get_running_loop().time() - cycle_started
+                    wait = max(0.0, float(poll_interval_seconds) - elapsed)
+                    await asyncio.sleep(wait)
                 else:
                     if was_open:
                         logger.info("Market CLOSED — pausing polling.")

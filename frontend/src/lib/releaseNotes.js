@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.17",
+    date: "2026-08-19",
+    user: [
+      "Last 15 mins uses the exact clock, including seconds (10:12:47 to 10:27:47), and updates on every poll. The desk keeps recording OI in the background while you are not on the site.",
+    ],
+    admin: [
+      "OI tracker sleeps the remaining poll interval after each cycle (no clock-boundary snap). Window labels show hours:minutes:seconds. Poller + watchdog still run at process start for every enabled index in session.",
+    ],
+  },
+  {
     version: "7.16",
     date: "2026-08-19",
     user: [

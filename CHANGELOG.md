@@ -1,5 +1,9 @@
 # Changelog
 
+## V7.17 — 2026-08-19
+
+OI Change window keeps exact seconds (10:12:47–10:27:47 for 15 min). Background poller writes every Admin interval for all enabled indices with no browser open — ticks are not snapped to :00/:15/:30.
+
 ## V7.16 — 2026-08-19
 
 OI Change Last N mins is now−N through now, sliding every poll. It does not wait to “warm up” 15 minutes after a refresh.

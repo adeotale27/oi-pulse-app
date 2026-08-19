@@ -1502,9 +1502,9 @@ export default function Dashboard() {
     if (current?.timestamp) {
       const mins = resolveMinutes(timeframe);
       const d = new Date(new Date(current.timestamp).getTime() - mins * 60000);
-      return formatClock(d.toISOString());
+      return formatClock(d.toISOString(), true);
     }
-    if (previous?.timestamp) return formatClock(previous.timestamp);
+    if (previous?.timestamp) return formatClock(previous.timestamp, true);
     return "—";
   }, [timeframe, previous, current]);
 
@@ -2533,7 +2533,7 @@ export default function Dashboard() {
                           <span className="absolute -top-1 left-0 w-3.5 h-3.5 rounded-full bg-sky-500 border-2 border-white shadow" />
                           <span className="absolute -top-1 right-0 w-3.5 h-3.5 rounded-full bg-sky-500 border-2 border-white shadow" />
                         </span>
-                        <span data-testid="window-end-label">{formatClock(current?.timestamp) || formatClock(lastPulledAt) || "—"}</span>
+                        <span data-testid="window-end-label">{formatClock(current?.timestamp, true) || formatClock(lastPulledAt, true) || "—"}</span>
                       </div>
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
                       {replayOpen && (
