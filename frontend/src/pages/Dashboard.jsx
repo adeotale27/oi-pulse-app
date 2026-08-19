@@ -1499,11 +1499,12 @@ export default function Dashboard() {
   // Human-readable start-of-window label used for the mini time slider.
   const windowStartLabel = useMemo(() => {
     if (timeframe === "full") return "9:15 AM";
-    if (previous?.timestamp) return formatClock(previous.timestamp);
     if (current?.timestamp) {
-      const d = new Date(new Date(current.timestamp).getTime() - Number(timeframe) * 60000);
+      const mins = resolveMinutes(timeframe);
+      const d = new Date(new Date(current.timestamp).getTime() - mins * 60000);
       return formatClock(d.toISOString());
     }
+    if (previous?.timestamp) return formatClock(previous.timestamp);
     return "—";
   }, [timeframe, previous, current]);
 

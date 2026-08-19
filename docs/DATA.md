@@ -48,7 +48,7 @@ Kite Connect ──► OITracker (asyncio poll) ──► oi_snapshots
 
 ### Change windows
 
-`/oi/{index}/change?minutes=N&also=1,3,5` compares the latest snapshot to the nearest older snapshot ≈ N minutes earlier. Huge-shift monitor watches ATM ± 1 across configured windows.
+`/oi/{index}/change?minutes=N&also=1,3,5` compares the latest snapshot to the snapshot **at or before now−N** (today’s session open is the floor). The window slides every poll. There is no wait to accumulate N minutes after a restart.
 
 ### Fresh Pull (`POST /admin/refresh-day`)
 
