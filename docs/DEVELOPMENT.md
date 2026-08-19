@@ -33,6 +33,7 @@ python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_mark
 
 # Frontend unit (Node can run assert files)
 node frontend/src/lib/universe.test.js
+node frontend/src/lib/dataTruth.test.js
 node frontend/src/lib/appVersion.test.js
 node frontend/src/lib/optionSide.test.js
 node frontend/src/lib/indexEventRisk.test.js

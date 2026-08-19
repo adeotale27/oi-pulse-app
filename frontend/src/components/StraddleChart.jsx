@@ -13,6 +13,7 @@ import { fetchStraddleTick, fetchStraddleHistory } from "../lib/api";
 import { isMarketQuiescent, getMarketOpenMinute, getMarketCloseMinute, getMarketOpenHm, getMarketCloseHm } from "@/lib/marketTimes";
 import { sessionAnchorDateIST } from "@/lib/holidays";
 import PageBrandTitle from "@/components/PageBrandTitle";
+import { nextRefreshInSeconds } from "@/lib/dataTruth";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 /** Chart display resolution — denser than admin persistence when live ticks arrive. */
@@ -490,16 +491,17 @@ export default function StraddleChart({
 
   const lastPoint = chartPoints.length ? chartPoints[chartPoints.length - 1] : null;
   const dte = daysToExpiryLabel(expiry);
-  const lastUpdated = meta?.ts
-    ? new Date(meta.ts).toLocaleString([], {
-        timeZone: "Asia/Kolkata",
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const lastUpdated = (() => {
+    if (!meta?.ts) return null;
+    const age = Math.max(0, (nowTick - new Date(meta.ts).getTime()) / 1000);
+    const left = nextRefreshInSeconds(age, livePollMs);
+    return `next (${left}s)`;
+  })();
 
   return (
     <div className="w-full" data-testid="straddle-chart">
@@ -532,7 +534,7 @@ export default function StraddleChart({
 
         <div className="px-1 pt-2 pb-1 md:px-4 md:pt-3 md:pb-2 h-[280px] md:h-[460px] bg-white relative">
           <ResponsiveContainer>
-            <LineChart data={chartPoints} margin={{ top: 10, right: 12, left: 0, bottom: 18 }}>
+            <LineChart data={chartPoints} margin={{ top: 28, right: 12, left: 0, bottom: 18 }}>
               <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical={false} />
               <XAxis
                 dataKey="ts"
@@ -578,12 +580,23 @@ export default function StraddleChart({
                   fill="#14b8a6"
                   stroke="#fff"
                   strokeWidth={2}
-                  label={{
-                    value: formatNumber(lastPoint.premium),
-                    position: "right",
-                    fill: "#0f766e",
-                    fontSize: 11,
-                    fontWeight: 700,
+                  ifOverflow="visible"
+                  label={(props) => {
+                    const x = props?.viewBox?.x ?? props?.cx ?? props?.x;
+                    const y = props?.viewBox?.y ?? props?.cy ?? props?.y;
+                    if (x == null || y == null) return null;
+                    return (
+                      <text
+                        x={x}
+                        y={y - 12}
+                        textAnchor="end"
+                        fill="#0f766e"
+                        fontSize={11}
+                        fontWeight={700}
+                      >
+                        {formatNumber(lastPoint.premium)}
+                      </text>
+                    );
                   }}
                 />
               )}
@@ -630,7 +643,7 @@ export default function StraddleChart({
             <div className="font-mono font-semibold text-slate-900 tabular-nums">{dte ?? "—"}</div>
           </div>
           <div className="min-w-[6.5rem] shrink-0">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">Last Updated</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Next refresh</div>
             <div className="font-mono font-semibold text-slate-800 text-[11px]">{lastUpdated ?? "—"}</div>
           </div>
         </div>

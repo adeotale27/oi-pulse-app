@@ -16,6 +16,14 @@ export function formatIstClock(iso, withSeconds = false) {
   }
 }
 
+/** Seconds until the next poll, given snapshot age and poll cadence. */
+export function nextRefreshInSeconds(ageSeconds, pollMs = 15000) {
+  const pollS = Math.max(1, Math.round(Number(pollMs) / 1000) || 15);
+  const age = Math.max(0, Math.round(Number(ageSeconds) || 0));
+  const rem = pollS - (age % pollS);
+  return rem === 0 ? pollS : rem;
+}
+
 /**
  * Build an impossible-to-misread truth layer from API data_status + market flags.
  *
@@ -33,6 +41,7 @@ export function buildDataTruth({
   mode, // kite | offline
   snapshotTs,
   now = new Date(),
+  pollMs = 15000,
 } = {}) {
   const ds = dataStatus || {};
   const kite = mode === "kite";
@@ -40,7 +49,11 @@ export function buildDataTruth({
   const asOfIso = snapshotTs || null;
   const asOfClock = formatIstClock(asOfIso, true);
   const dataDate = ds.data_date || null;
-  const age = ds.cache_age_seconds;
+  let age = ds.cache_age_seconds;
+  if (asOfIso) {
+    const drift = (now.getTime() - new Date(asOfIso).getTime()) / 1000;
+    if (Number.isFinite(drift) && drift >= 0) age = drift;
+  }
 
   // Prefer server is_live when present; otherwise derive.
   const staleAfter =
@@ -71,7 +84,8 @@ export function buildDataTruth({
   }
 
   if (isLive && open) {
-    const ageNote = age != null ? `Updated ${Math.round(age)}s ago` : "Updating on schedule";
+    const left = nextRefreshInSeconds(age, pollMs);
+    const ageNote = age != null ? `next (${left}s)` : "Updating on schedule";
     return {
       mode: "LIVE",
       badge: "LIVE",

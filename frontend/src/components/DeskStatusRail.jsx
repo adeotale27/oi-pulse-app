@@ -26,17 +26,18 @@ export default function DeskStatusRail({
   isAdmin = false,
   onOpenCreds,
   mobileTicker = null,
+  pollMs = 15000,
 }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), 15_000);
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
   const truth = useMemo(
-    () => buildDataTruth({ dataStatus, marketOpen, mode, snapshotTs }),
+    () => buildDataTruth({ dataStatus, marketOpen, mode, snapshotTs, pollMs }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dataStatus, marketOpen, mode, snapshotTs, tick],
+    [dataStatus, marketOpen, mode, snapshotTs, pollMs, tick],
   );
 
   const tone = TRUTH_TONE[truth.tone] || TRUTH_TONE.offline;

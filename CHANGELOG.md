@@ -1,5 +1,14 @@
 # Changelog
 
+## V7.13 — 2026-08-19
+
+LIVE rail, straddle, and Positions show countdown to the next poll. Straddle last price sits above the end dot. Past NSE holidays collapse. CALL/PUT chips sit beside NRML when the screen allows.
+
+- Status copy is `next (11s)` instead of `Updated 4s ago` / last-refresh clock
+- Straddle premium label is above the last tick (not clipped on the right)
+- Events: completed holidays start collapsed
+- Positions: NRML + CALL/PUT stack on a tight screen, sit in one row from `sm` up
+
 ## V7.12 — 2026-08-19
 
 OI Change paints as soon as a poll lands — any enabled index, no timeframe click.

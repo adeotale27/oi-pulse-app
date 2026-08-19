@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.13",
+    date: "2026-08-19",
+    user: [
+      "The green LIVE line counts down to the next update. Straddle last price sits above the dot. Past holidays on Events fold away. CALL and PUT sit beside NRML when there is room, under it on a small screen.",
+    ],
+    admin: [
+      "nextRefreshInSeconds in dataTruth; DeskStatusRail ticks every 1s. Straddle ReferenceDot label is SVG text above the last point. HolidaysTab completed toggle default closed. ProductSidePair uses sm row / default column.",
+    ],
+  },
+  {
     version: "7.12",
     date: "2026-08-19",
     user: [
