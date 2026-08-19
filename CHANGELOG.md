@@ -1,5 +1,13 @@
 # Changelog
 
+## V7.15 — 2026-08-19
+
+Poll intervals are read from Admin configuration in Mongo. The straddle chart bucket and “live Ns” label use that saved value (60s stays 60s).
+
+- GET /config and the sampler re-read oi / straddle / positions seconds from `settings` `_id: alerts`
+- Saving configuration clears the frontend /config cache so an old 15s payload cannot overwrite 60s
+- Positions book default matches the form (30s) until that document loads
+
 ## V7.14 — 2026-08-19
 
 Straddle (and other) poll intervals follow Admin configuration. 60s is 60s — not silently capped at 15s in the chart or 30s in the sampler.

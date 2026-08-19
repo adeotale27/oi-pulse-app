@@ -23,7 +23,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 from oi_lookup import prefer_newer_snapshot
 from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai, DEFAULT_SETTINGS
-from poll_intervals import clamp_straddle_poll_seconds
+from poll_intervals import (
+    clamp_straddle_poll_seconds,
+    clamp_oi_poll_seconds,
+    clamp_positions_poll_seconds,
+)
 from oi_service import INDEX_CONFIG
 from universe import catalog_public, DESK_IDS
 from vrp_service import compute_vrp
@@ -89,7 +93,6 @@ def _live_settings() -> dict:
 
 # Straddle sample retention (hours)
 STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
-STRADDLE_SAMPLE_INTERVAL_SECONDS = int(os.environ.get("STRADDLE_SAMPLE_INTERVAL_SECONDS", "15"))  # dense chart default
 STRADDLE_INDICES = ["NIFTY", "SENSEX"]
 
 # notifier DB will be attached during startup
@@ -454,15 +457,20 @@ async def _persist_straddle_sample(index_name: str, snap: dict):
 async def _straddle_sampler():
     """Dense ATM straddle sampler for the intraday chart (FinanceDeft-style).
 
-    Uses a lightweight 3-instrument quote (spot + ATM CE + PE) so we can sample
-    every ~15s without re-pulling the full OI chain. Falls back to last OI
+    Uses a lightweight 3-instrument quote (spot + ATM CE + PE). Cadence is
+    Admin `straddle_poll_interval_seconds` from Mongo. Falls back to last OI
     snapshot when Kite is offline.
     """
+    poll_interval_seconds = 15
     while True:
         try:
+            if tracker:
+                try:
+                    await tracker.sync_poll_intervals_from_db()
+                except Exception:
+                    pass
             poll_interval_seconds = clamp_straddle_poll_seconds(
                 tracker.settings if tracker else None,
-                default=STRADDLE_SAMPLE_INTERVAL_SECONDS,
             )
 
             enabled = tracker.settings.get("straddle_enabled_indices") if tracker else None
@@ -495,7 +503,7 @@ async def _straddle_sampler():
             try:
                 await asyncio.sleep(poll_interval_seconds)
             except Exception:
-                await asyncio.sleep(STRADDLE_SAMPLE_INTERVAL_SECONDS)
+                await asyncio.sleep(poll_interval_seconds)
 
 
 async def _market_day_poll_watchdog():
@@ -2710,13 +2718,14 @@ async def get_config():
     s = _live_settings()
     if tracker:
         try:
+            await tracker.sync_poll_intervals_from_db()
             tracker._refresh_alert_indices_for_today()
             s = tracker.settings
         except Exception:
             pass
-    poll_interval_seconds = max(1, int(s.get("oi_poll_interval_seconds", 15)))
+    poll_interval_seconds = clamp_oi_poll_seconds(s)
     straddle_poll = clamp_straddle_poll_seconds(s)
-    positions_poll = max(1, int(s.get("positions_poll_interval_seconds", 30)))
+    positions_poll = clamp_positions_poll_seconds(s)
     open_hm, close_hm = display_hours()
     from universe import without_paused_mcx
     raw_enabled = s.get("enabled_indices", list(INDEX_CONFIG.keys()))

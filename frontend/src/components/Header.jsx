@@ -38,7 +38,7 @@ const PRIVACY_EVENT = "oi-positions-privacy";
 const PRIVACY_MASK = "••••";
 
 /** Admin/guest Today P&L chip for the header (beside the clock). */
-function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 15_000, className, compact = false }) {
+function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 30_000, className, compact = false }) {
   const cached = readTodayPnlCache();
   const [pnl, setPnl] = useState(() => cached?.total ?? null);
   const [openCount, setOpenCount] = useState(() => cached?.open ?? 0);
@@ -166,7 +166,7 @@ export default function Header({
   /** Merge DataTruth / market / Kite banners into one slim bar. */
   slimStatusRail = false,
   /** Positions book poll interval (ms) — keeps header Today P&L fresh in background. */
-  positionsPollMs = 15_000,
+  positionsPollMs = 30_000,
   /** Guests only see header P&L when Positions is a public page. */
   positionsPublic = true,
   showDeskAi = false,

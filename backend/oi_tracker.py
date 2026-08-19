@@ -24,7 +24,11 @@ from typing import Any, Dict, List, Optional
 
 from oi_service import INDEX_CONFIG, KiteService
 from universe import DESK_IDS
-from poll_intervals import clamp_straddle_poll_seconds
+from poll_intervals import (
+    clamp_straddle_poll_seconds,
+    clamp_oi_poll_seconds,
+    apply_poll_fields_from_doc,
+)
 # Import MockService only in development when explicitly enabled so production
 # deployments never accidentally import demo generators.
 try:
@@ -136,7 +140,7 @@ def _decrypt_secret(value: Optional[str]) -> Optional[str]:
         return None
 
 
-POLL_INTERVAL_SECONDS = 15
+POLL_INTERVAL_SECONDS = 15  # DEFAULT_SETTINGS fallback only; live value is Mongo
 INDICES = list(DESK_IDS)
 
 # Data retention: keep ≥96h so Friday's session survives the weekend and
@@ -380,6 +384,41 @@ class OITracker:
         self._apply_mcx_desk_flag()
         return self.settings
 
+    async def sync_poll_intervals_from_db(self):
+        """Poll seconds come from Admin configuration in Mongo, not worker memory/env."""
+        try:
+            doc = await asyncio.wait_for(
+                self.db.settings.find_one(
+                    {"_id": "alerts"},
+                    {
+                        "oi_poll_interval_seconds": 1,
+                        "straddle_poll_interval_seconds": 1,
+                        "positions_poll_interval_seconds": 1,
+                    },
+                    maxTimeMS=1500,
+                ),
+                timeout=2.0,
+            )
+        except TypeError:
+            try:
+                doc = await asyncio.wait_for(
+                    self.db.settings.find_one(
+                        {"_id": "alerts"},
+                        {
+                            "oi_poll_interval_seconds": 1,
+                            "straddle_poll_interval_seconds": 1,
+                            "positions_poll_interval_seconds": 1,
+                        },
+                    ),
+                    timeout=2.0,
+                )
+            except Exception:
+                return self.settings
+        except Exception:
+            return self.settings
+        apply_poll_fields_from_doc(self.settings, doc)
+        return self.settings
+
     def _apply_mcx_desk_flag(self):
         """Apply Admin MCX on/off. Does not wipe Enable ticks; poll/UI skip majors when off."""
         try:
@@ -533,7 +572,7 @@ class OITracker:
             return None
 
     def poll_interval_seconds(self) -> int:
-        return max(1, int(self.settings.get("oi_poll_interval_seconds", POLL_INTERVAL_SECONDS)))
+        return clamp_oi_poll_seconds(self.settings)
 
     def straddle_poll_interval_seconds(self) -> int:
         return clamp_straddle_poll_seconds(self.settings)
@@ -1040,6 +1079,7 @@ class OITracker:
         was_open = False
         while self.running:
             try:
+                await self.sync_poll_intervals_from_db()
                 poll_interval_seconds = self.effective_oi_poll_seconds()
                 await self._refresh_quote_session_flag()
                 await self._maybe_eod_telegram()

@@ -16,8 +16,6 @@ import PageBrandTitle from "@/components/PageBrandTitle";
 import { clampConfiguredPollMs, nextRefreshInSeconds } from "@/lib/dataTruth";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-/** Chart display resolution — denser than admin persistence when live ticks arrive. */
-const CHART_BUCKET_MS = 15_000;
 
 function formatTimeShort(ts) {
   try {
@@ -247,8 +245,8 @@ export default function StraddleChart({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const wsRef = useRef(null);
   const tradeDateRef = useRef(tradeDate);
-  const bucketMs = CHART_BUCKET_MS;
   const livePollMs = clampConfiguredPollMs(pollMs);
+  const bucketMs = livePollMs;
 
   useEffect(() => {
     tradeDateRef.current = tradeDate;
@@ -369,7 +367,7 @@ export default function StraddleChart({
     };
   }, [index, expiry, maxPoints, bucketMs, tradeDate]);
 
-  // Live feed — public WS + REST tick safety net (15s).
+  // Live feed — REST safety net at Admin straddle_poll_interval_seconds.
   useEffect(() => {
     let stopped = false;
     let conn = null;
@@ -523,7 +521,7 @@ export default function StraddleChart({
             </div>
             <div className="hidden md:block text-[10px] text-slate-400 mt-0.5">
               <span className="inline-flex items-center rounded-sm bg-white border border-slate-200 px-1.5 py-0.5 text-slate-600">
-                {Math.round(bucketMs / 1000)}s chart · live {Math.round(livePollMs / 1000)}s
+                {Math.round(livePollMs / 1000)}s chart · live {Math.round(livePollMs / 1000)}s
               </span>
             </div>
           </div>
