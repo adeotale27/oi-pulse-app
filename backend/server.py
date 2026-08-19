@@ -21,6 +21,7 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
+from oi_lookup import prefer_newer_snapshot
 from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai, DEFAULT_SETTINGS
 from oi_service import INDEX_CONFIG
 from universe import catalog_public, DESK_IDS
@@ -1762,6 +1763,33 @@ def _session_elapsed_minutes(current_ts: str) -> int:
     return min(1440, int(math.ceil(elapsed)))
 
 
+async def _latest_oi_snapshot(idx: str, expiry: Optional[str] = None) -> Optional[dict]:
+    """Newest stored chain for this index (optional expiry). Never hits Kite."""
+    if db is None:
+        return None
+    filt = {"index": idx, **({"expiry": expiry} if expiry else {})}
+    try:
+        return await asyncio.wait_for(
+            db.oi_snapshots.find_one(
+                filt,
+                sort=[("timestamp", -1)],
+                projection={"_id": 0},
+                maxTimeMS=1500,
+            ),
+            timeout=2.0,
+        )
+    except TypeError:
+        try:
+            return await asyncio.wait_for(
+                db.oi_snapshots.find_one(filt, sort=[("timestamp", -1)], projection={"_id": 0}),
+                timeout=2.0,
+            )
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
 async def _find_previous_snapshot(
     idx: str,
     current_ts: str,
@@ -1931,36 +1959,23 @@ async def get_oi_change(
     if tracker and current and hasattr(tracker, "snapshot_age_seconds"):
         age = tracker.snapshot_age_seconds(current)
     STALE_THRESHOLD_SECONDS = 25
-    needs_db = (not current) or (age is not None and age > STALE_THRESHOLD_SECONDS and not market_is_open)
+    # Re-read Mongo whenever memory is missing OR older than one poll — including
+    # while the market is open. Another worker (or this process after a stall)
+    # may already have a newer tick persisted; serving stale last_snapshot made
+    # OI Change look frozen until the user switched timeframe (new request).
+    needs_db = (not current) or (age is not None and age > STALE_THRESHOLD_SECONDS)
 
-    if needs_db or (not current):
-        try:
-            doc = await asyncio.wait_for(
-                db.oi_snapshots.find_one(
-                    {"index": idx, **({"expiry": expiry} if expiry else {})},
-                    sort=[("timestamp", -1)],
-                    projection={"_id": 0},
-                    maxTimeMS=1500,
-                ),
-                timeout=2.0,
-            )
-        except TypeError:
-            doc = await asyncio.wait_for(
-                db.oi_snapshots.find_one(
-                    {"index": idx, **({"expiry": expiry} if expiry else {})},
-                    sort=[("timestamp", -1)],
-                    projection={"_id": 0},
-                ),
-                timeout=2.0,
-            )
-        except Exception:
-            doc = None
+    if needs_db:
+        doc = await _latest_oi_snapshot(idx, expiry)
         if doc:
-            current = doc
-            # Only seed shared cache when serving the poller's selected expiry.
-            if tracker and (not expiry or doc.get("expiry") == tracker.selected_expiry.get(idx) or tracker.selected_expiry.get(idx) is None):
+            current = prefer_newer_snapshot(current, doc)
+            if tracker and current is doc and (
+                not expiry
+                or doc.get("expiry") == tracker.selected_expiry.get(idx)
+                or tracker.selected_expiry.get(idx) is None
+            ):
                 tracker.last_snapshot[idx] = doc
-            if tracker and hasattr(tracker, "snapshot_age_seconds"):
+            if tracker and current and hasattr(tracker, "snapshot_age_seconds"):
                 age = tracker.snapshot_age_seconds(current)
 
     if not current:

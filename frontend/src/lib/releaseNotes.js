@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.11",
+    date: "2026-08-19",
+    user: [
+      "OI Change updates as soon as new data is polled. You should not need to switch 5 min / 15 min to see the move — NIFTY, SENSEX, BANKNIFTY, or any index you enable.",
+    ],
+    admin: [
+      "Dashboard loadOI no longer awaits background indices. GET /oi/{idx}/change prefers a newer Mongo snapshot when last_snapshot is older than 25s, including while the market is open.",
+    ],
+  },
+  {
     version: "7.10",
     date: "2026-08-18",
     user: [
