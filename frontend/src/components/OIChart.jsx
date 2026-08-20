@@ -1,4 +1,4 @@
-import { useMemo, memo } from "react";
+import { useMemo, memo, useState, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
@@ -78,9 +78,13 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     });
   }, [current, previous]);
 
+  const [pressHold, setPressHold] = useState(false);
+  const [touchTooltip, setTouchTooltip] = useState(false);
+  const pressOrigin = useRef({ x: 0, y: 0 });
+
   if (!current) {
     return (
-      <div className={`${compact ? "h-[240px]" : "h-96"} flex items-center justify-center text-slate-400 text-sm`}>
+      <div className={`${compact ? "h-[280px]" : "h-96"} flex items-center justify-center text-slate-400 text-sm`}>
         Loading data…
       </div>
     );
@@ -88,16 +92,39 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
 
   const ct = currentTime || current?.timestamp;
   const pt = prevTime || previous?.timestamp;
-  const tickEvery = compact && data.length > 7 ? 1 : 0;
-  const chartH = compact ? "h-[240px]" : "h-[440px]";
+  const tickEvery = compact && data.length > 12 ? 1 : 0;
+  const chartH = compact ? "h-[280px]" : "h-[440px]";
+
+  const endPressHold = () => setPressHold(false);
+  const onChartPointerDown = (e) => {
+    if (!compact) return;
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    setTouchTooltip(true);
+    setPressHold(true);
+    pressOrigin.current = { x: e.clientX, y: e.clientY };
+  };
+  const onChartPointerMove = (e) => {
+    if (!compact || !pressHold) return;
+    const dx = e.clientX - pressOrigin.current.x;
+    const dy = e.clientY - pressOrigin.current.y;
+    if (dx * dx + dy * dy > 36) setPressHold(false);
+  };
 
   return (
     <div className="w-full" data-testid="oi-chart">
-      <div className={`w-full ${chartH}`}>
+      <div
+        className={`w-full ${chartH} touch-manipulation`}
+        onPointerDown={onChartPointerDown}
+        onPointerMove={onChartPointerMove}
+        onPointerUp={endPressHold}
+        onPointerCancel={endPressHold}
+        onPointerLeave={endPressHold}
+        onLostPointerCapture={endPressHold}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={data}
-            margin={compact ? { top: 8, right: 4, left: 0, bottom: 4 } : { top: 20, right: 20, left: 10, bottom: 20 }}
+            margin={compact ? { top: 10, right: 6, left: 0, bottom: 12 } : { top: 20, right: 20, left: 10, bottom: 20 }}
             barCategoryGap={compact ? "12%" : "18%"}
           >
             {/* SVG patterns for the "increase" striped fills and the "decrease" outlined bars. */}
@@ -117,10 +144,11 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
               tick={{ fontSize: compact ? 9 : 11, fill: "#475569" }}
               axisLine={{ stroke: "#CBD5E1" }}
               tickLine={false}
-              angle={compact ? 0 : -40}
-              textAnchor={compact ? "middle" : "end"}
-              height={compact ? 28 : 60}
+              angle={compact ? -35 : -40}
+              textAnchor="end"
+              height={compact ? 52 : 60}
               interval={tickEvery}
+              tickMargin={compact ? 6 : 4}
             />
             <YAxis
               tick={{ fontSize: compact ? 9 : 11, fill: "#475569" }}
@@ -138,8 +166,22 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
               }}
             />
             <Tooltip
-              cursor={{ fill: "rgba(148,163,184,0.12)" }}
-              content={<CustomTooltip mode={mode} atm={atm} currentTime={ct} prevTime={pt} showOI={showOI} />}
+              cursor={compact ? false : { fill: "rgba(148,163,184,0.12)" }}
+              allowEscapeViewBox={{ x: true, y: true }}
+              offset={compact ? 8 : 10}
+              wrapperStyle={{ pointerEvents: "none", outline: "none", background: "transparent", border: "none", boxShadow: "none" }}
+              isAnimationActive={false}
+              active={touchTooltip ? pressHold : undefined}
+              content={
+                <CustomTooltip
+                  mode={mode}
+                  atm={atm}
+                  currentTime={ct}
+                  prevTime={pt}
+                  showOI={showOI}
+                  compact={compact}
+                />
+              }
             />
             <Legend
               verticalAlign="bottom"
@@ -231,13 +273,31 @@ function SignalIcon({ tag, side }) {
   );
 }
 
-function CustomTooltip({ active, payload, label, atm, currentTime, prevTime, showOI }) {
+function CustomTooltip({ active, payload, label, atm, currentTime, prevTime, showOI, compact }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
   const isAtm = atm === d.strike;
   const ctLbl = formatTime(currentTime);
   const ptLbl = formatTime(prevTime);
+  const peChg = `${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`;
+  const ceChg = `${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`;
+  if (compact) {
+    return (
+      <div
+        className="pointer-events-none rounded-md border border-slate-200/50 bg-white/65 backdrop-blur-[2px] shadow-sm px-2 py-1.5 text-[10px] min-w-0 max-w-[10.5rem]"
+        data-testid="oi-tooltip"
+      >
+        <div className="font-semibold text-slate-900 mb-1 leading-tight">
+          Strike {label} {isAtm && <span className="text-[9px] text-amber-700 ml-0.5">ATM</span>}
+        </div>
+        <div className="space-y-0.5 font-mono-data">
+          <TipRow color={PUT_GREEN} label="Put chg" value={peChg} deltaPositive={d.pe_delta >= 0} isDelta compact />
+          <TipRow color={CALL_RED} label="Call chg" value={ceChg} deltaPositive={d.ce_delta >= 0} isDelta compact />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="bg-white border border-slate-200 rounded-md shadow-xl px-4 py-3 text-xs min-w-[240px]" data-testid="oi-tooltip">
       <div className="font-semibold text-slate-900 mb-2 text-sm">
@@ -248,18 +308,18 @@ function CustomTooltip({ active, payload, label, atm, currentTime, prevTime, sho
           <>
             {/* Show OI ON → sensibull-style detail: previous OI + change + current OI on one row per side */}
             <TipRow color={PUT_GREEN} label={`Put OI at ${ptLbl}`} value={formatOI(d.pe_prev)} />
-            <TipRow color={PUT_GREEN} label="Put OI chg" value={`${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`} deltaPositive={d.pe_delta >= 0} isDelta />
+            <TipRow color={PUT_GREEN} label="Put OI chg" value={peChg} deltaPositive={d.pe_delta >= 0} isDelta />
             <TipRow color={PUT_GREEN} label={`Put OI at ${ctLbl}`} value={formatOI(d.pe_now)} muted />
             <div className="h-px bg-slate-100 my-1" />
             <TipRow color={CALL_RED} label={`Call OI at ${ptLbl}`} value={formatOI(d.ce_prev)} />
-            <TipRow color={CALL_RED} label="Call OI chg" value={`${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`} deltaPositive={d.ce_delta >= 0} isDelta />
+            <TipRow color={CALL_RED} label="Call OI chg" value={ceChg} deltaPositive={d.ce_delta >= 0} isDelta />
             <TipRow color={CALL_RED} label={`Call OI at ${ctLbl}`} value={formatOI(d.ce_now)} muted />
           </>
         ) : (
           <>
             {/* Show OI OFF → just the signed delta */}
-            <TipRow color={PUT_GREEN} label="Put OI chg" value={`${d.pe_delta >= 0 ? "+" : ""}${formatOI(d.pe_delta)}`} deltaPositive={d.pe_delta >= 0} isDelta />
-            <TipRow color={CALL_RED} label="Call OI chg" value={`${d.ce_delta >= 0 ? "+" : ""}${formatOI(d.ce_delta)}`} deltaPositive={d.ce_delta >= 0} isDelta />
+            <TipRow color={PUT_GREEN} label="Put OI chg" value={peChg} deltaPositive={d.pe_delta >= 0} isDelta />
+            <TipRow color={CALL_RED} label="Call OI chg" value={ceChg} deltaPositive={d.ce_delta >= 0} isDelta />
           </>
         )}
       </div>
@@ -267,11 +327,11 @@ function CustomTooltip({ active, payload, label, atm, currentTime, prevTime, sho
   );
 }
 
-function TipRow({ color, label, value, muted, isDelta, deltaPositive }) {
+function TipRow({ color, label, value, muted, isDelta, deltaPositive, compact }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className={`flex items-center justify-between ${compact ? "gap-2" : "gap-4"}`}>
       <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+        <span className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} rounded-sm`} style={{ background: color }} />
         <span className={muted ? "text-slate-500" : "text-slate-700"}>{label}</span>
       </div>
       <span
