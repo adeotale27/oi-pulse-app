@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "7.18",
+    date: "2026-08-20",
+    user: [
+      "On the phone OI Change chart, the strike tile is see-through and only stays while you hold a bar — it closes when you move or lift. Strike prices along the bottom are fully visible. Positions: NRML sits on the same line as CALL/PUT, and Exited today sits closer to Insights. Journal From/To dates are separate full-width fields on phone.",
+    ],
+    admin: [
+      "OIChart compact tooltip is press-hold only (touch/pen). Positions mobile cards dropped the extra pb-16 spacer. Journal period dates are stacked on small screens.",
+    ],
+  },
+  {
     version: "7.17",
     date: "2026-08-19",
     user: [

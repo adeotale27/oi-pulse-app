@@ -211,10 +211,10 @@ function ProductBadge({ product, exited }) {
   );
 }
 
-/** CALL / PUT chip: beside NRML when there is room, under it on a tight product column. */
+/** CALL / PUT chip sits on the same row as NRML / MIS on phone cards and desktop. */
 function ProductSidePair({ row, exited }) {
   return (
-    <div className="inline-flex flex-col items-start gap-0.5 sm:flex-row sm:flex-nowrap sm:items-center sm:gap-1">
+    <div className="inline-flex flex-row flex-nowrap items-center gap-1">
       <ProductBadge product={row.product} exited={exited} />
       <OptionSideBadge row={row} exited={exited} />
     </div>
@@ -1740,7 +1740,7 @@ export default function PositionsPanel({
       {bookSlot === "top" && bookCard}
 
       {/* Mobile cards */}
-      <div className="md:hidden space-y-2 pb-16" data-testid="positions-mobile-cards">
+      <div className="md:hidden space-y-2 pb-1" data-testid="positions-mobile-cards">
         {rows.length === 0 ? (
           <div className="text-center py-6 text-slate-400 text-xs border border-slate-100 rounded-md">No F&amp;O positions today.</div>
         ) : (
@@ -2171,7 +2171,7 @@ export default function PositionsPanel({
       <BookDropZone slot="bottom" dragging={bookDragging} onDrop={setBookSlotPersist} label="Drop Your book below the list" />
       {bookSlot === "bottom" && bookCard}
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 max-md:pb-12">
         <button
           type="button"
           onClick={() => setInsights(!insightsOpen)}

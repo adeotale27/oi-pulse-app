@@ -442,28 +442,30 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
         <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 max-lg:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           {!focused && (
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2" data-testid="journal-period-panel">
-              <div className="grid grid-cols-2 gap-2 min-w-0 sm:flex sm:flex-wrap sm:items-end">
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 min-w-0">
+              <div className="grid grid-cols-1 gap-2 min-w-0 sm:flex sm:flex-wrap sm:items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0 sm:contents">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 min-w-0 block">
                   From
                   <input
                     type="date"
                     value={periodFrom}
                     onChange={(e) => setPeriodFrom(e.target.value)}
-                    className="mt-0.5 block h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
+                    className="mt-0.5 block h-11 sm:h-8 w-full min-w-0 max-w-full rounded-lg sm:rounded-md border border-slate-200 bg-white px-3 sm:px-2 text-base sm:text-[13px] font-medium text-slate-800"
                     data-testid="journal-period-from"
                   />
                 </label>
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 min-w-0">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 min-w-0 block">
                   To
                   <input
                     type="date"
                     value={periodTo}
                     onChange={(e) => setPeriodTo(e.target.value)}
-                    className="mt-0.5 block h-8 w-full min-w-0 rounded-md border border-slate-200 px-2 text-[13px] font-medium text-slate-800"
+                    className="mt-0.5 block h-11 sm:h-8 w-full min-w-0 max-w-full rounded-lg sm:rounded-md border border-slate-200 bg-white px-3 sm:px-2 text-base sm:text-[13px] font-medium text-slate-800"
                     data-testid="journal-period-to"
                   />
                 </label>
-                <div className="col-span-2 flex flex-wrap gap-1 min-w-0">
+                </div>
+                <div className="flex flex-wrap gap-1 min-w-0">
                   {periodChips.map((id) => (
                     <button
                       key={id}

@@ -1,5 +1,9 @@
 # Changelog
 
+## V7.18 — 2026-08-20
+
+Phone OI Change: strike tile is translucent, only while you hold a bar, and hides as soon as the finger moves or lifts. Strike labels on the X-axis are no longer clipped. Positions: NRML and CALL/PUT stay on one line; less gap after Exited today. Journal From/To dates stack cleanly on phone.
+
 ## V7.17 — 2026-08-19
 
 OI Change window keeps exact seconds (10:12:47–10:27:47 for 15 min). Background poller writes every Admin interval for all enabled indices with no browser open — ticks are not snapped to :00/:15/:30.
