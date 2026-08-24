@@ -108,6 +108,8 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         }
 
     journal = _compact_journal(b.get("journal"))
+    memory = _compact_memory(b.get("memory"))
+    sells = _compact_sells(b.get("sells"))
     index = _clip(b.get("index"))[:16] or None
     session_focus = _clip(b.get("session_focus") or index)[:16] or None
 
@@ -146,6 +148,8 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "index": index,
         "session_focus": session_focus,
         "journal": journal,
+        "memory": memory,
+        "sells": sells,
     }
 
 
@@ -262,6 +266,78 @@ def _compact_fii(raw: Any) -> Optional[Dict[str, Any]]:
     }
     if not out["date"] and out["fiiNet"] is None and out["diiNet"] is None:
         return None
+    return out
+
+
+def _compact_memory(raw: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    lines = []
+    for item in (raw.get("lines") or [])[:6]:
+        t = _clip(item)
+        if t:
+            lines.append(t)
+    buckets = []
+    for item in (raw.get("buckets") or [])[:8]:
+        if not isinstance(item, dict):
+            continue
+        side = _clip(item.get("side")).upper()[:2]
+        if side not in ("CE", "PE"):
+            side = None
+        n = item.get("n")
+        wins = item.get("wins")
+        wr = item.get("win_rate")
+        try:
+            n = int(n) if n is not None else 0
+        except (TypeError, ValueError):
+            n = 0
+        try:
+            wins = int(wins) if wins is not None else 0
+        except (TypeError, ValueError):
+            wins = 0
+        try:
+            wr = float(wr) if wr is not None else None
+        except (TypeError, ValueError):
+            wr = None
+        buckets.append({
+            "index": _clip(item.get("index"))[:16] or None,
+            "side": side,
+            "weekday": _clip(item.get("weekday"))[:12] or None,
+            "n": n,
+            "wins": wins,
+            "win_rate": wr,
+        })
+    if not lines and not buckets:
+        return None
+    return {"lines": lines, "buckets": buckets}
+
+
+def _compact_sells(raw: Any) -> List[Dict[str, Any]]:
+    rows = raw if isinstance(raw, list) else []
+    out: List[Dict[str, Any]] = []
+    for item in rows[:3]:
+        if not isinstance(item, dict):
+            continue
+        side = _clip(item.get("side")).upper()[:2]
+        if side not in ("CE", "PE"):
+            side = None
+        strike = item.get("strike")
+        score = item.get("score")
+        try:
+            strike = float(strike) if strike is not None else None
+        except (TypeError, ValueError):
+            strike = None
+        try:
+            score = float(score) if score is not None else None
+        except (TypeError, ValueError):
+            score = None
+        out.append({
+            "s": _clip(item.get("s"))[:28] or None,
+            "strike": strike,
+            "side": side,
+            "score": score,
+            "why": _clip(item.get("why"))[:80] or None,
+        })
     return out
 
 
@@ -482,6 +558,84 @@ def _oi_writer_line(row: Dict[str, Any]) -> str:
     return " · ".join(str(x) for x in bits)
 
 
+def _tape_side_from_oi(snap: Dict[str, Any]) -> Optional[str]:
+    """call_writers if CE OI change leads, else put_writers. None if no tape."""
+    rows = [r for r in (snap.get("oi") or []) if isinstance(r, dict)]
+    if not rows:
+        return None
+    focus = str(snap.get("session_focus") or snap.get("index") or "")
+    pick = None
+    if focus:
+        for row in rows:
+            if str(row.get("idx") or row.get("index") or "") == focus:
+                pick = row
+                break
+    if pick is None:
+        pick = rows[0]
+    try:
+        ce_n = int(pick.get("ceChg") or 0)
+        pe_n = int(pick.get("peChg") or 0)
+    except (TypeError, ValueError):
+        return None
+    if ce_n == 0 and pe_n == 0:
+        return None
+    return "call_writers" if ce_n > pe_n else "put_writers"
+
+
+def named_leg_actions(adjust: Any, tape_side: Optional[str] = None) -> Dict[str, List[str]]:
+    """Per-leg hold / cut / roll / fight vs writer tape. Uses tradingsymbols."""
+    holds: List[str] = []
+    cuts: List[str] = []
+    rolls: List[str] = []
+    fight: List[str] = []
+    if not isinstance(adjust, dict):
+        return {"holds": holds, "cuts": cuts, "rolls": rolls, "fight": fight}
+    for leg in (adjust.get("legs") or [])[:8]:
+        if not isinstance(leg, dict):
+            continue
+        s = str(leg.get("s") or "").strip()
+        if not s:
+            continue
+        side = str(leg.get("side") or "").upper()
+        if leg.get("itm"):
+            cuts.append(s)
+            continue
+        if leg.get("close"):
+            rolls.append(s)
+            continue
+        if tape_side == "call_writers" and side == "CE":
+            holds.append(s)
+        elif tape_side == "put_writers" and side == "PE":
+            holds.append(s)
+        elif tape_side == "call_writers" and side == "PE":
+            fight.append(s)
+        elif tape_side == "put_writers" and side == "CE":
+            fight.append(s)
+        else:
+            holds.append(s)
+    return {
+        "holds": holds[:4],
+        "cuts": cuts[:4],
+        "rolls": rolls[:4],
+        "fight": fight[:4],
+    }
+
+
+def _named_action_lines(snap: Dict[str, Any]) -> Dict[str, List[str]]:
+    named = named_leg_actions(snap.get("adjust"), _tape_side_from_oi(snap))
+    do: List[str] = []
+    dont: List[str] = []
+    if named["holds"]:
+        do.append("Hold " + ", ".join(named["holds"]) + " — sits with writers.")
+    if named["cuts"]:
+        dont.append("Cut/define " + ", ".join(named["cuts"]))
+    if named["rolls"]:
+        dont.append("Roll " + ", ".join(named["rolls"]) + " (too close to spot).")
+    if named["fight"]:
+        dont.append("Reduce / do not add " + ", ".join(named["fight"]) + " — fighting the tape.")
+    return {"do": do, "dont": dont, "named": named}
+
+
 def _journal_line(snap: Dict[str, Any]) -> Optional[str]:
     j = snap.get("journal") if isinstance(snap.get("journal"), dict) else None
     if not j:
@@ -496,6 +650,35 @@ def _journal_line(snap: Dict[str, Any]) -> Optional[str]:
     if not bits:
         return None
     return "Journal last window: " + " · ".join(bits)
+
+
+def _memory_line(snap: Dict[str, Any]) -> Optional[str]:
+    mem = snap.get("memory") if isinstance(snap.get("memory"), dict) else None
+    if not mem:
+        return None
+    lines = [str(x) for x in (mem.get("lines") or []) if str(x).strip()]
+    if not lines:
+        return None
+    return "Book memory: " + lines[0]
+
+
+def _sells_line(snap: Dict[str, Any]) -> Optional[str]:
+    rows = snap.get("sells") if isinstance(snap.get("sells"), list) else []
+    bits = []
+    for item in rows[:3]:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("s") or " ".join(
+            str(x) for x in (item.get("strike"), item.get("side")) if x is not None
+        ).strip()
+        why = item.get("why")
+        if label and why:
+            bits.append(f"{label} — {why}")
+        elif label:
+            bits.append(str(label))
+    if not bits:
+        return None
+    return "Sell ideas (your ranker): " + "; ".join(bits)
 
 
 def _compose_carry(snap: Dict[str, Any]) -> str:
@@ -575,9 +758,16 @@ def _compose_carry(snap: Dict[str, Any]) -> str:
     jl = _journal_line(snap)
     if jl:
         do.append(jl)
+    ml = _memory_line(snap)
+    if ml:
+        do.append(ml)
     shorts = int(book.get("shortCount") or 0)
     if shorts:
         do.append(f"Open book: {shorts} short option{'s' if shorts != 1 else ''}.")
+
+    named_lines = _named_action_lines(snap)
+    do = named_lines["do"] + do
+    dont = named_lines["dont"] + dont
 
     # Dedup while keeping order
     seen = set()
@@ -593,8 +783,8 @@ def _compose_carry(snap: Dict[str, Any]) -> str:
                 break
         return out
 
-    do_u = take(do, 6)
-    dont_u = take(dont, 6)
+    do_u = take(do, 7)
+    dont_u = take(dont, 8)
     bits.append("DO")
     bits.extend(f"  {t}" for t in (do_u or ["No extra overnight tailwind — size as a gap, not a conviction hold."]))
     bits.append("DON'T")
@@ -649,6 +839,10 @@ def _compose_desk(snap: Dict[str, Any]) -> str:
     if jl:
         bits.append("JOURNAL")
         bits.append(f"  {jl}")
+    ml = _memory_line(snap)
+    if ml:
+        bits.append("MEMORY")
+        bits.append(f"  {ml}")
 
     what = []
     if movers:
@@ -690,6 +884,12 @@ def _compose_desk(snap: Dict[str, Any]) -> str:
         else:
             do.append(f"{idx}: put writers — prefer PE shorts / do not chase CE shorts.")
             dont.append(f"{idx}: do not add CE shorts into a put-writer tape.")
+    named_lines = _named_action_lines(snap)
+    do.extend(named_lines["do"])
+    dont.extend(named_lines["dont"])
+    sl = _sells_line(snap)
+    if sl:
+        do.append(sl)
     do.extend(seller[:2])
     if buyer:
         dont.append("Buyers: " + "; ".join(buyer[:2]))
@@ -708,10 +908,38 @@ def _compose_desk(snap: Dict[str, Any]) -> str:
 def _compose_positions(snap: Dict[str, Any]) -> str:
     """Radar: book risk vs cash. Not the overnight carry card."""
     bits: List[str] = []
-    watch = _adjust_watch(snap)
+    named = named_leg_actions(snap.get("adjust"), _tape_side_from_oi(snap))
+    watch: List[str] = []
+    if named["cuts"]:
+        watch.append("Buy back / roll: " + ", ".join(named["cuts"]) + " — ITM.")
+    if named["rolls"]:
+        watch.append("Roll out: " + ", ".join(named["rolls"]) + " — too close.")
+    if named["fight"]:
+        watch.append("Reduce: " + ", ".join(named["fight"]) + " — fighting writers.")
+    if named["holds"]:
+        watch.append("Hold: " + ", ".join(named["holds"]))
+    for w in _adjust_watch(snap):
+        if w not in watch:
+            watch.append(w)
+    adj = snap.get("adjust") if isinstance(snap.get("adjust"), dict) else {}
+    nd = adj.get("netDelta")
+    try:
+        ndf = float(nd) if nd is not None else None
+    except (TypeError, ValueError):
+        ndf = None
+    if ndf is not None and abs(ndf) >= 10:
+        hedge = f"Hedge |Δ| {ndf:.0f} — futures or far OTM option, not more shorts"
+        if hedge not in watch:
+            watch.append(hedge)
+    sl = _sells_line(snap)
+    if sl:
+        watch.append(sl)
+    ml = _memory_line(snap)
+    if ml:
+        watch.append(ml)
     if watch:
         bits.append("WATCH NEXT")
-        bits.extend(f"  {t}" for t in watch)
+        bits.extend(f"  {t}" for t in watch[:8])
     outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else None
     briefing = (outside or {}).get("briefing")
     movers = (outside or {}).get("movers") or []
@@ -844,21 +1072,22 @@ async def _call_llm(snap: Dict[str, Any]) -> str:
         system = (
             "You write an overnight HOLD note for NSE index-option sellers. "
             "Format exactly: DO (bullets) then DON'T (bullets). "
-            "Use why/whyNot, band, vix, giftPct, adjust (delta/theta/IV/legs), oi writer tape, journal, holidays, outside events. "
-            "Be specific: what to hold, what to cut, what not to add. Max 10 short lines. Never invent prices."
+            "Use why/whyNot, band, vix, giftPct, adjust (delta/theta/IV/legs), oi writer tape, journal, memory, holidays, outside events. "
+            "Name tradingsymbols from adjust.legs (Hold / Cut/define / Roll). Max 10 short lines. Never invent prices or strikes."
         )
     elif surface == "positions":
         system = (
-            "You coach the open shorts book on Radar. Use ONLY adjust.legs / netDelta and a one-line "
-            "outside.briefing if present. Do NOT dump the full Desk AI tape or overnight carry why/whyNot. "
+            "You coach the open shorts book on Radar. Use ONLY adjust.legs / netDelta, optional sells "
+            "(explain the ranker, do not invent a list), memory.lines, and a one-line outside.briefing if present. "
+            "Name each short: ITM = buy back/roll; too close = roll; fighting tape = reduce; |Δ| large = hedge, not more shorts. "
             "Lead with WATCH NEXT. Max 6 lines. Never invent prices."
         )
     else:
         system = (
             "You are an NSE index-options desk for sellers first, then buyers. "
             "Format exactly: TAPE / BOOK / JOURNAL / WHAT CHANGED / DO / DON'T. "
-            "Use oi (PCR, CE/PE, walls), book, adjust greeks, journal win-rate, outside movers/news. "
-            "DO/DON'T must be trade actions (add/hold/cut which side). Never invent prices. Max 16 lines."
+            "Use oi (PCR, CE/PE, walls), book, adjust greeks, journal, memory.lines, sells (explain top 3 from the ranker only). "
+            "Name tradingsymbols from adjust.legs. DO/DON'T must be trade actions. Never invent prices or extra sell strikes. Max 16 lines."
         )
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(

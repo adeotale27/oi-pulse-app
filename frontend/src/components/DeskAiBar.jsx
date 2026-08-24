@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, fetchOIChange, fetchJournalPeriod, fetchExtras } from "@/lib/api";
 import { upcomingHolidays, todayIST } from "@/lib/holidays";
 import { eventDisplayName } from "@/lib/carryFocus";
-import { compactBookFromPositions, compactJournalFromPeriod, daysAgoIST, summarizeIndexTape } from "@/lib/deskAiTape";
+import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, daysAgoIST, summarizeIndexTape } from "@/lib/deskAiTape";
 import { cashSessionFocusIndex, cashSessionFocusLabel, filterCashHeavyMovers, istWeekdaySun0, overnightBiasIndices } from "@/lib/deskFocus";
 import MarketIntelCard from "@/components/MarketIntelCard";
 
@@ -52,13 +52,14 @@ export default function DeskAiBar({
       const focusIndex = cashSessionFocusIndex(weekday);
       const names = overnightBiasIndices(weekday, activeIndex).slice(0, 3);
       const today = todayIST();
-      const [st, outRes, evRes, posRes, extrasRes, journalRes, ...oiPacks] = await Promise.all([
+      const [st, outRes, evRes, posRes, extrasRes, journalRes, memRes, ...oiPacks] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
         api.get("/desk-outside", { params: activeIndex ? { index: activeIndex } : {} }).catch(() => ({ data: null })),
         api.get(`/events/${focusIndex}`).catch(() => ({ data: null })),
         api.get("/positions").catch(() => ({ data: null })),
         fetchExtras().catch(() => null),
         fetchJournalPeriod(daysAgoIST(30, today), today, "ALL").catch(() => null),
+        api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null })),
         ...names.map((idx) => fetchOIChange(idx, 15, { also: "session" }).catch(() => null)),
       ]);
       setMeta(st.data);
@@ -74,7 +75,15 @@ export default function DeskAiBar({
         .map((data) => summarizeIndexTape(data?.current, data?.also_windows?.session?.previous || data?.previous))
         .filter(Boolean);
       const journal = compactJournalFromPeriod(journalRes);
+      const memory = memRes?.data && Array.isArray(memRes.data.lines) ? { lines: memRes.data.lines.slice(0, 6) } : null;
       const vix = extrasRes?.vix?.last ?? extrasRes?.vix?.ltp ?? extrasRes?.vix;
+      const focusPack = oiPacks.find((data) => String(data?.current?.index || "") === focusIndex) || oiPacks[0];
+      const sells = compactSellIdeas(
+        focusIndex,
+        focusPack?.current,
+        focusPack?.also_windows?.session?.previous || focusPack?.previous,
+        vix != null ? Number(vix) : undefined,
+      );
       setIntel({ oi, book: packed.book, adjust: packed.adjust, journal });
       const { data } = await api.post("/desk-guide", {
         surface: "desk",
@@ -95,6 +104,8 @@ export default function DeskAiBar({
         adjust: packed.adjust,
         oi,
         journal,
+        memory,
+        sells,
         outside: rawOut,
       });
       setGuide(data);

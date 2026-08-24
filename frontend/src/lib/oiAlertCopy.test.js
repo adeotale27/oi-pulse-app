@@ -7,6 +7,7 @@ import {
   oiPressureCopy,
   hugeShiftToastCopy,
   oiSellerRead,
+  writerTapeAction,
 } from "./oiAlertCopy.js";
 
 const p = oiPressureCopy({
@@ -24,6 +25,11 @@ assert.match(p.description, /PE \+3\.49Cr · CE \+4\.56Cr/);
 const bear = oiPressureCopy({ index: "SENSEX", bullish: false, windowLabel: "1 min" });
 assert.equal(bear.title, "SENSEX · Calls adding — bearish");
 assert.match(bear.description, /Call selling increase — bearish further/);
+assert.match(bear.description, /Do not add PE shorts/);
+assert.match(p.description, /Do not add CE shorts/);
+
+assert.equal(writerTapeAction({ bullish: false }), "Do not add PE shorts. CE shorts sit with the tape.");
+assert.equal(writerTapeAction({ bullish: true }), "Do not add CE shorts. PE shorts sit with the tape.");
 
 assert.equal(oiSellerRead(true), "Put selling increase — bullish further");
 assert.equal(formatOiDelta(3.49e7), "+3.49Cr");
@@ -38,6 +44,7 @@ const board = oiBoardAlertCopy({
 assert.equal(board.title, "NIFTY: Bearish pressure (Call OI building) in last 15 mins");
 assert.match(board.description, /PE \+3\.49Cr · CE \+4\.56Cr/);
 assert.match(board.description, /Call selling increase/);
+assert.match(board.description, /Do not add PE shorts/);
 
 const pct = oiPctCopy({ index: "NIFTY", side: "CE", pct: -5.21, windowLabel: "5 min" });
 assert.equal(pct.title, "NIFTY · Calls down 5.2%");
@@ -52,6 +59,7 @@ assert.equal(peCut.headline, "Puts cut near ATM");
 
 const toast = hugeShiftToastCopy({ index: "NIFTY", side: "CE", value: 1, window: 3 });
 assert.equal(toast.title, "NIFTY · Calls added near ATM");
-assert.equal(toast.description, "3 min window");
+assert.match(toast.description, /3 min window/);
+assert.match(toast.description, /Do not add PE shorts/);
 
 console.log("oiAlertCopy.test.js ok");

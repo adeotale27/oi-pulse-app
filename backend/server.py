@@ -5808,6 +5808,8 @@ class DeskGuideIn(BaseModel):
     oi: Optional[List[Any]] = None
     outside: Optional[Dict[str, Any]] = None
     journal: Optional[Dict[str, Any]] = None
+    memory: Optional[Dict[str, Any]] = None
+    sells: Optional[List[Any]] = None
     index: Optional[str] = None
     session_focus: Optional[str] = None
     force: Optional[bool] = False
@@ -5882,6 +5884,38 @@ async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_us
     except Exception:
         pass
     return await desk_guide_svc.maybe_guide(payload)
+
+
+@api_router.get("/desk-memory")
+async def desk_memory(
+    request: Request,
+    days: int = 60,
+    role: str = Depends(require_desk_user),
+):
+    """Closed-short win rates from trade_cycles. Compact lines only — no fills."""
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    owner = await _ledger_owner(request, role)
+    days = max(7, min(int(days or 60), 180))
+    end = now_ist().strftime("%Y-%m-%d")
+    start = (now_ist() - timedelta(days=days)).strftime("%Y-%m-%d")
+    query = {
+        "owner_id": owner,
+        "status": "closed",
+        "$or": [
+            {"entry_date": {"$gte": start, "$lte": end}},
+            {"exit_date": {"$gte": start, "$lte": end}},
+        ],
+    }
+    try:
+        docs = await db.trade_cycles.find(
+            query,
+            {"_id": 0, "events": 0, "fills": 0},
+        ).to_list(length=2000)
+    except Exception:
+        docs = []
+    cycles = ledger.filter_cycles(docs, start=start, end=end, status="closed")
+    return ledger.summarize_trade_memory(cycles)
 
 
 # ------------------- Lifecycle -------------------

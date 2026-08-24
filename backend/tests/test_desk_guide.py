@@ -13,6 +13,17 @@ def test_compact_strips_noise_and_caps_lists():
         "giftPct": "-0.12",
         "weekday": 5,
         "band": "REDUCE",
+        "journal": {
+            "booked_pnl": 1200,
+            "win_rate": 55,
+            "trading_days": 12,
+            "access_token": "nope",
+        },
+        "memory": {
+            "lines": ["NIFTY CE shorts on Friday: 5/7 paid (71%)"],
+            "token": "SECRET",
+        },
+        "sells": [{"s": "NIFTY 24300 CE", "why": "IV Rank 72, fresh writing", "token": "x", "chain": [1]}],
         "kite_access_token": "should-not-copy",
         "fii": {"date": "2026-08-13", "fiiNet": "-1200.5", "diiNet": "800", "secret": "x"},
         "oi": [{
@@ -43,6 +54,11 @@ def test_compact_strips_noise_and_caps_lists():
     assert "token" not in snap["adjust"]["legs"][0]
     assert snap["book"]["byIndex"]["NIFTY"]["pe"] == 1
     assert snap["vix"] == 11.4
+    assert snap["memory"]["lines"][0].startswith("NIFTY CE")
+    assert "token" not in snap["memory"]
+    assert snap["sells"][0]["s"] == "NIFTY 24300 CE"
+    assert "token" not in snap["sells"][0]
+    assert "chain" not in snap["sells"][0]
     assert "SECRET" not in str(snap["results"])
     assert snap["oi"][0]["idx"] == "NIFTY"
     assert "strikes" not in snap["oi"][0]
@@ -264,4 +280,55 @@ def test_desk_guide_uses_oi_journal_and_greeks():
     assert "VIX" in carry
     assert "Adjust first" in carry
     assert "Journal" in carry
+
+
+def test_named_hold_cut_and_sells_memory():
+    from desk_guide import named_leg_actions
+
+    named = named_leg_actions({
+        "legs": [
+            {"s": "NIFTY25AUG24300CE", "side": "CE", "itm": False, "close": False},
+            {"s": "NIFTY25AUG24400PE", "side": "PE", "itm": False, "close": False},
+            {"s": "NIFTY25AUG24200CE", "side": "CE", "itm": True, "close": True},
+            {"s": "NIFTY25AUG24100PE", "side": "PE", "itm": False, "close": True},
+        ],
+    }, "call_writers")
+    assert named["holds"] == ["NIFTY25AUG24300CE"]
+    assert named["fight"] == ["NIFTY25AUG24400PE"]
+    assert named["cuts"] == ["NIFTY25AUG24200CE"]
+    assert named["rolls"] == ["NIFTY25AUG24100PE"]
+
+    carry = compose_rules_guide({
+        "surface": "carry",
+        "index": "NIFTY",
+        "oi": [{"idx": "NIFTY", "ceChg": 100000, "peChg": 1000}],
+        "adjust": {"legs": [
+            {"s": "NIFTY25AUG24300CE", "side": "CE"},
+            {"s": "NIFTY25AUG24400PE", "side": "PE"},
+        ]},
+        "memory": {"lines": ["NIFTY CE shorts on Friday: 5/7 paid (71%)"]},
+    })
+    assert "Hold NIFTY25AUG24300CE" in carry
+    assert "NIFTY25AUG24400PE" in carry
+    assert "Book memory" in carry
+
+    desk = compose_rules_guide({
+        "surface": "desk",
+        "sells": [{"s": "NIFTY 24300 CE", "why": "IV Rank 72, fresh writing"}],
+        "oi": [{"idx": "NIFTY", "ceChg": 1, "peChg": 9}],
+    })
+    assert "Sell ideas (your ranker)" in desk
+    assert "IV Rank 72" in desk
+
+    radar = compose_rules_guide({
+        "surface": "positions",
+        "adjust": {
+            "netDelta": 22,
+            "shortCount": 2,
+            "adjustCount": 1,
+            "legs": [{"s": "NIFTY25814C24500", "side": "CE", "itm": True, "close": True}],
+        },
+    })
+    assert "Buy back / roll: NIFTY25814C24500" in radar
+    assert "Hedge |Δ|" in radar
 

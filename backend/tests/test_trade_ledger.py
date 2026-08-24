@@ -318,3 +318,30 @@ def test_close_missing_uses_today_fill_when_present():
     out = close_missing_cycle(c, now=_dt(2026, 8, 24, 9, 20), fills=fills)
     assert out["exit_time_ist"] == "2026-08-24 09:16:00"
     assert out["exit_source"] == "fill"
+
+
+def test_summarize_trade_memory_weekday_and_min_n():
+    from trade_ledger import summarize_trade_memory
+
+    cycles = []
+    for i in range(5):
+        cycles.append({
+            "status": "closed",
+            "direction": "short",
+            "index": "NIFTY",
+            "side": "CE",
+            "booked_pnl": 200 if i < 4 else -80,
+            "entry_date": "2026-08-21",
+        })
+    cycles.append({
+        "status": "closed",
+        "direction": "short",
+        "index": "NIFTY",
+        "side": "PE",
+        "booked_pnl": 10,
+        "entry_date": "2026-08-21",
+    })
+    mem = summarize_trade_memory(cycles)
+    assert any("NIFTY CE shorts on Friday: 4/5 paid" in x for x in mem["lines"])
+    skinny = summarize_trade_memory(cycles[:2])
+    assert skinny["lines"] == []

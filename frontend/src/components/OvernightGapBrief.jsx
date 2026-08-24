@@ -11,7 +11,7 @@ import {
   writeCarryLeft,
 } from "@/lib/carryDock";
 import { carryCase, eventDisplayName, sellerCarryAdvice, summarizeBook, writerBiasLine } from "@/lib/carryFocus";
-import { compactBookFromPositions, compactJournalFromPeriod, daysAgoIST, tapeFromBiasRow } from "@/lib/deskAiTape";
+import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, daysAgoIST, tapeFromBiasRow } from "@/lib/deskAiTape";
 import { parseGuideSections } from "@/lib/deskAiLayout";
 import { todayIST } from "@/lib/holidays";
 import { cashSessionFocusIndex, overnightBiasIndices } from "@/lib/deskFocus";
@@ -138,7 +138,7 @@ export default function OvernightGapBrief({
   const dragRef = useRef(null);
   const skipClickRef = useRef(false);
   const userPinnedRef = useRef(null);
-  const packedBookRef = useRef({ book: null, adjust: null, journal: null });
+  const packedBookRef = useRef({ book: null, adjust: null, journal: null, sells: [], memory: null });
 
   const setLeft = (px) => {
     const w = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -314,6 +314,8 @@ export default function OvernightGapBrief({
     setLoading(true);
     try {
       const rows = [];
+      const focus = cashSessionFocusIndex(ist.weekday);
+      let sells = [];
       for (const idx of names) {
         try {
           const data = await fetchOIChange(idx, 15, { also: "session" });
@@ -328,10 +330,14 @@ export default function OvernightGapBrief({
             pcr: data?.current?.pcr ?? null,
             expiry: data?.current?.expiry ?? null,
           });
+          if (idx === focus || (!sells.length && idx === names[0])) {
+            sells = compactSellIdeas(idx, data?.current, sessPrev || data?.previous, vixLive ?? vix);
+          }
         } catch {
           rows.push({ index: idx, bias: null, minutes: null, price: null });
         }
       }
+      packedBookRef.current = { ...packedBookRef.current, sells };
       setBiases(rows);
     } finally {
       setLoading(false);
@@ -372,14 +378,19 @@ export default function OvernightGapBrief({
   const loadBook = useCallback(async () => {
     if (!active || minimized) return;
     try {
-      const [{ data }, journalRes] = await Promise.all([
+      const [{ data }, journalRes, memRes] = await Promise.all([
         api.get("/positions"),
         fetchJournalPeriod(daysAgoIST(30, todayIST()), todayIST(), "ALL").catch(() => null),
+        api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null })),
       ]);
       setBook(summarizeBook(data?.positions || []));
       packedBookRef.current = {
         ...compactBookFromPositions(data),
         journal: compactJournalFromPeriod(journalRes),
+        sells: packedBookRef.current?.sells || [],
+        memory: memRes?.data && Array.isArray(memRes.data.lines)
+          ? { lines: memRes.data.lines.slice(0, 6) }
+          : null,
       };
     } catch {
       setBook(null);
@@ -473,6 +484,8 @@ export default function OvernightGapBrief({
     oi: biases.map(tapeFromBiasRow).filter((r) => r && r.idx),
     adjust: packedBookRef.current?.adjust,
     journal: packedBookRef.current?.journal,
+    memory: packedBookRef.current?.memory,
+    sells: packedBookRef.current?.sells,
   };
 
   useEffect(() => {
@@ -499,6 +512,8 @@ export default function OvernightGapBrief({
           adjust: p.adjust,
           oi: p.oi,
           journal: p.journal,
+          memory: p.memory,
+          sells: p.sells,
           vix: p.vix,
           giftPct: p.giftPct,
           weekday: p.weekday,

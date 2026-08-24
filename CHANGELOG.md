@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.06 — 2026-08-24
+
+Desk AI names the shorts: Hold / Cut/define / Roll by tradingsymbol vs the writer tape. Positions radar says which leg to buy back, roll, or hedge. Closed-short win rates from the trade ledger (`GET /api/desk-memory`) feed a Book memory line. Coach explains the top 3 sell-ranker ideas — it does not invent a list. OI alerts add writer-tape actions (do not add the other side). Snapshots stay compact: no tokens or full chains.
+
 ## V8.05 — 2026-08-24
 
 Desk AI was collapsing to a session-focus headline. The strip now shows OI tape (writers, PCR, walls), the open book (Δ / Θ / IV), last-30d journal, cash heavyweights, and a **Do / Don't** coach. Overnight hold uses the same stack plus VIX, GIFT, events, and greeks for hold/cut/don't-add lines.

@@ -24,6 +24,19 @@ export function oiPressureLine(bullish) {
     : "Bearish pressure (Call OI building)";
 }
 
+export function writerTapeAction({ bullish, bearish, side, value } = {}) {
+  if (bullish === true) return "Do not add CE shorts. PE shorts sit with the tape.";
+  if (bullish === false || bearish === true) {
+    return "Do not add PE shorts. CE shorts sit with the tape.";
+  }
+  const build = Number(value) > 0;
+  if (side === "CE" && build) return "Do not add PE shorts. CE shorts sit with the tape.";
+  if (side === "PE" && build) return "Do not add CE shorts. PE shorts sit with the tape.";
+  if (side === "CE") return "Call writers leaving — do not add CE shorts.";
+  if (side === "PE") return "Put writers leaving — do not add PE shorts.";
+  return "";
+}
+
 export function oiPressureCopy({ index, bullish, windowLabel, pe, ce }) {
   const tilt = bullish ? "Puts adding — bullish" : "Calls adding — bearish";
   const lines = [
@@ -33,6 +46,8 @@ export function oiPressureCopy({ index, bullish, windowLabel, pe, ce }) {
   if (pe != null && ce != null) {
     lines.push(`PE ${formatOiDelta(pe)} · CE ${formatOiDelta(ce)}`);
   }
+  const action = writerTapeAction({ bullish });
+  if (action) lines.push(action);
   return {
     title: `${index} · ${tilt}`,
     description: lines.join("\n"),
@@ -55,6 +70,12 @@ export function oiBoardAlertCopy({ index, direction, windowLabel, strikes, pe, c
   const bullish = /bullish/i.test(dir);
   if (/put oi building|bullish/i.test(dir)) bits.unshift(oiSellerRead(true));
   else if (/call oi building|bearish/i.test(dir)) bits.unshift(oiSellerRead(false));
+  const action = /put oi building|bullish/i.test(dir)
+    ? writerTapeAction({ bullish: true })
+    : /call oi building|bearish/i.test(dir)
+      ? writerTapeAction({ bullish: false })
+      : "";
+  if (action) bits.push(action);
   return {
     title: `${index}: ${dir} in last ${win}`,
     description: bits.join(" · "),
@@ -106,8 +127,9 @@ export function hugeShiftCopy(side, value) {
 
 export function hugeShiftToastCopy({ index, side, value, window }) {
   const { headline } = hugeShiftCopy(side, value);
+  const action = writerTapeAction({ side, value });
   return {
     title: `${index} · ${headline}`,
-    description: `${window} min window`,
+    description: [window != null ? `${window} min window` : "", action].filter(Boolean).join(" · "),
   };
 }

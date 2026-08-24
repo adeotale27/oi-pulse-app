@@ -1,6 +1,7 @@
 /** Compact live OI tape for Desk AI (no full strike grid). */
 
 import { greeks, impliedVol, yearsToExpiry } from "./blackScholes";
+import { computeSellCandidates } from "./sellCandidates";
 
 export function summarizeIndexTape(current, previous) {
   if (!current || typeof current !== "object") return null;
@@ -172,4 +173,38 @@ export function daysAgoIST(n, fromISO) {
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() - n);
   return dt.toISOString().slice(0, 10);
+}
+
+export function compactTopSells(result, indexName) {
+  const ce = result?.candidates?.ce || [];
+  const pe = result?.candidates?.pe || [];
+  return [...ce, ...pe]
+    .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))
+    .slice(0, 3)
+    .map((x) => {
+      const why = Array.isArray(x.rationale)
+        ? x.rationale.slice(0, 2).join(", ")
+        : String(x.rationale || "");
+      const label = `${indexName || ""} ${x.strike ?? ""} ${x.side || ""}`.replace(/\s+/g, " ").trim();
+      return {
+        s: label.slice(0, 28),
+        strike: x.strike ?? null,
+        side: x.side === "PE" ? "PE" : x.side === "CE" ? "CE" : null,
+        score: x.score != null ? Number(x.score) : null,
+        why: why.slice(0, 80),
+      };
+    });
+}
+
+export function compactSellIdeas(indexName, current, previous, vixNow, extra = {}) {
+  if (!current?.strikes?.length) return [];
+  const r = computeSellCandidates({
+    current,
+    previous,
+    vixNow,
+    indexName,
+    step: extra.step,
+    vrp: extra.vrp,
+  });
+  return compactTopSells(r, indexName || current.index);
 }

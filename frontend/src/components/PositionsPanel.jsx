@@ -46,6 +46,7 @@ import {
   minutesToCloseIST,
 } from "@/lib/blackScholes";
 import { computeSellCandidates } from "@/lib/sellCandidates";
+import { compactTopSells, summarizeIndexTape } from "@/lib/deskAiTape";
 import {
   loadPositionsToggles,
   savePositionsToggles,
@@ -1038,6 +1039,11 @@ export default function PositionsPanel({
     });
   }, [current, previous, vix, vixOpen, activeIndex, step, vrp]);
 
+  const sellsSnap = useMemo(
+    () => compactTopSells(sellIdeas, activeIndex),
+    [sellIdeas, activeIndex],
+  );
+
   const heldShortKeys = useMemo(() => {
     const s = new Set();
     for (const r of rows) {
@@ -1132,12 +1138,21 @@ export default function PositionsPanel({
           params: activeIndex ? { index: activeIndex } : {},
         }).catch(() => ({ data: null }));
         if (!cancelled) setOutside(out.data || null);
+        const mem = await api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null }));
+        const oiTape = summarizeIndexTape(current, previous);
         const { data } = await api.post("/desk-guide", {
           surface: "positions",
           skip_llm: !deskAiAsk,
           index: activeIndex || undefined,
+          session_focus: activeIndex || undefined,
           band: bookVerdict?.band || null,
           adjust: adjustRef.current,
+          oi: oiTape ? [oiTape] : undefined,
+          sells: sellsSnap,
+          memory: mem?.data && Array.isArray(mem.data.lines)
+            ? { lines: mem.data.lines.slice(0, 6) }
+            : undefined,
+          outside: out.data || undefined,
         });
         if (!cancelled) setDeskGuide(data || null);
       } catch {
@@ -1150,7 +1165,7 @@ export default function PositionsPanel({
       cancelled = true;
       clearInterval(id);
     };
-  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex]);
+  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex, sellsSnap, current, previous]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 

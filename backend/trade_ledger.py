@@ -688,6 +688,65 @@ def filter_cycles(
     return out
 
 
+def summarize_trade_memory(cycles: Optional[Iterable[dict]] = None, *, min_n: int = 3) -> Dict[str, Any]:
+    """Closed short CE/PE win rates by index (and weekday when sample is large enough). Pure."""
+    from collections import defaultdict
+    from universe import DESK_IDS
+
+    buckets: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"n": 0, "wins": 0})
+    for c in cycles or []:
+        if str(c.get("status") or "") != "closed":
+            continue
+        if str(c.get("direction") or "").lower() != "short":
+            continue
+        idx = str(c.get("index") or "").upper()
+        side = str(c.get("side") or "").upper()
+        if side not in ("CE", "PE") or idx not in DESK_IDS:
+            continue
+        pnl = _num(c.get("booked_pnl") if c.get("booked_pnl") is not None else c.get("realised"))
+        weekday = None
+        ed = str(c.get("entry_date") or "")[:10]
+        try:
+            weekday = datetime.strptime(ed, "%Y-%m-%d").strftime("%A")
+        except ValueError:
+            weekday = None
+        keys = [f"{idx}|{side}|"]
+        if weekday:
+            keys.append(f"{idx}|{side}|{weekday}")
+        for key in keys:
+            buckets[key]["n"] += 1
+            if pnl > 0:
+                buckets[key]["wins"] += 1
+
+    lines: List[str] = []
+    out_buckets: List[Dict[str, Any]] = []
+    # Weekday-specific first, then index+side.
+    ordered = sorted(
+        buckets.items(),
+        key=lambda kv: (0 if kv[0].split("|")[2] else 1, kv[0]),
+    )
+    for key, bag in ordered:
+        if bag["n"] < min_n:
+            continue
+        idx, side, weekday = key.split("|")
+        wr = round(100.0 * bag["wins"] / bag["n"])
+        if weekday:
+            lines.append(f"{idx} {side} shorts on {weekday}: {bag['wins']}/{bag['n']} paid ({wr:.0f}%)")
+        else:
+            lines.append(f"{idx} {side} shorts: {bag['wins']}/{bag['n']} paid ({wr:.0f}%)")
+        out_buckets.append({
+            "index": idx,
+            "side": side,
+            "weekday": weekday or None,
+            "n": bag["n"],
+            "wins": bag["wins"],
+            "win_rate": wr,
+        })
+        if len(lines) >= 6:
+            break
+    return {"lines": lines[:6], "buckets": out_buckets[:8]}
+
+
 def stamp_journal_legs(legs: List[dict], cycles: Iterable[dict]) -> bool:
     """Copy entry/exit clocks and partials onto journal snapshot legs."""
     by_ts: Dict[str, dict] = {}
