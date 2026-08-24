@@ -738,7 +738,7 @@ async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str
     events = events[:28]
 
     focus = cash_session_focus_index()
-    lines = [f"Session focus {focus} (Mon–Tue NIFTY, Wed–Thu SENSEX). Heavyweights: NIFTY + BANKNIFTY cash."]
+    lines = []
     hi = [e for e in events if str(e.get("priority") or "").upper() in ("CRITICAL", "HIGH")]
     if hi:
         lines.append("HIGH IMPACT — " + "; ".join(e.get("event", "") for e in hi[:4]))
@@ -757,6 +757,8 @@ async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str
     pack = {
         "ok": True,
         "focus": focus,
+        "session_focus": focus,
+        "session_focus_note": "Mon–Tue NIFTY, Wed–Thu SENSEX. Heavyweights: NIFTY + BANKNIFTY cash.",
         "heavy_indices": list(CASH_HEAVY_INDICES),
         "movers": movers,
         "news": news,

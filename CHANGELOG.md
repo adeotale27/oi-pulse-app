@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.05 — 2026-08-24
+
+Desk AI was collapsing to a session-focus headline. The strip now shows OI tape (writers, PCR, walls), the open book (Δ / Θ / IV), last-30d journal, cash heavyweights, and a **Do / Don't** coach. Overnight hold uses the same stack plus VIX, GIFT, events, and greeks for hold/cut/don't-add lines.
+
 ## V8.04 — 2026-08-24
 
 Desk AI matches the OI Change bar: call-writer tape supports **CE shorts**, put-writer tape supports **PE shorts**. Overnight hold now scores NIFTY, SENSEX, and BANKNIFTY (Mon–Tue / Fri NIFTY focus, Wed–Thu SENSEX). Heavyweights are NIFTY + BANKNIFTY cash only. Download trades lives in the journal (popover sits above the modal); it is gone from Positions.

@@ -107,6 +107,10 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             "byIndex": by_index,
         }
 
+    journal = _compact_journal(b.get("journal"))
+    index = _clip(b.get("index"))[:16] or None
+    session_focus = _clip(b.get("session_focus") or index)[:16] or None
+
     vix = b.get("vix")
     gift = b.get("giftPct")
     try:
@@ -139,6 +143,9 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "vix": vix,
         "giftPct": gift,
         "weekday": weekday,
+        "index": index,
+        "session_focus": session_focus,
+        "journal": journal,
     }
 
 
@@ -162,6 +169,12 @@ def _compact_adjust(raw: Any) -> Optional[Dict[str, Any]]:
             k = float(k) if k is not None else None
         except (TypeError, ValueError):
             k = None
+        def lfnum(key: str):
+            try:
+                v = item.get(key)
+                return float(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
         legs.append({
             "s": _clip(item.get("s"))[:24] or None,
             "side": side,
@@ -170,6 +183,9 @@ def _compact_adjust(raw: Any) -> Optional[Dict[str, Any]]:
             "dist": dist,
             "itm": bool(item.get("itm")),
             "close": bool(item.get("close")),
+            "iv": lfnum("iv"),
+            "delta": lfnum("delta"),
+            "theta": lfnum("theta"),
         })
     def fnum(key: str):
         try:
@@ -186,6 +202,8 @@ def _compact_adjust(raw: Any) -> Optional[Dict[str, Any]]:
     return {
         "netDelta": fnum("netDelta"),
         "netTheta": fnum("netTheta"),
+        "netVega": fnum("netVega"),
+        "avgIv": fnum("avgIv"),
         "shortCount": inum("shortCount"),
         "adjustCount": inum("adjustCount"),
         "pnl": fnum("pnl"),
@@ -243,6 +261,42 @@ def _compact_fii(raw: Any) -> Optional[Dict[str, Any]]:
         "diiNet": fnum("diiNet"),
     }
     if not out["date"] and out["fiiNet"] is None and out["diiNet"] is None:
+        return None
+    return out
+
+
+def _compact_journal(raw: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    stats = raw.get("stats") if isinstance(raw.get("stats"), dict) else raw
+    def fnum(key: str):
+        try:
+            v = stats.get(key)
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+    def inum(key: str):
+        try:
+            v = stats.get(key)
+            return int(float(v)) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+    by_index = {}
+    raw_ix = stats.get("by_index") if isinstance(stats.get("by_index"), dict) else {}
+    for idx, val in list(raw_ix.items())[:6]:
+        try:
+            by_index[_clip(idx)[:16]] = float(val)
+        except (TypeError, ValueError):
+            continue
+    out = {
+        "booked_pnl": fnum("booked_pnl") if stats.get("booked_pnl") is not None else fnum("net_pnl"),
+        "win_rate": fnum("win_rate"),
+        "trading_days": inum("trading_days"),
+        "win_trades": inum("win_trades") if stats.get("win_trades") is not None else inum("win_days"),
+        "loss_trades": inum("loss_trades") if stats.get("loss_trades") is not None else inum("lose_days"),
+        "by_index": by_index or None,
+    }
+    if all(v is None for k, v in out.items() if k != "by_index") and not by_index:
         return None
     return out
 
@@ -406,13 +460,100 @@ def carry_outside(outside: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {"movers": movers, "news": news, "events": events}
 
 
+def _oi_writer_line(row: Dict[str, Any]) -> str:
+    idx = row.get("idx") or row.get("index") or "Index"
+    ce = row.get("ceChg")
+    pe = row.get("peChg")
+    try:
+        ce_n = int(ce) if ce is not None else 0
+        pe_n = int(pe) if pe is not None else 0
+    except (TypeError, ValueError):
+        ce_n, pe_n = 0, 0
+    writer = "put writers" if pe_n >= ce_n else "call writers"
+    bits = [str(idx), writer]
+    if row.get("pcr") is not None:
+        try:
+            bits.append(f"PCR {float(row['pcr']):.2f}")
+        except (TypeError, ValueError):
+            pass
+    bits.append(f"CE {_fmt_chg(ce_n)} PE {_fmt_chg(pe_n)}")
+    if row.get("callWall") or row.get("putWall"):
+        bits.append(f"walls {row.get('callWall') or '—'}/{row.get('putWall') or '—'}")
+    return " · ".join(str(x) for x in bits)
+
+
+def _journal_line(snap: Dict[str, Any]) -> Optional[str]:
+    j = snap.get("journal") if isinstance(snap.get("journal"), dict) else None
+    if not j:
+        return None
+    bits = []
+    if j.get("trading_days"):
+        bits.append(f"{int(j['trading_days'])} booked days")
+    if j.get("win_rate") is not None:
+        bits.append(f"win {float(j['win_rate']):.0f}%")
+    if j.get("booked_pnl") is not None:
+        bits.append(f"booked {float(j['booked_pnl']):+.0f}")
+    if not bits:
+        return None
+    return "Journal last window: " + " · ".join(bits)
+
+
 def _compose_carry(snap: Dict[str, Any]) -> str:
-    """Overnight gap risk only — not WHAT/WHY/BUYER/SELLER and not the carry-card why list."""
+    """Overnight: do / don't for the open book — greeks, IV, VIX, events, journal."""
     bits: List[str] = []
+    do: List[str] = []
+    dont: List[str] = []
+    band = str(snap.get("band") or "")
+    vix = snap.get("vix")
+    gift = snap.get("giftPct")
+    adj = snap.get("adjust") if isinstance(snap.get("adjust"), dict) else {}
+    book = snap.get("book") if isinstance(snap.get("book"), dict) else {}
     outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else {}
+    watch = _adjust_watch(snap)
+
+    if band == "DO_NOT_CARRY":
+        dont.append("Do not hold unhedged premium through the gap — cut or make it defined-risk.")
+    elif band == "REDUCE":
+        dont.append("Reduce the index working against you; hold only shorts session OI still supports.")
+    else:
+        do.append("Calendar looks holdable if shorts stay hedged and not too close to spot.")
+
+    if vix is not None and vix >= 18:
+        dont.append(f"India VIX {vix:.1f} — overnight gap typically wider; do not add naked shorts.")
+    elif vix is not None and vix < 15:
+        do.append(f"India VIX {vix:.1f} — vol not elevated for a hold.")
+    if gift is not None and abs(float(gift)) >= 0.35:
+        dont.append(f"GIFT {float(gift):+.2f}% vs cash — expect a gap; size down.")
+    elif gift is not None and abs(float(gift)) < 0.2:
+        do.append("GIFT near flat vs cash.")
+
+    avg_iv = adj.get("avgIv")
+    if avg_iv is not None and float(avg_iv) >= 22:
+        dont.append(f"Short-book IV ~{float(avg_iv):.0f}% — rich but gap/vega risk into the next open.")
+    elif avg_iv is not None and float(avg_iv) <= 10:
+        dont.append(f"Short-book IV ~{float(avg_iv):.0f}% — cheap premium; do not add size overnight.")
+    nd = adj.get("netDelta")
+    if nd is not None and abs(float(nd)) >= 10:
+        dont.append(f"Net Δ {float(nd):.0f} — flatten tilt before carrying naked.")
+    nt = adj.get("netTheta")
+    if nt is not None and float(nt) > 0:
+        do.append(f"Theta still paying (~{float(nt):.0f}/day) if the gap does not blow through shorts.")
+    for w in watch[:3]:
+        if "Adjust first" in w or "too close" in w or "ITM" in w:
+            dont.append(w)
+        else:
+            do.append(w)
+
+    for row in (snap.get("oi") or [])[:3]:
+        if isinstance(row, dict):
+            do.append(_oi_writer_line(row))
+
+    for s in (snap.get("why") or [])[:3]:
+        do.append(str(s))
+    for s in (snap.get("whyNot") or [])[:4]:
+        dont.append(str(s))
+
     movers = outside.get("movers") or []
-    events = outside.get("events") or []
-    news = outside.get("news") or []
     impacts = []
     for m in movers[:3]:
         if not isinstance(m, dict) or not m.get("symbol"):
@@ -421,91 +562,146 @@ def _compose_carry(snap: Dict[str, Any]) -> str:
             pct = float(m.get("pct")) if m.get("pct") is not None else None
         except (TypeError, ValueError):
             pct = None
-        try:
-            imp = float(m.get("impact")) if m.get("impact") is not None else None
-        except (TypeError, ValueError):
-            imp = None
-        if imp is None and pct is not None:
-            try:
-                w = float(m.get("weightage") or 0)
-                imp = w * pct / 100.0
-            except (TypeError, ValueError):
-                imp = None
         pct_s = f"{pct:+.1f}%" if pct is not None else ""
-        imp_s = f" ~{imp:+.2f} idx" if imp is not None else ""
-        impacts.append(f"{m.get('symbol')} {pct_s}{imp_s}".strip())
+        impacts.append(f"{m.get('symbol')} {pct_s}".strip())
     if impacts:
-        bits.append("Next-session impact: " + "; ".join(impacts))
-    for e in events[:3]:
-        if not isinstance(e, dict):
-            continue
-        line = e.get("event") or e.get("why") or e.get("symbol")
-        if line:
-            bits.append(str(line))
-    for n in news[:2]:
-        title = n.get("title") if isinstance(n, dict) else str(n)
-        if title:
-            bits.append(str(title))
+        dont.append("Cash that can gap the book: " + "; ".join(impacts))
+    for e in (outside.get("events") or [])[:3]:
+        if isinstance(e, dict) and e.get("event"):
+            dont.append(str(e.get("event")))
     hnames = _holiday_names(snap)
     if hnames:
-        bits.append("Holiday in window: " + "; ".join(hnames))
-    if not bits:
-        bits.append("No material overnight gap news vs the cash tape. Size from Why carry / Why not on this card.")
-    return "\n".join(bits[:5])
+        dont.append("Holiday in window: " + "; ".join(hnames))
+    jl = _journal_line(snap)
+    if jl:
+        do.append(jl)
+    shorts = int(book.get("shortCount") or 0)
+    if shorts:
+        do.append(f"Open book: {shorts} short option{'s' if shorts != 1 else ''}.")
+
+    # Dedup while keeping order
+    seen = set()
+    def take(rows: List[str], n: int) -> List[str]:
+        out = []
+        for r in rows:
+            t = " ".join(str(r).split())
+            if not t or t in seen:
+                continue
+            seen.add(t)
+            out.append(t)
+            if len(out) >= n:
+                break
+        return out
+
+    do_u = take(do, 6)
+    dont_u = take(dont, 6)
+    bits.append("DO")
+    bits.extend(f"  {t}" for t in (do_u or ["No extra overnight tailwind — size as a gap, not a conviction hold."]))
+    bits.append("DON'T")
+    bits.extend(f"  {t}" for t in (dont_u or ["No hard overnight block from VIX, events, or the book."]))
+    return "\n".join(bits)
 
 
 def _compose_desk(snap: Dict[str, Any]) -> str:
-    """Side-panel / phone popup: cash + news. Not overnight carry, not the book radar."""
+    """Live strip: OI tape + book + cash/news + do/don't. Not overnight-only."""
     bits: List[str] = []
-    outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else None
-    briefing = (outside or {}).get("briefing")
-    movers = (outside or {}).get("movers") or []
-    news = (outside or {}).get("news") or []
-    evs = (outside or {}).get("events") or []
-    breadth = (outside or {}).get("breadth") if isinstance((outside or {}).get("breadth"), dict) else {}
+    outside = snap.get("outside") if isinstance(snap.get("outside"), dict) else {}
+    movers = outside.get("movers") or []
+    news = outside.get("news") or []
+    evs = outside.get("events") or []
+    breadth = outside.get("breadth") if isinstance(outside.get("breadth"), dict) else {}
+    focus = snap.get("session_focus") or snap.get("index")
+
+    tape = []
+    if focus:
+        tape.append(f"Session focus {focus} (Mon–Tue NIFTY · Wed–Thu SENSEX).")
+    for row in (snap.get("oi") or [])[:3]:
+        if isinstance(row, dict):
+            tape.append(_oi_writer_line(row))
+    if tape:
+        bits.append("TAPE")
+        bits.extend(f"  {t}" for t in tape)
+
+    book = snap.get("book") if isinstance(snap.get("book"), dict) else None
+    adj = snap.get("adjust") if isinstance(snap.get("adjust"), dict) else None
+    book_bits = []
+    if book and book.get("shortCount"):
+        parts = [f"{int(book['shortCount'])} open shorts"]
+        for idx, bag in list((book.get("byIndex") or {}).items())[:3]:
+            parts.append(f"{idx} {int(bag.get('ce') or 0)} CE / {int(bag.get('pe') or 0)} PE")
+        book_bits.append(" · ".join(parts))
+    if adj:
+        g = []
+        if adj.get("netDelta") is not None:
+            g.append(f"Δ {float(adj['netDelta']):.0f}")
+        if adj.get("netTheta") is not None:
+            g.append(f"Θ {float(adj['netTheta']):.0f}")
+        if adj.get("avgIv") is not None:
+            g.append(f"IV {float(adj['avgIv']):.0f}%")
+        if g:
+            book_bits.append("Greeks " + " · ".join(g))
+        for w in _adjust_watch(snap)[:2]:
+            book_bits.append(w)
+    if book_bits:
+        bits.append("BOOK")
+        bits.extend(f"  {t}" for t in book_bits)
+    jl = _journal_line(snap)
+    if jl:
+        bits.append("JOURNAL")
+        bits.append(f"  {jl}")
 
     what = []
-    if briefing:
-        what.append(str(briefing))
-    elif movers:
-        what.append("Heavyweight cash (not option OI): " + ", ".join(
+    if movers:
+        what.append("Heavyweights: " + ", ".join(
             f"{m.get('symbol')} {m['pct']:+.1f}%" if isinstance(m.get("pct"), (int, float)) else str(m.get("symbol"))
             for m in movers[:5]
         ))
-    elif outside and outside.get("note"):
-        what.append(str(outside.get("note")))
+    briefing = outside.get("briefing")
+    if briefing and not str(briefing).lower().startswith("session focus"):
+        what.append(str(briefing)[:220])
     hi = [e for e in evs if str(e.get("priority") or "").upper() in ("CRITICAL", "HIGH")]
     if hi:
-        what.extend(e.get("event") for e in hi[:4] if e.get("event"))
+        what.extend(e.get("event") for e in hi[:3] if e.get("event"))
+    if news:
+        what.extend((n.get("title") if isinstance(n, dict) else str(n)) for n in news[:2])
+    nifty_b = breadth.get("NIFTY") if isinstance(breadth.get("NIFTY"), dict) else None
+    if nifty_b and nifty_b.get("n"):
+        what.append(f"NIFTY breadth {nifty_b.get('adv')}/{nifty_b.get('n')} advancing.")
+    bnf_b = breadth.get("BANKNIFTY") if isinstance(breadth.get("BANKNIFTY"), dict) else None
+    if bnf_b and bnf_b.get("n"):
+        what.append(f"BANKNIFTY breadth {bnf_b.get('adv')}/{bnf_b.get('n')} advancing.")
     if what:
         bits.append("WHAT CHANGED")
         bits.extend(f"  {t}" for t in what if t)
 
-    why = []
-    for e in (hi or evs)[:4]:
-        if e.get("why"):
-            why.append(f"{e.get('symbol') or e.get('kind')}: {e.get('why')}")
-    if news:
-        why.extend((n.get("title") if isinstance(n, dict) else str(n)) for n in news[:3])
-    nifty_b = breadth.get("NIFTY") if isinstance(breadth.get("NIFTY"), dict) else None
-    if nifty_b and nifty_b.get("n"):
-        why.append(f"NIFTY breadth {nifty_b.get('adv')}/{nifty_b.get('n')} advancing — not visible on the OI ladder.")
-    bnf_b = breadth.get("BANKNIFTY") if isinstance(breadth.get("BANKNIFTY"), dict) else None
-    if bnf_b and bnf_b.get("n"):
-        why.append(f"BANKNIFTY breadth {bnf_b.get('adv')}/{bnf_b.get('n')} advancing — bank-weight cash, not Sensex names.")
-    if why:
-        bits.append("WHY IT MATTERS")
-        bits.extend(f"  {t}" for t in why if t)
-
-    buyer = [e.get("buyer") for e in evs[:3] if e.get("buyer")]
+    do: List[str] = []
+    dont: List[str] = []
     seller = [e.get("seller") for e in evs[:3] if e.get("seller")]
-    if outside is not None or what or why:
-        bits.append("OPTION BUYER")
-        bits.append("  " + ("; ".join(buyer[:3]) if buyer else "No extra directional catalyst beyond the cash tape."))
-        bits.append("OPTION SELLER")
-        bits.append("  " + ("; ".join(seller[:3]) if seller else "No extra gap/event risk scored outside OI."))
+    buyer = [e.get("buyer") for e in evs[:3] if e.get("buyer")]
+    for row in (snap.get("oi") or [])[:2]:
+        if not isinstance(row, dict):
+            continue
+        ce = int(row.get("ceChg") or 0)
+        pe = int(row.get("peChg") or 0)
+        idx = row.get("idx") or "Index"
+        if ce > pe:
+            do.append(f"{idx}: call writers — prefer CE shorts / do not chase PE shorts.")
+            dont.append(f"{idx}: do not add PE shorts into a call-writer tape.")
+        else:
+            do.append(f"{idx}: put writers — prefer PE shorts / do not chase CE shorts.")
+            dont.append(f"{idx}: do not add CE shorts into a put-writer tape.")
+    do.extend(seller[:2])
+    if buyer:
+        dont.append("Buyers: " + "; ".join(buyer[:2]))
+    vix = snap.get("vix")
+    if vix is not None and vix >= 18:
+        dont.append(f"VIX {vix:.1f} — size down, do not sell more naked premium.")
+    bits.append("DO")
+    bits.extend(f"  {t}" for t in (do[:4] or ["Stay with session writers; do not fade a one-print cash spike."]))
+    bits.append("DON'T")
+    bits.extend(f"  {t}" for t in (dont[:4] or ["Do not invent a trade if OI and cash are quiet."]))
     if not bits:
-        bits.append("No outside tape yet — upload constituents (Impact Risk), or wait for news/movers. Use the OI chart for PCR/walls.")
+        bits.append("Waiting for OI / news. Keep the chart as source of truth.")
     return "\n".join(bits)
 
 
@@ -646,10 +842,10 @@ async def _call_llm(snap: Dict[str, Any]) -> str:
     surface = str(snap.get("surface") or "desk")
     if surface == "carry":
         system = (
-            "You write a SHORT overnight carry note for NSE index-option sellers. "
-            "Use ONLY why, whyNot, band, vix, giftPct, book.shortCount, holidays. "
-            "Do NOT recap heavyweight cash, news, breadth, or OI walls — those live in Desk AI. "
-            "Max 4 short lines. Never invent prices."
+            "You write an overnight HOLD note for NSE index-option sellers. "
+            "Format exactly: DO (bullets) then DON'T (bullets). "
+            "Use why/whyNot, band, vix, giftPct, adjust (delta/theta/IV/legs), oi writer tape, journal, holidays, outside events. "
+            "Be specific: what to hold, what to cut, what not to add. Max 10 short lines. Never invent prices."
         )
     elif surface == "positions":
         system = (
@@ -659,12 +855,10 @@ async def _call_llm(snap: Dict[str, Any]) -> str:
         )
     else:
         system = (
-            "You are an NSE index-options desk for buyers AND non-directional sellers. "
-            "The trader already sees the OI chart (PCR, CE/PE change, walls) — do NOT recap OI numbers. "
-            "Use ONLY outside.briefing, outside.events, outside.movers, outside.breadth, news. "
-            "Do NOT write overnight carry why/whyNot (that is a different window). "
-            "Format exactly: WHAT CHANGED / WHY IT MATTERS / OPTION BUYER / OPTION SELLER. "
-            "Never invent prices."
+            "You are an NSE index-options desk for sellers first, then buyers. "
+            "Format exactly: TAPE / BOOK / JOURNAL / WHAT CHANGED / DO / DON'T. "
+            "Use oi (PCR, CE/PE, walls), book, adjust greeks, journal win-rate, outside movers/news. "
+            "DO/DON'T must be trade actions (add/hold/cut which side). Never invent prices. Max 16 lines."
         )
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(

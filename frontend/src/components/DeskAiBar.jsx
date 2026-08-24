@@ -1,10 +1,10 @@
 import { ChevronDown, ChevronUp, GripHorizontal, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
-import { upcomingHolidays } from "@/lib/holidays";
+import { api, fetchOIChange, fetchJournalPeriod, fetchExtras } from "@/lib/api";
+import { upcomingHolidays, todayIST } from "@/lib/holidays";
 import { eventDisplayName } from "@/lib/carryFocus";
-import { compactBookFromPositions } from "@/lib/deskAiTape";
-import { cashSessionFocusIndex, cashSessionFocusLabel, filterCashHeavyMovers, istWeekdaySun0 } from "@/lib/deskFocus";
+import { compactBookFromPositions, compactJournalFromPeriod, daysAgoIST, summarizeIndexTape } from "@/lib/deskAiTape";
+import { cashSessionFocusIndex, cashSessionFocusLabel, filterCashHeavyMovers, istWeekdaySun0, overnightBiasIndices } from "@/lib/deskFocus";
 import MarketIntelCard from "@/components/MarketIntelCard";
 
 const GRID_H_KEY = "oiDeskAiStripH";
@@ -38,6 +38,7 @@ export default function DeskAiBar({
   const [guide, setGuide] = useState(null);
   const [meta, setMeta] = useState(null);
   const [outside, setOutside] = useState(null);
+  const [intel, setIntel] = useState({ oi: [], book: null, adjust: null, journal: null });
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(() => variant === "panel" || loadOpen());
   const [height, setHeight] = useState(loadHeight);
@@ -47,12 +48,18 @@ export default function DeskAiBar({
     if (!visible) return;
     setBusy(true);
     try {
-      const focusIndex = cashSessionFocusIndex(istWeekdaySun0());
-      const [st, outRes, evRes, posRes] = await Promise.all([
+      const weekday = istWeekdaySun0();
+      const focusIndex = cashSessionFocusIndex(weekday);
+      const names = overnightBiasIndices(weekday, activeIndex).slice(0, 3);
+      const today = todayIST();
+      const [st, outRes, evRes, posRes, extrasRes, journalRes, ...oiPacks] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
         api.get("/desk-outside", { params: activeIndex ? { index: activeIndex } : {} }).catch(() => ({ data: null })),
         api.get(`/events/${focusIndex}`).catch(() => ({ data: null })),
         api.get("/positions").catch(() => ({ data: null })),
+        fetchExtras().catch(() => null),
+        fetchJournalPeriod(daysAgoIST(30, today), today, "ALL").catch(() => null),
+        ...names.map((idx) => fetchOIChange(idx, 15, { also: "session" }).catch(() => null)),
       ]);
       setMeta(st.data);
       const rawOut = outRes.data || null;
@@ -63,11 +70,20 @@ export default function DeskAiBar({
       const holidays = upcomingHolidays().slice(0, 6).map((h) => ({ name: h.name, date: h.date }));
       const events = (evRes.data?.events || []).slice(0, 8);
       const packed = compactBookFromPositions(posRes.data);
+      const oi = oiPacks
+        .map((data) => summarizeIndexTape(data?.current, data?.also_windows?.session?.previous || data?.previous))
+        .filter(Boolean);
+      const journal = compactJournalFromPeriod(journalRes);
+      const vix = extrasRes?.vix?.last ?? extrasRes?.vix?.ltp ?? extrasRes?.vix;
+      setIntel({ oi, book: packed.book, adjust: packed.adjust, journal });
       const { data } = await api.post("/desk-guide", {
         surface: "desk",
         force: !!force,
         skip_llm: !askAi || !force,
         index: focusIndex,
+        session_focus: focusIndex,
+        weekday,
+        vix: vix != null ? Number(vix) : undefined,
         holidays,
         results: events.map((e) => ({
           name: eventDisplayName(e) || e.name,
@@ -77,6 +93,9 @@ export default function DeskAiBar({
         })),
         book: packed.book,
         adjust: packed.adjust,
+        oi,
+        journal,
+        outside: rawOut,
       });
       setGuide(data);
     } catch {
@@ -234,7 +253,16 @@ export default function DeskAiBar({
       className={isPanel ? "flex-1 min-h-0 overflow-y-auto mt-2" : "overflow-y-auto mt-1.5"}
       style={isPanel ? undefined : { height }}
     >
-      <MarketIntelCard outside={outside} guide={guide} compact={!isPanel} title={isPanel ? "Market intelligence" : "Outside the OI chart"} />
+      <MarketIntelCard
+        outside={outside}
+        guide={guide}
+        compact={!isPanel}
+        oi={intel.oi}
+        book={intel.book}
+        adjust={intel.adjust}
+        journal={intel.journal}
+        title={isPanel ? "Market intelligence" : "Outside the OI chart"}
+      />
     </div>
   ) : null;
 

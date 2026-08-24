@@ -1,14 +1,16 @@
-import { loadIdOrder, saveIdOrder, moveIdBefore, moveIdByOffset, orderByIds } from "@/lib/tabOrder";
+import { loadIdOrder, saveIdOrder, moveIdBefore, moveIdByOffset, orderByIds } from "./tabOrder.js";
 
-export const DESK_AI_LAYOUT_KEY = "oiDeskAiTileOrder.v1";
+export const DESK_AI_LAYOUT_KEY = "oiDeskAiTileOrder.v2";
 export const RADAR_AI_LAYOUT_KEY = "oiRadarAiTileOrder.v1";
 
 export const DESK_AI_TILES = [
+  { id: "tape", label: "OI tape" },
+  { id: "book", label: "Your book" },
+  { id: "coach", label: "What to do" },
   { id: "movers", label: "Heavyweights" },
   { id: "breadth", label: "Breadth" },
   { id: "news", label: "News" },
   { id: "watch", label: "Calendar" },
-  { id: "coach", label: "What to do" },
 ];
 
 export function loadDeskAiTileOrder(key = DESK_AI_LAYOUT_KEY) {
@@ -35,6 +37,37 @@ export function nudgeDeskAiTile(order, id, delta, key = DESK_AI_LAYOUT_KEY) {
 export function firstSentence(text, max = 180) {
   const t = String(text || "").replace(/\s+/g, " ").trim();
   if (!t) return "";
-  const cut = t.split(/(?<=[.!?])\s/)[0] || t;
+  const skip = /^(session focus|tape|book|journal|what changed|why it matters|option buyer|option seller|do|don't|dont)\b/i;
+  const parts = t.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
+  const cut = parts.find((s) => s && !skip.test(s)) || parts[0] || t;
   return cut.length > max ? `${cut.slice(0, max - 1)}…` : cut;
+}
+
+/** Split rules/LLM coach into DO / DON'T lists for the strip. */
+export function parseGuideSections(text) {
+  const raw = String(text || "").replace(/\r/g, "");
+  const doLines = [];
+  const dontLines = [];
+  let mode = null;
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    const head = t.replace(/:$/, "").toUpperCase();
+    if (head === "DO") {
+      mode = "do";
+      continue;
+    }
+    if (head === "DON'T" || head === "DONT" || head === "DO NOT") {
+      mode = "dont";
+      continue;
+    }
+    if (/^(TAPE|BOOK|JOURNAL|WHAT CHANGED|WHY IT MATTERS|OPTION BUYER|OPTION SELLER|WATCH NEXT)$/i.test(head)) {
+      mode = null;
+      continue;
+    }
+    const item = t.replace(/^[-•*]\s*/, "").replace(/^\d+\.\s*/, "");
+    if (mode === "do") doLines.push(item);
+    else if (mode === "dont") dontLines.push(item);
+  }
+  return { do: doLines.slice(0, 6), dont: dontLines.slice(0, 6) };
 }

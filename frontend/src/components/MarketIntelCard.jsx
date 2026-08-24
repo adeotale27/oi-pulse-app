@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
-import { firstSentence, loadDeskAiTileOrder, nudgeDeskAiTile, reorderDeskAiTiles } from "@/lib/deskAiLayout";
+import { firstSentence, loadDeskAiTileOrder, nudgeDeskAiTile, parseGuideSections, reorderDeskAiTiles } from "@/lib/deskAiLayout";
 import { filterCashHeavyMovers } from "@/lib/deskFocus";
+import { fmtOiLakh } from "@/lib/deskAiTape";
 
 function pctLabel(pct) {
   const n = Number(pct);
@@ -10,15 +11,17 @@ function pctLabel(pct) {
 }
 
 function summaryLine(outside, guide) {
-  const brief = firstSentence(outside?.briefing || guide?.guide, 160);
-  if (brief) return brief;
+  const fromGuide = firstSentence(guide?.guide, 180);
+  if (fromGuide && !/^session focus/i.test(fromGuide)) return fromGuide;
+  const brief = firstSentence(outside?.briefing, 160);
+  if (brief && !/^session focus/i.test(brief)) return brief;
   const movers = filterCashHeavyMovers(outside?.movers || []);
   if (movers[0] && movers[0].pct != null) {
     const m = movers[0];
     const w = m.weightage != null ? ` (${Number(m.weightage).toFixed(1)}% of ${m.index || "the index"})` : "";
-    return `${m.symbol} is ${pctLabel(m.pct)}${w} — this is cash, not option OI.`;
+    return `${m.symbol} is ${pctLabel(m.pct)}${w} — cash, not option OI.`;
   }
-  return outside?.note || "Nothing material outside the OI chart right now.";
+  return outside?.note || "Desk AI is on the live OI tape, your book, and the cash wires.";
 }
 
 function Tile({ id, title, hint, children, dragging, over, canUp, canDown, onMove, onDragStart, onDragOver, onDrop, onDragEnd }) {
@@ -88,6 +91,10 @@ export default function MarketIntelCard({
   guide,
   compact = false,
   layoutKey,
+  oi = [],
+  book = null,
+  adjust = null,
+  journal = null,
 }) {
   const [order, setOrder] = useState(() => loadDeskAiTileOrder(layoutKey));
   const [draggingId, setDraggingId] = useState(null);
@@ -98,14 +105,62 @@ export default function MarketIntelCard({
   const news = outside?.news || [];
   const corp = outside?.corporate || [];
   const breadth = outside?.breadth && typeof outside.breadth === "object" ? outside.breadth : {};
-  const coach = firstSentence(guide?.guide, compact ? 220 : 420);
+  const sections = parseGuideSections(guide?.guide);
   const headline = summaryLine(outside, guide);
+  const quoteHint = outside?.quote_source && outside.quote_source !== "none"
+    ? `prices from ${outside.quote_source}`
+    : "cash quotes wait on Kite — OI tape still live";
 
   const nodes = useMemo(() => {
     const breadthRows = Object.entries(breadth).filter(
       ([id, b]) => b && (b.n || b.adv != null) && (id === "NIFTY" || id === "BANKNIFTY"),
     );
+    const empty = (msg) => (
+      <p className="text-[12px] leading-snug text-slate-500">{msg}</p>
+    );
     return {
+      tape: (oi || []).length ? (
+        <ul className="space-y-1">
+          {oi.slice(0, 3).map((row) => {
+            const ce = Number(row.ceChg) || 0;
+            const pe = Number(row.peChg) || 0;
+            const writer = pe >= ce ? "Put writers" : "Call writers";
+            return (
+              <li key={row.idx} className="text-[12px] leading-snug text-slate-800">
+                <b>{row.idx}</b> {writer}
+                {row.pcr != null ? ` · PCR ${Number(row.pcr).toFixed(2)}` : ""}
+                {` · CE ${fmtOiLakh(ce)} PE ${fmtOiLakh(pe)}`}
+                {row.callWall || row.putWall ? ` · walls ${row.callWall || "—"}/${row.putWall || "—"}` : ""}
+              </li>
+            );
+          })}
+        </ul>
+      ) : empty("Waiting for session OI on NIFTY / SENSEX / BANKNIFTY."),
+      book: (book?.shortCount || journal) ? (
+        <div className="text-[12px] leading-snug text-slate-800 space-y-1">
+          {book?.shortCount ? (
+            <p>
+              <b>{book.shortCount} shorts</b>
+              {Object.entries(book.byIndex || {}).slice(0, 3).map(([idx, bag]) => (
+                <span key={idx}> · {idx} {bag.ce || 0} CE / {bag.pe || 0} PE</span>
+              ))}
+            </p>
+          ) : null}
+          {adjust && (adjust.netDelta != null || adjust.avgIv != null) ? (
+            <p className="font-mono-data text-slate-600">
+              {adjust.netDelta != null ? `Δ ${Number(adjust.netDelta).toFixed(0)}` : ""}
+              {adjust.netTheta != null ? ` · Θ ${Number(adjust.netTheta).toFixed(0)}` : ""}
+              {adjust.avgIv != null ? ` · IV ${Number(adjust.avgIv).toFixed(0)}%` : ""}
+            </p>
+          ) : null}
+          {journal?.win_rate != null ? (
+            <p>
+              Journal {journal.trading_days || "—"}d · win {Number(journal.win_rate).toFixed(0)}%
+              {journal.booked_pnl != null ? ` · booked ${Number(journal.booked_pnl) >= 0 ? "+" : ""}${Math.round(journal.booked_pnl)}` : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : empty("Connect the book (Positions) to score shorts vs this tape."),
       movers: movers.length ? (
         <ul className="space-y-1">
           {movers.slice(0, compact ? 4 : 6).map((m) => {
@@ -123,7 +178,7 @@ export default function MarketIntelCard({
             );
           })}
         </ul>
-      ) : null,
+      ) : empty("NIFTY + BANKNIFTY cash movers need a live Kite quote."),
       breadth: breadthRows.length ? (
         <ul className="space-y-1">
           {breadthRows.map(([idx, b]) => (
@@ -133,7 +188,7 @@ export default function MarketIntelCard({
             </li>
           ))}
         </ul>
-      ) : null,
+      ) : empty("Breadth fills when constituent quotes are live."),
       news: news.length ? (
         <ul className="space-y-1">
           {news.slice(0, compact ? 2 : 4).map((n) => (
@@ -142,7 +197,7 @@ export default function MarketIntelCard({
             </li>
           ))}
         </ul>
-      ) : null,
+      ) : empty("No wires in this poll."),
       watch: corp.length ? (
         <ul className="space-y-1">
           {corp.slice(0, compact ? 3 : 5).map((c) => (
@@ -152,16 +207,23 @@ export default function MarketIntelCard({
             </li>
           ))}
         </ul>
-      ) : null,
-      coach: coach ? (
-        <p className="text-[12px] leading-snug text-slate-900 dark:text-slate-100 whitespace-pre-wrap" data-testid="desk-ai-guide">
-          {coach}
-        </p>
-      ) : null,
+      ) : empty("No index-weight results in the next few days."),
+      coach: (sections.do.length || sections.dont.length) ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] leading-snug" data-testid="desk-ai-guide">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-1">Do</div>
+            <ul className="space-y-1">{sections.do.map((s) => <li key={s}>{s}</li>)}</ul>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-rose-700 mb-1">Don&apos;t</div>
+            <ul className="space-y-1">{sections.dont.map((s) => <li key={s}>{s}</li>)}</ul>
+          </div>
+        </div>
+      ) : empty("Ask AI or wait one poll — coach uses OI, book, VIX, and journal."),
     };
-  }, [movers, news, corp, breadth, coach, compact]);
+  }, [movers, news, corp, breadth, compact, oi, book, adjust, journal, sections.do, sections.dont]);
 
-  const visible = order.filter((id) => nodes[id]);
+  const visible = order.filter((id) => nodes[id] != null);
 
   const onDragStart = (e, id) => {
     skipClick.current = false;
@@ -188,8 +250,8 @@ export default function MarketIntelCard({
     }
   };
 
-  const labels = { movers: "Heavyweights", breadth: "Index breadth", news: "News", watch: "Coming up", coach: "What to do" };
-  const hints = { movers: "cash, not OI", breadth: "vs the index print", news: "wires", watch: "results / board", coach: "buyer vs seller" };
+  const labels = { tape: "OI tape", book: "Your book", movers: "Heavyweights", breadth: "Index breadth", news: "News", watch: "Coming up", coach: "What to do" };
+  const hints = { tape: "session writers", book: "greeks + journal", movers: "NIFTY + BNF cash", breadth: "vs the index print", news: "wires", watch: "results / board", coach: "do vs don't" };
 
   return (
     <div className="space-y-2" data-testid="market-intel-card">
@@ -197,7 +259,7 @@ export default function MarketIntelCard({
         {headline}
       </p>
       <p className="text-[10px] text-slate-500">
-        Drag or arrows to reorder · {outside?.quote_source ? `prices from ${outside.quote_source}` : "waiting for quotes"}
+        Drag or arrows to reorder · {quoteHint}
       </p>
       <div className={compact ? "grid grid-cols-1 gap-1.5" : "grid grid-cols-1 sm:grid-cols-2 gap-2"}>
         {visible.map((id, i) => (

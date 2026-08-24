@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, AlignLeft, AlignCenter, AlignRight, Sparkles } from "lucide-react";
-import { api, fetchOIChange, subscribeExtras } from "@/lib/api";
+import { api, fetchOIChange, fetchJournalPeriod, subscribeExtras } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import {
   CARRY_PANEL_WIDTH,
@@ -11,6 +11,9 @@ import {
   writeCarryLeft,
 } from "@/lib/carryDock";
 import { carryCase, eventDisplayName, sellerCarryAdvice, summarizeBook, writerBiasLine } from "@/lib/carryFocus";
+import { compactBookFromPositions, compactJournalFromPeriod, daysAgoIST, tapeFromBiasRow } from "@/lib/deskAiTape";
+import { parseGuideSections } from "@/lib/deskAiLayout";
+import { todayIST } from "@/lib/holidays";
 import { cashSessionFocusIndex, overnightBiasIndices } from "@/lib/deskFocus";
 import {
   briefTriggerKey,
@@ -135,6 +138,7 @@ export default function OvernightGapBrief({
   const dragRef = useRef(null);
   const skipClickRef = useRef(false);
   const userPinnedRef = useRef(null);
+  const packedBookRef = useRef({ book: null, adjust: null, journal: null });
 
   const setLeft = (px) => {
     const w = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -368,8 +372,15 @@ export default function OvernightGapBrief({
   const loadBook = useCallback(async () => {
     if (!active || minimized) return;
     try {
-      const { data } = await api.get("/positions");
+      const [{ data }, journalRes] = await Promise.all([
+        api.get("/positions"),
+        fetchJournalPeriod(daysAgoIST(30, todayIST()), todayIST(), "ALL").catch(() => null),
+      ]);
       setBook(summarizeBook(data?.positions || []));
+      packedBookRef.current = {
+        ...compactBookFromPositions(data),
+        journal: compactJournalFromPeriod(journalRes),
+      };
     } catch {
       setBook(null);
     }
@@ -459,6 +470,9 @@ export default function OvernightGapBrief({
     giftPct,
     weekday: ist.weekday,
     band: verdict.band,
+    oi: biases.map(tapeFromBiasRow).filter((r) => r && r.idx),
+    adjust: packedBookRef.current?.adjust,
+    journal: packedBookRef.current?.journal,
   };
 
   useEffect(() => {
@@ -482,6 +496,9 @@ export default function OvernightGapBrief({
           })),
           holidays: (p.holidays || []).map((e) => ({ name: eventDisplayName(e), date: e.date })),
           book: p.book,
+          adjust: p.adjust,
+          oi: p.oi,
+          journal: p.journal,
           vix: p.vix,
           giftPct: p.giftPct,
           weekday: p.weekday,
@@ -671,14 +688,31 @@ export default function OvernightGapBrief({
 
         {guideText && carryAi && !phoneOpen ? (
           <div
-            className="rounded-md border border-violet-400/70 bg-violet-50/90 dark:bg-violet-950/40 px-2 py-1.5 leading-snug font-medium max-h-24 overflow-y-auto"
+            className="rounded-md border border-emerald-300/80 bg-emerald-50/90 dark:bg-emerald-950/40 px-2 py-1.5 leading-snug font-medium max-h-48 overflow-y-auto"
             data-testid="overnight-gap-guide"
           >
-            <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-violet-800 dark:text-violet-200 mb-0.5 font-bold">
+            <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-emerald-800 dark:text-emerald-200 mb-1 font-bold">
               <Sparkles className="w-3.5 h-3.5" />
-              Desk AI · {guide?.source === "llm" ? "Live GPT" : "rules"}
+              Overnight coach · {guide?.source === "llm" ? "Live GPT" : "rules"}
             </div>
-            {guideText}
+            {(() => {
+              const sec = parseGuideSections(guideText);
+              if (sec.do.length || sec.dont.length) {
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-emerald-700 mb-0.5">Do</div>
+                      <ul className="space-y-1">{sec.do.map((s) => <li key={s}>{s}</li>)}</ul>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-rose-700 mb-0.5">Don&apos;t</div>
+                      <ul className="space-y-1">{sec.dont.map((s) => <li key={s}>{s}</li>)}</ul>
+                    </div>
+                  </div>
+                );
+              }
+              return <div className="whitespace-pre-wrap">{guideText}</div>;
+            })()}
           </div>
         ) : null}
 

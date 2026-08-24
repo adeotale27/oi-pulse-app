@@ -5807,7 +5807,9 @@ class DeskGuideIn(BaseModel):
     fii: Optional[Dict[str, Any]] = None
     oi: Optional[List[Any]] = None
     outside: Optional[Dict[str, Any]] = None
+    journal: Optional[Dict[str, Any]] = None
     index: Optional[str] = None
+    session_focus: Optional[str] = None
     force: Optional[bool] = False
     skip_llm: Optional[bool] = False
 
@@ -5869,7 +5871,7 @@ async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_us
         payload["skip_llm"] = True
     elif not flags.get("desk_ai_ask", True):
         payload["skip_llm"] = True
-    if surface == "carry":
+    if surface == "carry" and not flags.get("desk_ai_carry", False):
         payload["skip_llm"] = True
     try:
         outside = await desk_outside_svc.snapshot(db, tracker, index=payload.get("index"))

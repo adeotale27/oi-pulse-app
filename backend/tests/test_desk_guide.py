@@ -64,6 +64,8 @@ def test_rules_guide_mentions_results():
     })
     assert "MAXHEALTH" in text
     assert "RELIANCE" in text
+    assert "DO" in text
+    assert "DON'T" in text or "DONT" in text.replace("'", "")
     assert "WHAT CHANGED" not in text
     assert "OPTION BUYER" not in text
     assert "Why carry" not in text
@@ -100,9 +102,8 @@ def test_rules_guide_uses_outside_tape_not_oi_dump():
     })
     assert "RELIANCE" in text
     assert "RBI" in text
-    assert "put writers adding" not in text
-    assert "PCR 1.25" not in text
-    assert "WHAT CHANGED" in text or "Heavyweight" in text
+    assert "PCR 1.25" in text
+    assert "WHAT CHANGED" in text or "TAPE" in text or "DO" in text
     assert "Why carry" not in text
 
 
@@ -122,12 +123,12 @@ def test_carry_desk_radar_guides_differ():
         "adjust": {"shortCount": 2, "adjustCount": 0, "netDelta": 1},
         "outside": {"movers": [{"symbol": "RELIANCE", "pct": -1.8}]},
     })
-    assert "Next-session impact" in carry
     assert "RELIANCE" in carry
+    assert "DO" in carry
     assert "WHAT CHANGED" not in carry
     assert "OPTION BUYER" not in carry
     assert "RELIANCE" in desk
-    assert "WHAT CHANGED" in desk
+    assert "TAPE" in desk or "WHAT CHANGED" in desk or "DO" in desk
     assert "Why carry" not in desk
     assert "still OK" in radar or "WATCH NEXT" in radar
     assert carry != desk
@@ -226,3 +227,41 @@ def test_cache_is_per_surface(monkeypatch):
     assert "VIX calm" in carry["guide"]
     assert "Adjust first" in pos["guide"]
     assert carry["guide"] != pos["guide"]
+
+
+def test_desk_guide_uses_oi_journal_and_greeks():
+    text = compose_rules_guide({
+        "surface": "desk",
+        "session_focus": "NIFTY",
+        "oi": [{
+            "idx": "NIFTY", "px": 24219, "atm": 24200, "pcr": 0.71,
+            "ceChg": 535800, "peChg": -94500, "callWall": 24300, "putWall": 24000,
+        }],
+        "book": {"shortCount": 7, "openCount": 7, "byIndex": {"NIFTY": {"ce": 4, "pe": 3, "n": 7}}},
+        "adjust": {"netDelta": -18, "netTheta": 420, "avgIv": 14.5, "shortCount": 7, "adjustCount": 0},
+        "journal": {"booked_pnl": 25400, "win_rate": 62, "trading_days": 11},
+        "outside": {"news": [{"title": "Nifty ends in the red"}]},
+    })
+    assert "TAPE" in text
+    assert "PCR 0.71" in text
+    assert "call writers" in text
+    assert "BOOK" in text
+    assert "JOURNAL" in text
+    assert "DO" in text
+    assert "CE shorts" in text
+
+    carry = compose_rules_guide({
+        "surface": "carry",
+        "band": "REDUCE",
+        "vix": 19.2,
+        "giftPct": -0.4,
+        "adjust": {"netDelta": 22, "avgIv": 24, "netTheta": 200, "shortCount": 4, "adjustCount": 0,
+                   "legs": [{"s": "NIFTY25C24500", "side": "CE", "K": 24500, "itm": True, "close": True}]},
+        "oi": [{"idx": "NIFTY", "ceChg": 100, "peChg": 10, "pcr": 0.8}],
+        "journal": {"win_rate": 55, "trading_days": 8, "booked_pnl": 12000},
+    })
+    assert "DON'T" in carry or "DONT" in carry.replace("'", "")
+    assert "VIX" in carry
+    assert "Adjust first" in carry
+    assert "Journal" in carry
+
