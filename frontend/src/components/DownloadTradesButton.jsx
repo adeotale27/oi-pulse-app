@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,13 +12,23 @@ function monthStartIST() {
   return `${t.slice(0, 8)}01`;
 }
 
-export default function DownloadTradesButton({ compact = false, align = "end" }) {
+export default function DownloadTradesButton({
+  compact = false,
+  align = "end",
+  from: fromProp,
+  to: toProp,
+  index: indexProp,
+}) {
   const today = todayIST();
-  const [from, setFrom] = useState(monthStartIST);
-  const [to, setTo] = useState(today);
-  const [index, setIndex] = useState("ALL");
+  const [from, setFrom] = useState(fromProp || monthStartIST);
+  const [to, setTo] = useState(toProp || today);
+  const [index, setIndex] = useState(indexProp || "ALL");
   const [busy, setBusy] = useState(false);
   const chips = useMemo(() => ["ALL", ...DESK_IDS], []);
+
+  useEffect(() => { if (fromProp) setFrom(fromProp); }, [fromProp]);
+  useEffect(() => { if (toProp) setTo(toProp); }, [toProp]);
+  useEffect(() => { if (indexProp) setIndex(indexProp); }, [indexProp]);
 
   const onDownload = async () => {
     if (!from || !to || from > to) {
@@ -54,7 +64,9 @@ export default function DownloadTradesButton({ compact = false, align = "end" })
       </PopoverTrigger>
       <PopoverContent
         align={align}
-        className="w-[min(22rem,calc(100vw-1.5rem))] p-3 space-y-3"
+        sideOffset={8}
+        collisionPadding={12}
+        className="z-[120] w-[min(22rem,calc(100vw-1.5rem))] p-3 space-y-3"
         data-testid="download-trades-popover"
       >
         <div>

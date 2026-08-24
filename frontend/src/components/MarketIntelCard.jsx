@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { firstSentence, loadDeskAiTileOrder, nudgeDeskAiTile, reorderDeskAiTiles } from "@/lib/deskAiLayout";
+import { filterCashHeavyMovers } from "@/lib/deskFocus";
 
 function pctLabel(pct) {
   const n = Number(pct);
@@ -11,7 +12,7 @@ function pctLabel(pct) {
 function summaryLine(outside, guide) {
   const brief = firstSentence(outside?.briefing || guide?.guide, 160);
   if (brief) return brief;
-  const movers = outside?.movers || [];
+  const movers = filterCashHeavyMovers(outside?.movers || []);
   if (movers[0] && movers[0].pct != null) {
     const m = movers[0];
     const w = m.weightage != null ? ` (${Number(m.weightage).toFixed(1)}% of ${m.index || "the index"})` : "";
@@ -36,7 +37,7 @@ function Tile({ id, title, hint, children, dragging, over, canUp, canDown, onMov
       onDragEnd={onDragEnd}
       data-testid={`intel-tile-${id}`}
       className={`rounded-md border bg-white/90 dark:bg-slate-900/70 px-2.5 py-2 min-w-0 ${
-        over ? "border-violet-500 ring-1 ring-violet-300" : "border-slate-200 dark:border-slate-700"
+        over ? "border-emerald-500 ring-1 ring-emerald-300" : "border-slate-200 dark:border-slate-700"
       } ${dragging ? "opacity-60" : ""}`}
       title="Drag or use arrows to reorder"
     >
@@ -93,7 +94,7 @@ export default function MarketIntelCard({
   const [overId, setOverId] = useState(null);
   const skipClick = useRef(false);
 
-  const movers = outside?.movers || [];
+  const movers = filterCashHeavyMovers(outside?.movers || []);
   const news = outside?.news || [];
   const corp = outside?.corporate || [];
   const breadth = outside?.breadth && typeof outside.breadth === "object" ? outside.breadth : {};
@@ -101,7 +102,9 @@ export default function MarketIntelCard({
   const headline = summaryLine(outside, guide);
 
   const nodes = useMemo(() => {
-    const breadthRows = Object.entries(breadth).filter(([, b]) => b && (b.n || b.adv != null));
+    const breadthRows = Object.entries(breadth).filter(
+      ([id, b]) => b && (b.n || b.adv != null) && (id === "NIFTY" || id === "BANKNIFTY"),
+    );
     return {
       movers: movers.length ? (
         <ul className="space-y-1">

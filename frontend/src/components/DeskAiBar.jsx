@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { upcomingHolidays } from "@/lib/holidays";
 import { eventDisplayName } from "@/lib/carryFocus";
 import { compactBookFromPositions } from "@/lib/deskAiTape";
+import { cashSessionFocusIndex, cashSessionFocusLabel, filterCashHeavyMovers, istWeekdaySun0 } from "@/lib/deskFocus";
 import MarketIntelCard from "@/components/MarketIntelCard";
 
 const GRID_H_KEY = "oiDeskAiStripH";
@@ -46,14 +47,19 @@ export default function DeskAiBar({
     if (!visible) return;
     setBusy(true);
     try {
+      const focusIndex = cashSessionFocusIndex(istWeekdaySun0());
       const [st, outRes, evRes, posRes] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
         api.get("/desk-outside", { params: activeIndex ? { index: activeIndex } : {} }).catch(() => ({ data: null })),
-        activeIndex ? api.get(`/events/${activeIndex}`).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+        api.get(`/events/${focusIndex}`).catch(() => ({ data: null })),
         api.get("/positions").catch(() => ({ data: null })),
       ]);
       setMeta(st.data);
-      setOutside(outRes.data || null);
+      const rawOut = outRes.data || null;
+      if (rawOut && Array.isArray(rawOut.movers)) {
+        rawOut.movers = filterCashHeavyMovers(rawOut.movers);
+      }
+      setOutside(rawOut);
       const holidays = upcomingHolidays().slice(0, 6).map((h) => ({ name: h.name, date: h.date }));
       const events = (evRes.data?.events || []).slice(0, 8);
       const packed = compactBookFromPositions(posRes.data);
@@ -61,13 +67,13 @@ export default function DeskAiBar({
         surface: "desk",
         force: !!force,
         skip_llm: !askAi || !force,
-        index: activeIndex || undefined,
+        index: focusIndex,
         holidays,
         results: events.map((e) => ({
           name: eventDisplayName(e) || e.name,
           date: e.date,
           daysAway: e.days_remaining ?? e.daysAway,
-          index: e.index || activeIndex,
+          index: e.index || focusIndex,
         })),
         book: packed.book,
         adjust: packed.adjust,
@@ -132,32 +138,40 @@ export default function DeskAiBar({
 
   const source = guide?.source === "llm" ? "AI" : "rules";
   const llmLive = source === "AI";
-  const movers = outside?.movers || [];
+  const movers = filterCashHeavyMovers(outside?.movers || []);
   const briefing = (outside?.briefing || guide?.guide || "").trim();
   const isPanel = variant === "panel";
+  const focusChip = cashSessionFocusLabel(istWeekdaySun0());
 
   const chrome = (
     <div className="flex items-center gap-2 flex-wrap min-w-0">
-      <Sparkles className="w-4 h-4 text-violet-700 dark:text-violet-300 shrink-0" />
-      <span className="text-sm font-bold tracking-tight text-violet-950 dark:text-violet-100">
+      <Sparkles className="w-4 h-4 text-emerald-700 dark:text-emerald-300 shrink-0" />
+      <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-emerald-50">
         Desk AI
+      </span>
+      <span
+        className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-white text-emerald-800 dark:bg-slate-900 dark:text-emerald-200 dark:border-emerald-800"
+        data-testid="desk-ai-session-focus"
+        title="Weekly option calendar: Mon–Tue NIFTY, Wed–Thu SENSEX. Heavyweights stay NIFTY + BANKNIFTY."
+      >
+        {focusChip}
       </span>
       <span
         className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${
           llmLive
-            ? "border-violet-500 bg-violet-600 text-white"
+            ? "border-emerald-600 bg-emerald-600 text-white"
             : "border-slate-300 bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300"
         }`}
         data-testid="desk-ai-source"
       >
-        {llmLive ? "Live GPT" : meta?.enabled ? "Rules" : "Rules"}
+        {llmLive ? "Live GPT" : "Rules"}
       </span>
       {askAi ? (
         <button
           type="button"
           onClick={() => run(true)}
           disabled={busy}
-          className="inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-violet-300 bg-white text-[11px] font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-60 dark:bg-slate-800 dark:text-violet-200 dark:border-violet-700"
+          className="inline-flex items-center gap-1 h-7 px-2 rounded-sm border border-emerald-300 bg-white text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-60 dark:bg-slate-800 dark:text-emerald-200 dark:border-emerald-700 cursor-pointer"
           data-testid="desk-ai-refresh"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
@@ -178,7 +192,7 @@ export default function DeskAiBar({
         <button
           type="button"
           onClick={toggleOpen}
-          className="ml-auto inline-flex items-center gap-1 h-7 px-2 rounded-sm text-[11px] font-semibold text-violet-800 hover:bg-violet-100"
+          className="ml-auto inline-flex items-center gap-1 h-7 px-2 rounded-sm text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 cursor-pointer"
           data-testid="desk-ai-toggle"
           aria-expanded={open}
         >
@@ -229,7 +243,7 @@ export default function DeskAiBar({
       <section
         id="desk-ai-bar"
         data-testid="desk-ai-bar"
-        className="h-full min-h-0 flex flex-col rounded-md border border-violet-300 bg-gradient-to-b from-violet-50 to-white dark:from-violet-950/40 dark:to-slate-900 px-2.5 py-2"
+        className="h-full min-h-0 flex flex-col rounded-md border border-emerald-200 bg-gradient-to-b from-emerald-50/90 to-white dark:from-emerald-950/30 dark:to-slate-900 px-2.5 py-2"
       >
         {chrome}
         {body}
@@ -241,7 +255,7 @@ export default function DeskAiBar({
     <section
       id="desk-ai-bar"
       data-testid="desk-ai-bar"
-      className="shrink-0 mb-1.5 rounded-md border border-violet-300 bg-violet-50/80 dark:bg-violet-950/30 dark:border-violet-800 px-2.5 py-1.5"
+      className="shrink-0 mb-1.5 rounded-md border border-emerald-200 bg-white/90 shadow-[0_1px_0_rgba(15,55,70,0.04)] dark:bg-emerald-950/20 dark:border-emerald-800 px-2.5 py-1.5"
     >
       {chrome}
       {peek}
@@ -252,7 +266,7 @@ export default function DeskAiBar({
           aria-label="Resize Desk AI"
           data-testid="desk-ai-resize"
           onPointerDown={onDragStart}
-          className="flex w-full items-center justify-center h-3 cursor-ns-resize touch-none text-violet-400 hover:text-violet-700"
+          className="flex w-full items-center justify-center h-3 cursor-ns-resize touch-none text-emerald-400 hover:text-emerald-700"
         >
           <GripHorizontal className="w-4 h-4" />
         </button>

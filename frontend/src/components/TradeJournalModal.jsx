@@ -482,7 +482,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   ))}
                 </div>
                 {periodLoading ? <span className="text-[11px] text-slate-400">Updating…</span> : null}
-                <DownloadTradesButton compact />
+                <DownloadTradesButton compact from={periodFrom} to={periodTo} index={periodIndex} />
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">

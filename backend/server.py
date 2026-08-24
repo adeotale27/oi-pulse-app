@@ -5264,20 +5264,20 @@ async def journal_del_shot(day: str, shot_id: str, _admin: bool = Depends(requir
 @api_router.get("/trades/export")
 async def export_trades(
     request: Request,
-    role: str = Depends(require_desk_user),
+    _admin: bool = Depends(require_admin),
     from_date: str = Query(..., alias="from"),
     to_date: str = Query(..., alias="to"),
     index: Optional[str] = None,
     status: Optional[str] = None,
 ):
-    """Excel of stored trade cycles (entry + exit clocks) for the caller's book."""
+    """Excel of stored trade cycles (entry + exit clocks) — admin journal only."""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", from_date) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", to_date):
         raise HTTPException(400, "from and to must be YYYY-MM-DD")
     if from_date > to_date:
         raise HTTPException(400, "from must be on or before to")
     if db is None:
         raise HTTPException(503, "Database unavailable")
-    owner_id = await _ledger_owner(request, role)
+    owner_id = await _ledger_owner(request, "admin")
     query = {
         "owner_id": owner_id,
         "$or": [

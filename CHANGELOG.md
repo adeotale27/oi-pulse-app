@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.04 — 2026-08-24
+
+Desk AI matches the OI Change bar: call-writer tape supports **CE shorts**, put-writer tape supports **PE shorts**. Overnight hold now scores NIFTY, SENSEX, and BANKNIFTY (Mon–Tue / Fri NIFTY focus, Wed–Thu SENSEX). Heavyweights are NIFTY + BANKNIFTY cash only. Download trades lives in the journal (popover sits above the modal); it is gone from Positions.
+
 ## V8.03 — 2026-08-24
 
 Chrome OS banners when the desk is on another screen: we no longer mark desktop notifications as `silent`, we fire them when the tab is hidden or unfocused, and a tiny service worker (`sw-alerts.js`) uses `showNotification` so Chrome actually paints the sidebar. Turning notifications on sends a test banner. In-app toasts still cover the focused tab.

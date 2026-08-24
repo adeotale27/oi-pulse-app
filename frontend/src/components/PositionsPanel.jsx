@@ -71,7 +71,6 @@ import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import OiRiskMeter from "@/components/OiRiskMeter";
 import PositionHeatmap from "@/components/PositionHeatmap";
 import TradeJournalModal from "@/components/TradeJournalModal";
-import DownloadTradesButton from "@/components/DownloadTradesButton";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
 import {
@@ -179,7 +178,7 @@ const POSITIONS_GUIDE = (
       <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
       <b> Profit booked today</b> — realised P&amp;L from same-day exits (and partial closes).
       <b> Day charges</b> — brokerage + STT + GST + exchange fees (Zerodha contract note, read-only).
-      <b> Download trades</b> — Excel from our database for any date range. Entry time is when the cycle opened (a Friday hold still shows Friday after a Monday token refresh); exit is when it flattened. Partial closes are listed on the second sheet.
+      Trade Excel lives in <b>Journal → Download trades</b> (entry/exit clocks and partials).
     </p>
   </div>
 );
@@ -1194,7 +1193,6 @@ export default function PositionsPanel({
             <BookOpen className="w-3.5 h-3.5 mr-1" />
             Journal
           </Button>
-          <DownloadTradesButton compact />
         </div>
         <TradeJournalModal open={journalOpen} onOpenChange={setJournalOpen} privacy={privacyMode} />
       </div>
@@ -1224,7 +1222,6 @@ export default function PositionsPanel({
             Connect Zerodha
           </Button>
         )}
-        <DownloadTradesButton compact align="center" />
         </div>
       </div>
     );
@@ -1422,7 +1419,6 @@ export default function PositionsPanel({
             Journal
           </Button>
           )}
-          <DownloadTradesButton compact />
           {isGuest && typeof onOpenKite === "function" && (
           <Button
             size="sm"

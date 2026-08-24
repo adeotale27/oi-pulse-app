@@ -490,6 +490,9 @@ def _compose_desk(snap: Dict[str, Any]) -> str:
     nifty_b = breadth.get("NIFTY") if isinstance(breadth.get("NIFTY"), dict) else None
     if nifty_b and nifty_b.get("n"):
         why.append(f"NIFTY breadth {nifty_b.get('adv')}/{nifty_b.get('n')} advancing — not visible on the OI ladder.")
+    bnf_b = breadth.get("BANKNIFTY") if isinstance(breadth.get("BANKNIFTY"), dict) else None
+    if bnf_b and bnf_b.get("n"):
+        why.append(f"BANKNIFTY breadth {bnf_b.get('adv')}/{bnf_b.get('n')} advancing — bank-weight cash, not Sensex names.")
     if why:
         bits.append("WHY IT MATTERS")
         bits.extend(f"  {t}" for t in why if t)

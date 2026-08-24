@@ -8,6 +8,8 @@ from desk_outside import (
     _priority,
     _briefing_text,
     focus_is_mcx,
+    cash_session_focus_index,
+    is_cash_heavy_index,
 )
 
 
@@ -71,3 +73,14 @@ def test_focus_is_mcx_only_when_that_name_is_on():
         assert focus_is_mcx("FINNIFTY") is False
     finally:
         merge_index_config({})
+
+
+def test_cash_session_focus_and_heavy_filter():
+    assert cash_session_focus_index(1) == "NIFTY"
+    assert cash_session_focus_index(2) == "NIFTY"
+    assert cash_session_focus_index(3) == "SENSEX"
+    assert cash_session_focus_index(4) == "SENSEX"
+    assert cash_session_focus_index(5) == "NIFTY"
+    assert is_cash_heavy_index("NIFTY") is True
+    assert is_cash_heavy_index("BANKNIFTY") is True
+    assert is_cash_heavy_index("SENSEX") is False

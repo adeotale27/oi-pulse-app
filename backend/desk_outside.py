@@ -19,7 +19,8 @@ from app_version import APP_NAME, APP_VERSION
 
 logger = logging.getLogger(__name__)
 
-TOP_N = {"NIFTY": 50, "BANKNIFTY": 14, "SENSEX": 30}
+TOP_N = {"NIFTY": 50, "BANKNIFTY": 14}
+CASH_HEAVY_INDICES = ("NIFTY", "BANKNIFTY")
 NEWS_FEEDS = (
     "https://news.google.com/rss/search?q=Nifty+OR+Sensex+OR+%22Bank+Nifty%22+OR+RBI+OR+FOMC+when:1d&hl=en-IN&gl=IN&ceid=IN:en",
     "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
@@ -39,6 +40,29 @@ COMMODITY_NEWS_Q = {
     "CRUDEOIL": "crude+oil+OR+WTI+OR+Brent+OR+%22MCX+crude%22",
     "NATURALGAS": "natural+gas+OR+Henry+Hub+OR+%22MCX+gas%22",
 }
+
+
+def cash_session_focus_index(weekday_sun0: Optional[int] = None) -> str:
+    """Mon/Tue/Fri → NIFTY. Wed/Thu → SENSEX. ``weekday_sun0`` is Sunday=0."""
+    if weekday_sun0 is None:
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime
+            py_mon0 = datetime.now(ZoneInfo("Asia/Kolkata")).weekday()
+            weekday_sun0 = (py_mon0 + 1) % 7
+        except Exception:
+            weekday_sun0 = 1
+    wd = int(weekday_sun0)
+    if wd in (3, 4):
+        return "SENSEX"
+    return "NIFTY"
+
+
+def is_cash_heavy_index(idx: Any) -> bool:
+    raw = str(idx or "").upper().replace(" ", "")
+    if "BANKNIFTY" in raw or raw == "NIFTYBANK":
+        return True
+    return raw == "NIFTY"
 
 
 def _clip(s: Any, n: int = 160) -> str:
@@ -369,7 +393,9 @@ async def _load_heavies(db) -> List[Dict[str, Any]]:
             continue
         seen.add(sym)
         raw_idx = str(d.get("index") or "NIFTY").upper().replace(" ", "")
-        idx = "BANKNIFTY" if "BANK" in raw_idx else ("SENSEX" if "SENSEX" in raw_idx else "NIFTY")
+        if "SENSEX" in raw_idx:
+            continue
+        idx = "BANKNIFTY" if "BANK" in raw_idx else "NIFTY"
         heavies.append({
             "symbol": sym,
             "name": _clip(d.get("company_name"), 40),
@@ -465,7 +491,7 @@ async def _mcx_pack(tracker, focus: str) -> Dict[str, Any]:
                     source = "kite"
     except Exception as e:
         logger.warning("mcx desk quote failed %s: %s", focus, e)
-    lines = [f"{focus} desk — cash heavyweights stay on NIFTY / SENSEX / BANKNIFTY."]
+    lines = [f"{focus} desk — cash heavyweights stay on NIFTY / BANKNIFTY."]
     if last is not None:
         lines.append(f"{focus} future {last:.2f}.")
     if news:
@@ -596,6 +622,7 @@ async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str
             })
 
     rows.sort(key=lambda m: score_mover(m.get("weightage"), m.get("pct")), reverse=True)
+    rows = [r for r in rows if is_cash_heavy_index(r.get("index"))]
     movers = [r for r in rows if is_material_move(r.get("weightage"), r.get("pct"))][:12]
     if not movers:
         movers = rows[:8]
@@ -706,10 +733,12 @@ async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str
         })
 
     rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    events = [e for e in events if not e.get("index") or is_cash_heavy_index(e.get("index"))]
     events.sort(key=lambda e: rank.get(str(e.get("priority") or "").upper(), 9))
     events = events[:28]
 
-    lines = []
+    focus = cash_session_focus_index()
+    lines = [f"Session focus {focus} (Mon–Tue NIFTY, Wed–Thu SENSEX). Heavyweights: NIFTY + BANKNIFTY cash."]
     hi = [e for e in events if str(e.get("priority") or "").upper() in ("CRITICAL", "HIGH")]
     if hi:
         lines.append("HIGH IMPACT — " + "; ".join(e.get("event", "") for e in hi[:4]))
@@ -727,7 +756,8 @@ async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str
 
     pack = {
         "ok": True,
-        "focus": "NSE",
+        "focus": focus,
+        "heavy_indices": list(CASH_HEAVY_INDICES),
         "movers": movers,
         "news": news,
         "breadth": breadth,
@@ -741,7 +771,7 @@ async def snapshot(db, tracker=None, *, force: bool = False, index: Optional[str
         "at": int(time.time()),
         "note": (
             None if heavies
-            else "Upload Nifty 50 / Bank / Sensex constituents in Admin → Upload to enable heavyweight tape."
+            else "Upload Nifty 50 / Bank Nifty constituents in Admin → Upload to enable heavyweight tape."
         ),
     }
     _packs[cache_key] = {"at": now, "pack": pack}

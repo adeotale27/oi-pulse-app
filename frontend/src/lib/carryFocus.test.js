@@ -27,13 +27,14 @@ assert.match(
 );
 
 const pe = writerBiasLine({ index: "NIFTY", bias: { bullish: true, pct: 40 } });
-assert.equal(pe.comfortable, "CE");
-assert.equal(pe.short, "Calls sit better");
-assert.match(pe.text, /PE OI/);
+assert.equal(pe.comfortable, "PE");
+assert.equal(pe.short, "Puts sit better");
+assert.match(pe.text, /put writers/i);
 
 const ce = writerBiasLine({ index: "SENSEX", bias: { bullish: false, pct: 30 } });
-assert.equal(ce.comfortable, "PE");
-assert.equal(ce.short, "Puts sit better");
+assert.equal(ce.comfortable, "CE");
+assert.equal(ce.short, "Calls sit better");
+assert.match(ce.text, /call writers/i);
 
 const vix = vixCarryPoints(19.2);
 assert.equal(vix.pts, 18);
@@ -44,11 +45,12 @@ assert.match(sellerCarryAdvice({ band: "DO_NOT_CARRY" }), /unhedged premium/);
 
 const book = summarizeBook([
   { index: "NIFTY", side: "CE", quantity: -75, exited: false },
+  { index: "NIFTY", side: "CE", quantity: -75, exited: false },
   { index: "NIFTY", side: "PE", quantity: -75, exited: false },
   { index: "SENSEX", side: "CE", quantity: 0, exited: true },
 ]);
-assert.equal(book.shortCount, 2);
-assert.equal(book.byIndex.NIFTY.ce, 1);
+assert.equal(book.shortCount, 3);
+assert.equal(book.byIndex.NIFTY.ce, 2);
 
 const kase = carryCase({
   weekday: 5,
@@ -61,5 +63,23 @@ const kase = carryCase({
 assert.ok(kase.whyNot.some((s) => /weekend/i.test(s) || /Friday/i.test(s)));
 assert.ok(kase.results.length >= 1);
 assert.ok(kase.why.length >= 1);
+assert.ok(kase.why.some((s) => /call writers dominating/i.test(s)));
+assert.ok(kase.why.some((s) => /aligned with session writers/i.test(s)), "4 CE vs 1 PE should align with call-writer tape");
+assert.ok(!kase.whyNot.some((s) => /supports PE shorts/i.test(s)));
+
+const fight = carryCase({
+  weekday: 2,
+  vix: 11.4,
+  giftPct: -0.05,
+  biases: [{ index: "NIFTY", bias: { bullish: false, pct: 80 } }],
+  book: summarizeBook([
+    { index: "NIFTY", side: "PE", quantity: -150, exited: false },
+    { index: "NIFTY", side: "CE", quantity: -50, exited: false },
+  ]),
+});
+assert.ok(
+  fight.whyNot.some((s) => /short more PE while call writers dominate/i.test(s)),
+  "more PE lots against a call-writer tape is a why-not",
+);
 
 console.log("carryFocus.test.js ok");

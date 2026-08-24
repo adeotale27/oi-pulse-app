@@ -25,7 +25,12 @@ export function carryFocusEvents(items = []) {
   }).slice(0, 12);
 }
 
-/** Session OI in seller language (PE build vs CE build). */
+/**
+ * Session OI in seller language.
+ * Same read as the OI Change sentiment bar:
+ *   bullish = put writers dominating → PE shorts sit with the tape
+ *   bearish = call writers dominating → CE shorts sit with the tape
+ */
 export function writerBiasLine(row) {
   const idx = row?.index || "Index";
   const b = row?.bias;
@@ -33,16 +38,16 @@ export function writerBiasLine(row) {
   if (b.bullish) {
     return {
       index: idx,
-      text: "PE OI built — support; sold calls sit better than sold puts",
-      short: "Calls sit better",
-      comfortable: "CE",
+      text: "PE OI built — put writers dominating; sold puts sit with the tape",
+      short: "Puts sit better",
+      comfortable: "PE",
     };
   }
   return {
     index: idx,
-    text: "CE OI built — resistance; sold puts sit better than sold calls",
-    short: "Puts sit better",
-    comfortable: "PE",
+    text: "CE OI built — call writers dominating; sold calls sit with the tape",
+    short: "Calls sit better",
+    comfortable: "CE",
   };
 }
 
@@ -86,13 +91,31 @@ export function summarizeBook(positions = []) {
   const byIndex = {};
   for (const p of shorts) {
     const idx = String(p.index || "OTHER").toUpperCase();
-    if (!byIndex[idx]) byIndex[idx] = { ce: 0, pe: 0, n: 0 };
+    if (!byIndex[idx]) byIndex[idx] = { ce: 0, pe: 0, ceQty: 0, peQty: 0, n: 0 };
     const side = String(p.side || "").toUpperCase();
-    if (side === "CE") byIndex[idx].ce += 1;
-    else if (side === "PE") byIndex[idx].pe += 1;
+    const qty = Math.abs(Number(p.quantity) || 0);
+    if (side === "CE") {
+      byIndex[idx].ce += 1;
+      byIndex[idx].ceQty += qty;
+    } else if (side === "PE") {
+      byIndex[idx].pe += 1;
+      byIndex[idx].peQty += qty;
+    }
     byIndex[idx].n += 1;
   }
   return { openCount: open.length, shortCount: shorts.length, byIndex };
+}
+
+/** Heavier short side: lots first, then leg count. */
+export function heavierShortSide(bag) {
+  if (!bag) return null;
+  const ceQ = Number(bag.ceQty) || 0;
+  const peQ = Number(bag.peQty) || 0;
+  if (ceQ !== peQ) return ceQ > peQ ? "CE" : "PE";
+  const ce = Number(bag.ce) || 0;
+  const pe = Number(bag.pe) || 0;
+  if (ce !== pe) return ce > pe ? "CE" : "PE";
+  return null;
 }
 
 /**
@@ -138,19 +161,23 @@ export function carryCase({
   for (const row of biases || []) {
     const line = writerBiasLine(row);
     if (!row?.bias) continue;
-    if (line.comfortable === "CE") why.push(`${row.index}: PE OI built — CE shorts better supported`);
-    else if (line.comfortable === "PE") why.push(`${row.index}: CE OI built — PE shorts better supported`);
+    if (line.comfortable === "CE") why.push(`${row.index}: call writers dominating — CE shorts sit with the tape`);
+    else if (line.comfortable === "PE") why.push(`${row.index}: put writers dominating — PE shorts sit with the tape`);
   }
 
   if (book?.shortCount) {
     why.push(`Book: ${book.shortCount} open short option${book.shortCount === 1 ? "" : "s"}`);
     for (const [idx, bag] of Object.entries(book.byIndex || {})) {
-      const row = (biases || []).find((b) => b.index === idx);
+      const row = (biases || []).find((b) => String(b.index || "").toUpperCase() === idx);
       const line = writerBiasLine(row || { index: idx });
-      if (line.comfortable === "CE" && bag.pe > bag.ce) {
-        whyNot.push(`${idx}: you are short more PE while session OI supports CE shorts`);
-      } else if (line.comfortable === "PE" && bag.ce > bag.pe) {
-        whyNot.push(`${idx}: you are short more CE while session OI supports PE shorts`);
+      const heavy = heavierShortSide(bag);
+      if (!line.comfortable || !heavy) continue;
+      if (heavy === line.comfortable) {
+        why.push(`${idx}: more ${heavy} shorts — aligned with session writers`);
+      } else if (line.comfortable === "CE") {
+        whyNot.push(`${idx}: you are short more PE while call writers dominate (CE shorts sit with the tape)`);
+      } else {
+        whyNot.push(`${idx}: you are short more CE while put writers dominate (PE shorts sit with the tape)`);
       }
     }
   } else if (book && book.shortCount === 0 && book.openCount === 0) {

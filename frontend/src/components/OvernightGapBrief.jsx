@@ -11,6 +11,7 @@ import {
   writeCarryLeft,
 } from "@/lib/carryDock";
 import { carryCase, eventDisplayName, sellerCarryAdvice, summarizeBook, writerBiasLine } from "@/lib/carryFocus";
+import { cashSessionFocusIndex, overnightBiasIndices } from "@/lib/deskFocus";
 import {
   briefTriggerKey,
   carryHorizonLabel,
@@ -303,10 +304,11 @@ export default function OvernightGapBrief({
   }, [ist.dateISO, ist.weekday, ist.minutesOfDay]);
 
   const loadBiases = useCallback(async () => {
-    if (!active || minimized || !indices?.length) return;
+    if (!active || minimized) return;
+    const names = overnightBiasIndices(ist.weekday, activeIndex);
+    if (!names.length) return;
     setLoading(true);
     try {
-      const names = activeIndex ? [activeIndex] : (indices || []).slice(0, 1);
       const rows = [];
       for (const idx of names) {
         try {
@@ -330,19 +332,28 @@ export default function OvernightGapBrief({
     } finally {
       setLoading(false);
     }
-  }, [active, minimized, indices, activeIndex]);
+  }, [active, minimized, activeIndex, ist.weekday]);
 
   const loadIndexImpacts = useCallback(async () => {
     if (!active || minimized) return;
-    const idx = activeIndex || (indices || [])[0];
-    if (!idx) return;
+    const names = overnightBiasIndices(ist.weekday, activeIndex);
+    if (!names.length) return;
     try {
-      const { data } = await api.get(`/events/${idx}`);
-      setIndexImpacts([{ index: idx, events: data?.events || [] }]);
+      const packs = await Promise.all(
+        names.map(async (idx) => {
+          try {
+            const { data } = await api.get(`/events/${idx}`);
+            return { index: idx, events: data?.events || [] };
+          } catch {
+            return { index: idx, events: [] };
+          }
+        }),
+      );
+      setIndexImpacts(packs);
     } catch {
-      setIndexImpacts([{ index: idx, events: [] }]);
+      setIndexImpacts(names.map((idx) => ({ index: idx, events: [] })));
     }
-  }, [active, minimized, indices, activeIndex]);
+  }, [active, minimized, activeIndex, ist.weekday]);
 
   useEffect(() => {
     const t = setTimeout(() => { loadBiases(); }, 3000);
@@ -430,9 +441,12 @@ export default function OvernightGapBrief({
     focusCount: kase.results.length + kase.holidays.length,
   });
   const orderedBiases = useMemo(() => {
-    if (!activeIndex) return biases;
-    return [...biases].sort((a, b) => (a.index === activeIndex ? -1 : b.index === activeIndex ? 1 : 0));
-  }, [biases, activeIndex]);
+    const focus = cashSessionFocusIndex(ist.weekday);
+    return [...biases].sort((a, b) => {
+      const rank = (id) => (id === focus ? 0 : id === "BANKNIFTY" ? 1 : id === activeIndex ? 2 : 3);
+      return rank(a.index) - rank(b.index);
+    });
+  }, [biases, activeIndex, ist.weekday]);
 
   const payloadRef = useRef({});
   payloadRef.current = {
