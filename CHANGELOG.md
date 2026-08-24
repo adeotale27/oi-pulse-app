@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.03 — 2026-08-24
+
+Chrome OS banners when the desk is on another screen: we no longer mark desktop notifications as `silent`, we fire them when the tab is hidden or unfocused, and a tiny service worker (`sw-alerts.js`) uses `showNotification` so Chrome actually paints the sidebar. Turning notifications on sends a test banner. In-app toasts still cover the focused tab.
+
 ## V8.02 — 2026-08-24
 
 Desk chrome: trading-terminal focus rings, pointer cursor on controls, denser timeframe pills (JetBrains Mono), crisper header glass, 44px-class tile toggles on phone, and `prefers-reduced-motion` respected globally. Light Swiss desk is unchanged — no OLED restyle.

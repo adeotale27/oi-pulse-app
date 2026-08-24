@@ -1390,7 +1390,16 @@ export default function Dashboard() {
     }
     setNotifEnabled(true);
     try { localStorage.setItem(NOTIF_LS, "1"); } catch { /* noop */ }
-    toast.success(perm === "granted" ? "Desktop notifications on" : "In-app alerts on (browser permission pending)");
+    if (perm === "granted") {
+      toast.success("Desktop notifications on — a test Chrome banner should appear now");
+      pushOs(
+        "StrikLenz notifications on",
+        "Alerts will also show here when this window is in the background or on another screen.",
+        { force: true },
+      );
+    } else {
+      toast.success("In-app alerts on (browser permission pending)");
+    }
   };
 
   const handleClearAlerts = async () => {
