@@ -332,6 +332,52 @@ export const addJournalScreenshot = (day, body) =>
   api.post(`/journal/${day}/screenshot`, body).then((r) => r.data);
 export const deleteJournalScreenshot = (day, id) =>
   api.delete(`/journal/${day}/screenshot/${id}`).then((r) => r.data);
+
+function filenameFromDisposition(header, fallback) {
+  const raw = String(header || "");
+  const m = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(raw);
+  if (!m) return fallback;
+  try {
+    return decodeURIComponent(m[1].replace(/"/g, "").trim());
+  } catch {
+    return m[1].replace(/"/g, "").trim() || fallback;
+  }
+}
+
+export async function downloadTradesExcel({ from, to, index } = {}) {
+  const params = { from, to };
+  if (index && index !== "ALL") params.index = index;
+  const r = await api.get("/trades/export", {
+    params,
+    responseType: "blob",
+    timeout: 45000,
+  });
+  const type = r.headers["content-type"] || "";
+  if (type.includes("application/json")) {
+    const text = await r.data.text();
+    let detail = "Could not download trades";
+    try {
+      detail = JSON.parse(text)?.detail || detail;
+    } catch { /* blob was not json */ }
+    throw new Error(detail);
+  }
+  const blob = r.data instanceof Blob ? r.data : new Blob([r.data], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const name = filenameFromDisposition(
+    r.headers["content-disposition"],
+    `striklenz-trades-${from}-to-${to}.xlsx`,
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  return name;
+}
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);
 export const fetchStraddle = (idx, opts = {}) =>

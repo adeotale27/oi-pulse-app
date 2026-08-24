@@ -45,7 +45,8 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | GET | `/market/status` | Open/close helpers |
 | GET | `/vrp/{index}` | Volatility risk premium (EOD-ish) |
 | GET | `/straddle/{index}` (+ `/history`) | ATM straddle series |
-| GET | `/positions` | Open F&O from Kite (admin) |
+| GET | `/positions` | Open F&O from Kite (admin / guest book). Also upserts `trade_cycles`. |
+| GET | `/trades/export` | Excel of stored cycles (`from`/`to` IST dates, optional `index`). Desk user. Entry + exit clocks; second sheet is fills/partials. |
 | GET | `/desk-outside` | Heavyweight cash movers + news. Pass `?index=` when the selected name is an enabled MCX contract |
 | GET/POST | `/desk-guide` | Seller coach over that outside tape; optional GPT (see [AI.md](./AI.md)) |
 | POST | `/desk-ai` | Desk user: one `desk_ai_show` flag for the whole desk |

@@ -43,6 +43,7 @@ from fii_dii_service import fii_dii
 from guest_access import require_approval_flag
 import event_risk_service as ers
 import trade_journal as journal
+import trade_ledger as ledger
 import desk_guide as desk_guide_svc
 import desk_outside as desk_outside_svc
 from fastapi import UploadFile, File, Form
@@ -4218,11 +4219,20 @@ async def get_positions(
     Guests use their own access_token — never the publisher desk token.
     """
     kite = None
+
+    async def _note_token_gap():
+        try:
+            oid = await _ledger_owner(request, role)
+            _spawn_ledger(_persist_trade_ledger(oid, {"positions": []}, None, feed_ok=False))
+        except Exception:
+            pass
+
     if role == "guest":
         guest = await _guest_from_request(request)
         kite, st = await _user_kite_client(guest)
         if not kite:
             expired = bool(st.get("expired"))
+            await _note_token_gap()
             return {
                 "mode": "user",
                 "positions": [],
@@ -4242,6 +4252,7 @@ async def get_positions(
         # Prefer the live Kite client — do not drop Positions just because the OI
         # poller mode flag briefly flipped offline.
         if not tracker.kite_service:
+            await _note_token_gap()
             return {
                 "mode": tracker.mode,
                 "positions": [],
@@ -4300,6 +4311,7 @@ async def get_positions(
         if tokenish and role == "admin":
             tracker.last_error = msg
         if tokenish and role == "guest":
+            await _note_token_gap()
             return {
                 "mode": "user",
                 "positions": [],
@@ -4327,6 +4339,8 @@ async def get_positions(
         err_out = f"Kite error: {msg}"
         if maint and maint.get("active") and maint.get("message"):
             err_out = f"Zerodha maintenance: {maint.get('message')}"
+        if tokenish:
+            await _note_token_gap()
         return {
             "mode": tracker.mode,
             "positions": [],
@@ -4679,6 +4693,12 @@ async def get_positions(
             asyncio.create_task(_snapshot_trade_journal(result))
     except Exception:
         pass
+    try:
+        owner_id = await _ledger_owner(request, role)
+        if not result.get("error") and not result.get("token_issue"):
+            asyncio.create_task(_persist_trade_ledger(owner_id, result, kite, feed_ok=True))
+    except Exception:
+        pass
     return result
 
 
@@ -4698,6 +4718,94 @@ def _journal_enabled_indices():
         from universe import DESK_IDS
         return list(DESK_IDS)
     return list(tracker.settings.get("enabled_indices") or [])
+
+
+async def _ledger_owner(request: Optional[Request], role: str) -> str:
+    """Admin book vs guest book. Guests key off Kite user id when known."""
+    if role != "guest" or request is None:
+        return "admin"
+    guest = await _guest_from_request(request)
+    if not guest:
+        return "guest:unknown"
+    try:
+        doc = await _load_user_kite_doc(guest)
+    except Exception:
+        doc = None
+    uid = (doc or {}).get("kite_user_id") or guest.get("_id") or "unknown"
+    return f"guest:{uid}"
+
+
+def _spawn_ledger(coro) -> None:
+    try:
+        asyncio.create_task(coro)
+    except Exception:
+        pass
+
+
+async def _persist_trade_ledger(
+    owner_id: str,
+    payload: Optional[Dict[str, Any]],
+    kite=None,
+    *,
+    feed_ok: bool = True,
+) -> None:
+    """Upsert trade cycles from the live book. No-ops on Mongo errors."""
+    if db is None or not owner_id:
+        return
+    now = now_ist()
+    try:
+        existing = await db.trade_cycles.find(
+            {"owner_id": owner_id, "status": {"$in": ["open", "partial"]}},
+        ).to_list(length=800)
+        fills = []
+        if feed_ok and kite is not None:
+            trades, orders = [], []
+            try:
+                trades = await asyncio.wait_for(asyncio.to_thread(kite.trades), timeout=6) or []
+            except Exception:
+                trades = []
+            if not trades:
+                try:
+                    orders = await asyncio.wait_for(asyncio.to_thread(kite.orders), timeout=6) or []
+                except Exception:
+                    orders = []
+            fills = ledger.collect_fills(trades if isinstance(trades, list) else [],
+                                         orders if isinstance(orders, list) else [])
+        upserts = ledger.reconcile_cycles(
+            existing,
+            (payload or {}).get("positions") or [],
+            fills,
+            owner_id=owner_id,
+            now=now,
+            feed_ok=feed_ok,
+        )
+        for doc in upserts:
+            cid = doc.get("cycle_id")
+            if not cid:
+                continue
+            await db.trade_cycles.update_one(
+                {"cycle_id": cid},
+                {"$set": {k: v for k, v in doc.items() if k != "_id"}},
+                upsert=True,
+            )
+        if owner_id == "admin" and feed_ok and upserts:
+            await _stamp_journal_from_ledger(upserts)
+    except Exception:
+        logging.getLogger("server").debug("trade ledger persist skipped", exc_info=True)
+
+
+async def _stamp_journal_from_ledger(cycles: List[Dict[str, Any]]) -> None:
+    if db is None:
+        return
+    day = journal.ist_ymd()
+    doc = await db.trade_journal.find_one({"date": day}, {"legs": 1})
+    if not doc:
+        return
+    legs = doc.get("legs") or []
+    if not legs:
+        return
+    if ledger.stamp_journal_legs(legs, cycles):
+        await db.trade_journal.update_one({"date": day}, {"$set": {"legs": legs}})
 
 
 async def _kite_day_charges(kite) -> Dict[str, Any]:
@@ -5151,6 +5259,47 @@ async def journal_del_shot(day: str, shot_id: str, _admin: bool = Depends(requir
         raise HTTPException(400, "Use YYYY-MM-DD")
     await db.trade_journal.update_one({"date": day}, {"$pull": {"screenshots": {"id": shot_id}}})
     return {"deleted": shot_id}
+
+
+@api_router.get("/trades/export")
+async def export_trades(
+    request: Request,
+    role: str = Depends(require_desk_user),
+    from_date: str = Query(..., alias="from"),
+    to_date: str = Query(..., alias="to"),
+    index: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """Excel of stored trade cycles (entry + exit clocks) for the caller's book."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", from_date) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", to_date):
+        raise HTTPException(400, "from and to must be YYYY-MM-DD")
+    if from_date > to_date:
+        raise HTTPException(400, "from must be on or before to")
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    owner_id = await _ledger_owner(request, role)
+    query = {
+        "owner_id": owner_id,
+        "$or": [
+            {"entry_date": {"$gte": from_date, "$lte": to_date}},
+            {"exit_date": {"$gte": from_date, "$lte": to_date}},
+            {"entry_date": {"$lte": to_date}, "status": {"$in": ["open", "partial"]}},
+            {"entry_date": {"$lte": to_date}, "exit_date": {"$gte": from_date}},
+            {"entry_date": {"$lte": to_date}, "exit_date": None},
+        ],
+    }
+    docs = await db.trade_cycles.find(query, {"_id": 0}).to_list(length=8000)
+    cycles = ledger.filter_cycles(docs, start=from_date, end=to_date, index=index, status=status)
+    data = ledger.workbook_bytes(cycles, start=from_date, end=to_date)
+    fname = f"striklenz-trades-{from_date}-to-{to_date}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @api_router.get("/positions/brokerage-day")
@@ -5919,6 +6068,10 @@ async def _ensure_mongo_indexes():
         await db.user_kite.create_index("guest_token")
         await db.user_kite.create_index([("guest_name", 1), ("ip", 1)])
         await db.trade_journal.create_index("date", unique=True, name="uniq_journal_date")
+        await db.trade_cycles.create_index("cycle_id", unique=True, name="uniq_trade_cycle")
+        await db.trade_cycles.create_index([("owner_id", 1), ("status", 1)])
+        await db.trade_cycles.create_index([("owner_id", 1), ("entry_date", 1)])
+        await db.trade_cycles.create_index([("owner_id", 1), ("exit_date", 1)])
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 

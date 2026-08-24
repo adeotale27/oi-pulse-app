@@ -71,6 +71,7 @@ import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import OiRiskMeter from "@/components/OiRiskMeter";
 import PositionHeatmap from "@/components/PositionHeatmap";
 import TradeJournalModal from "@/components/TradeJournalModal";
+import DownloadTradesButton from "@/components/DownloadTradesButton";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
 import {
@@ -178,6 +179,7 @@ const POSITIONS_GUIDE = (
       <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
       <b> Profit booked today</b> — realised P&amp;L from same-day exits (and partial closes).
       <b> Day charges</b> — brokerage + STT + GST + exchange fees (Zerodha contract note, read-only).
+      <b> Download trades</b> — Excel from our database for any date range. Entry time is when the cycle opened (a Friday hold still shows Friday after a Monday token refresh); exit is when it flattened. Partial closes are listed on the second sheet.
     </p>
   </div>
 );
@@ -1192,6 +1194,7 @@ export default function PositionsPanel({
             <BookOpen className="w-3.5 h-3.5 mr-1" />
             Journal
           </Button>
+          <DownloadTradesButton compact />
         </div>
         <TradeJournalModal open={journalOpen} onOpenChange={setJournalOpen} privacy={privacyMode} />
       </div>
@@ -1209,10 +1212,11 @@ export default function PositionsPanel({
           If Kite says the user is not enabled for the app, the desk owner must add your user_id in developers.kite.tech (or publish the app).
           {guestKiteId ? ` Last login: ${guestKiteId}.` : ""}
         </div>
+        <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
         {typeof onOpenKite === "function" && (
           <Button
             size="sm"
-            className="mt-3 h-8 rounded-sm bg-emerald-600 hover:bg-emerald-700"
+            className="h-8 rounded-sm bg-emerald-600 hover:bg-emerald-700"
             onClick={onOpenKite}
             data-testid="btn-positions-connect-zerodha"
           >
@@ -1220,6 +1224,8 @@ export default function PositionsPanel({
             Connect Zerodha
           </Button>
         )}
+        <DownloadTradesButton compact align="center" />
+        </div>
       </div>
     );
   }
@@ -1416,6 +1422,7 @@ export default function PositionsPanel({
             Journal
           </Button>
           )}
+          <DownloadTradesButton compact />
           {isGuest && typeof onOpenKite === "function" && (
           <Button
             size="sm"

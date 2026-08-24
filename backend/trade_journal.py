@@ -164,7 +164,7 @@ def snapshot_from_positions(
         if partial and not r.get("exited"):
             partial_n += 1
         pnl_v = booked_v if (r.get("exited") or partial) else _num(r.get("pnl"))
-        legs.append({
+        leg = {
             "tradingsymbol": r.get("tradingsymbol") or r.get("display_name"),
             "index": _leg_index_label(r),
             "side": r.get("side"),
@@ -175,7 +175,11 @@ def snapshot_from_positions(
             "closed_quantity": r.get("closed_quantity"),
             "realised": round(booked_v, 2),
             "pnl": round(pnl_v, 2),
-        })
+        }
+        for k in ("entry_time", "exit_time", "entry_source", "exit_source", "carried", "token_gap"):
+            if r.get(k) is not None:
+                leg[k] = r.get(k)
+        legs.append(leg)
     total = _num(pnl.get("total"))
     exited_only = _num(pnl.get("exited"))
     open_pnl = _num(pnl.get("open"))

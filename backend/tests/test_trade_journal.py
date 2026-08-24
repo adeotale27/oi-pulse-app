@@ -490,6 +490,34 @@ def test_snapshot_fills_index_from_tradingsymbol():
     assert snap["booked_index_pnl"]["SENSEX"] == 21000
 
 
+def test_snapshot_copies_ledger_clocks_onto_legs():
+    snap = snapshot_from_positions(
+        {
+            "exited_count": 1,
+            "pnl_today": {"open": 0, "exited": 500, "booked": 500, "total": 500},
+            "positions": [
+                {
+                    "tradingsymbol": "NIFTY26AUG24000CE",
+                    "quantity": 0,
+                    "exited": True,
+                    "booked_pnl": 500,
+                    "pnl": 500,
+                    "entry_time": "2026-08-21 14:32:11",
+                    "exit_time": "2026-08-24 10:04:12",
+                    "carried": True,
+                    "token_gap": True,
+                },
+            ],
+        },
+        date="2026-08-24",
+    )
+    leg = snap["legs"][0]
+    assert leg["entry_time"] == "2026-08-21 14:32:11"
+    assert leg["exit_time"] == "2026-08-24 10:04:12"
+    assert leg["carried"] is True
+    assert leg["token_gap"] is True
+
+
 def test_day_pnl_never_uses_open_total():
     assert day_pnl({"pnl_total": 5000, "booked_pnl": 1200, "pnl_exited": 1200}) == 1200
     assert day_pnl({"pnl_total": -400, "open_count": 2, "exited_count": 0}) == 0

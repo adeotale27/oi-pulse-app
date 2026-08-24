@@ -1,5 +1,14 @@
 # Changelog
 
+## V8.00 — 2026-08-24
+
+Trade ledger: every Positions poll stores open / partial / closed cycles in Mongo (`trade_cycles`). **Download trades** (Positions toolbar + journal) exports an Excel for any From/To filter.
+
+- Entry time is the original fill (or first seen). A Friday hold that is still open on Monday after a new Kite token is the same cycle — not a new purchase.
+- Exit time is the flatten fill (or inferred only if the leg vanished while the token was stale).
+- Partial exits are extra events on that cycle (second Excel sheet).
+- Stale token: we freeze clocks and do not close or reopen trades until Kite is back.
+
 ## V7.18 — 2026-08-20
 
 Phone OI Change: strike tile is translucent, only while you hold a bar, and hides as soon as the finger moves or lifts. Strike labels on the X-axis are no longer clipped. Positions: NRML and CALL/PUT stay on one line; less gap after Exited today. Journal From/To dates stack cleanly on phone.

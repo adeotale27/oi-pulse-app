@@ -72,7 +72,7 @@ export default function AboutAppModal() {
                 <li>Reads Call vs Put OI vs a lookback you pick — so you see who is adding, not only LTP.</li>
                 <li>Flags huge ATM± shifts, writer defense, gamma walls, and institutional prints.</li>
                 <li>Keeps sell candidates, straddle premium, Index Risk, CAS expiry, and session replay on one board.</li>
-                <li>Admin journal stores booked P&amp;L in Mongo (frozen after the cash close catch-up).</li>
+                <li>Admin journal stores booked P&amp;L in Mongo (frozen after the cash close catch-up). Download trades exports stored cycles with entry and exit time.</li>
               </ul>
             ) : (
               <ul className="list-disc pl-4 space-y-1">

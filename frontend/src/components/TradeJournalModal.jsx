@@ -28,6 +28,7 @@ import { HEATMAP_IDS, INDEX_SHORT, DESK_IDS } from "@/lib/universe";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import { compactPnl, exactPnl, fmtInr } from "@/lib/journalMoney";
 import InfoTip from "@/components/InfoTip";
+import DownloadTradesButton from "@/components/DownloadTradesButton";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
@@ -481,6 +482,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   ))}
                 </div>
                 {periodLoading ? <span className="text-[11px] text-slate-400">Updating…</span> : null}
+                <DownloadTradesButton compact />
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">
