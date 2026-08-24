@@ -212,26 +212,76 @@ def _event_ids(cycle: dict) -> set:
     return ids
 
 
-def _append_event(cycle: dict, *, kind: str, fill: Optional[dict] = None, qty: int = 0,
-                  price: float = 0.0, remaining: int = 0, realised: float = 0.0,
-                  when: Optional[datetime] = None, note: str = "") -> None:
+def _append_event(
+    cycle: dict,
+    *,
+    kind: str,
+    fill: Optional[dict] = None,
+    qty: int = 0,
+    price: float = 0.0,
+    remaining: int = 0,
+    realised: float = 0.0,
+    realised_this: Optional[float] = None,
+    when: Optional[datetime] = None,
+    note: str = "",
+) -> None:
     events = list(cycle.get("events") or [])
     tid = (fill or {}).get("trade_id") or ""
     if tid and any(e.get("trade_id") == tid and e.get("kind") == kind for e in events):
         return
     t = (fill or {}).get("time") or when
+    exited_qty = int(qty or (fill or {}).get("quantity") or 0)
     events.append({
         "kind": kind,
         "trade_id": tid,
-        "quantity": int(qty or (fill or {}).get("quantity") or 0),
+        "quantity": exited_qty,
+        "exited_quantity": exited_qty,
         "price": round(_num(price if price else (fill or {}).get("price")), 4),
         "time": iso_utc(t) if t else None,
         "time_ist": fmt_ist(t) if t else None,
         "remaining_quantity": int(remaining),
         "realised": round(_num(realised), 2),
+        "realised_this": None if realised_this is None else round(_num(realised_this), 2),
         "note": note or "",
     })
     cycle["events"] = events
+    _sync_partials(cycle)
+
+
+def _sync_partials(cycle: dict) -> None:
+    """First-class list of each scale-out: time, qty exited this fill, remaining, P&L slice."""
+    partials = []
+    running = 0.0
+    seq = 0
+    for ev in cycle.get("events") or []:
+        if ev.get("kind") != "partial_exit":
+            continue
+        seq += 1
+        slice_pnl = ev.get("realised_this")
+        if slice_pnl is None:
+            total = _num(ev.get("realised"))
+            slice_pnl = round(total - running, 2)
+            running = total
+        else:
+            running = round(running + _num(slice_pnl), 2)
+        partials.append({
+            "seq": seq,
+            "time": ev.get("time"),
+            "time_ist": ev.get("time_ist"),
+            "exited_quantity": int(ev.get("exited_quantity") if ev.get("exited_quantity") is not None else ev.get("quantity") or 0),
+            "remaining_quantity": int(ev.get("remaining_quantity") or 0),
+            "price": ev.get("price"),
+            "realised_this": round(_num(slice_pnl), 2),
+            "realised_total": round(_num(ev.get("realised") if ev.get("realised") is not None else running), 2),
+            "trade_id": ev.get("trade_id") or "",
+            "note": ev.get("note") or "",
+        })
+    cycle["partials"] = partials
+    cycle["partial_exit_count"] = len(partials)
+    last = partials[-1] if partials else None
+    cycle["last_partial_time_ist"] = (last or {}).get("time_ist")
+    cycle["last_partial_qty"] = (last or {}).get("exited_quantity")
+    cycle["partial_exited_quantity"] = sum(p["exited_quantity"] for p in partials)
 
 
 def _stamp_times(cycle: dict) -> None:
@@ -346,6 +396,7 @@ def apply_row_to_cycle(
     closed_qty = _int(row.get("closed_quantity"))
     prev_closed = _int(out.get("closed_quantity"))
     prev_qty = _int(out.get("quantity"))
+    prev_realised = _num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("realised"))
 
     if was_stale:
         out["token_gap"] = True
@@ -395,42 +446,84 @@ def apply_row_to_cycle(
         kind = "scale_in" if parse_dt(out.get("entry_time")) else "entry"
         _append_event(out, kind=kind, fill=f, remaining=qty)
 
-    if closed_qty > prev_closed or (status != "closed" and abs(qty) < abs(prev_qty) and prev_qty != 0):
-        # Partial (or scale-out) against the stored cycle.
-        new_closes = [f for f in closed if f["trade_id"] not in known]
-        if new_closes:
-            for f in new_closes:
-                _append_event(out, kind="partial_exit", fill=f, remaining=qty, realised=out["booked_pnl"])
-        else:
-            _append_event(
-                out, kind="partial_exit", qty=max(0, closed_qty - prev_closed),
-                price=_num(row.get("buy_price") if direction == "short" else row.get("sell_price")),
-                remaining=qty, realised=out["booked_pnl"], when=now,
-                note="qty change vs last stored book",
-            )
+    new_closes = [f for f in closed if f["trade_id"] not in known]
+    qty_dropped = closed_qty > prev_closed or (
+        status != "closed" and abs(qty) < abs(prev_qty) and prev_qty != 0
+    )
+    if status == "closed":
+        partial_fills = new_closes[:-1] if len(new_closes) > 1 else []
+        exit_fill = new_closes[-1] if new_closes else None
+    else:
+        partial_fills = new_closes if qty_dropped else []
+        exit_fill = None
+        if qty_dropped and not partial_fills:
+            synthetic_qty = max(0, closed_qty - prev_closed) or max(0, abs(prev_qty) - abs(qty))
+            if synthetic_qty:
+                slice_pnl = round(_num(out["booked_pnl"]) - prev_realised, 2)
+                _append_event(
+                    out, kind="partial_exit", qty=synthetic_qty,
+                    price=_num(row.get("buy_price") if direction == "short" else row.get("sell_price")),
+                    remaining=qty, realised=out["booked_pnl"], realised_this=slice_pnl, when=now,
+                    note="qty change vs last stored book",
+                )
+
+    delta = round(_num(out["booked_pnl"]) - prev_realised, 2)
+    fill_qty_total = sum(_int(f.get("quantity")) for f in partial_fills) or 0
+    if status == "closed" and exit_fill:
+        fill_qty_total += _int(exit_fill.get("quantity"))
+    remaining_left = abs(prev_qty)
+    realised_acc = 0.0
+    n_money = len(partial_fills) + (1 if (status == "closed" and (exit_fill or qty_dropped)) else 0)
+
+    def _slice_pnl(fill_qty, idx, last_idx):
+        if n_money <= 0:
+            return 0.0
+        if last_idx is not None and idx == last_idx:
+            return round(delta - realised_acc, 2)
+        if fill_qty_total > 0:
+            return round(delta * (fill_qty / fill_qty_total), 2)
+        return round(delta / n_money, 2)
+
+    last_partial_i = len(partial_fills) - 1
+    for i, f in enumerate(partial_fills):
+        fq = _int(f.get("quantity"))
+        remaining_left = max(0, remaining_left - fq)
+        slice_pnl = _slice_pnl(fq, i, last_partial_i if status != "closed" else None)
+        realised_acc = round(realised_acc + slice_pnl, 2)
+        _append_event(
+            out, kind="partial_exit", fill=f, qty=fq,
+            remaining=remaining_left if status != "closed" else remaining_left,
+            realised=round(prev_realised + realised_acc, 2),
+            realised_this=slice_pnl,
+        )
 
     if status == "closed":
-        last_close = closed[-1] if closed else None
         out["status"] = "closed"
         out["quantity"] = 0
-        if last_close:
-            out["exit_time"] = last_close["time"]
+        last_i = (len(partial_fills) if exit_fill else max(0, n_money - 1))
+        slice_pnl = _slice_pnl(_int((exit_fill or {}).get("quantity")), last_i, last_i)
+        if exit_fill:
+            out["exit_time"] = exit_fill["time"]
             out["exit_source"] = "fill"
-            out["exit_price"] = round(_num(last_close.get("price")), 4)
-            _append_event(out, kind="exit", fill=last_close, remaining=0, realised=out["booked_pnl"])
+            out["exit_price"] = round(_num(exit_fill.get("price")), 4)
+            _append_event(
+                out, kind="exit", fill=exit_fill, remaining=0,
+                realised=out["booked_pnl"], realised_this=slice_pnl,
+            )
         else:
             out["exit_time"] = now
             out["exit_source"] = "inferred_after_stale" if was_stale else "flatten_seen"
             out["exit_price"] = round(_num(row.get("last_price") or row.get("buy_price") or row.get("sell_price")), 4)
             _append_event(
                 out, kind="exit", qty=abs(prev_qty) or closed_qty, price=out["exit_price"],
-                remaining=0, realised=out["booked_pnl"], when=now,
+                remaining=0, realised=out["booked_pnl"], realised_this=slice_pnl, when=now,
                 note="flattened while token was stale" if was_stale else "flat on Kite book",
             )
     else:
-        out["status"] = "partial" if (closed_qty > 0 or out.get("status") == "partial") else "open"
+        out["status"] = "partial" if (closed_qty > 0 or out.get("status") == "partial" or out.get("partials")) else "open"
 
     _stamp_times(out)
+    _sync_partials(out)
     return out
 
 
@@ -596,7 +689,7 @@ def filter_cycles(
 
 
 def stamp_journal_legs(legs: List[dict], cycles: Iterable[dict]) -> bool:
-    """Copy entry/exit clocks onto journal snapshot legs. Returns True if changed."""
+    """Copy entry/exit clocks and partials onto journal snapshot legs."""
     by_ts: Dict[str, dict] = {}
     by_key: Dict[Tuple[str, str, str], dict] = {}
     for c in cycles or []:
@@ -611,7 +704,7 @@ def stamp_journal_legs(legs: List[dict], cycles: Iterable[dict]) -> bool:
         c = by_key.get(instrument_key(leg)) or by_ts.get(str(leg.get("tradingsymbol") or "").upper())
         if not c:
             continue
-        for src, dst in (
+        pairs = (
             ("entry_time_ist", "entry_time"),
             ("exit_time_ist", "exit_time"),
             ("entry_source", "entry_source"),
@@ -619,15 +712,17 @@ def stamp_journal_legs(legs: List[dict], cycles: Iterable[dict]) -> bool:
             ("carried", "carried"),
             ("token_gap", "token_gap"),
             ("status", "cycle_status"),
-        ):
+            ("partials", "partials"),
+            ("partial_exit_count", "partial_exit_count"),
+            ("last_partial_time_ist", "last_partial_time"),
+            ("last_partial_qty", "last_partial_qty"),
+        )
+        for src, dst in pairs:
             val = c.get(src)
             if leg.get(dst) != val and val is not None:
                 leg[dst] = val
                 changed = True
     return changed
-
-
-def public_cycle(doc: Optional[dict]) -> Optional[dict]:
     if not doc:
         return None
     out = {k: v for k, v in doc.items() if k != "_id"}
@@ -659,6 +754,9 @@ EXPORT_HEADERS = [
     "Booked P&L",
     "First seen (UTC)",
     "Last seen (UTC)",
+    "Partial exits",
+    "Last partial time (IST)",
+    "Last partial qty",
 ]
 
 
@@ -688,6 +786,9 @@ def cycle_export_row(c: dict) -> list:
         c.get("booked_pnl") if c.get("booked_pnl") is not None else "",
         c.get("first_seen_at") or "",
         c.get("last_seen_at") or "",
+        c.get("partial_exit_count") or 0,
+        c.get("last_partial_time_ist") or "",
+        c.get("last_partial_qty") if c.get("last_partial_qty") is not None else "",
     ]
 
 
@@ -696,10 +797,11 @@ EVENT_HEADERS = [
     "Index",
     "Kind",
     "Time (IST)",
-    "Quantity",
-    "Price",
+    "Exited qty this fill",
     "Remaining qty",
-    "Realised P&L",
+    "Price",
+    "Realised this fill",
+    "Realised total after fill",
     "Trade id",
     "Note",
 ]
@@ -714,12 +816,31 @@ def event_export_rows(cycles: Iterable[dict]) -> List[list]:
                 c.get("index") or "",
                 ev.get("kind") or "",
                 ev.get("time_ist") or "",
-                ev.get("quantity") if ev.get("quantity") is not None else "",
-                ev.get("price") if ev.get("price") is not None else "",
+                ev.get("exited_quantity") if ev.get("exited_quantity") is not None else ev.get("quantity"),
                 ev.get("remaining_quantity") if ev.get("remaining_quantity") is not None else "",
+                ev.get("price") if ev.get("price") is not None else "",
+                ev.get("realised_this") if ev.get("realised_this") is not None else "",
                 ev.get("realised") if ev.get("realised") is not None else "",
                 ev.get("trade_id") or "",
                 ev.get("note") or "",
+            ])
+    return rows
+
+
+def partial_export_rows(cycles: Iterable[dict]) -> List[list]:
+    rows = []
+    for c in cycles or []:
+        for p in c.get("partials") or []:
+            rows.append([
+                c.get("tradingsymbol") or "",
+                c.get("index") or "",
+                p.get("seq"),
+                p.get("time_ist") or "",
+                p.get("exited_quantity"),
+                p.get("remaining_quantity"),
+                p.get("price"),
+                p.get("realised_this"),
+                p.get("realised_total"),
             ])
     return rows
 
@@ -764,6 +885,24 @@ def workbook_bytes(cycles: List[dict], *, start: str, end: str) -> bytes:
     ev.column_dimensions["A"].width = 26
     ev.column_dimensions["D"].width = 20
 
+    pr = wb.create_sheet("Partials")
+    pr_headers = [
+        "Instrument", "Index", "#", "Time (IST)", "Exited qty this fill",
+        "Remaining qty", "Price", "Realised this fill", "Realised total",
+    ]
+    pr.append(pr_headers)
+    for cell in pr[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+    for row in partial_export_rows(cycles):
+        pr.append(row)
+    pr.freeze_panes = "A2"
+    pr.auto_filter.ref = pr.dimensions
+    for i, _h in enumerate(pr_headers, 1):
+        pr.column_dimensions[get_column_letter(i)].width = 18
+    pr.column_dimensions["A"].width = 26
+    pr.column_dimensions["D"].width = 20
+
     meta = wb.create_sheet("Notes")
     meta.append(["Filter from", start])
     meta.append(["Filter to", end])
@@ -779,7 +918,7 @@ def workbook_bytes(cycles: List[dict], *, start: str, end: str) -> bytes:
     ])
     meta.append([
         "Partial exits",
-        "Each scale-out is a row on 'Fills and partials'. The parent trade keeps one entry time until fully flattened.",
+        "Each scale-out is a row on the Partials sheet: time, how much was exited this fill, remaining qty, and realised for that slice. The parent trade keeps one entry time until fully flattened.",
     ])
 
     buf = BytesIO()

@@ -105,6 +105,54 @@ def test_partial_exit_keeps_entry_and_no_exit_clock():
     kinds = [e["kind"] for e in out["events"]]
     assert "partial_exit" in kinds
     assert out["closed_quantity"] == 25
+    pe = out["partials"]
+    assert len(pe) == 1
+    assert pe[0]["exited_quantity"] == 25
+    assert pe[0]["remaining_quantity"] == 50
+    assert pe[0]["time_ist"] == "2026-08-21 15:09:01"
+    assert pe[0]["realised_this"] == 800
+    assert out["last_partial_qty"] == 25
+    assert out["last_partial_time_ist"] == "2026-08-21 15:09:01"
+
+
+def test_two_partials_each_store_time_and_qty():
+    friday = _dt(2026, 8, 21, 14, 40)
+    c = seed_cycle(_row(), owner_id="admin", now=friday, fills=collect_fills([_fill()]))
+    first = apply_row_to_cycle(
+        c,
+        _row(quantity=-50, partial=True, closed_quantity=25, buy_quantity=25, sell_quantity=75,
+             realised=800, booked_pnl=800),
+        now=_dt(2026, 8, 21, 15, 10),
+        fills=collect_fills([
+            _fill(),
+            _fill(trade_id="p1", transaction_type="BUY", quantity=25, average_price=88.0,
+                  fill_timestamp="2026-08-21 15:09:01"),
+        ]),
+        today="2026-08-21",
+    )
+    second = apply_row_to_cycle(
+        first,
+        _row(quantity=-25, partial=True, closed_quantity=50, buy_quantity=50, sell_quantity=75,
+             realised=1100, booked_pnl=1100),
+        now=_dt(2026, 8, 21, 15, 25),
+        fills=collect_fills([
+            _fill(),
+            _fill(trade_id="p1", transaction_type="BUY", quantity=25, average_price=88.0,
+                  fill_timestamp="2026-08-21 15:09:01"),
+            _fill(trade_id="p2", transaction_type="BUY", quantity=25, average_price=90.0,
+                  fill_timestamp="2026-08-21 15:24:40"),
+        ]),
+        today="2026-08-21",
+    )
+    assert len(second["partials"]) == 2
+    assert second["partials"][0]["exited_quantity"] == 25
+    assert second["partials"][0]["time_ist"] == "2026-08-21 15:09:01"
+    assert second["partials"][1]["exited_quantity"] == 25
+    assert second["partials"][1]["remaining_quantity"] == 25
+    assert second["partials"][1]["time_ist"] == "2026-08-21 15:24:40"
+    assert second["partials"][1]["realised_this"] == 300
+    assert second["entry_time_ist"] == "2026-08-21 14:32:11"
+    assert second["exit_time"] is None
 
 
 def test_full_exit_sets_exit_from_fill():
@@ -251,6 +299,7 @@ def test_workbook_has_entry_and_exit_columns():
     ei = headers.index("Entry time (IST)")
     assert ws[2][ei].value == "2026-08-21 14:32:11"
     assert "Fills and partials" in wb.sheetnames
+    assert "Partials" in wb.sheetnames
 
 
 def test_instrument_key_and_ymd():

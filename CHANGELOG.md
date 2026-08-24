@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.01 — 2026-08-24
+
+Partials are stored as their own rows: time, qty exited **this** fill, remaining qty, and realised for that slice (Excel **Partials** sheet). A Friday hold that is scaled out twice on Monday keeps Friday’s entry clock.
+
 ## V8.00 — 2026-08-24
 
 Trade ledger: every Positions poll stores open / partial / closed cycles in Mongo (`trade_cycles`). **Download trades** (Positions toolbar + journal) exports an Excel for any From/To filter.

@@ -176,7 +176,7 @@ def snapshot_from_positions(
             "realised": round(booked_v, 2),
             "pnl": round(pnl_v, 2),
         }
-        for k in ("entry_time", "exit_time", "entry_source", "exit_source", "carried", "token_gap"):
+        for k in ("entry_time", "exit_time", "entry_source", "exit_source", "carried", "token_gap", "partials"):
             if r.get(k) is not None:
                 leg[k] = r.get(k)
         legs.append(leg)
