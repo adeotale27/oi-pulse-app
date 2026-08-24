@@ -145,7 +145,7 @@ export default function OverflowTabBar({
   const triggerCls = (active, id) => {
     const isOver = canReorder && overId === id && draggingId && draggingId !== id;
     const isDrag = canReorder && draggingId === id;
-    return `rounded-none border-b-2 px-2.5 sm:px-3 py-2 text-[13px] sm:text-sm font-medium whitespace-nowrap transition-colors ${
+    return `rounded-none border-b-2 px-2.5 sm:px-3 py-2 text-[13px] sm:text-sm font-medium whitespace-nowrap transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-1 ${
       canReorder ? "cursor-grab active:cursor-grabbing" : ""
     } ${isDrag ? "opacity-40" : ""} ${
       isOver

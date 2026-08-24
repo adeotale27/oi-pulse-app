@@ -1390,7 +1390,16 @@ export default function Dashboard() {
     }
     setNotifEnabled(true);
     try { localStorage.setItem(NOTIF_LS, "1"); } catch { /* noop */ }
-    toast.success(perm === "granted" ? "Desktop notifications on" : "In-app alerts on (browser permission pending)");
+    if (perm === "granted") {
+      toast.success("Desktop notifications on — a test Chrome banner should appear now");
+      pushOs(
+        "StrikLenz notifications on",
+        "Alerts will also show here when this window is in the background or on another screen.",
+        { force: true },
+      );
+    } else {
+      toast.success("In-app alerts on (browser permission pending)");
+    }
   };
 
   const handleClearAlerts = async () => {
@@ -2256,7 +2265,7 @@ export default function Dashboard() {
                     aria-label="Hide info tiles"
                     aria-expanded="true"
                     data-testid="btn-toggle-info-tiles"
-                    className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
+                    className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-sm text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/80"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
@@ -2269,7 +2278,7 @@ export default function Dashboard() {
                   aria-label="Show info tiles"
                   aria-expanded="false"
                   data-testid="btn-toggle-info-tiles"
-                  className="shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-sm text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors"
+                  className="shrink-0 inline-flex items-center gap-1 h-8 px-2 rounded-sm text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/80"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                   Events

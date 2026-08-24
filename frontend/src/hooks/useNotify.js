@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { registerAlertServiceWorker, showOsNotification } from "@/lib/osNotify";
 
 /**
  * Small hook that wraps browser notifications + a beep sound.
@@ -71,28 +72,28 @@ export function useNotify() {
     playSweep(now + 1.64, 1200, 520, 0.30);
   }, []);
 
+  useEffect(() => {
+    void registerAlertServiceWorker();
+  }, []);
+
   const requestPermission = useCallback(async () => {
     if (typeof Notification === "undefined") return "unsupported";
-    if (Notification.permission === "granted") return "granted";
+    if (Notification.permission === "granted") {
+      void registerAlertServiceWorker();
+      return "granted";
+    }
     if (Notification.permission === "denied") return "denied";
     try {
-      return await Notification.requestPermission();
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") void registerAlertServiceWorker();
+      return perm;
     } catch {
       return "denied";
     }
   }, []);
 
-  const push = useCallback((title, body) => {
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      try {
-        new Notification(title, {
-          body,
-          silent: typeof window !== "undefined" && !window.matchMedia("(pointer: coarse)").matches,
-        });
-      } catch (e) {
-        console.error("Notification failed", e);
-      }
-    }
+  const push = useCallback((title, body, opts) => {
+    void showOsNotification(title, body, opts);
   }, []);
 
   const permission = () => {

@@ -431,7 +431,7 @@ export default function Header({
   const modeBadgeCls = kiteModeBadgeClass(modeBadge.tone);
 
   const toolBtn =
-    "rounded-lg border-slate-200/80 bg-white/70 hover:bg-emerald-50 hover:border-emerald-200 dark:bg-slate-800/80 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-emerald-950/40 dark:hover:border-emerald-800 h-8 w-8 p-0 sm:h-9 sm:w-auto sm:px-3 transition-colors";
+    "rounded-sm border-slate-200/80 bg-white/80 hover:bg-emerald-50 hover:border-emerald-200 dark:bg-slate-800/80 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-emerald-950/40 dark:hover:border-emerald-800 h-8 w-8 p-0 sm:h-9 sm:w-auto sm:px-3 transition-colors duration-150 cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-500/80";
 
   return (
     <header
@@ -490,6 +490,7 @@ export default function Header({
             variant="outline" size="sm" className={toolBtn}
             onClick={onToggleCompact}
             title={compact ? "Show sidebar" : "Hide sidebar"}
+            aria-label={compact ? "Show sidebar" : "Hide sidebar"}
           >
             {compact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
           </Button>
@@ -501,6 +502,7 @@ export default function Header({
                 size="sm"
                 className={toolBtn}
                 title="View & tools"
+                aria-label="View and tools"
               >
                 <SlidersHorizontal className="w-4 h-4" />
               </Button>
@@ -799,6 +801,7 @@ export default function Header({
                 size="sm"
                 className={toolBtn}
                 title="View & tools"
+                aria-label="View and tools"
               >
                 <SlidersHorizontal className="w-4 h-4" />
                 <span className="hidden xl:inline ml-1.5 text-xs">View</span>

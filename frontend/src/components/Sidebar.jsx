@@ -439,7 +439,7 @@ export default function Sidebar({
                 key={idx}
                 data-testid={`btn-index-${idx}`}
                 onClick={() => onChangeIndex(idx)}
-                className={`relative text-[10px] sm:text-[11px] font-semibold rounded-md py-2 px-0.5 border-2 transition-all leading-tight min-w-0 ${
+                className={`relative text-[10px] sm:text-[11px] font-semibold rounded-md py-2 px-0.5 border-2 transition-all duration-150 leading-tight min-w-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/80 focus-visible:ring-offset-1 ${
                   active ? theme.activeCls : theme.idleCls
                 } ${veryStale ? "index-chip-stale" : ""}`}
                 title={
