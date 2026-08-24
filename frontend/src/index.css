@@ -78,7 +78,37 @@ body {
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  body { @apply bg-background text-foreground antialiased; }
+  button:not(:disabled),
+  [role="tab"],
+  [role="menuitem"],
+  [role="switch"],
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+  button:focus-visible,
+  [role="tab"]:focus-visible,
+  [role="menuitem"]:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer base {
@@ -139,9 +169,9 @@ input[type="number"] {
 
   .oi-header {
     background: rgba(255, 255, 255, 0.92);
-    border-bottom: 1px solid var(--oi-panel-border);
-    backdrop-filter: blur(12px) saturate(1.15);
-    box-shadow: 0 8px 24px -20px rgba(15, 55, 70, 0.35);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 8px 24px -20px rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(16px) saturate(1.15);
     overflow-x: hidden;
     overflow-y: hidden;
     font-family: var(--font-ui);

@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.02 — 2026-08-24
+
+Desk chrome: trading-terminal focus rings, pointer cursor on controls, denser timeframe pills (JetBrains Mono), crisper header glass, 44px-class tile toggles on phone, and `prefers-reduced-motion` respected globally. Light Swiss desk is unchanged — no OLED restyle.
+
 ## V8.01 — 2026-08-24
 
 Partials are stored as their own rows: time, qty exited **this** fill, remaining qty, and realised for that slice (Excel **Partials** sheet). A Friday hold that is scaled out twice on Monday keeps Friday’s entry clock.
