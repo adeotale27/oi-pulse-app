@@ -347,6 +347,7 @@ export default function Header({
   // Refresh DB action (admin only)
   const [refreshing, setRefreshing] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   useEffect(() => {
     if (!mobileToolsOpen) return undefined;
     const onDown = (e) => {
@@ -440,6 +441,19 @@ export default function Header({
       className={`oi-header w-full relative z-50 ${headerRail ? "oi-header-slim" : "oi-header-desk"}`}
       data-density={headerRail ? "slim" : "desk"}
     >
+      {(adminMenuOpen || mobileToolsOpen) && typeof document !== "undefined" && createPortal(
+        <button
+          type="button"
+          aria-label="Close admin tools"
+          data-testid="admin-tools-scrim"
+          className="fixed inset-0 z-[90] bg-slate-900/45 backdrop-blur-[2px]"
+          onClick={() => {
+            setAdminMenuOpen(false);
+            setMobileToolsOpen(false);
+          }}
+        />,
+        document.body,
+      )}
       <GiftSessionsModal open={giftModalOpen} onOpenChange={setGiftModalOpen} windows={giftSessions} serverIst={extras?.server_time_ist} />
 
       {/* Mobile: slim tools row only — brand/index/tabs live in MobileStickyChrome */}
@@ -566,7 +580,7 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="mobile-admin-tools"
-          className="md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-slate-100 dark:border-slate-800 pt-2 bg-slate-50/80 dark:bg-slate-900/50"
+          className="relative z-[100] md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
         >
           <div className="w-full flex items-center justify-between gap-2 px-0.5">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
@@ -866,7 +880,7 @@ export default function Header({
           {/* Desktop admin only — MUST use conditional render; lg:flex overrides Tailwind `hidden` */}
           {isAdmin && (
           <div className="hidden lg:flex items-center gap-2">
-            <DropdownMenu>
+            <DropdownMenu open={adminMenuOpen} onOpenChange={setAdminMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button
                   data-testid="btn-admin-menu"
@@ -878,7 +892,7 @@ export default function Header({
                   Admin
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52" data-testid="admin-tools-menu">
+              <DropdownMenuContent align="end" className="w-52 z-[100] border-emerald-200 bg-white shadow-2xl ring-1 ring-emerald-700/15" data-testid="admin-tools-menu">
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
                   Desk tools
                 </DropdownMenuLabel>
@@ -1053,7 +1067,7 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="tablet-admin-tools"
-          className="hidden md:flex lg:hidden px-3 pb-3 flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-2 bg-slate-50/80 dark:bg-slate-900/50"
+          className="relative z-[100] hidden md:flex lg:hidden px-3 pb-3 flex-wrap gap-2 border-t border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
         >
           <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
             Admin tools

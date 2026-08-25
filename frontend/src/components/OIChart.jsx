@@ -26,7 +26,7 @@ function formatTime(iso) {
   }
 }
 
-export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false }) {
+export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "" }) {
   const spotPrice = current?.price ?? null;
   const data = useMemo(() => {
     if (!current) return [];
@@ -123,8 +123,9 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
       >
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
+            key={chartKey || undefined}
             data={data}
-            margin={compact ? { top: 10, right: 6, left: 0, bottom: 12 } : { top: 20, right: 20, left: 10, bottom: 20 }}
+            margin={compact ? { top: 28, right: 8, left: 0, bottom: 12 } : { top: 28, right: 20, left: 10, bottom: 20 }}
             barCategoryGap={compact ? "12%" : "18%"}
           >
             {/* SVG patterns for the "increase" striped fills and the "decrease" outlined bars. */}
@@ -199,7 +200,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
                     : (spotPrice
                     ? `ATM ${atm}  ·  ₹${Number(spotPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
                     : `ATM ${atm}`),
-                  position: "top",
+                  position: "insideTop",
                   fill: "#0F172A",
                   fontSize: compact ? 10 : 11,
                   fontWeight: 600,
@@ -212,20 +213,20 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
                 {/* Show OI ON → Sensibull-style stacked bars: solid CURRENT (or PREVIOUS-if-smaller)
                     base + a small "Increase" striped segment OR "Decrease" outlined segment on top.
                     Total height = max(now, prev). Legend has 6 items (Put OI · Increase · Decrease · Call OI · Increase · Decrease). */}
-                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive={false} />
-                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive={false} />
-                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive={false} />
-                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive={false} />
-                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive={false} />
-                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive={false} />
+                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" />
               </>
             ) : (
               <>
                 {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars. Positive = up = increase,
                     Negative = down = decrease. y=0 baseline for clarity. */}
                 <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1} />
-                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive={false} />
-                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive={false} />
+                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" />
               </>
             )}
           </BarChart>

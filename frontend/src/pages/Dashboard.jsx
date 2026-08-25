@@ -78,7 +78,7 @@ import { applyUploadedHolidays } from "@/lib/holidays";
 import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
-import { pickIndexLtp } from "@/lib/indexQuotes";
+import { pickIndexLtp, indexDayMove } from "@/lib/indexQuotes";
 import { annotateExpiries } from "@/lib/expiryKind";
 
 const INDICES = DESK_IDS;
@@ -140,19 +140,14 @@ function loadChangeAlertPct() {
   } catch { return CHANGE_ALERT_PCT_DEFAULT; }
 }
 
-const STRIKES_AROUND_KEY = "oiStrikesAround.v2";
+const STRIKES_AROUND_KEY = "oiStrikesAround.v3";
 const STRIKES_AROUND_ALLOWED = [2, 5, 10, 15, 20, 25];
 function loadStrikesAround() {
   try {
-    const v2 = localStorage.getItem(STRIKES_AROUND_KEY);
-    if (v2 === "all") return "all";
-    const n2 = Number(v2);
-    if (v2 != null && STRIKES_AROUND_ALLOWED.includes(n2)) return n2;
-    const v1 = localStorage.getItem("oiStrikesAround");
-    if (v1 === "all") return "all";
-    const n1 = Number(v1);
-    // Old default was 10 — move everyone to ±5 once; keep 2/15/20/25 picks.
-    if (STRIKES_AROUND_ALLOWED.includes(n1) && n1 !== 10) return n1;
+    const v3 = localStorage.getItem(STRIKES_AROUND_KEY);
+    if (v3 === "all") return "all";
+    const n3 = Number(v3);
+    if (v3 != null && STRIKES_AROUND_ALLOWED.includes(n3)) return n3;
   } catch { /* noop */ }
   return 5;
 }
@@ -316,6 +311,9 @@ export default function Dashboard() {
   const [chromeSlim, setChromeSlim] = useState(false);
   const [replayJumpTs, setReplayJumpTs] = useState(null);
   const clearReplayJump = useCallback(() => setReplayJumpTs(null), []);
+  useEffect(() => {
+    if (!replayOpen) setReplayFrame(null);
+  }, [replayOpen]);
   const [vixSessionOpen, setVixSessionOpen] = useState(() => {
     try {
       const raw = localStorage.getItem("vixSessionOpen");
@@ -545,10 +543,29 @@ export default function Dashboard() {
       (message) => {
       if (message?.type !== "spot" || !Array.isArray(message.tickers)) return;
       const nextPrices = {};
+      const quotePatch = {};
       message.tickers.forEach((ticker) => {
-        if (ticker?.index) nextPrices[ticker.index] = ticker.price;
+        if (!ticker?.index) return;
+        if (ticker.price != null) nextPrices[ticker.index] = ticker.price;
+        quotePatch[ticker.index] = ticker;
       });
       setLiveSpotPrices((prev) => ({ ...prev, ...nextPrices }));
+      setTickerQuotes((prev) => {
+        let changed = false;
+        const out = { ...prev };
+        for (const [idx, ticker] of Object.entries(quotePatch)) {
+          const cur = out[idx] || { index: idx };
+          const next = { ...cur, index: idx };
+          if (ticker.price != null) next.ltp = ticker.price;
+          if (ticker.prev_close) next.prev_close = ticker.prev_close;
+          if (ticker.day_open) next.day_open = ticker.day_open;
+          if (ticker.change != null) next.change = ticker.change;
+          if (ticker.change_pct != null) next.change_pct = ticker.change_pct;
+          out[idx] = next;
+          changed = true;
+        }
+        return changed ? out : prev;
+      });
       const match = message.tickers.find((ticker) => ticker.index === activeIndexRef.current);
       if (!match) return;
       setCurrent((prevCurrent) => {
@@ -2033,15 +2050,8 @@ export default function Dashboard() {
         tickerLtp: t?.ltp,
         current,
       });
-      const prev = Number(t?.prev_close || t?.day_open)
-        || (current?.index === idx ? Number(current?.prev_close || current?.day_open || 0) : 0);
-      const changePts = price != null && prev
-        ? price - prev
-        : (t?.change != null ? Number(t.change) : null);
-      const changePct = price != null && prev
-        ? ((price - prev) / prev) * 100
-        : (t?.change_pct != null ? Number(t.change_pct) : null);
-      out[idx] = { price, changePts, changePct, ltp: t?.ltp };
+      const move = indexDayMove({ price, ticker: t });
+      out[idx] = { price, changePts: move.pts, changePct: move.pct, ltp: t?.ltp };
     }
     return out;
   }, [enabledIndices, tickerQuotes, liveSpotPrices, activeIndex, current]);
@@ -2414,6 +2424,15 @@ export default function Dashboard() {
                             </p>
                           </PopoverContent>
                         </Popover>
+                        <label className="inline-flex items-center gap-1.5 text-xs text-slate-700">
+                          <Switch
+                            data-testid="switch-show-oi"
+                            checked={showOI}
+                            onCheckedChange={setShowOI}
+                            className="data-[state=checked]:bg-sky-500"
+                          />
+                          <span>Show OI</span>
+                        </label>
                         <button
                           data-testid="btn-replay-change"
                           onClick={() => setReplayOpen((v) => !v)}
@@ -2434,16 +2453,19 @@ export default function Dashboard() {
                             Pulled {formatClock(lastPulledAt, true)}
                           </span>
                         )}
-                        <Switch
-                          data-testid="switch-show-oi"
-                          checked={showOI}
-                          onCheckedChange={setShowOI}
-                          className="data-[state=checked]:bg-sky-500"
-                        />
-                        <span className="text-sm text-slate-700">Show OI</span>
-                        <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 text-[10px] px-1.5 py-0 rounded-sm">New</Badge>
                       </div>
                     </div>
+                    {replayOpen && (
+                      <div className="mb-2">
+                        <ReplayScrubber
+                          index={activeIndex}
+                          minutes={180}
+                          jumpToTs={replayJumpTs}
+                          onJumpConsumed={clearReplayJump}
+                          onReplayFrame={setReplayFrame}
+                        />
+                      </div>
+                    )}
                     {isMobile && (
                       <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
                         <StrikeAroundChips
@@ -2500,7 +2522,7 @@ export default function Dashboard() {
                       className={`transition-opacity duration-300 ${oiLoading && current?.index && current.index !== activeIndex ? "opacity-40" : "opacity-100"}`}
                     >
                     <OIChart
-                      key={activeIndex}
+                      key={`${activeIndex}-${timeframe}-${showOI ? "oi" : "chg"}`}
                       compact={isMobile}
                       current={current?.index && current.index !== activeIndex ? null : filteredCurrent}
                       previous={current?.index && current.index !== activeIndex ? null : (replayFrame || previous)}
@@ -2570,15 +2592,6 @@ export default function Dashboard() {
                         <span data-testid="window-end-label">{formatClock(current?.timestamp, true) || formatClock(lastPulledAt, true) || "—"}</span>
                       </div>
                       <TimeframePills value={timeframe} onChange={setTimeframe} />
-                      {replayOpen && (
-                        <ReplayScrubber
-                          index={activeIndex}
-                          minutes={180}
-                          jumpToTs={replayJumpTs}
-                          onJumpConsumed={clearReplayJump}
-                          onReplayFrame={setReplayFrame}
-                        />
-                      )}
                     </div>
                     {(
                       <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-[auto_1fr_1fr] gap-6 items-start text-base" data-testid="change-summary">
@@ -2690,6 +2703,7 @@ export default function Dashboard() {
                       previous={null}
                       atm={current?.atm}
                       mode={status?.mode}
+                      chartKey={`${activeIndex}-abs`}
                     />
                   </TabsContent>
                   )}

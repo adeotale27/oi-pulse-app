@@ -80,7 +80,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
       : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300";
 
   const tileBase =
-    "w-full min-h-[58px] h-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 flex flex-col justify-between";
+    "w-full rounded-sm border px-2 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5";
 
   const toggle = () => {
     setOpen((v) => {

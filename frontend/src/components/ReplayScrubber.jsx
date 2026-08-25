@@ -22,8 +22,8 @@ export default function ReplayScrubber({
 }) {
   const [history, setHistory] = useState([]);
   const [pos, setPos] = useState(0);
-  const [active, setActive] = useState(false);
-  const [playing, setPlaying] = useState(false);
+  const [active, setActive] = useState(true);
+  const [playing, setPlaying] = useState(true);
   const [bookmarkLabel, setBookmarkLabel] = useState(null);
   const pendingJumpRef = useRef(null);
   // Keep parent callbacks in refs so history fetch does not re-fire on every
@@ -32,6 +32,7 @@ export default function ReplayScrubber({
   const onJumpConsumedRef = useRef(onJumpConsumed);
   useEffect(() => { onReplayFrameRef.current = onReplayFrame; }, [onReplayFrame]);
   useEffect(() => { onJumpConsumedRef.current = onJumpConsumed; }, [onJumpConsumed]);
+  useEffect(() => () => { onReplayFrameRef.current?.(null); }, []);
 
   // External jump request — auto-arm replay and remember the target.
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function ReplayScrubber({
           pendingJumpRef.current = null;
           onJumpConsumedRef.current?.();
         } else {
-          setPos(Math.max(0, hist.length - 1));
+          setPos(0);
         }
       })
       .catch((e) => {

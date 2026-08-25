@@ -14,3 +14,20 @@ export function pickIndexLtp({ idx, live, tickerLtp, current, cachedPrice } = {}
   }
   return null;
 }
+
+/** Day move vs prev close for inactive index chips (do not wait for that tab). */
+export function indexDayMove({ price, ticker } = {}) {
+  const prev = Number(ticker?.prev_close || ticker?.day_open) || 0;
+  const px = price == null ? null : Number(price);
+  if (px != null && Number.isFinite(px) && prev) {
+    const pts = px - prev;
+    return { pts, pct: (pts / prev) * 100 };
+  }
+  const pts = ticker?.change == null ? null : Number(ticker.change);
+  const pct = ticker?.change_pct == null ? null : Number(ticker.change_pct);
+  return {
+    pts: Number.isFinite(pts) ? pts : null,
+    pct: Number.isFinite(pct) ? pct : null,
+  };
+}
+

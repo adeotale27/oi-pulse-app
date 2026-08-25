@@ -2711,7 +2711,16 @@ async def ws_spot(websocket: WebSocket):
                     "atm": int(snap.get("atm") or 0),
                     "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
                     "mode": snap.get("mode") or "snapshot",
+                    "prev_close": (round(float(snap.get("prev_close") or 0), 2) or None),
+                    "day_open": (round(float(snap.get("day_open") or 0), 2) or None),
+                    "change": None,
+                    "change_pct": None,
                 })
+                row = payload["tickers"][-1]
+                prev = float(row["prev_close"] or row["day_open"] or 0)
+                if prev and row["price"]:
+                    row["change"] = round(row["price"] - prev, 2)
+                    row["change_pct"] = round((row["price"] - prev) / prev * 100, 3)
             if payload["tickers"]:
                 await websocket.send_json(payload)
             elif not live_any:

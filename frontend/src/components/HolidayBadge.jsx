@@ -29,7 +29,7 @@ export default function HolidayBadge({ onOpenCalendar }) {
 
   const extras = upcoming.filter((h) => !info || h.date !== info.date).slice(0, 8);
   const tileBase =
-    "w-full min-h-[58px] h-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 flex flex-col justify-between cursor-pointer";
+    "w-full rounded-sm border px-2 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 cursor-pointer";
 
   const toggle = (e) => {
     e?.stopPropagation?.();

@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.12 — 2026-08-25
+
+ATM label no longer clips on the OI bars. Inactive indexes (SENSEX) show day move without clicking them. Show OI sits under How to read this. Replay Change auto-plays from the open of the window. Switching timeframes animates the bars. Around ATM defaults to ±5. Admin tools dim the desk behind an emerald-tinted panel. Mobile event tiles stay compact.
+
 ## V8.11 — 2026-08-25
 
 App-wide error log: uncaught API exceptions, `logger.exception`, and desk UI crashes go to Mongo `error_logs` (tokens stripped). Admin menu **Error log**. Websocket cancel still closes quietly and does not swallow KeyboardInterrupt.

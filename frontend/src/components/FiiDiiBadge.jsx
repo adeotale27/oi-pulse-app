@@ -109,7 +109,7 @@ export default function FiiDiiBadge({ isAdmin = false }) {
   const hasData = !!(fii || dii || segments.nse?.rows?.length || segments.combined?.rows?.length);
 
   const tileBase =
-    "w-full min-h-[58px] h-full rounded-sm border-2 px-2.5 py-1.5 text-left transition-colors hover:brightness-95 flex flex-col justify-between cursor-pointer";
+    "w-full rounded-sm border px-2 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 cursor-pointer";
 
   const fiiNet = fii?.net;
   const diiNet = dii?.net;

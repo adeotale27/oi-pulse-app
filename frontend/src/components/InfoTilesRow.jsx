@@ -153,7 +153,7 @@ export default function InfoTilesRow({
     <div
       className={
         compact
-          ? "grid grid-cols-2 gap-1.5 relative z-30 overflow-visible"
+          ? "grid grid-cols-2 gap-1.5 items-start relative z-30 overflow-visible"
           : "flex items-stretch gap-2 relative z-30 overflow-visible"
       }
       data-testid={testId}
