@@ -1,18 +1,23 @@
-"""Total trading book vs leftover margin.
+"""Wallet capital vs leftover margin vs SPAN.
 
-Kite ``equity.net`` is *available for new trades*. A 30L account with 20L in
-positions and 10L free reports ~10L net. Percent-of-account stats always use
-**available + utilised** (leftover + locked) so the base stays 30L.
+Kite ``equity.net`` is leftover for *new* trades. ``utilised.debits`` is SPAN /
+exposure on the leveraged book (hedges included). Neither is “money in the
+account”.
 
-Kite Connect has no deposit / withdrawal / ledger endpoint (Console only).
-Day-over-day gaps vs the prior close are stored as *inferred* cashflow and
-include overnight MTM — they are not a bank statement.
+Percent-of-account uses **wallet capital**: opening cash + collateral +
+intraday pay-in (equity + commodity). Example: ₹15L in the wallet, ₹25L
+notional via leverage, ₹1,500 booked after ₹200 charges → 0.10% of 15L.
+
+Kite Connect has no deposit / withdrawal ledger. Day-over-day wallet gaps are
+*inferred* cashflow and can include overnight MTM.
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-CASHFLOW_SHOW_MIN = 1000.0  # hide tiny overnight noise in the UI
+CASHFLOW_SHOW_MIN = 1000.0
+# Old V8.13 freeze was leftover + SPAN (~2× wallet). Replace that, not a real pay-in.
+INFLATED_BASE_RATIO = 1.25
 
 
 def _num(v: Any) -> float:
@@ -36,15 +41,17 @@ def _first(*vals: Any) -> Optional[float]:
     return None
 
 
-def segment_book(seg: Optional[Dict[str, Any]]) -> Dict[str, float]:
-    """One Kite margins segment (equity or commodity), nested or flattened."""
+def segment_wallet(seg: Optional[Dict[str, Any]]) -> Dict[str, float]:
+    """Cash you actually hold in one Kite segment — never SPAN / utilised."""
     empty = {
-        "total": 0.0,
+        "wallet": 0.0,
         "available": 0.0,
         "utilised": 0.0,
         "cash": 0.0,
         "opening": 0.0,
         "collateral": 0.0,
+        "payin": 0.0,
+        "live": 0.0,
     }
     if not isinstance(seg, dict) or not seg:
         return dict(empty)
@@ -54,9 +61,8 @@ def segment_book(seg: Optional[Dict[str, Any]]) -> Dict[str, float]:
         seg.get("net"),
         seg.get("available_net"),
         avail.get("net") if isinstance(avail, dict) else None,
-        seg.get("live_balance"),
-        avail.get("live_balance") if isinstance(avail, dict) else None,
-    )
+        0.0,
+    ) or 0.0
     utilised = _first(
         seg.get("utilised_debits"),
         util.get("debits") if isinstance(util, dict) else None,
@@ -77,19 +83,34 @@ def segment_book(seg: Optional[Dict[str, Any]]) -> Dict[str, float]:
         avail.get("collateral") if isinstance(avail, dict) else None,
         0.0,
     ) or 0.0
-    if available is None:
-        available = cash
-    # Leftover margin + margin locked in trades = full book. Never use net alone.
-    total = float(available) + float(utilised)
-    if total <= 0 and (cash or opening):
-        total = (cash or opening) + utilised
+    payin = _first(
+        seg.get("intraday_payin"),
+        avail.get("intraday_payin") if isinstance(avail, dict) else None,
+        0.0,
+    ) or 0.0
+    live = _first(
+        seg.get("live_balance"),
+        avail.get("live_balance") if isinstance(avail, dict) else None,
+        0.0,
+    ) or 0.0
+    # Opening is start-of-day cash (does not include today's P&L or SPAN).
+    if opening > 0:
+        wallet = opening + collateral + max(payin, 0.0)
+    elif live > 0:
+        wallet = live + collateral
+    elif cash > 0:
+        wallet = cash + collateral
+    else:
+        wallet = 0.0
     return {
-        "total": round(total, 2),
-        "available": round(float(available or 0.0), 2),
+        "wallet": round(wallet, 2),
+        "available": round(float(available), 2),
         "utilised": round(float(utilised), 2),
         "cash": round(float(cash), 2),
         "opening": round(float(opening), 2),
         "collateral": round(float(collateral), 2),
+        "payin": round(float(payin), 2),
+        "live": round(float(live), 2),
     }
 
 
@@ -106,6 +127,7 @@ def _commodity_slice(funds: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "commodity_opening_balance",
         "commodity_collateral",
         "commodity_live_balance",
+        "commodity_intraday_payin",
     )
     if not any(funds.get(k) is not None for k in keys):
         return None
@@ -115,40 +137,72 @@ def _commodity_slice(funds: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "live_balance": funds.get("commodity_live_balance"),
         "opening_balance": funds.get("commodity_opening_balance"),
         "collateral": funds.get("commodity_collateral"),
+        "intraday_payin": funds.get("commodity_intraday_payin"),
         "utilised_debits": funds.get("commodity_utilised_debits"),
     }
 
 
 def total_trading_equity(funds: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Full trading book: equity + commodity. ``total`` is the % denominator."""
+    """Wallet capital: equity + commodity cash. ``total`` is the % denominator."""
     funds = funds if isinstance(funds, dict) else {}
     nested_eq = funds.get("equity") if isinstance(funds.get("equity"), dict) else None
-    eq = segment_book(nested_eq or funds)
-    cm = segment_book(_commodity_slice(funds))
-    total = round(eq["total"] + cm["total"], 2)
+    eq = segment_wallet(nested_eq or funds)
+    cm = segment_wallet(_commodity_slice(funds))
+    total = round(eq["wallet"] + cm["wallet"], 2)
     available = round(eq["available"] + cm["available"], 2)
     utilised = round(eq["utilised"] + cm["utilised"], 2)
     return {
         "total": total,
+        "wallet": total,
         "available": available,
         "utilised": utilised,
-        "equity_total": eq["total"],
-        "commodity_total": cm["total"],
+        "equity_total": eq["wallet"],
+        "commodity_total": cm["wallet"],
         "cash": eq["cash"],
         "opening": eq["opening"],
-        "collateral": eq["collateral"],
+        "collateral": round(eq["collateral"] + cm["collateral"], 2),
+        "payin": round(eq["payin"] + cm["payin"], 2),
     }
 
 
-def booked_pct(booked: Any, base: Any) -> Optional[float]:
+def booked_pct(made: Any, base: Any) -> Optional[float]:
     b = _num(base)
     if b < 1:
         return None
-    return round(100.0 * _num(booked) / b, 4)
+    return round(100.0 * _num(made) / b, 4)
+
+
+def pnl_after_charges(doc: Optional[Dict[str, Any]], booked: Any = None) -> float:
+    """What we made: booked P&L minus brokerage/taxes. Never gross booked."""
+    d = doc if isinstance(doc, dict) else {}
+    if d.get("booked_after_charges") is not None:
+        return round(_num(d.get("booked_after_charges")), 2)
+    if booked is None:
+        if d.get("booked_pnl") is not None:
+            booked = d.get("booked_pnl")
+        else:
+            booked = d.get("pnl_exited")
+    made = _num(booked)
+    if d.get("charges_total") is not None:
+        return round(made - _num(d.get("charges_total")), 2)
+    return round(made, 2)
+
+
+def choose_funds_base(existing_base: Any, wallet: Any) -> Optional[float]:
+    """Keep a sane freeze; replace leftover+SPAN (e.g. 72L vs 36L wallet)."""
+    wallet_n = _num(wallet)
+    old = _num(existing_base) if existing_base is not None else 0.0
+    if wallet_n >= 1 and old >= 1 and old > wallet_n * INFLATED_BASE_RATIO:
+        return round(wallet_n, 2)
+    if old >= 1:
+        return round(old, 2)
+    if wallet_n >= 1:
+        return round(wallet_n, 2)
+    return None
 
 
 def infer_cashflow(prev: Optional[Dict[str, Any]], today_base: Any) -> Optional[float]:
-    """today open book minus previous close (or previous live total)."""
+    """today wallet minus previous close (or previous wallet)."""
     if not prev:
         return None
     prior = _first(prev.get("funds_close"), prev.get("funds_total"), prev.get("funds_base"))
@@ -162,17 +216,15 @@ def infer_cashflow(prev: Optional[Dict[str, Any]], today_base: Any) -> Optional[
 
 
 def attach_live_funds(doc: Dict[str, Any], funds: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Stamp live totals onto a journal snapshot (base freeze happens in apply_snapshot)."""
+    """Stamp wallet capital onto a journal snapshot."""
     book = total_trading_equity(funds)
     if book["total"] > 0:
         doc["funds_total"] = book["total"]
         doc["funds_available_net"] = book["available"]
+        doc["funds_utilised"] = book["utilised"]
         if doc.get("funds_base") is None:
             doc["funds_base"] = book["total"]
-        pct = booked_pct(
-            doc.get("booked_pnl") if doc.get("booked_pnl") is not None else doc.get("pnl_exited"),
-            doc.get("funds_base"),
-        )
+        pct = booked_pct(pnl_after_charges(doc), doc.get("funds_base"))
         if pct is not None:
             doc["booked_pct"] = pct
     return doc
@@ -207,10 +259,10 @@ def cashflow_totals(days: List[Dict[str, Any]]) -> Tuple[float, float, float]:
     return round(net, 2), round(deposited, 2), round(withdrawn, 2)
 
 
-def apply_period_equity(stats: Dict[str, Any], days: List[Dict[str, Any]], booked: Any) -> Dict[str, Any]:
+def apply_period_equity(stats: Dict[str, Any], days: List[Dict[str, Any]], made: Any) -> Dict[str, Any]:
     base = first_funds_base(days)
     stats["funds_base"] = base
-    stats["booked_pct"] = booked_pct(booked, base)
+    stats["booked_pct"] = booked_pct(made, base)
     net, dep, wd = cashflow_totals(days)
     stats["inferred_cashflow"] = net
     stats["inferred_deposited"] = dep

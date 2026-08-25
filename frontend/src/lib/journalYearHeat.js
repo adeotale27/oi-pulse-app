@@ -1,5 +1,5 @@
 import { HEATMAP_IDS, emptyDeskPnl, matchSymbolPrefix } from "./universe.js";
-import { bookedPct } from "./journalPct.js";
+import { bookedPct, madeAfterCharges } from "./journalPct.js";
 
 function isTraded(doc) {
   if (!doc) return false;
@@ -118,12 +118,14 @@ export function overlayMonthOnYearHeat(yearHeat, monthPayload, year, month) {
   const mi = month - 1;
   if (mi < 0 || mi > 11) return heat;
   let net = 0;
+  let made = 0;
   let tradedDays = 0;
   const idxAcc = emptyDeskPnl();
   let other = 0;
   days.forEach((d) => {
     if (!isTraded(d)) return;
     net += cellPnl(d);
+    made += madeAfterCharges(d);
     tradedDays += 1;
     const ip = bookedIndexPnl(d);
     for (const k of HEATMAP_IDS) idxAcc[k] += Number(ip[k]) || 0;
@@ -148,7 +150,7 @@ export function overlayMonthOnYearHeat(yearHeat, monthPayload, year, month) {
     by_index: { ...idxAcc },
     other,
     funds_base: fundsBase,
-    booked_pct: bookedPct(net, fundsBase),
+    booked_pct: bookedPct(made, fundsBase),
   };
   for (const k of HEATMAP_IDS) heat.by_index[k][mi] = idxAcc[k];
   return heat;

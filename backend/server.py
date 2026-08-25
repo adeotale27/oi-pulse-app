@@ -4477,6 +4477,7 @@ async def get_positions(
             "cash": avail.get("cash"),
             "live_balance": avail.get("live_balance"),
             "opening_balance": avail.get("opening_balance"),
+            "intraday_payin": avail.get("intraday_payin"),
             "collateral": avail.get("collateral"),
             "utilised_debits": util.get("debits"),
             "span": util.get("span"),
@@ -4498,6 +4499,7 @@ async def get_positions(
             funds["commodity_cash"] = cm_avail.get("cash")
             funds["commodity_live_balance"] = cm_avail.get("live_balance")
             funds["commodity_opening_balance"] = cm_avail.get("opening_balance")
+            funds["commodity_intraday_payin"] = cm_avail.get("intraday_payin")
             funds["commodity_collateral"] = cm_avail.get("collateral")
             funds["commodity_utilised_debits"] = cm_util.get("debits")
         from account_equity import total_trading_equity
@@ -4767,15 +4769,23 @@ async def get_positions(
     if isinstance(funds, dict):
         try:
             from account_equity import booked_pct as equity_booked_pct
+            from account_equity import choose_funds_base, pnl_after_charges
             day_iso = journal.ist_ymd()
-            base = funds.get("base") if funds.get("base") else funds.get("total")
+            wallet = funds.get("total")
+            jdoc = None
             if db is not None:
-                jdoc = await db.trade_journal.find_one({"date": day_iso}, {"funds_base": 1})
-                if jdoc and jdoc.get("funds_base"):
-                    base = jdoc["funds_base"]
-                    funds["base"] = base
-            pct = equity_booked_pct(booked_today, base)
+                jdoc = await db.trade_journal.find_one(
+                    {"date": day_iso},
+                    {"funds_base": 1, "charges_total": 1, "booked_after_charges": 1},
+                )
+            jbase = (jdoc or {}).get("funds_base")
+            base = choose_funds_base(jbase, wallet)
+            if base is not None:
+                funds["base"] = base
+            made = pnl_after_charges(jdoc or {}, booked_today)
+            pct = equity_booked_pct(made, funds.get("base") or wallet)
             pnl_today["booked_pct"] = pct
+            pnl_today["booked_after_charges"] = made
             funds["booked_pct"] = pct
         except Exception:
             pass

@@ -27,7 +27,7 @@ import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
 import { HEATMAP_IDS, INDEX_SHORT, DESK_IDS } from "@/lib/universe";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
 import { compactPnl, exactPnl, fmtInr } from "@/lib/journalMoney";
-import { bookedPct, fmtBookedPct, weekEquity } from "@/lib/journalPct";
+import { bookedPct, fmtBookedPct, madeAfterCharges, weekEquity } from "@/lib/journalPct";
 import InfoTip from "@/components/InfoTip";
 import DownloadTradesButton from "@/components/DownloadTradesButton";
 
@@ -82,7 +82,7 @@ function monthMatrix(year, month) {
 function cellPct(doc) {
   if (!doc) return null;
   if (doc.booked_pct != null && Number.isFinite(Number(doc.booked_pct))) return Number(doc.booked_pct);
-  return bookedPct(cellPnl(doc), doc.funds_base);
+  return bookedPct(madeAfterCharges(doc), doc.funds_base);
 }
 
 function weekBuckets(cells, byDate) {
@@ -513,10 +513,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   </div>
                   {periodStats.booked_pct != null ? (
                     <div className={`text-[11px] font-semibold font-mono-data mt-0.5 ${Number(periodStats.booked_pct) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                      {privacy ? "··" : fmtBookedPct(periodStats.booked_pct, { signed: true })} of period-start book
+                      {privacy ? "··" : fmtBookedPct(periodStats.booked_pct, { signed: true })} of wallet after charges
                     </div>
                   ) : (
-                    <div className="text-[10px] text-slate-400 mt-0.5">% after we store a total-book snapshot</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">% after we store a wallet snapshot</div>
                   )}
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
@@ -562,7 +562,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   Kite has no withdrawal feed.
                   {Number(periodStats.inferred_withdrawn) >= 1000 ? ` Est. out ${privacy ? "••••" : fmtInr(periodStats.inferred_withdrawn, 0)}.` : ""}
                   {Number(periodStats.inferred_deposited) >= 1000 ? ` Est. in ${privacy ? "••••" : fmtInr(periodStats.inferred_deposited, 0)}.` : ""}
-                  {" "}This is total-book vs the prior close (overnight MTM included).
+                  {" "}This is wallet vs the prior close (overnight MTM included).
                 </p>
               )}
             </div>
@@ -649,8 +649,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   ) : null}
                   <span className="text-[12px] text-slate-500">{stats.trading_days || 0} days</span>
                   {stats.funds_base ? (
-                    <span className="text-[11px] text-slate-400 font-mono-data" title="Month % uses the first stored total book this month, not leftover margin">
-                      base {privacy ? "••••" : fmtInr(stats.funds_base, 0)}
+                    <span className="text-[11px] text-slate-400 font-mono-data" title="Month % is booked after charges ÷ this month’s wallet (opening cash + collateral), not SPAN">
+                      wallet {privacy ? "••••" : fmtInr(stats.funds_base, 0)}
                     </span>
                   ) : null}
                 </div>
@@ -757,7 +757,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                                 Booked
                               </div>
                               {pct != null ? (
-                                <div className={`text-[13px] font-bold font-mono-data leading-tight ${tone.amt}`} title={doc.funds_base ? `of total book ${fmtInr(doc.funds_base, 0)}` : "of total funds (not leftover margin)"}>
+                                <div className={`text-[13px] font-bold font-mono-data leading-tight ${tone.amt}`} title={doc.funds_base ? `after charges, of wallet ${fmtInr(doc.funds_base, 0)}` : "after charges ÷ wallet (not SPAN)"}>
                                   {privacy ? "····" : fmtBookedPct(pct, { signed: true })}
                                 </div>
                               ) : null}
@@ -829,17 +829,17 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         </div>
                       ) : null}
                       {w.funds_base ? (
-                        <div className="text-[9px] text-slate-500 font-mono-data leading-tight" title="First session total book this week">
-                          base {privacy ? "••••" : fmtInr(w.funds_base, 0)}
+                        <div className="text-[9px] text-slate-500 font-mono-data leading-tight" title="First session wallet this week (opening cash + collateral)">
+                          wallet {privacy ? "••••" : fmtInr(w.funds_base, 0)}
                         </div>
                       ) : null}
                       {w.inferred_withdrawn >= 1000 ? (
-                        <div className="text-[9px] text-amber-800 leading-tight" title="Kite has no withdrawal API. Estimated from total-book change vs prior close (includes overnight MTM).">
+                        <div className="text-[9px] text-amber-800 leading-tight" title="Kite has no withdrawal API. Estimated from wallet change vs prior close (includes overnight MTM).">
                           est. out {privacy ? "••••" : fmtInr(w.inferred_withdrawn, 0)}
                         </div>
                       ) : null}
                       {w.inferred_deposited >= 1000 ? (
-                        <div className="text-[9px] text-sky-800 leading-tight" title="Kite has no deposit API. Estimated from total-book change vs prior close.">
+                        <div className="text-[9px] text-sky-800 leading-tight" title="Kite has no deposit API. Estimated from wallet change vs prior close.">
                           est. in {privacy ? "••••" : fmtInr(w.inferred_deposited, 0)}
                         </div>
                       ) : null}
@@ -862,7 +862,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               {loading && !focused && <div className="text-xs text-slate-600">Loading calendar…</div>}
               {!focused && (
                 <p className="text-[10px] text-slate-500 leading-snug">
-                  Day % = booked P&amp;L ÷ that morning’s <b>total book</b> (leftover margin + money in trades). Weekly/monthly % use the first stored total book of that week/month. Kite Connect does not publish withdrawals — estimated in/out is the gap vs the prior close.
+                  Day % = booked P&amp;L <b>after charges</b> ÷ that morning’s <b>wallet</b> (Kite opening cash + collateral). Not leftover margin, not SPAN on hedges, not leveraged notional. Weekly/monthly % use the first stored wallet of that week/month. Kite Connect does not publish withdrawals — estimated in/out is the gap vs the prior close.
                 </p>
               )}
             </>
@@ -1027,7 +1027,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   <div className={`text-[18px] md:text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                     Booked {privacy ? "••••" : <Money v={dayDoc.booked_pnl ?? dayDoc.pnl_exited} signed={false} />}
                     {(() => {
-                      const p = dayDoc.booked_pct != null ? Number(dayDoc.booked_pct) : bookedPct(dayDoc.booked_pnl ?? dayDoc.pnl_exited, dayDoc.funds_base);
+                      const p = dayDoc.booked_pct != null ? Number(dayDoc.booked_pct) : bookedPct(madeAfterCharges(dayDoc), dayDoc.funds_base);
                       if (p == null) return null;
                       return (
                         <span className="ml-2" data-testid="journal-day-booked-pct">
@@ -1039,13 +1039,13 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   </div>
                   {dayDoc.funds_base ? (
                     <div className="text-[11px] text-slate-500 mt-0.5 font-mono-data">
-                      of total book {privacy ? "••••" : fmtInr(dayDoc.funds_base, 0)} (cash + margin in use — not leftover funds)
+                      of wallet {privacy ? "••••" : fmtInr(dayDoc.funds_base, 0)} (opening cash + collateral — not SPAN / hedges)
                     </div>
                   ) : (
-                    <div className="text-[11px] text-slate-400 mt-0.5">Total-book % appears after the next Positions snapshot today.</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Wallet % appears after the next Positions snapshot today.</div>
                   )}
                   {Math.abs(Number(dayDoc.inferred_cashflow) || 0) >= 1000 ? (
-                    <div className="text-[11px] text-amber-800 mt-0.5" title="Zerodha Kite Connect has no withdrawal/deposit ledger. This is total-book vs prior close (overnight MTM included).">
+                    <div className="text-[11px] text-amber-800 mt-0.5" title="Zerodha Kite Connect has no withdrawal/deposit ledger. This is wallet vs prior close (overnight MTM included).">
                       Est. {Number(dayDoc.inferred_cashflow) < 0 ? "withdrawn" : "deposited"}{" "}
                       {privacy ? "••••" : fmtInr(Math.abs(Number(dayDoc.inferred_cashflow)), 0)} vs prior close
                     </div>

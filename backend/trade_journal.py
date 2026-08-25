@@ -18,7 +18,9 @@ from account_equity import (
     apply_period_equity,
     attach_live_funds,
     booked_pct as equity_booked_pct,
+    choose_funds_base,
     first_funds_base,
+    pnl_after_charges,
 )
 
 # Freeze after the last Positions auto-refresh (Index F&O close + 5 min catch-up).
@@ -347,6 +349,7 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
     by_index = {idx: [0.0] * 12 for idx in HEATMAP_INDICES}
     other = [0.0] * 12
     month_nets = [0.0] * 12
+    month_made = [0.0] * 12
     month_days = [0] * 12
     for d in days:
         date_s = str(d.get("date") or "")
@@ -364,6 +367,7 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
         if _is_traded(d):
             month_nets[i] += pnl
             month_days[i] += 1
+            month_made[i] += pnl_after_charges(d)
         ip = _booked_index_pnl(d)
         attributed = 0.0
         for idx, v in ip.items():
@@ -392,7 +396,8 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
             "by_index": {idx: round(by_index[idx][i], 2) for idx in HEATMAP_INDICES},
             "other": round(other[i], 2),
             "funds_base": m_base,
-            "booked_pct": equity_booked_pct(month_nets[i], m_base),
+            "booked_pct": equity_booked_pct(month_made[i], m_base),
+            "made_pnl": round(month_made[i], 2),
         })
     return {
         "year": year,
@@ -455,7 +460,7 @@ def month_stats(days: List[Dict[str, Any]]) -> Dict[str, Any]:
         "trade_win_rate": trade_win_rate,
         "avg_win_loss_ratio": avg_wl,
     }
-    apply_period_equity(out, days, net)
+    apply_period_equity(out, days, round(sum(pnl_after_charges(d) for d in traded), 2))
     return out
 
 
@@ -567,7 +572,11 @@ def period_stats(
         "trading_days": traded_days,
         "by_index": by_index,
     }
-    apply_period_equity(out, rows, booked)
+    apply_period_equity(
+        out,
+        rows,
+        out["booked_after_charges"] if out["booked_after_charges"] is not None else booked,
+    )
     return out
 
 
@@ -582,7 +591,7 @@ def public_day(doc: Optional[Dict[str, Any]], *, include_images: bool = False) -
     charges = _num(out.get("charges_total"))
     if out.get("booked_after_charges") is None and (out.get("charges_total") is not None or out.get("brokerage") is not None):
         out["booked_after_charges"] = round(booked - charges, 2)
-    pct = equity_booked_pct(booked, out.get("funds_base"))
+    pct = equity_booked_pct(pnl_after_charges(out), out.get("funds_base"))
     if pct is not None:
         out["booked_pct"] = pct
     shots = out.get("screenshots") or []
@@ -714,18 +723,24 @@ def _num(v) -> float:
 
 
 def _carry_funds(out: Dict[str, Any], existing: Dict[str, Any], *, lock: bool = False) -> None:
-    """Keep the IST-day open book frozen; refresh live total; close at EOD lock."""
+    """Keep a sane wallet freeze; never keep leftover+SPAN as the base."""
     existing = existing or {}
-    if existing.get("funds_base"):
-        out["funds_base"] = existing["funds_base"]
-    elif out.get("funds_base") is None and existing.get("funds_total"):
-        out["funds_base"] = existing["funds_total"]
+    wallet = out.get("funds_base")
+    if wallet is None:
+        wallet = out.get("funds_total")
+    if wallet is None:
+        wallet = existing.get("funds_total")
+    chosen = choose_funds_base(existing.get("funds_base"), wallet)
+    if chosen is not None:
+        out["funds_base"] = chosen
     if out.get("funds_total") is None and existing.get("funds_total") is not None:
         out["funds_total"] = existing["funds_total"]
     if out.get("funds_available_net") is None and existing.get("funds_available_net") is not None:
         out["funds_available_net"] = existing["funds_available_net"]
-    if existing.get("inferred_cashflow") is not None:
-        out["inferred_cashflow"] = existing["inferred_cashflow"]
+    if existing.get("inferred_cashflow") is not None and out.get("inferred_cashflow") is None:
+        old_b = _num(existing.get("funds_base"))
+        if chosen is None or old_b < 1 or abs(old_b - chosen) <= 1:
+            out["inferred_cashflow"] = existing["inferred_cashflow"]
     if lock:
         close = out.get("funds_total")
         if close is None:
@@ -736,13 +751,7 @@ def _carry_funds(out: Dict[str, Any], existing: Dict[str, Any], *, lock: bool = 
             out["funds_close"] = close
     elif existing.get("funds_close") is not None:
         out["funds_close"] = existing["funds_close"]
-    base = out.get("funds_base")
-    booked = out.get("booked_pnl")
-    if booked is None:
-        booked = out.get("pnl_exited")
-    if booked is None:
-        booked = out.get("frozen_pnl")
-    pct = equity_booked_pct(booked, base)
+    pct = equity_booked_pct(pnl_after_charges(out), out.get("funds_base"))
     if pct is not None:
         out["booked_pct"] = pct
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.14 — 2026-08-25
+
+Day % is **wallet after charges**, not SPAN on a leveraged/hedged book. Wallet is Kite opening cash + collateral (e.g. ~36.25L), never leftover margin + utilised (that was showing ~72L). Example: ₹15L in the account, ₹25L notional via leverage, ₹1,500 booked after ₹200 charges → **0.10%**. A previous leftover+SPAN freeze is replaced on the next snapshot.
+
 ## V8.13 — 2026-08-25
 
 Journal and Positions treat trading as a **% of total book**, not leftover cash. Day % is booked P&L ÷ that morning’s total funds (available margin + money already in trades). Weekly and monthly % use the first stored total book of that week/month. Kite Connect has no withdrawal API; estimated in/out is the gap vs the prior close (overnight MTM included). Positions **Profit booked today** shows the same % against total book, never Funds available.
