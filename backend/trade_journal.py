@@ -14,6 +14,12 @@ from market_hours import (
     eod_lock_time,
 )
 from universe import DESK_IDS, HEATMAP_IDS, match_symbol_prefix
+from account_equity import (
+    apply_period_equity,
+    attach_live_funds,
+    booked_pct as equity_booked_pct,
+    first_funds_base,
+)
 
 # Freeze after the last Positions auto-refresh (Index F&O close + 5 min catch-up).
 EOD_LOCK_IST = dtime(15, 45)
@@ -214,6 +220,7 @@ def snapshot_from_positions(
     }
     if charges_usable(charges):
         apply_charges(doc, charges)
+    attach_live_funds(doc, payload.get("funds"))
     return doc
 
 
@@ -292,6 +299,7 @@ def apply_snapshot(
         out["frozen_pnl"] = booked
         if out.get("charges_total") is not None:
             out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
+        _carry_funds(out, existing, lock=True)
         return out
     lock = bool(force_lock or should_lock_eod(now, live_session=live_session, enabled_indices=enabled_indices))
     if snapshot_is_empty(snap):
@@ -313,10 +321,13 @@ def apply_snapshot(
                 "booked_pnl": round(_num(booked), 2),
             }
             _carry_charges(out, existing)
+            _carry_funds(out, existing, lock=True)
             return out
         if _is_traded(existing):
             return None
-        return dict(snap)
+        empty_out = dict(snap)
+        _carry_funds(empty_out, existing, lock=False)
+        return empty_out
     out = dict(snap)
     _carry_charges(out, existing)
     booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
@@ -327,6 +338,7 @@ def apply_snapshot(
         out["frozen_pnl"] = booked
     if out.get("charges_total") is not None:
         out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
+    _carry_funds(out, existing, lock=lock)
     return out
 
 
@@ -368,12 +380,19 @@ def year_heatmap(days: List[Dict[str, Any]], year: int) -> Dict[str, Any]:
     months = []
     for m in range(1, 13):
         i = m - 1
+        month_days_docs = [
+            d for d in days
+            if str(d.get("date") or "")[5:7] == f"{m:02d}" and str(d.get("date") or "")[:4] == str(year)
+        ]
+        m_base = first_funds_base(month_days_docs)
         months.append({
             "month": m,
             "net_pnl": round(month_nets[i], 2),
             "trading_days": month_days[i],
             "by_index": {idx: round(by_index[idx][i], 2) for idx in HEATMAP_INDICES},
             "other": round(other[i], 2),
+            "funds_base": m_base,
+            "booked_pct": equity_booked_pct(month_nets[i], m_base),
         })
     return {
         "year": year,
@@ -419,7 +438,7 @@ def month_stats(days: List[Dict[str, Any]]) -> Dict[str, Any]:
     else:
         cons = 0.5 if traded else 0.0
     score = round(100 * (wr_n * 0.4 + pf_n * 0.35 + cons * 0.25), 1)
-    return {
+    out = {
         "net_pnl": net,
         "trading_days": len(traded),
         "win_days": win_days,
@@ -436,6 +455,8 @@ def month_stats(days: List[Dict[str, Any]]) -> Dict[str, Any]:
         "trade_win_rate": trade_win_rate,
         "avg_win_loss_ratio": avg_wl,
     }
+    apply_period_equity(out, days, net)
+    return out
 
 
 def _booked_legs(d: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -527,7 +548,7 @@ def period_stats(
     booked = round(booked, 2)
     charges = round(charges, 2)
     brokerage = round(brokerage, 2)
-    return {
+    out = {
         "from": start,
         "to": end,
         "index": want or "ALL",
@@ -546,6 +567,8 @@ def period_stats(
         "trading_days": traded_days,
         "by_index": by_index,
     }
+    apply_period_equity(out, rows, booked)
+    return out
 
 
 def public_day(doc: Optional[Dict[str, Any]], *, include_images: bool = False) -> Optional[Dict[str, Any]]:
@@ -559,6 +582,9 @@ def public_day(doc: Optional[Dict[str, Any]], *, include_images: bool = False) -
     charges = _num(out.get("charges_total"))
     if out.get("booked_after_charges") is None and (out.get("charges_total") is not None or out.get("brokerage") is not None):
         out["booked_after_charges"] = round(booked - charges, 2)
+    pct = equity_booked_pct(booked, out.get("funds_base"))
+    if pct is not None:
+        out["booked_pct"] = pct
     shots = out.get("screenshots") or []
     if include_images:
         out["screenshots"] = [
@@ -685,6 +711,40 @@ def _num(v) -> float:
         return n if n == n else 0.0
     except (TypeError, ValueError):
         return 0.0
+
+
+def _carry_funds(out: Dict[str, Any], existing: Dict[str, Any], *, lock: bool = False) -> None:
+    """Keep the IST-day open book frozen; refresh live total; close at EOD lock."""
+    existing = existing or {}
+    if existing.get("funds_base"):
+        out["funds_base"] = existing["funds_base"]
+    elif out.get("funds_base") is None and existing.get("funds_total"):
+        out["funds_base"] = existing["funds_total"]
+    if out.get("funds_total") is None and existing.get("funds_total") is not None:
+        out["funds_total"] = existing["funds_total"]
+    if out.get("funds_available_net") is None and existing.get("funds_available_net") is not None:
+        out["funds_available_net"] = existing["funds_available_net"]
+    if existing.get("inferred_cashflow") is not None:
+        out["inferred_cashflow"] = existing["inferred_cashflow"]
+    if lock:
+        close = out.get("funds_total")
+        if close is None:
+            close = existing.get("funds_close")
+        if close is None:
+            close = existing.get("funds_total")
+        if close is not None:
+            out["funds_close"] = close
+    elif existing.get("funds_close") is not None:
+        out["funds_close"] = existing["funds_close"]
+    base = out.get("funds_base")
+    booked = out.get("booked_pnl")
+    if booked is None:
+        booked = out.get("pnl_exited")
+    if booked is None:
+        booked = out.get("frozen_pnl")
+    pct = equity_booked_pct(booked, base)
+    if pct is not None:
+        out["booked_pct"] = pct
 
 
 def _leg_index_label(leg: Dict[str, Any]) -> str:

@@ -20,7 +20,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `guest_ip_names` | Last guest display name per IP |
 | `access_requests` | Pending/approved/rejected guest entry requests |
 | `blocked_ips` | Hard blocks |
-| `trade_journal` | Admin trade journal: one document per IST `date`. Stores booked P&L from **full exits and partial closes** (Kite `realised` on still-open legs), brokerage/`charges_total` (from Kite contract notes, copied into **our** DB only), notes, tags, rating, screenshots. Written on admin `/positions` refresh. Frozen at session close + 5 min (15:45 IST regular; Muhurat uses that day’s close). Weekends and full holidays are not booked unless Kite prints that day. Legs also pick up `entry_time` / `exit_time` from `trade_cycles` when known. |
+| `trade_journal` | Admin trade journal: one document per IST `date`. Stores booked P&L from **full exits and partial closes**, `funds_base` (opening **total book** = leftover margin + utilised, never Kite `net` alone), `funds_total` / `funds_close`, `booked_pct`, inferred `inferred_cashflow` (Kite has no withdrawal API), brokerage/`charges_total`, notes, tags, rating, screenshots. Written on admin `/positions` refresh. Frozen at session close + 5 min. |
 | `error_logs` | Uncaught API errors, `logger.exception`, and desk UI crashes (`POST /api/errors`). Admin `GET /api/errors`. Tokens redacted. Same fingerprint within 5 minutes increments `count`. |
 | Constituents / events / holidays | Uploaded calendars & index members (`index_constituents`, `nse_events`, `nse_holidays`) — see [UPLOAD.md](./UPLOAD.md) for CSV columns and replace rules |
 

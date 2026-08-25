@@ -74,6 +74,7 @@ import PositionHeatmap from "@/components/PositionHeatmap";
 import TradeJournalModal from "@/components/TradeJournalModal";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip from "@/components/InfoTip";
+import { fmtBookedPct } from "@/lib/journalPct";
 import {
   fetchPositionsBook,
   startPositionsBookPolling,
@@ -136,7 +137,9 @@ function priv(privacy, visible) {
   return privacy ? PRIVACY_MASK : visible;
 }
 
-/** Kite equity margins. Tile uses Available margin (`equity.net`), not available.cash. */
+/** Kite equity margins. Tile uses Available margin (`equity.net`), not available.cash.
+ *  Percent-of-account stats must use `funds.total` / `funds.base` (net + utilised), never net alone.
+ */
 function fundsBreakdown(funds) {
   if (!funds) return null;
   const cash =
@@ -150,10 +153,12 @@ function fundsBreakdown(funds) {
         : null;
   const net = funds.net != null ? Number(funds.net) : null;
   const live = funds.live_balance != null ? Number(funds.live_balance) : null;
-  // https://support.zerodha.com/.../kite-dashboard-and-fund-values-calculation
-  // Available margin = cash + collateral (what you can use for new trades) = Kite `net`.
   const available = net != null ? net : cash;
-  return { cash, used, net, live, available };
+  const total = funds.total != null
+    ? Number(funds.total)
+    : (available != null && used != null ? available + used : null);
+  const base = funds.base != null ? Number(funds.base) : total;
+  return { cash, used, net, live, available, total, base };
 }
 
 const POSITIONS_GUIDE = (
@@ -1622,18 +1627,21 @@ export default function PositionsPanel({
             if (privacyMode) return "Masked";
             const b = fundsBreakdown(funds);
             if (!b) return "Kite available margin";
-            if (b.used != null) return `Used margin ₹ ${fmt(b.used, 0)}`;
-            return "Cash + collateral · Kite";
+            const bits = [];
+            if (b.used != null) bits.push(`Used ₹ ${fmt(b.used, 0)}`);
+            if (b.total != null) bits.push(`Total book ₹ ${fmt(b.total, 0)}`);
+            return bits.length ? bits.join(" · ") : "Cash + collateral · Kite";
           })()}
           tip={(
             <div className="space-y-1.5">
               <p>
-                Same as Kite <b>Available margin</b> (cash + collateral) — the amount you can use
-                for new trades. Not Available cash (that can be a large debit while margin is still positive).
+                Same as Kite <b>Available margin</b> — leftover for <em>new</em> trades, not your full book.
+                Percent-of-account uses leftover + margin already in positions (Total book).
               </p>
               {!privacyMode && (
                 <p>
                   Available: {funds?.net != null ? `₹ ${fmt(funds.net, 0)}` : "—"}.
+                  Total book: {funds?.total != null ? `₹ ${fmt(funds.total, 0)}` : "—"}.
                   Cash: {funds?.cash != null ? `₹ ${fmt(funds.cash, 0)}` : "—"}.
                   Used: {funds?.utilised_debits != null ? `₹ ${fmt(funds.utilised_debits, 0)}` : "—"}.
                 </p>
@@ -1688,19 +1696,30 @@ export default function PositionsPanel({
           booked: (
         <StatBox
           label="Profit booked today"
-          value={priv(privacyMode, "₹ " + fmt(stats.bookedToday))}
+          value={(() => {
+            if (privacyMode) return PRIVACY_MASK;
+            const pct = pnlToday?.booked_pct ?? funds?.booked_pct;
+            const rupees = "₹ " + fmt(stats.bookedToday);
+            if (pct == null || !Number.isFinite(Number(pct))) return rupees;
+            return `${rupees} · ${fmtBookedPct(pct)}`;
+          })()}
           tone={privacyMode ? "slate" : stats.bookedToday >= 0 ? "emerald" : "rose"}
           hint={
             privacyMode
               ? "Masked"
-              : stats.exitedCount > 0
-                ? `Kite Booked · closed + partials`
-                : "Kite Booked (incl. partials)"
+              : (() => {
+                  const pct = pnlToday?.booked_pct ?? funds?.booked_pct;
+                  const pctBit = pct != null && Number.isFinite(Number(pct)) ? ` · ${fmtBookedPct(pct)} of book` : "";
+                  return stats.exitedCount > 0
+                    ? `Kite Booked · closed + partials${pctBit}`
+                    : `Kite Booked (incl. partials)${pctBit}`;
+                })()
           }
           tip={(
             <p>
               Same as Kite Positions <b>Booked</b>: realised on squared-off legs plus
-              partial closes that are still open. Not live LTP.
+              partial closes that are still open. The % is booked ÷ <b>total book</b> this
+              morning (money in trades + leftover), never Funds available.
             </p>
           )}
         />

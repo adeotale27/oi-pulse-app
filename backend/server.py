@@ -4485,6 +4485,27 @@ async def get_positions(
             "m2m_unrealised": util.get("m2m_unrealised"),
             "m2m_realised": util.get("m2m_realised"),
         }
+        try:
+            cm = await asyncio.to_thread(kite.margins, "commodity")
+        except TypeError:
+            cm = None
+        except Exception:
+            cm = None
+        if isinstance(cm, dict) and cm:
+            cm_avail = cm.get("available") or {}
+            cm_util = cm.get("utilised") or {}
+            funds["commodity_net"] = cm.get("net")
+            funds["commodity_cash"] = cm_avail.get("cash")
+            funds["commodity_live_balance"] = cm_avail.get("live_balance")
+            funds["commodity_opening_balance"] = cm_avail.get("opening_balance")
+            funds["commodity_collateral"] = cm_avail.get("collateral")
+            funds["commodity_utilised_debits"] = cm_util.get("debits")
+        from account_equity import total_trading_equity
+        book = total_trading_equity(funds)
+        funds["total"] = book["total"]
+        funds["available"] = book["available"]
+        funds["base"] = book["total"]
+        funds["kite_has_withdrawals"] = False
     except Exception as e:
         logger.warning("kite.margins failed: %s", e)
 
@@ -4742,6 +4763,22 @@ async def get_positions(
                     if s.get("strike") is not None
                 ],
             }
+
+    if isinstance(funds, dict):
+        try:
+            from account_equity import booked_pct as equity_booked_pct
+            day_iso = journal.ist_ymd()
+            base = funds.get("base") if funds.get("base") else funds.get("total")
+            if db is not None:
+                jdoc = await db.trade_journal.find_one({"date": day_iso}, {"funds_base": 1})
+                if jdoc and jdoc.get("funds_base"):
+                    base = jdoc["funds_base"]
+                    funds["base"] = base
+            pct = equity_booked_pct(booked_today, base)
+            pnl_today["booked_pct"] = pct
+            funds["booked_pct"] = pct
+        except Exception:
+            pass
 
     result = {
         "mode": tracker.mode,
@@ -5073,6 +5110,16 @@ async def _snapshot_trade_journal(
     try:
         snap = journal.snapshot_from_positions(payload, date=day)
         existing = await db.trade_journal.find_one({"date": day})
+        if snap.get("funds_base") and (not existing or existing.get("inferred_cashflow") is None):
+            prev = await db.trade_journal.find_one(
+                {"date": {"$lt": day}},
+                {"date": 1, "funds_close": 1, "funds_total": 1, "funds_base": 1},
+                sort=[("date", -1)],
+            )
+            from account_equity import infer_cashflow
+            gap = infer_cashflow(prev, snap.get("funds_base"))
+            if gap is not None:
+                snap["inferred_cashflow"] = gap
         need_charges = existing is None or existing.get("charges_total") is None
         charges = await _maybe_journal_charges(force=force_lock or need_charges)
         if journal.charges_usable(charges):

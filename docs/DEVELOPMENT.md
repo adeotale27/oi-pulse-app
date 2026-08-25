@@ -41,6 +41,7 @@ node frontend/src/lib/indexEventRisk.test.js
 node frontend/src/lib/holidays.test.js
 node frontend/src/lib/holidayReminder.test.js
 node frontend/src/lib/journalYearHeat.test.js
+node frontend/src/lib/journalPct.test.js
 ```
 
 Health: `http://localhost:8000/api/status`. UI talks to `REACT_APP_BACKEND_URL`.

@@ -1,4 +1,5 @@
 import { HEATMAP_IDS, emptyDeskPnl, matchSymbolPrefix } from "./universe.js";
+import { bookedPct } from "./journalPct.js";
 
 function isTraded(doc) {
   if (!doc) return false;
@@ -99,6 +100,8 @@ function cloneHeat(base, year) {
         trading_days: Number(m.trading_days) || 0,
         by_index: byIdx,
         other: Number(m.other) || heat.other[i],
+        funds_base: m.funds_base ?? null,
+        booked_pct: m.booked_pct ?? null,
       };
     }
   }
@@ -127,6 +130,15 @@ export function overlayMonthOnYearHeat(yearHeat, monthPayload, year, month) {
     other += Number(ip.OTHER) || 0;
   });
   if (!tradedDays) return heat;
+  let fundsBase = null;
+  const ordered = [...days].sort((a, b) => String(a?.date || "").localeCompare(String(b?.date || "")));
+  for (const d of ordered) {
+    const b = Number(d?.funds_base);
+    if (Number.isFinite(b) && b >= 1) {
+      fundsBase = b;
+      break;
+    }
+  }
   heat.month_nets[mi] = net;
   heat.other[mi] = other;
   heat.months[mi] = {
@@ -135,6 +147,8 @@ export function overlayMonthOnYearHeat(yearHeat, monthPayload, year, month) {
     trading_days: tradedDays,
     by_index: { ...idxAcc },
     other,
+    funds_base: fundsBase,
+    booked_pct: bookedPct(net, fundsBase),
   };
   for (const k of HEATMAP_IDS) heat.by_index[k][mi] = idxAcc[k];
   return heat;

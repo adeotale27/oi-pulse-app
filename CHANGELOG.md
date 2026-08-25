@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.13 — 2026-08-25
+
+Journal and Positions treat trading as a **% of total book**, not leftover cash. Day % is booked P&L ÷ that morning’s total funds (available margin + money already in trades). Weekly and monthly % use the first stored total book of that week/month. Kite Connect has no withdrawal API; estimated in/out is the gap vs the prior close (overnight MTM included). Positions **Profit booked today** shows the same % against total book, never Funds available.
+
 ## V8.12 — 2026-08-25
 
 ATM label no longer clips on the OI bars. Inactive indexes (SENSEX) show day move without clicking them. Show OI sits under How to read this. Replay Change auto-plays from the open of the window. Switching timeframes animates the bars. Around ATM defaults to ±5. Admin tools dim the desk behind an emerald-tinted panel. Mobile event tiles stay compact.
