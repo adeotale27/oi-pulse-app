@@ -21,6 +21,7 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
+from ws_close import close_ws_quietly, ws_client_gone
 from oi_lookup import prefer_newer_snapshot
 from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai, DEFAULT_SETTINGS
 from poll_intervals import (
@@ -2633,14 +2634,21 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
                     await websocket.send_json(payload)
                 else:
                     await websocket.send_json({"error": "no_snapshot"})
-            except Exception:
+            except BaseException as exc:
+                if ws_client_gone(exc):
+                    await close_ws_quietly(websocket)
+                    return
                 try:
                     await websocket.send_json({"error": "temporarily_unavailable"})
-                except Exception:
-                    pass
+                except BaseException:
+                    await close_ws_quietly(websocket)
+                    return
             await asyncio.sleep(poll_interval_seconds)
-    except WebSocketDisconnect:
-        return
+    except BaseException as exc:
+        if ws_client_gone(exc):
+            await close_ws_quietly(websocket)
+            return
+        raise
 
 
 @api_router.websocket("/ws/spot")
@@ -2672,8 +2680,11 @@ async def ws_spot(websocket: WebSocket):
             elif not live_any:
                 await websocket.send_json({"type": "status", "status": "market_closed"})
             await asyncio.sleep(2 if live_any else 8)
-    except WebSocketDisconnect:
-        return
+    except BaseException as exc:
+        if ws_client_gone(exc):
+            await close_ws_quietly(websocket)
+            return
+        raise
 
 
 @api_router.get("/alerts")

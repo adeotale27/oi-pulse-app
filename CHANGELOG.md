@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.10 — 2026-08-25
+
+Straddle and spot websockets treat reload / tab-close `CancelledError` as a normal disconnect instead of an ASGI crash. Ctrl+C while uvicorn is respawning can still print a KeyboardInterrupt — that is the process stopping, not a desk bug.
+
 ## V8.09 — 2026-08-25
 
 W/M expiry circles are back on the sidebar. 25 Aug NIFTY still tags **M** (last Tuesday); SENSEX monthly is last Thursday.
