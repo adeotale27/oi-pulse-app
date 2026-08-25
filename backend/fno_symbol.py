@@ -1,11 +1,11 @@
 """Parse NSE/BSE F&O option tradingsymbols (weekly + monthly)."""
 from __future__ import annotations
 
-import calendar
 import re
 from typing import Any, Optional
 
 from kite_positions import booked_pnl_from_kite_row  # noqa: F401 — canonical impl
+from expiry_kind import last_weekday_of_month, monthly_expiry_weekday
 from universe import fno_name_alternation
 
 INDEXES = fno_name_alternation()
@@ -47,12 +47,9 @@ _COMPACT = re.compile(
 )
 
 
-def _last_thursday(yyyy: int, month: int) -> str:
-    last = calendar.monthrange(yyyy, month)[1]
-    d = calendar.weekday(yyyy, month, last)  # Mon=0 … Thu=3
-    offset = (d - 3) % 7
-    day = last - offset
-    return f"{yyyy:04d}-{month:02d}-{day:02d}"
+def _monthly_iso(idx: str, yyyy: int, month: int) -> str:
+    d = last_weekday_of_month(yyyy, month, monthly_expiry_weekday(idx))
+    return d.isoformat()
 
 
 def _ordinal(day: int) -> str:
@@ -140,14 +137,15 @@ def parse_fno_option_symbol(ts: str) -> Optional[dict[str, Any]]:
             return None
         yyyy = 2000 + int(m.group("yy"))
         month = MON[mon]
+        iso = _monthly_iso(m.group("idx"), yyyy, month)
         return {
             "index": m.group("idx"),
             "strike": int(m.group("strike")),
             "side": m.group("side"),
             "expiry_code": mon,
             "expiry_yy": m.group("yy"),
-            "expiry_day": None,
-            "expiry_iso": _last_thursday(yyyy, month),
+            "expiry_day": int(iso[-2:]),
+            "expiry_iso": iso,
             "expiry_kind": "monthly",
         }
 
@@ -158,14 +156,15 @@ def parse_fno_option_symbol(ts: str) -> Optional[dict[str, Any]]:
             return None
         yyyy = 2000 + int(m.group("yy"))
         month = MON[mon]
+        iso = _monthly_iso(m.group("idx"), yyyy, month)
         return {
             "index": m.group("idx"),
             "strike": int(m.group("strike")),
             "side": m.group("side"),
             "expiry_code": mon,
             "expiry_yy": m.group("yy"),
-            "expiry_day": None,
-            "expiry_iso": _last_thursday(yyyy, month),
+            "expiry_day": int(iso[-2:]),
+            "expiry_iso": iso,
             "expiry_kind": "monthly",
         }
 

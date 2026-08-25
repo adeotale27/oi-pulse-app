@@ -1376,34 +1376,14 @@ async def get_expiries(index_name: str):
                 parsed = sorted({p for p in parsed if p})[:8]
     dates = [p.isoformat() for p in parsed]
 
-    # Annotate each date as weekly / monthly. Heuristic: an expiry is "monthly"
-    # if it is the LAST expiry falling within that calendar month & year in the
-    # returned list. Everything else is "weekly".
-    by_month = {}
-    for p in parsed:
-        by_month.setdefault((p.year, p.month), []).append(p)
-    monthly_dates = set()
-    for _, lst in by_month.items():
-        monthly_dates.add(max(lst))
+    from expiry_kind import annotate_expiries
 
-    # BANKNIFTY special case: NSE discontinued weekly BANKNIFTY in Nov-2024.
-    # If Kite returns only one date per month for BANKNIFTY, tag them ALL as M
-    # (they're all monthly) and expose a hint.
-    only_monthlies = idx == "BANKNIFTY" and all(len(v) == 1 for v in by_month.values())
-
-    meta = []
-    for p in parsed:
-        iso = p.isoformat()
-        is_monthly = p in monthly_dates or only_monthlies
-        days = (p - today).days
-        label = p.strftime("%d %b").lstrip("0")
-        meta.append({
-            "date": iso,
-            "tag": "M" if is_monthly else "W",
-            "type": "monthly" if is_monthly else "weekly",
-            "days_to_expiry": days,
-            "label": label,
-        })
+    only_monthlies = idx == "BANKNIFTY"
+    meta = annotate_expiries(parsed, idx, today=today)
+    if only_monthlies:
+        for item in meta:
+            item["tag"] = "M"
+            item["type"] = "monthly"
 
     selected = tracker.selected_expiry.get(idx) if tracker else None
     # If tracker still points at a past / missing expiry, surface the nearest live one.
@@ -4775,10 +4755,18 @@ async def _persist_trade_ledger(
     if db is None or not owner_id:
         return
     now = now_ist()
+    today = _ist_today_ymd()
     try:
         existing = await db.trade_cycles.find(
-            {"owner_id": owner_id, "status": {"$in": ["open", "partial"]}},
-        ).to_list(length=800)
+            {
+                "owner_id": owner_id,
+                "$or": [
+                    {"status": {"$in": ["open", "partial"]}},
+                    {"entry_date": today},
+                    {"exit_date": today},
+                ],
+            },
+        ).to_list(length=2000)
         fills = []
         if feed_ok and kite is not None:
             trades, orders = [], []

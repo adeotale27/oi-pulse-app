@@ -603,8 +603,10 @@ def reconcile_cycles(
 
     fill_list = list(fills or [])
     open_by_key: Dict[Tuple[str, str, str], dict] = {}
+    closed_keys = set()
     for c in existing:
         if c.get("status") == "closed":
+            closed_keys.add(instrument_key(c))
             continue
         open_by_key[instrument_key(c)] = c
 
@@ -626,6 +628,9 @@ def reconcile_cycles(
         else:
             # Same-day flatten with no stored open cycle still gets a closed row.
             if _status(row) == "closed" and _int(row.get("buy_quantity")) == 0 and _int(row.get("sell_quantity")) == 0:
+                continue
+            # Kite keeps exited-today rows; do not mint a new closed cycle each poll.
+            if _status(row) == "closed" and key in closed_keys:
                 continue
             upserts.append(seed_cycle(row, owner_id=owner_id, now=now, fills=row_fills))
 
@@ -654,6 +659,31 @@ def cycle_in_range(cycle: dict, start: str, end: str) -> bool:
         if t and start <= t <= end:
             return True
     return False
+
+
+def collapse_duplicate_cycles(cycles: Iterable[dict]) -> List[dict]:
+    """One row per instrument + entry clock + booked P&L (poll-seeded clones)."""
+    seen: Dict[Tuple[Any, ...], dict] = {}
+    order: List[Tuple[Any, ...]] = []
+    for c in cycles or []:
+        if not isinstance(c, dict):
+            continue
+        key = (
+            instrument_key(c),
+            str(c.get("entry_date") or "")[:10],
+            str(c.get("entry_time_ist") or c.get("entry_time") or "")[:19],
+            round(_num(c.get("booked_pnl") if c.get("booked_pnl") is not None else c.get("realised")), 2),
+        )
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = c
+            order.append(key)
+            continue
+        prev_id = str(prev.get("cycle_id") or "")
+        new_id = str(c.get("cycle_id") or "")
+        if new_id and (not prev_id or new_id < prev_id):
+            seen[key] = c
+    return [seen[k] for k in order]
 
 
 def filter_cycles(
@@ -685,7 +715,7 @@ def filter_cycles(
                 continue
         out.append(c)
     out.sort(key=lambda c: (c.get("entry_time") or "", c.get("tradingsymbol") or ""))
-    return out
+    return collapse_duplicate_cycles(out)
 
 
 def summarize_trade_memory(cycles: Optional[Iterable[dict]] = None, *, min_n: int = 3) -> Dict[str, Any]:

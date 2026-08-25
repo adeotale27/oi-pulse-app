@@ -17,7 +17,6 @@ import {
   fetchJournalYear,
   fetchJournalDay,
   fetchJournalPeriod,
-  fetchTrades,
   saveJournalDay,
   addJournalScreenshot,
   deleteJournalScreenshot,
@@ -184,8 +183,6 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const [periodIndex, setPeriodIndex] = useState("ALL");
   const [periodData, setPeriodData] = useState(null);
   const [periodLoading, setPeriodLoading] = useState(false);
-  const [tradeTape, setTradeTape] = useState(null);
-
   const loadMonth = useCallback(async (y, m) => {
     setLoading(true);
     try {
@@ -222,14 +219,10 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     if (periodFrom > periodTo) return;
     let cancelled = false;
     setPeriodLoading(true);
-    Promise.all([
-      fetchJournalPeriod(periodFrom, periodTo, periodIndex),
-      fetchTrades(periodFrom, periodTo, periodIndex).catch(() => null),
-    ])
-      .then(([d, tape]) => {
+    fetchJournalPeriod(periodFrom, periodTo, periodIndex)
+      .then((d) => {
         if (cancelled) return;
         setPeriodData(d);
-        setTradeTape(tape);
       })
       .catch((e) => { if (!cancelled) toast.error(e?.response?.data?.detail || "Could not load period totals"); })
       .finally(() => { if (!cancelled) setPeriodLoading(false); });
@@ -536,44 +529,6 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                       <span className={`font-mono-data ${Number(v) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{privacy ? "••••" : <Money v={v} />}</span>
                     </span>
                   ))}
-                </div>
-              )}
-              {(tradeTape?.memory?.lines || []).length > 0 && (
-                <div className="text-[11px] text-slate-600 space-y-0.5" data-testid="journal-trade-memory">
-                  {(tradeTape.memory.lines || []).slice(0, 4).map((line) => (
-                    <div key={line}>{line}</div>
-                  ))}
-                </div>
-              )}
-              {(tradeTape?.trades || []).length > 0 && (
-                <div className="max-h-48 overflow-auto rounded-md border border-slate-100" data-testid="journal-trade-tape">
-                  <table className="w-full text-[11px]">
-                    <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="text-left font-semibold px-2 py-1">Contract</th>
-                        <th className="text-left font-semibold px-2 py-1">Side</th>
-                        <th className="text-left font-semibold px-2 py-1 hidden sm:table-cell">Entry IST</th>
-                        <th className="text-left font-semibold px-2 py-1 hidden sm:table-cell">Exit IST</th>
-                        <th className="text-right font-semibold px-2 py-1">P&amp;L</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tradeTape.trades.slice(0, 40).map((t, i) => (
-                        <tr key={`${t.tradingsymbol}-${t.entry_time_ist}-${i}`} className="border-t border-slate-50">
-                          <td className="px-2 py-1 truncate max-w-[9rem]" title={t.contract}>{t.contract || t.tradingsymbol}</td>
-                          <td className="px-2 py-1 whitespace-nowrap">{t.ce_or_pe} {t.bought_or_sold}</td>
-                          <td className="px-2 py-1 hidden sm:table-cell whitespace-nowrap font-mono-data">{t.entry_time_ist || "—"}</td>
-                          <td className="px-2 py-1 hidden sm:table-cell whitespace-nowrap font-mono-data">{t.exit_time_ist || "open"}</td>
-                          <td className={`px-2 py-1 text-right font-mono-data ${Number(t.pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                            {privacy ? "••••" : <Money v={t.pnl} />}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {tradeTape.count > 40 ? (
-                    <div className="px-2 py-1 text-[10px] text-slate-500">Showing 40 of {tradeTape.count}. Download Excel for the full tape.</div>
-                  ) : null}
                 </div>
               )}
             </div>

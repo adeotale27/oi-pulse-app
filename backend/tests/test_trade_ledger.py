@@ -383,3 +383,37 @@ def test_compact_trade_is_human_readable():
     })
     assert desk[3] == "Sold (short)"
     assert desk[12] == "Yes"
+
+
+def test_closed_kite_row_does_not_reseed_when_closed_cycle_exists():
+    now = _dt(2026, 8, 24, 18, 12)
+    closed = seed_cycle(
+        _row(quantity=0, exited=True, buy_quantity=75, sell_quantity=75, closed_quantity=75,
+             realised=3542.5, booked_pnl=3542.5, average_price=0),
+        owner_id="admin", now=now,
+        fills=collect_fills([
+            _fill(fill_timestamp="2026-08-24 11:47:45"),
+            _fill(trade_id="x", transaction_type="BUY", quantity=75, fill_timestamp="2026-08-24 18:11:36"),
+        ]),
+    )
+    row = _row(quantity=0, exited=True, buy_quantity=75, sell_quantity=75, closed_quantity=75,
+               realised=3542.5, booked_pnl=3542.5, average_price=0)
+    out = reconcile_cycles([closed], [row], [], owner_id="admin", now=_dt(2026, 8, 24, 18, 13), feed_ok=True)
+    assert out == []
+
+
+def test_filter_collapses_duplicate_closed_cycles():
+    a = seed_cycle(
+        _row(quantity=0, exited=True, buy_quantity=75, sell_quantity=75, closed_quantity=75,
+             realised=3542.5, booked_pnl=3542.5, average_price=0),
+        owner_id="admin", now=_dt(2026, 8, 24, 18, 12),
+        fills=collect_fills([
+            _fill(fill_timestamp="2026-08-24 11:47:45"),
+            _fill(trade_id="x", transaction_type="BUY", quantity=75, fill_timestamp="2026-08-24 18:11:36"),
+        ]),
+    )
+    b = dict(a)
+    b["cycle_id"] = "zzzz-clone"
+    rows = filter_cycles([a, b], start="2026-08-24", end="2026-08-24")
+    assert len(rows) == 1
+

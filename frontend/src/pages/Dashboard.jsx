@@ -78,6 +78,7 @@ import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from 
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
+import { annotateExpiries } from "@/lib/expiryKind";
 
 const INDICES = DESK_IDS;
 const POLL_OPTIONS = [15000, 30000, 60000];
@@ -931,15 +932,19 @@ export default function Dashboard() {
             const iso = String(snapExp || snapList[0] || "").slice(0, 10);
             const cachedExp = expiryByIndexRef.current[active];
             const merged = [...new Set([...(cachedExp?.list || []), ...snapList, iso].filter(Boolean))].sort();
-            if (!cachedExp?.list?.length || merged.length > (cachedExp.list?.length || 0)) {
+            const dates = merged.length ? merged : [iso];
+            const meta = annotateExpiries(dates, active);
+            const prevMeta = cachedExp?.meta || [];
+            const listGrew = !cachedExp?.list?.length || dates.length > (cachedExp.list?.length || 0);
+            const tagsDrift = dates.some((d) => {
+              const prev = prevMeta.find((m) => m.date === d);
+              const next = meta.find((m) => m.date === d);
+              return (prev?.tag || "") !== (next?.tag || "");
+            });
+            if (listGrew || tagsDrift) {
               const entry = {
-                list: merged.length ? merged : [iso],
-                meta: (merged.length ? merged : [iso]).map((d) => ({
-                  date: d,
-                  tag: "W",
-                  type: "weekly",
-                  label: d,
-                })),
+                list: dates,
+                meta,
                 note: cachedExp?.note || null,
                 selected: cachedExp?.selected && merged.includes(cachedExp.selected) ? cachedExp.selected : iso,
                 fetched: !!cachedExp?.fetched,

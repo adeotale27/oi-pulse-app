@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.08 — 2026-08-25
+
+Monthly vs weekly expiry uses the exchange calendar (NSE last Tuesday, SENSEX last Thursday) instead of “last date in the list”. 25 Aug 2026 NIFTY is monthly; SENSEX monthly is 27 Aug. The sidebar no longer shows W/M badges. Journal no longer lists a contract tape (Excel download still has the book). Closed Kite rows are not re-seeded every poll.
+
 ## V8.07 — 2026-08-25
 
 NIFTY expiries no longer stick on today’s weekly after the first OI paint. Heavyweight cash quotes retry in chunks (one bad symbol no longer blanks the tape). Browser alerts use a timed service-worker call and a page Notification fallback so they still fire when you are in another tab. Journal shows the stored trade tape (contract, sold/bought, IST clocks, P&L); Excel leads with that sheet.

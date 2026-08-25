@@ -29,10 +29,11 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8000
 cd frontend && yarn install && yarn start
 
 # Tests (from backend/)
-python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_market_hours.py tests/test_event_risk.py tests/test_holiday_calendar.py tests/test_guest_access.py tests/test_app_brand.py tests/test_oi_change_lookback.py -q
+python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_expiry_kind.py tests/test_trade_ledger.py tests/test_market_hours.py tests/test_event_risk.py tests/test_holiday_calendar.py tests/test_guest_access.py tests/test_app_brand.py tests/test_oi_change_lookback.py -q
 
 # Frontend unit (Node can run assert files)
 node frontend/src/lib/universe.test.js
+node frontend/src/lib/expiryKind.test.js
 node frontend/src/lib/dataTruth.test.js
 node frontend/src/lib/appVersion.test.js
 node frontend/src/lib/optionSide.test.js

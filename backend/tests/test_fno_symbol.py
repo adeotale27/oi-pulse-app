@@ -15,7 +15,16 @@ def test_monthly():
     assert p is not None
     assert p["strike"] == 23050
     assert p["side"] == "CE"
-    assert p["expiry_iso"].startswith("2026-08-")
+    assert p["expiry_iso"] == "2026-08-25"
+    assert p["expiry_kind"] == "monthly"
+
+
+def test_sensex_monthly():
+    p = parse_fno_option_symbol("SENSEX26AUG81000CE")
+    assert p is not None
+    assert p["index"] == "SENSEX"
+    assert p["expiry_iso"] == "2026-08-27"
+    assert p["expiry_kind"] == "monthly"
 
 
 def test_compact_weekly():

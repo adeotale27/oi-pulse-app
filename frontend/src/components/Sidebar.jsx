@@ -13,6 +13,7 @@ import {
 import StrikeAroundChips from "@/components/StrikeAroundChips";
 import { INDEX_SHORT, INDEX_STEP, usesIndexOverflow } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
+import { annotateExpiries } from "@/lib/expiryKind";
 
 const INDEX_THEME = {
   NIFTY: {
@@ -122,23 +123,6 @@ function StepperInput({ testId, value, step, onChange, min = 0, max = Infinity }
         <Plus className="w-3.5 h-3.5" />
       </button>
     </div>
-  );
-}
-
-function ExpiryBadge({ tag }) {
-  const isWeekly = tag === "W";
-  return (
-    <span
-      data-testid={`expiry-tag-${tag}`}
-      className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold leading-none border shadow-sm shrink-0 ${
-        isWeekly
-          ? "bg-sky-500 text-white border-sky-600"
-          : "bg-amber-500 text-white border-amber-600"
-      }`}
-      title={isWeekly ? "Weekly expiry" : "Monthly expiry"}
-    >
-      {tag}
-    </span>
   );
 }
 
@@ -307,11 +291,10 @@ export default function Sidebar({
   const metaByDate = new Map(
     (expiriesMeta || []).map((m) => [m.date, m])
   );
-  // If no meta provided, fall back to plain expiries with W tag.
   const orderedExpiries =
     expiriesMeta && expiriesMeta.length
       ? expiriesMeta
-      : (expiries || []).map((d) => ({ date: d, tag: "W", type: "weekly", days_to_expiry: null, label: d }));
+      : annotateExpiries(expiries || [], activeIndex);
 
   // Keep selected (or nearest weekly) visible when the list is short / scrolled.
   const expiryDatesKey = orderedExpiries.map((e) => `${e.date}:${e.tag || ""}`).join("|");
@@ -562,7 +545,6 @@ export default function Sidebar({
                     </span>
                   )}
                 </span>
-                <ExpiryBadge tag={exp.tag || "W"} />
               </button>
             );
           })}
