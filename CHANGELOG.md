@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.07 — 2026-08-25
+
+NIFTY expiries no longer stick on today’s weekly after the first OI paint. Heavyweight cash quotes retry in chunks (one bad symbol no longer blanks the tape). Browser alerts use a timed service-worker call and a page Notification fallback so they still fire when you are in another tab. Journal shows the stored trade tape (contract, sold/bought, IST clocks, P&L); Excel leads with that sheet.
+
 ## V8.06 — 2026-08-24
 
 Desk AI names the shorts: Hold / Cut/define / Roll by tradingsymbol vs the writer tape. Positions radar says which leg to buy back, roll, or hedge. Closed-short win rates from the trade ledger (`GET /api/desk-memory`) feed a Book memory line. Coach explains the top 3 sell-ranker ideas — it does not invent a list. OI alerts add writer-tape actions (do not add the other side). Snapshots stay compact: no tokens or full chains.

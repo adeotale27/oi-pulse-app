@@ -16,10 +16,11 @@ assert.match(cashSessionFocusLabel(1), /NIFTY/);
 
 const movers = filterCashHeavyMovers([
   { symbol: "RELIANCE", index: "NIFTY" },
+  { symbol: "INFY", index: "NIFTY 50" },
   { symbol: "HDFCBANK", index: "SENSEX" },
   { symbol: "SBIN", index: "BANKNIFTY" },
 ]);
-assert.deepEqual(movers.map((m) => m.symbol), ["RELIANCE", "SBIN"]);
+assert.deepEqual(movers.map((m) => m.symbol), ["RELIANCE", "INFY", "SBIN"]);
 
 const wed = overnightBiasIndices(3, "NIFTY");
 assert.equal(wed[0], "SENSEX");

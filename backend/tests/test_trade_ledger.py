@@ -294,10 +294,12 @@ def test_workbook_has_entry_and_exit_columns():
     wb = load_workbook(BytesIO(raw))
     ws = wb["Trades"]
     headers = [cell.value for cell in ws[1]]
-    assert "Entry time (IST)" in headers
-    assert "Exit time (IST)" in headers
-    ei = headers.index("Entry time (IST)")
+    assert "Entry time IST" in headers
+    assert "Exit time IST" in headers
+    ei = headers.index("Entry time IST")
     assert ws[2][ei].value == "2026-08-21 14:32:11"
+    assert "P&L ₹" in headers
+    assert "Technical" in wb.sheetnames
     assert "Fills and partials" in wb.sheetnames
     assert "Partials" in wb.sheetnames
 
@@ -345,3 +347,39 @@ def test_summarize_trade_memory_weekday_and_min_n():
     assert any("NIFTY CE shorts on Friday: 4/5 paid" in x for x in mem["lines"])
     skinny = summarize_trade_memory(cycles[:2])
     assert skinny["lines"] == []
+
+
+def test_compact_trade_is_human_readable():
+    from trade_ledger import compact_trade, cycle_desk_row
+
+    row = compact_trade({
+        "display_name": "NIFTY 24500 CE",
+        "tradingsymbol": "NIFTY2582124500CE",
+        "index": "NIFTY",
+        "side": "CE",
+        "direction": "short",
+        "status": "closed",
+        "quantity": 0,
+        "closed_quantity": 75,
+        "entry_price": 120.5,
+        "exit_price": 80,
+        "entry_time_ist": "2026-08-21 14:32:11",
+        "exit_time_ist": "2026-08-24 09:16:00",
+        "booked_pnl": 3000,
+        "carried": True,
+        "partial_exit_count": 1,
+    })
+    assert row["bought_or_sold"] == "Sold (short)"
+    assert row["overnight"] is True
+    desk = cycle_desk_row({
+        "display_name": "NIFTY 24500 CE",
+        "index": "NIFTY",
+        "side": "CE",
+        "direction": "short",
+        "status": "closed",
+        "booked_pnl": 3000,
+        "carried": True,
+        "entry_time_ist": "2026-08-21 14:32:11",
+    })
+    assert desk[3] == "Sold (short)"
+    assert desk[12] == "Yes"

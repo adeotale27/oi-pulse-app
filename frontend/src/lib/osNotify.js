@@ -10,29 +10,48 @@
 export function shouldShowOsNotification(doc = typeof document !== "undefined" ? document : null) {
   if (!doc) return false;
   if (doc.hidden) return true;
+  if (typeof doc.visibilityState === "string" && doc.visibilityState !== "visible") return true;
   if (typeof doc.hasFocus === "function" && !doc.hasFocus()) return true;
+  if (typeof document !== "undefined" && typeof document.hasFocus === "function" && doc === document) {
+    try {
+      if (typeof window !== "undefined" && document.hasFocus() === false) return true;
+    } catch { /* noop */ }
+  }
   return false;
 }
 
-export function osNotificationOptions(body, { force = false } = {}) {
+export function osNotificationOptions(body, { force = false, tag } = {}) {
   return {
     body: body || "",
     icon: "/logo192.png",
     badge: "/logo192.png",
-    tag: force ? "striklenz-notif-test" : "striklenz-alert",
+    tag: tag || (force ? "striklenz-notif-test" : `striklenz-alert-${Date.now()}`),
     renotify: true,
     requireInteraction: true,
     silent: false,
   };
 }
 
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timeout")), ms);
+    Promise.resolve(promise).then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); },
+    );
+  });
+}
+
 export async function registerAlertServiceWorker() {
   if (typeof navigator === "undefined" || !navigator.serviceWorker) return null;
   try {
-    return await navigator.serviceWorker.register("/sw-alerts.js", {
-      scope: "/",
-      updateViaCache: "none",
-    });
+    return await withTimeout(
+      navigator.serviceWorker.register("/sw-alerts.js", {
+        scope: "/",
+        updateViaCache: "none",
+      }),
+      2500,
+    );
   } catch {
     return null;
   }
@@ -46,11 +65,17 @@ export async function showOsNotification(title, body, { force = false } = {}) {
   const opts = osNotificationOptions(body, { force });
   try {
     if (typeof navigator !== "undefined" && navigator.serviceWorker) {
-      const reg =
-        (await navigator.serviceWorker.getRegistration("/")) ||
-        (await navigator.serviceWorker.ready.catch(() => null));
+      let reg = null;
+      try {
+        reg = await withTimeout(navigator.serviceWorker.getRegistration("/"), 800);
+      } catch { /* noop */ }
+      if (!reg) {
+        try {
+          reg = await withTimeout(registerAlertServiceWorker(), 2500);
+        } catch { /* noop */ }
+      }
       if (reg && typeof reg.showNotification === "function") {
-        await reg.showNotification(title || "StrikLenz", opts);
+        await withTimeout(reg.showNotification(title || "StrikLenz", opts), 1500);
         return true;
       }
     }

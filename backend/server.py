@@ -1330,28 +1330,50 @@ async def get_expiries(index_name: str):
     parsed = sorted({p for p in parsed_all if p >= today})[:8]
     if not parsed:
         snap = ((tracker.last_snapshot or {}) if tracker else {}).get(idx) or {}
-        snap_exp = snap.get("expiry")
-        if not snap_exp:
+        snap_dates = []
+        for item in (snap.get("expiries") or []):
             try:
-                doc = await asyncio.wait_for(
-                    db.oi_snapshots.find_one(
-                        {"index": idx},
-                        sort=[("timestamp", -1)],
-                        projection={"expiry": 1, "_id": 0},
-                        maxTimeMS=1500,
-                    ),
-                    timeout=2.0,
-                )
-                snap_exp = (doc or {}).get("expiry")
+                snap_dates.append(_date.fromisoformat(str(item)[:10]))
             except Exception:
-                snap_exp = None
+                pass
+        snap_exp = snap.get("expiry")
         if snap_exp:
             try:
-                parsed = [_date.fromisoformat(str(snap_exp)[:10])]
+                snap_dates.append(_date.fromisoformat(str(snap_exp)[:10]))
             except Exception:
-                parsed = []
-        elif parsed_all:
-            parsed = sorted(set(parsed_all))[-1:]
+                pass
+        parsed = sorted({p for p in snap_dates if p >= today})[:8]
+        if not parsed:
+            if not snap_exp:
+                try:
+                    doc = await asyncio.wait_for(
+                        db.oi_snapshots.find_one(
+                            {"index": idx},
+                            sort=[("timestamp", -1)],
+                            projection={"expiry": 1, "expiries": 1, "_id": 0},
+                            maxTimeMS=1500,
+                        ),
+                        timeout=2.0,
+                    )
+                    for item in (doc or {}).get("expiries") or []:
+                        try:
+                            parsed.append(_date.fromisoformat(str(item)[:10]))
+                        except Exception:
+                            pass
+                    snap_exp = (doc or {}).get("expiry")
+                except Exception:
+                    snap_exp = None
+            if snap_exp:
+                try:
+                    parsed = sorted({p for p in parsed + [_date.fromisoformat(str(snap_exp)[:10])] if p >= today})[:8]
+                    if not parsed:
+                        parsed = [_date.fromisoformat(str(snap_exp)[:10])]
+                except Exception:
+                    parsed = parsed or []
+            elif parsed_all:
+                parsed = sorted(set(parsed_all))[-1:]
+            else:
+                parsed = sorted({p for p in parsed if p})[:8]
     dates = [p.isoformat() for p in parsed]
 
     # Annotate each date as weekly / monthly. Heuristic: an expiry is "monthly"
@@ -5259,6 +5281,52 @@ async def journal_del_shot(day: str, shot_id: str, _admin: bool = Depends(requir
         raise HTTPException(400, "Use YYYY-MM-DD")
     await db.trade_journal.update_one({"date": day}, {"$pull": {"screenshots": {"id": shot_id}}})
     return {"deleted": shot_id}
+
+
+@api_router.get("/trades")
+async def list_trades(
+    request: Request,
+    _admin: bool = Depends(require_admin),
+    from_date: str = Query(..., alias="from"),
+    to_date: str = Query(..., alias="to"),
+    index: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """Readable trade tape for the journal (same cycles as Excel)."""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", from_date) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", to_date):
+        raise HTTPException(400, "from and to must be YYYY-MM-DD")
+    if from_date > to_date:
+        raise HTTPException(400, "from must be on or before to")
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    owner_id = await _ledger_owner(request, "admin")
+    query = {
+        "owner_id": owner_id,
+        "$or": [
+            {"entry_date": {"$gte": from_date, "$lte": to_date}},
+            {"exit_date": {"$gte": from_date, "$lte": to_date}},
+            {"entry_date": {"$lte": to_date}, "status": {"$in": ["open", "partial"]}},
+            {"entry_date": {"$lte": to_date}, "exit_date": {"$gte": from_date}},
+            {"entry_date": {"$lte": to_date}, "exit_date": None},
+        ],
+    }
+    try:
+        docs = await db.trade_cycles.find(
+            query,
+            {"_id": 0, "events": 0, "fills": 0},
+        ).to_list(length=4000)
+    except Exception:
+        docs = []
+    cycles = ledger.filter_cycles(docs, start=from_date, end=to_date, index=index, status=status)
+    trades = [ledger.compact_trade(c) for c in cycles]
+    return {
+        "from": from_date,
+        "to": to_date,
+        "index": (index or "ALL"),
+        "count": len(trades),
+        "trades": trades,
+        "memory": ledger.summarize_trade_memory(cycles),
+    }
 
 
 @api_router.get("/trades/export")

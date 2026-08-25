@@ -809,7 +809,13 @@ export default function Dashboard() {
       && !cached.list.includes(cached.selected)
     );
     const staleDay = !!(cached?.asOf && cached.asOf !== today);
-    if (!force && !selectedPast && !selectedMissing && !staleDay && (cached?.selected || cached?.fetched)) {
+    const stub = !!(cached && cached.fetched === false);
+    const thin =
+      idx !== "BANKNIFTY"
+      && Array.isArray(cached?.list)
+      && cached.list.length <= 1
+      && !cached?.thinTried;
+    if (!force && !selectedPast && !selectedMissing && !staleDay && !stub && !thin && cached?.fetched) {
       return cached;
     }
     if (!force && expiryInflightRef.current[idx]) {
@@ -831,7 +837,8 @@ export default function Dashboard() {
       ) {
         selected = cached.selected;
       }
-      const entry = { list, meta, note, selected, fetched: true, asOf: today };
+      const thinTried = list.length <= 1 && idx !== "BANKNIFTY";
+      const entry = { list, meta, note, selected, fetched: true, asOf: today, thinTried };
       expiryByIndexRef.current[idx] = entry;
       if (idx === activeIndexRef.current) {
         setExpiries(list);
@@ -917,30 +924,40 @@ export default function Dashboard() {
         if (first.ok && first.data) {
           applyOiPayload(first.data, { pulse: true });
           const snapExp = first.data.current?.expiry;
-          if (snapExp) {
-            const iso = String(snapExp).slice(0, 10);
+          const snapList = Array.isArray(first.data.current?.expiries)
+            ? first.data.current.expiries.map((d) => String(d).slice(0, 10)).filter(Boolean)
+            : [];
+          if (snapExp || snapList.length) {
+            const iso = String(snapExp || snapList[0] || "").slice(0, 10);
             const cachedExp = expiryByIndexRef.current[active];
-            if (!cachedExp?.list?.length) {
+            const merged = [...new Set([...(cachedExp?.list || []), ...snapList, iso].filter(Boolean))].sort();
+            if (!cachedExp?.list?.length || merged.length > (cachedExp.list?.length || 0)) {
               const entry = {
-                list: [iso],
-                meta: [{ date: iso, tag: "W", type: "weekly", label: iso }],
-                note: null,
-                selected: iso,
-                fetched: false,
+                list: merged.length ? merged : [iso],
+                meta: (merged.length ? merged : [iso]).map((d) => ({
+                  date: d,
+                  tag: "W",
+                  type: "weekly",
+                  label: d,
+                })),
+                note: cachedExp?.note || null,
+                selected: cachedExp?.selected && merged.includes(cachedExp.selected) ? cachedExp.selected : iso,
+                fetched: !!cachedExp?.fetched,
                 asOf: istToday(),
               };
               expiryByIndexRef.current[active] = entry;
               if (active === activeIndexRef.current) {
                 setExpiries(entry.list);
                 setExpiriesMeta(entry.meta);
-                setSelectedExpiry(iso);
+                setSelectedExpiry(entry.selected);
                 setExpiryReady(true);
               }
             }
           }
         }
         setOiLoading(false);
-        ensureExpiryForIndex(active).catch(() => {});
+        const thinList = (expiryByIndexRef.current[active]?.list?.length || 0) <= 1;
+        ensureExpiryForIndex(active, { force: thinList }).catch(() => {});
         if (bootLite && first.ok) {
           window.setTimeout(() => {
             fetchOIChange(active, minutes, {

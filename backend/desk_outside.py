@@ -62,7 +62,7 @@ def is_cash_heavy_index(idx: Any) -> bool:
     raw = str(idx or "").upper().replace(" ", "")
     if "BANKNIFTY" in raw or raw == "NIFTYBANK":
         return True
-    return raw == "NIFTY"
+    return raw in ("NIFTY", "NIFTY50", "NIFTYFIFTY")
 
 
 def _clip(s: Any, n: int = 160) -> str:
@@ -315,15 +315,14 @@ async def _yahoo_quotes(symbols: List[str]) -> Dict[str, Dict[str, Optional[floa
     joined = ",".join(yahoo_symbol(s) for s in symbols)
     url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={joined}"
     out: Dict[str, Dict[str, Optional[float]]] = {}
+    data = {}
     try:
         async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": UA}) as client:
             r = await client.get(url)
-            if r.status_code != 200:
-                return {}
-            data = r.json()
+            if r.status_code == 200:
+                data = r.json()
     except Exception as e:
         logger.warning("yahoo quotes failed: %s", e)
-        return {}
     for row in ((data.get("quoteResponse") or {}).get("result") or []):
         sym = str(row.get("symbol") or "").replace(".NS", "").replace(".BO", "")
         q = _quote_dict(
@@ -336,6 +335,60 @@ async def _yahoo_quotes(symbols: List[str]) -> Dict[str, Dict[str, Optional[floa
         )
         if q.get("last") is not None:
             out[sym] = q
+    if out:
+        return out
+    # v7 is often blocked; chart endpoint still works for a short top-weight list.
+    top = symbols[:12]
+    try:
+        async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": UA}) as client:
+            for sym in top:
+                try:
+                    r = await client.get(
+                        f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol(sym)}",
+                        params={"interval": "1d", "range": "2d"},
+                    )
+                    if r.status_code != 200:
+                        continue
+                    result = ((r.json().get("chart") or {}).get("result") or [None])[0] or {}
+                    meta = result.get("meta") or {}
+                    last = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
+                    prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+                    q = _quote_dict(last, prev)
+                    if q.get("last") is not None:
+                        out[sym] = q
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.warning("yahoo chart fallback failed: %s", e)
+    return out
+
+
+def quote_in_chunks(quote_fn, keys: List[str], *, chunk: int = 40) -> Dict[str, Any]:
+    """Kite quote() fails the whole batch if one symbol is bad — quote in slices."""
+    out: Dict[str, Any] = {}
+    clean = [k for k in (keys or []) if k]
+    if not clean or quote_fn is None:
+        return out
+    try:
+        blob = quote_fn(clean) or {}
+        if isinstance(blob, dict) and blob:
+            return blob
+    except Exception as e:
+        logger.warning("desk_outside quote all-in failed (%s keys): %s", len(clean), e)
+    size = max(1, int(chunk or 40))
+    for i in range(0, len(clean), size):
+        part = clean[i : i + size]
+        try:
+            blob = quote_fn(part) or {}
+            if isinstance(blob, dict):
+                out.update(blob)
+        except Exception as e:
+            logger.warning("desk_outside quote chunk failed (%s keys): %s", len(part), e)
+            if len(part) == 1:
+                continue
+            mid = max(1, len(part) // 2)
+            out.update(quote_in_chunks(quote_fn, part[:mid], chunk=mid))
+            out.update(quote_in_chunks(quote_fn, part[mid:], chunk=mid))
     return out
 
 
@@ -344,11 +397,10 @@ def _kite_batch(tracker, keys: List[str]) -> Dict[str, Dict[str, Any]]:
     kite = getattr(svc, "kite", None) if svc else None
     if not kite or getattr(tracker, "mode", None) != "kite":
         return {}
-    try:
-        return kite.quote(keys) or {}
-    except Exception as e:
-        logger.warning("desk_outside kite.quote failed: %s", e)
-        return {}
+    out = quote_in_chunks(getattr(kite, "quote", None), keys, chunk=40)
+    if out:
+        return out
+    return quote_in_chunks(getattr(kite, "ltp", None), keys, chunk=40)
 
 
 async def _load_heavies(db) -> List[Dict[str, Any]]:

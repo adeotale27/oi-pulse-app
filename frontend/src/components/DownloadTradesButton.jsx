@@ -72,9 +72,8 @@ export default function DownloadTradesButton({
         <div>
           <div className="text-xs font-semibold text-slate-900">Download trades</div>
           <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-            Excel from our database — not a live Kite dump. Entry stays the original fill
-            (Friday hold still shows Friday after a Monday token refresh). Partial exits are
-            on the second sheet.
+            Excel from our database — not a live Kite dump. First sheet is the readable tape
+            (contract, sold/bought, IST clocks, P&amp;L). Fills and a technical sheet are extra.
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -75,6 +75,20 @@ def test_focus_is_mcx_only_when_that_name_is_on():
         merge_index_config({})
 
 
+def test_quote_chunks_survive_one_bad_symbol():
+    from desk_outside import quote_in_chunks
+
+    def quote(keys):
+        if "NSE:BAD" in keys:
+            raise RuntimeError("invalid")
+        return {k: {"last_price": 1} for k in keys}
+
+    out = quote_in_chunks(quote, ["NSE:RELIANCE", "NSE:BAD", "NSE:HDFCBANK"], chunk=3)
+    assert "NSE:RELIANCE" in out
+    assert "NSE:HDFCBANK" in out
+    assert "NSE:BAD" not in out
+
+
 def test_cash_session_focus_and_heavy_filter():
     assert cash_session_focus_index(1) == "NIFTY"
     assert cash_session_focus_index(2) == "NIFTY"
@@ -82,5 +96,6 @@ def test_cash_session_focus_and_heavy_filter():
     assert cash_session_focus_index(4) == "SENSEX"
     assert cash_session_focus_index(5) == "NIFTY"
     assert is_cash_heavy_index("NIFTY") is True
+    assert is_cash_heavy_index("NIFTY 50") is True
     assert is_cash_heavy_index("BANKNIFTY") is True
     assert is_cash_heavy_index("SENSEX") is False

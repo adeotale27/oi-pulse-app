@@ -782,13 +782,26 @@ def stamp_journal_legs(legs: List[dict], cycles: Iterable[dict]) -> bool:
                 leg[dst] = val
                 changed = True
     return changed
-    if not doc:
-        return None
-    out = {k: v for k, v in doc.items() if k != "_id"}
-    return out
 
 
 EXPORT_HEADERS = [
+    "Contract",
+    "Index",
+    "CE or PE",
+    "Bought or sold",
+    "Status",
+    "Qty still open",
+    "Qty closed",
+    "Entry price",
+    "Exit price",
+    "Entry time IST",
+    "Exit time IST",
+    "P&L ₹",
+    "Held overnight?",
+    "Partial exits",
+]
+
+TECHNICAL_HEADERS = [
     "Instrument",
     "Display",
     "Index",
@@ -808,9 +821,8 @@ EXPORT_HEADERS = [
     "Exit source",
     "Entry price",
     "Exit / last price",
-    "Realised P&L",
+    "P&L ₹",
     "Unrealised P&L",
-    "Booked P&L",
     "First seen (UTC)",
     "Last seen (UTC)",
     "Partial exits",
@@ -819,7 +831,54 @@ EXPORT_HEADERS = [
 ]
 
 
+def compact_trade(c: dict) -> dict:
+    """One row a human can read in Journal / Excel. No fill blobs."""
+    direction = str(c.get("direction") or "").lower()
+    bought_or_sold = "Sold (short)" if direction == "short" else "Bought (long)" if direction == "long" else direction
+    pnl = c.get("booked_pnl") if c.get("booked_pnl") is not None else c.get("realised")
+    return {
+        "contract": c.get("display_name") or c.get("tradingsymbol") or "",
+        "tradingsymbol": c.get("tradingsymbol") or "",
+        "index": c.get("index") or "",
+        "ce_or_pe": c.get("side") or "",
+        "bought_or_sold": bought_or_sold,
+        "status": c.get("status") or "",
+        "qty_open": c.get("quantity") if c.get("quantity") is not None else "",
+        "qty_closed": c.get("closed_quantity") if c.get("closed_quantity") is not None else "",
+        "entry_price": c.get("entry_price") if c.get("entry_price") is not None else "",
+        "exit_price": c.get("exit_price") if c.get("exit_price") is not None else (c.get("last_price") or ""),
+        "entry_time_ist": c.get("entry_time_ist") or "",
+        "exit_time_ist": c.get("exit_time_ist") or "",
+        "pnl": pnl if pnl is not None else "",
+        "overnight": bool(c.get("carried")),
+        "partial_exits": c.get("partial_exit_count") or 0,
+        "entry_date": c.get("entry_date") or "",
+        "exit_date": c.get("exit_date") or "",
+    }
+
+
+def cycle_desk_row(c: dict) -> list:
+    t = compact_trade(c)
+    return [
+        t["contract"],
+        t["index"],
+        t["ce_or_pe"],
+        t["bought_or_sold"],
+        t["status"],
+        t["qty_open"],
+        t["qty_closed"],
+        t["entry_price"],
+        t["exit_price"],
+        t["entry_time_ist"],
+        t["exit_time_ist"],
+        t["pnl"],
+        "Yes" if t["overnight"] else "No",
+        t["partial_exits"],
+    ]
+
+
 def cycle_export_row(c: dict) -> list:
+    pnl = c.get("booked_pnl") if c.get("booked_pnl") is not None else c.get("realised")
     return [
         c.get("tradingsymbol") or "",
         c.get("display_name") or "",
@@ -840,9 +899,8 @@ def cycle_export_row(c: dict) -> list:
         c.get("exit_source") or "",
         c.get("entry_price") if c.get("entry_price") is not None else "",
         c.get("exit_price") if c.get("exit_price") is not None else (c.get("last_price") or ""),
-        c.get("booked_pnl") if c.get("booked_pnl") is not None else c.get("realised"),
+        pnl if pnl is not None else "",
         c.get("unrealised") if c.get("unrealised") is not None else "",
-        c.get("booked_pnl") if c.get("booked_pnl") is not None else "",
         c.get("first_seen_at") or "",
         c.get("last_seen_at") or "",
         c.get("partial_exit_count") or 0,
@@ -920,15 +978,27 @@ def workbook_bytes(cycles: List[dict], *, start: str, end: str) -> bytes:
         cell.fill = header_fill
         cell.alignment = Alignment(wrap_text=True, vertical="center")
     for c in cycles:
-        ws.append(cycle_export_row(c))
+        ws.append(cycle_desk_row(c))
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
     for i, _h in enumerate(EXPORT_HEADERS, 1):
         ws.column_dimensions[get_column_letter(i)].width = 16
-    ws.column_dimensions["A"].width = 26
-    ws.column_dimensions["B"].width = 22
-    ws.column_dimensions["N"].width = 20
-    ws.column_dimensions["O"].width = 20
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["J"].width = 20
+    ws.column_dimensions["K"].width = 20
+
+    tech = wb.create_sheet("Technical")
+    tech.append(TECHNICAL_HEADERS)
+    for cell in tech[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+    for c in cycles:
+        tech.append(cycle_export_row(c))
+    tech.freeze_panes = "A2"
+    tech.auto_filter.ref = tech.dimensions
+    for i, _h in enumerate(TECHNICAL_HEADERS, 1):
+        tech.column_dimensions[get_column_letter(i)].width = 16
+    tech.column_dimensions["A"].width = 26
 
     ev = wb.create_sheet("Fills and partials")
     ev.append(EVENT_HEADERS)
@@ -967,9 +1037,11 @@ def workbook_bytes(cycles: List[dict], *, start: str, end: str) -> bytes:
     meta.append(["Filter to", end])
     meta.append(["Rows", len(cycles)])
     meta.append(["Timezone", "Asia/Kolkata (IST) for entry/exit clocks"])
+    meta.append(["Trades sheet", "One row per contract: what you sold/bought, prices, IST clocks, P&L."])
+    meta.append(["Technical sheet", "Kite ids, token-gap flags, UTC first-seen. Use this only if you need machine fields."])
     meta.append([
-        "Carried overnight",
-        "Y means this cycle was still open after a session (e.g. Friday hold → Monday). Entry stays the original purchase time.",
+        "Held overnight",
+        "Yes means this contract was still open after a session (e.g. Friday hold → Monday). Entry stays the original sale/purchase time.",
     ])
     meta.append([
         "Token gap",

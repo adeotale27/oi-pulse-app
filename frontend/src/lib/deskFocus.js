@@ -24,7 +24,7 @@ export function cashSessionFocusLabel(weekday) {
 export function isCashHeavyIndex(id) {
   const u = String(id || "").toUpperCase().replace(/\s+/g, "");
   if (u === "BANKNIFTY" || u.includes("BANKNIFTY") || u === "NIFTYBANK") return true;
-  return u === "NIFTY";
+  return u === "NIFTY" || u === "NIFTY50";
 }
 
 export function istWeekdaySun0(date = new Date()) {

@@ -178,7 +178,13 @@ export default function MarketIntelCard({
             );
           })}
         </ul>
-      ) : empty("NIFTY + BANKNIFTY cash movers need a live Kite quote."),
+      ) : empty(
+        outside?.briefing
+        || outside?.note
+        || (Number(outside?.heavy_count) > 0
+          ? "Constituents are on file — waiting for live cash quotes (Kite)."
+          : "Upload Nifty 50 / Bank Nifty constituents in Admin → Upload, then wait for a live quote."),
+      ),
       breadth: breadthRows.length ? (
         <ul className="space-y-1">
           {breadthRows.map(([idx, b]) => (

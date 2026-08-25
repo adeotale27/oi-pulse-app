@@ -344,6 +344,9 @@ function filenameFromDisposition(header, fallback) {
   }
 }
 
+export const fetchTrades = (from, to, index) =>
+  api.get("/trades", { params: { from, to, ...(index && index !== "ALL" ? { index } : {}) } }).then((r) => r.data);
+
 export async function downloadTradesExcel({ from, to, index } = {}) {
   const params = { from, to };
   if (index && index !== "ALL") params.index = index;

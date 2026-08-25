@@ -515,17 +515,20 @@ class OITracker:
     def list_expiries(self, index_name: str):
         svc = self._get_service()
         try:
-            dates = svc.list_expiries(index_name) if svc else []
+            dates = list(svc.list_expiries(index_name) if svc else [])
         except Exception as e:
             logger.error(f"list_expiries failed: {e}")
             dates = []
-        if dates:
-            return dates
         snap = (self.last_snapshot or {}).get(index_name) or {}
-        exp = snap.get("expiry")
-        if exp:
-            return [str(exp)[:10]]
-        return []
+        extra = []
+        for item in (snap.get("expiries") or []):
+            s = str(item or "")[:10]
+            if s:
+                extra.append(s)
+        if snap.get("expiry"):
+            extra.append(str(snap.get("expiry"))[:10])
+        merged = sorted({d for d in (list(dates) + extra) if d})
+        return merged
 
     def set_expiry(self, index_name: str, expiry: Optional[str]):
         self.selected_expiry[index_name] = expiry
