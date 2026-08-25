@@ -1,8 +1,12 @@
 # Changelog
 
+## V8.09 — 2026-08-25
+
+W/M expiry circles are back on the sidebar. 25 Aug NIFTY still tags **M** (last Tuesday); SENSEX monthly is last Thursday.
+
 ## V8.08 — 2026-08-25
 
-Monthly vs weekly expiry uses the exchange calendar (NSE last Tuesday, SENSEX last Thursday) instead of “last date in the list”. 25 Aug 2026 NIFTY is monthly; SENSEX monthly is 27 Aug. The sidebar no longer shows W/M badges. Journal no longer lists a contract tape (Excel download still has the book). Closed Kite rows are not re-seeded every poll.
+Monthly vs weekly expiry uses the exchange calendar (NSE last Tuesday, SENSEX last Thursday) instead of “last date in the list”. 25 Aug 2026 NIFTY is monthly; SENSEX monthly is 27 Aug. Journal no longer lists a contract tape (Excel download still has the book). Closed Kite rows are not re-seeded every poll.
 
 ## V8.07 — 2026-08-25
 

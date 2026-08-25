@@ -126,6 +126,23 @@ function StepperInput({ testId, value, step, onChange, min = 0, max = Infinity }
   );
 }
 
+function ExpiryBadge({ tag }) {
+  const isWeekly = tag === "W";
+  return (
+    <span
+      data-testid={`expiry-tag-${tag}`}
+      className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold leading-none border shadow-sm shrink-0 ${
+        isWeekly
+          ? "bg-sky-500 text-white border-sky-600"
+          : "bg-amber-500 text-white border-amber-600"
+      }`}
+      title={isWeekly ? "Weekly expiry" : "Monthly expiry"}
+    >
+      {tag}
+    </span>
+  );
+}
+
 export default function Sidebar({
   indices,
   activeIndex,
@@ -545,6 +562,7 @@ export default function Sidebar({
                     </span>
                   )}
                 </span>
+                <ExpiryBadge tag={exp.tag || "W"} />
               </button>
             );
           })}
