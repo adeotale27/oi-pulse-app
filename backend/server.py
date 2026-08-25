@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Request, Depends
 from fastapi import WebSocket, WebSocketDisconnect
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -22,6 +22,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 from ws_close import close_ws_quietly, ws_client_gone
+from error_log import bind as bind_error_log, install_logging_handler, record_error
 from oi_lookup import prefer_newer_snapshot
 from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai, DEFAULT_SETTINGS
 from poll_intervals import (
@@ -77,6 +78,38 @@ db = None
 
 app = FastAPI(title=APP_NAME)
 api_router = APIRouter(prefix="/api")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception(request: Request, exc: Exception):
+    from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    if isinstance(exc, StarletteHTTPException):
+        return await http_exception_handler(request, exc)
+    if isinstance(exc, RequestValidationError):
+        return await request_validation_exception_handler(request, exc)
+    if isinstance(exc, WebSocketDisconnect) or type(exc).__name__ in (
+        "WebSocketDisconnect",
+        "ConnectionClosed",
+        "ConnectionClosedOK",
+        "ConnectionClosedError",
+    ):
+        return Response(status_code=1011)
+    import traceback as _tb
+
+    try:
+        await record_error(
+            source="api",
+            message=str(exc) or type(exc).__name__,
+            traceback_text=_tb.format_exc(),
+            path=str(request.url.path or "")[:300],
+            kind=type(exc).__name__,
+        )
+    except Exception:
+        pass
+    return JSONResponse({"detail": "Internal error"}, status_code=500)
 
 
 @app.get("/health")
@@ -2638,9 +2671,13 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
                 if ws_client_gone(exc):
                     await close_ws_quietly(websocket)
                     return
+                if not isinstance(exc, Exception):
+                    raise
                 try:
                     await websocket.send_json({"error": "temporarily_unavailable"})
-                except BaseException:
+                except BaseException as send_exc:
+                    if not isinstance(send_exc, Exception) and not ws_client_gone(send_exc):
+                        raise
                     await close_ws_quietly(websocket)
                     return
             await asyncio.sleep(poll_interval_seconds)
@@ -2729,6 +2766,46 @@ async def get_alerts(limit: int = 50):
 async def clear_alerts(_admin: bool = Depends(require_admin)):
     r = await db.alerts.delete_many({})
     return {"deleted": r.deleted_count}
+
+
+class ClientErrorIn(BaseModel):
+    message: str = ""
+    stack: str = ""
+    source: str = "ui"
+    path: str = ""
+    href: str = ""
+
+
+@api_router.post("/errors")
+async def report_client_error(payload: ClientErrorIn, request: Request):
+    """Desk UI / boundary crashes. No tokens. Rate-limited."""
+    src = str(payload.source or "ui")[:32]
+    if src not in ("ui", "ws", "boundary"):
+        src = "ui"
+    await record_error(
+        source=src,
+        message=payload.message or "client error",
+        traceback_text=payload.stack or "",
+        path=(payload.path or payload.href or str(request.url.path))[:300],
+        kind="ClientError",
+        extra={"href": (payload.href or "")[:200]},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/errors")
+async def list_error_log(
+    _admin: bool = Depends(require_admin),
+    limit: int = Query(80, ge=1, le=200),
+    source: Optional[str] = None,
+):
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    query: Dict[str, Any] = {}
+    if source:
+        query["source"] = str(source)[:32]
+    docs = await db.error_logs.find(query, {"_id": 0}).sort("ts", -1).to_list(length=limit)
+    return {"count": len(docs), "errors": docs}
 
 
 @api_router.get("/config")
@@ -6043,6 +6120,7 @@ _RATE_LIMITED_PREFIXES = (
     "/api/auth/login",
     "/api/auth/remember-login",
     "/api/auth/change-password",
+    "/api/errors",
 )
 _AUTH_STRICT_PREFIXES = (
     "/api/auth/login",
@@ -6142,6 +6220,11 @@ async def _boot():
         return
 
     _notifier_boot.set_db(db)
+    try:
+        bind_error_log(db)
+        install_logging_handler()
+    except Exception:
+        pass
     tracker = OITracker(db)
     asyncio.create_task(_boot_rest())
 
@@ -6175,6 +6258,9 @@ async def _ensure_mongo_indexes():
         await db.trade_cycles.create_index([("owner_id", 1), ("status", 1)])
         await db.trade_cycles.create_index([("owner_id", 1), ("entry_date", 1)])
         await db.trade_cycles.create_index([("owner_id", 1), ("exit_date", 1)])
+        await db.error_logs.create_index([("created_at", -1)])
+        await db.error_logs.create_index([("fingerprint", 1), ("created_at", -1)])
+        await db.error_logs.create_index("source")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 

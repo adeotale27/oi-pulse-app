@@ -31,6 +31,7 @@ import TelegramPrefsModal from "@/components/TelegramPrefsModal";
 import SettingsModal from "@/components/SettingsModal";
 import IndexManagementModal from "@/components/IndexManagementModal";
 import TradeJournalModal from "@/components/TradeJournalModal";
+import ErrorLogModal from "@/components/ErrorLogModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import HolidaysTab from "@/components/HolidaysTab";
 import PositionsPanel from "@/components/PositionsPanel";
@@ -241,6 +242,7 @@ export default function Dashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [indexManagerOpen, setIndexManagerOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [errorLogOpen, setErrorLogOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(loadNotifEnabled);
   const [flash, setFlash] = useState(false);
   const [expiries, setExpiries] = useState([]);
@@ -2110,6 +2112,7 @@ export default function Dashboard() {
           setIndexManagerOpen(true);
         }}
         onOpenJournal={() => { if (authState.is_admin) setJournalOpen(true); }}
+        onOpenErrorLog={() => { if (authState.is_admin) setErrorLogOpen(true); }}
         onOpenSounds={() => setSoundsOpen(true)}
         onOpenUpload={() => { if (authState.is_admin) setUploadOpen(true); }}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
@@ -3059,6 +3062,9 @@ export default function Dashboard() {
           open={journalOpen}
           onOpenChange={setJournalOpen}
         />
+      )}
+      {authState.is_admin && (
+        <ErrorLogModal open={errorLogOpen} onOpenChange={setErrorLogOpen} />
       )}
 
       <HugeShiftModal

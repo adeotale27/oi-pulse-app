@@ -1,10 +1,11 @@
 import "@/App.css";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AuthGate from "@/components/AuthGate";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
 import PwaNotifyPrompt from "@/components/PwaNotifyPrompt";
+import { installDeskErrorLog } from "@/lib/errorLog";
 
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
@@ -20,6 +21,9 @@ function BootFallback() {
 }
 
 function App() {
+  useEffect(() => {
+    installDeskErrorLog();
+  }, []);
   return (
     <div className="App">
       <ErrorBoundary>

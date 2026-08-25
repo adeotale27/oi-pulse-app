@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import DeskAiConfigMenu from "@/components/DeskAiConfigMenu";
@@ -138,6 +138,7 @@ export default function Header({
   onOpenSettings,
   onOpenIndexManager,
   onOpenJournal,
+  onOpenErrorLog,
   onDownloadCsv,
   onOpenSounds,
   onOpenUpload,
@@ -619,6 +620,16 @@ export default function Header({
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>
+          <Button
+            data-testid="btn-mobile-error-log"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={() => { setMobileToolsOpen(false); onOpenErrorLog?.(); }}
+          >
+            <ScrollText className="w-4 h-4 mr-1.5" />
+            Error log
+          </Button>
           <Button data-testid="btn-mobile-sounds" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />
             Sounds
@@ -902,6 +913,13 @@ export default function Header({
                   Trade journal
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  data-testid="menu-open-error-log"
+                  onSelect={(e) => { e.preventDefault(); onOpenErrorLog?.(); }}
+                >
+                  <ScrollText className="w-4 h-4" />
+                  Error log
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   data-testid="menu-open-settings"
                   onSelect={(e) => { e.preventDefault(); onOpenSettings?.(); }}
                 >
@@ -1077,6 +1095,16 @@ export default function Header({
           <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm" onClick={onOpenTelegramPrefs}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
+          </Button>
+          <Button
+            data-testid="btn-tablet-error-log"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={() => { setMobileToolsOpen(false); onOpenErrorLog?.(); }}
+          >
+            <ScrollText className="w-4 h-4 mr-1.5" />
+            Error log
           </Button>
           <Button data-testid="btn-tablet-sounds" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />

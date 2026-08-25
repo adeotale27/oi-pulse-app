@@ -64,7 +64,7 @@ If a value is on the Admin configuration form (`DEFAULT_SETTINGS` / `POST /setti
 
 ## Errors and logging
 
-- Backend: `logging.getLogger(__name__)`. No empty `except:`. Catch Kite/network, log type + message, return safe JSON.
+- Backend: `logging.getLogger(__name__)`. Uncaught API/UI errors also persist to `error_logs` (admin **Error log**). No empty `except:`. Catch Kite/network, log type + message, return safe JSON.
 - Never log access tokens, API secrets, passwords, or Fernet keys.
 - FastAPI: `HTTPException` with a short `detail` string. 401/403 for auth, 400 validation, 404 unknown index.
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.11 — 2026-08-25
+
+App-wide error log: uncaught API exceptions, `logger.exception`, and desk UI crashes go to Mongo `error_logs` (tokens stripped). Admin menu **Error log**. Websocket cancel still closes quietly and does not swallow KeyboardInterrupt.
+
 ## V8.10 — 2026-08-25
 
 Straddle and spot websockets treat reload / tab-close `CancelledError` as a normal disconnect instead of an ASGI crash. Ctrl+C while uvicorn is respawning can still print a KeyboardInterrupt — that is the process stopping, not a desk bug.
