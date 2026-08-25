@@ -9,7 +9,7 @@ export const INSIGHT_TILE_DEFS = [
   { id: "dailyTheta", label: "Daily time money", defaultOn: true },
   { id: "tilt", label: "Direction tilt", defaultOn: true },
   { id: "stillEarn", label: "Still to earn", defaultOn: true },
-  { id: "booked", label: "Profit booked today", defaultOn: true },
+  { id: "booked", label: "Profit booked", defaultOn: true },
   { id: "untilClose", label: "Until close", defaultOn: true },
   { id: "overnight", label: "Overnight risk", defaultOn: true },
 ];

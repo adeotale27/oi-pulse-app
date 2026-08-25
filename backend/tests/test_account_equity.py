@@ -30,16 +30,37 @@ def test_user_example_after_charges_is_point_one_percent():
     assert booked_pct(made, 1_500_000) == 0.1
 
 
-def test_hedged_span_does_not_double_wallet():
-    """36.25L cash + ~36L SPAN must not become 72L."""
+def test_screenshot_cash_plus_span_is_not_wallet():
+    """Kite leftover ₹13,719 + SPAN ₹36.11L must not become ₹72.5L."""
     book = total_trading_equity({
-        "net": 3_625_000,
+        "net": 13_719,
+        "cash": 3_639_055,
+        "utilised_debits": 3_611_618,
         "opening_balance": 3_625_000,
-        "utilised_debits": 3_600_000,
-        "cash": 3_625_000,
     })
     assert book["total"] == 3_625_000
-    assert choose_funds_base(7_225_000, book["total"]) == 3_625_000
+    assert booked_pct(15_431, book["total"]) == 0.4257
+
+
+def test_missing_opening_uses_cash_when_cash_is_full_wallet():
+    book = total_trading_equity({
+        "net": 13_719,
+        "cash": 3_639_055,
+        "utilised_debits": 3_611_618,
+    })
+    assert book["total"] == 3_639_055
+
+
+def test_duplicate_commodity_payload_does_not_double_wallet():
+    book = total_trading_equity({
+        "opening_balance": 3_625_000,
+        "net": 13_719,
+        "utilised_debits": 3_611_618,
+        "commodity_opening_balance": 3_625_000,
+        "commodity_net": 13_719,
+        "commodity_utilised_debits": 3_611_618,
+    })
+    assert book["total"] == 3_625_000
 
 
 def test_collateral_and_payin_count_as_wallet():

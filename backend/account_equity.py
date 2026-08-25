@@ -93,13 +93,15 @@ def segment_wallet(seg: Optional[Dict[str, Any]]) -> Dict[str, float]:
         avail.get("live_balance") if isinstance(avail, dict) else None,
         0.0,
     ) or 0.0
-    # Opening is start-of-day cash (does not include today's P&L or SPAN).
+    # Opening is start-of-day cash. Never add SPAN/utilised (that is leverage on hedges).
     if opening > 0:
         wallet = opening + collateral + max(payin, 0.0)
+    elif live > 0 and (available < 1 or live > available * 1.5):
+        wallet = live + collateral
+    elif cash > 0 and (available < 1 or cash > available * 1.5):
+        wallet = cash + collateral
     elif live > 0:
         wallet = live + collateral
-    elif cash > 0:
-        wallet = cash + collateral
     else:
         wallet = 0.0
     return {
@@ -148,7 +150,12 @@ def total_trading_equity(funds: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     nested_eq = funds.get("equity") if isinstance(funds.get("equity"), dict) else None
     eq = segment_wallet(nested_eq or funds)
     cm = segment_wallet(_commodity_slice(funds))
-    total = round(eq["wallet"] + cm["wallet"], 2)
+    cm_wallet = cm["wallet"]
+    # Identical commodity copy of equity (or empty MCX echoing cash) must not double the wallet.
+    if eq["wallet"] >= 1 and cm_wallet >= 1:
+        if abs(cm_wallet - eq["wallet"]) <= max(1.0, 0.02 * eq["wallet"]):
+            cm_wallet = 0.0
+    total = round(eq["wallet"] + cm_wallet, 2)
     available = round(eq["available"] + cm["available"], 2)
     utilised = round(eq["utilised"] + cm["utilised"], 2)
     return {
@@ -157,7 +164,7 @@ def total_trading_equity(funds: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "available": available,
         "utilised": utilised,
         "equity_total": eq["wallet"],
-        "commodity_total": cm["wallet"],
+        "commodity_total": cm_wallet,
         "cash": eq["cash"],
         "opening": eq["opening"],
         "collateral": round(eq["collateral"] + cm["collateral"], 2),

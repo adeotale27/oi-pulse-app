@@ -1,5 +1,9 @@
 # Changelog
 
+## V8.15 — 2026-08-25
+
+Positions tiles stay one line: **Profit booked** (no “today”) shows rupees; % of wallet sits in the hint. Funds available is Kite leftover only — the 72L “total book” (cash + SPAN on hedges) is not shown and is not the % base. Duplicate commodity cash is not added on top of equity.
+
 ## V8.14 — 2026-08-25
 
 Day % is **wallet after charges**, not SPAN on a leveraged/hedged book. Wallet is Kite opening cash + collateral (e.g. ~36.25L), never leftover margin + utilised (that was showing ~72L). Example: ₹15L in the account, ₹25L notional via leverage, ₹1,500 booked after ₹200 charges → **0.10%**. A previous leftover+SPAN freeze is replaced on the next snapshot.

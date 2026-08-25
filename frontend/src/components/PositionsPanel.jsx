@@ -184,7 +184,7 @@ const POSITIONS_GUIDE = (
     </p>
     <p>
       <b>Still to earn</b> — leftover premium on sold options that can still decay into your pocket.
-      <b> Profit booked today</b> — realised P&amp;L from same-day exits (and partial closes).
+      <b> Profit booked</b> — realised P&amp;L from same-day exits (and partial closes).
       <b> Day charges</b> — brokerage + STT + GST + exchange fees (Zerodha contract note, read-only).
       Trade Excel lives in <b>Journal → Download trades</b> (entry/exit clocks and partials).
     </p>
@@ -1625,15 +1625,7 @@ export default function PositionsPanel({
             if (b.available < 0) return "rose";
             return "slate";
           })()}
-          hint={(() => {
-            if (privacyMode) return "Masked";
-            const b = fundsBreakdown(funds);
-            if (!b) return "Kite available margin";
-            const bits = [];
-            if (b.used != null) bits.push(`SPAN ₹ ${fmt(b.used, 0)}`);
-            if (b.total != null) bits.push(`Wallet ₹ ${fmt(b.total, 0)}`);
-            return bits.length ? bits.join(" · ") : "Cash + collateral · Kite";
-          })()}
+          hint={privacyMode ? "Masked" : "Kite leftover for new trades"}
           tip={(
             <div className="space-y-1.5">
               <p>
@@ -1697,14 +1689,11 @@ export default function PositionsPanel({
           ),
           booked: (
         <StatBox
-          label="Profit booked today"
+          label="Profit booked"
           value={(() => {
             if (privacyMode) return PRIVACY_MASK;
-            const pct = pnlToday?.booked_pct ?? funds?.booked_pct;
             const made = pnlToday?.booked_after_charges;
-            const rupees = "₹ " + fmt(made != null && Number.isFinite(Number(made)) ? Number(made) : stats.bookedToday);
-            if (pct == null || !Number.isFinite(Number(pct))) return rupees;
-            return `${rupees} · ${fmtBookedPct(pct)}`;
+            return "₹ " + fmt(made != null && Number.isFinite(Number(made)) ? Number(made) : stats.bookedToday);
           })()}
           tone={privacyMode ? "slate" : stats.bookedToday >= 0 ? "emerald" : "rose"}
           hint={
@@ -1712,10 +1701,8 @@ export default function PositionsPanel({
               ? "Masked"
               : (() => {
                   const pct = pnlToday?.booked_pct ?? funds?.booked_pct;
-                  const pctBit = pct != null && Number.isFinite(Number(pct)) ? ` · ${fmtBookedPct(pct)} of wallet after charges` : "";
-                  return stats.exitedCount > 0
-                    ? `After charges · closed + partials${pctBit}`
-                    : `After charges (incl. partials)${pctBit}`;
+                  if (pct == null || !Number.isFinite(Number(pct))) return "After charges";
+                  return `${fmtBookedPct(pct)} of wallet`;
                 })()
           }
           tip={(
@@ -2670,8 +2657,8 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
           <InfoTip title={label} size="xs">{tip}</InfoTip>
         )}
       </div>
-      <div className="text-[15px] md:text-[17px] font-semibold font-mono-data leading-tight tabular-nums">{value}</div>
-      {hint && <div className="text-[10px] text-slate-600 leading-tight line-clamp-2">{hint}</div>}
+      <div className="text-[15px] md:text-[17px] font-semibold font-mono-data leading-tight tabular-nums truncate">{value}</div>
+      {hint && <div className="text-[10px] text-slate-600 leading-tight truncate">{hint}</div>}
     </div>
   );
 }
