@@ -179,7 +179,7 @@ export default function PositionsBrainPanel({ open, onClose, rows = [], stats = 
             <BrainSectionHeader
               title="Book facts"
               testId="brain-tip-book"
-              tip="Call share is short-call sensitivity (|Δ|×qty), not a count of rows. Short calls are upside risk; short puts are downside risk."
+              tip="Call share is short-call sensitivity (|Δ|×qty), not a count of rows. Short calls are upside risk; short puts are downside risk. This is book path risk, not the index ticker regime on the header."
             />
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
@@ -202,7 +202,7 @@ export default function PositionsBrainPanel({ open, onClose, rows = [], stats = 
               </div>
             </div>
             <div className="mt-2 text-[11px] text-slate-700">
-              Biggest path risk: <span className="font-semibold text-slate-900">{brain.threat.label}</span>
+              Biggest path risk (from the short book, not index regime): <span className="font-semibold text-slate-900">{brain.threat.label}</span>
               <div className="mt-0.5 text-slate-500">{brain.threat.why}</div>
             </div>
             <div className="mt-2 space-y-1 text-[11px] text-slate-700">

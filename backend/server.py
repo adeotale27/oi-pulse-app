@@ -5672,6 +5672,19 @@ class CasSettingsIn(BaseModel):
     paper_any_day: Optional[bool] = None
     debug_mode: Optional[bool] = None
     watch_indexes: Optional[List[str]] = None
+    auto_trade_enabled: Optional[bool] = None
+    auto_trade_mode: Optional[str] = None
+    auto_prepare_time: Optional[str] = None
+    auto_arm_time: Optional[str] = None
+    auto_signal_start: Optional[str] = None
+    auto_cutoff_time: Optional[str] = None
+    auto_bullish_pts: Optional[float] = None
+    auto_bearish_pts: Optional[float] = None
+    auto_poll_ms: Optional[int] = None
+
+
+class CasAutoTradeInjectIn(BaseModel):
+    indicative: float
 
 
 class CasActivateIn(BaseModel):
@@ -5710,7 +5723,12 @@ async def cas_status(role: str = Depends(require_desk_user)):
                 "live_trading": (status.get("settings") or {}).get("live_trading"),
                 "debug_mode": (status.get("settings") or {}).get("debug_mode"),
                 "watch_indexes": (status.get("settings") or {}).get("watch_indexes"),
+                "auto_trade_enabled": (status.get("settings") or {}).get("auto_trade_enabled"),
+                "auto_trade_mode": (status.get("settings") or {}).get("auto_trade_mode"),
+                "auto_bullish_pts": (status.get("settings") or {}).get("auto_bullish_pts"),
+                "auto_bearish_pts": (status.get("settings") or {}).get("auto_bearish_pts"),
             },
+            "auto_trade": status.get("auto_trade") or {},
             "config": {
                 "lots": (status.get("config") or {}).get("lots"),
                 "live_trading": (status.get("config") or {}).get("live_trading"),
@@ -5804,6 +5822,24 @@ async def cas_reset(_admin: bool = Depends(require_admin)):
     except Exception as e:
         logger.warning("cas reset failed: %s", e, exc_info=True)
         raise HTTPException(500, "Could not reset CAS day state")
+
+
+@api_router.post("/cas/auto-trade/inject")
+async def cas_auto_trade_inject(
+    payload: CasAutoTradeInjectIn, _admin: bool = Depends(require_admin)
+):
+    """Paper/debug only: treat a number as the first NSE indicative print."""
+    import cas_bridge
+
+    try:
+        return await asyncio.to_thread(
+            cas_bridge.inject_auto_trade, float(payload.indicative), tracker
+        )
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.warning("cas auto-trade inject failed: %s", e, exc_info=True)
+        raise HTTPException(500, "Could not inject auto-trade print")
 
 
 @api_router.post("/cas/backtest")
@@ -6389,6 +6425,12 @@ async def _boot_rest():
     except Exception as e:
         logger.warning("load_settings on startup: %s", e)
     await tracker.start()
+    try:
+        import cas_bridge
+
+        await asyncio.to_thread(cas_bridge.sync_credentials_from_tracker, tracker)
+    except Exception as e:
+        logger.warning("CAS engine attach on boot: %s", e)
     await _seed_last_snapshots()
     extra_tickers.attach_db(db)
     extra_tickers.attach_kite_provider(

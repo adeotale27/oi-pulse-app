@@ -133,7 +133,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const [btIndexes, setBtIndexes] = useState(["NIFTY", "SENSEX"]);
   const [btResult, setBtResult] = useState(null);
   const [btBusy, setBtBusy] = useState(false);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [injectValue, setInjectValue] = useState("24007.50");
   const [readinessOpen, setReadinessOpen] = useState(() => {
     try {
       return localStorage.getItem("casLiveReadinessOpen") === "1";
@@ -204,6 +204,11 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
     cfg.debug_mode ??
     status?.settings?.debug_mode
   );
+  const auto = status?.auto_trade || {};
+  const autoMode = String(status?.settings?.auto_trade_mode || auto.mode || "off").toLowerCase();
+  const autoEnabled = !!(status?.settings?.auto_trade_enabled || auto.enabled);
+  const autoLive = autoMode === "live";
+  const autoPaper = autoMode === "paper";
   const fills = state.fills || [];
   const timings = state.timings || [];
   const watching = day.indexes || plain.watching || watchIndexes;
@@ -245,6 +250,43 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
     setLots(n);
     lotsDirty.current = false;
     await patchSettings({ lots: n });
+  };
+
+  const setAutoTradeMode = async (mode) => {
+    if (!isAdmin) return;
+    if (mode === "live") {
+      const ok = window.confirm(
+        "AUTO-TRADE LIVE?\n\nAt ~15:20 IST this will place ONE real MARKET BUY of ATM NIFTY CE or PE.\nYou exit yourself in Positions. Do not also Activate classic CAS Live."
+      );
+      if (!ok) return;
+    }
+    if (mode === "off") {
+      await patchSettings({ auto_trade_mode: "off", auto_trade_enabled: false });
+      return;
+    }
+    await patchSettings({ auto_trade_mode: mode, auto_trade_enabled: true });
+  };
+
+  const injectAutoTrade = async () => {
+    if (!isAdmin) return;
+    const n = Number(injectValue);
+    if (!Number.isFinite(n) || n <= 0) {
+      setError("Enter a NIFTY indicative print to inject");
+      return;
+    }
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    const gen = ++statusGen.current;
+    try {
+      const { data } = await api.post("/cas/auto-trade/inject", { indicative: n });
+      applyStatus(data, gen);
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   const setLiveTrading = async (on) => {
@@ -665,6 +707,170 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                 Live is selected. Activate only if you intend to sell options for real.
               </div>
             )}
+            {debug && !live && (
+              <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-sm px-2 py-1.5">
+                Debug + Paper: CAS can arm outside market hours. Watch/move windows widen so you
+                can see ticks, last close, and dry-run timing.
+              </div>
+            )}
+            {marketClosed && !debug && (
+              <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-100 rounded-sm px-2 py-1.5">
+                Market closed for CAS (after 15:41 IST). Turn on Debug to rehearse, or try tomorrow.
+              </div>
+            )}
+            {plain.last_error && (
+              <div
+                className="text-[11px] text-rose-800 bg-rose-50 border border-rose-200 rounded-sm px-2 py-1.5"
+                data-testid="cas-last-error"
+              >
+                Last order/engine error: {plain.last_error}
+              </div>
+            )}
+          </div>
+
+          <section
+            className="rounded-md border border-slate-200 bg-white p-3 space-y-3"
+            data-testid="cas-auto-trade"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                  CAS Auto Trade
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed max-w-prose">
+                  NIFTY only. Locks ATM from live NIFTY just before 15:20, then reads NSE{" "}
+                  <span className="font-mono-data">/api/marketStatus</span> (indicative NIFTY 50).
+                  First sane print vs frozen spot → one MARKET <b>BUY</b> CE or PE. You exit in
+                  Positions. Default threshold ±15 pts (50 would have skipped today&apos;s +27).
+                  Not the 15:28 sell-both tool.
+                </p>
+              </div>
+              <InfoTip title="Auto Trade" testId="cas-auto-trade-tip">
+                <div className="space-y-2 text-[12px] leading-relaxed">
+                  <p>
+                    Website JSON is seconds-late, not exchange multicast. Paper first. Do not run
+                    Auto-Trade Live together with classic CAS Live on expiry Tuesday.
+                  </p>
+                  <p>
+                    ATM is never taken from the indicative print. Overnight CLOSE leftovers are
+                    ignored.
+                  </p>
+                </div>
+              </InfoTip>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">
+                  Auto mode
+                </div>
+                <div
+                  className="inline-flex rounded-sm border border-slate-200 overflow-hidden"
+                  data-testid="cas-auto-mode-toggle"
+                >
+                  {[
+                    ["off", "Off"],
+                    ["paper", "Paper"],
+                    ["live", "Live"],
+                  ].map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={!isAdmin || busy}
+                      onClick={() => setAutoTradeMode(mode)}
+                      className={`px-3 h-8 text-xs font-semibold border-l first:border-l-0 border-slate-200 ${
+                        autoMode === mode
+                          ? mode === "live"
+                            ? "bg-rose-600 text-white"
+                            : mode === "paper"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-slate-700 text-white"
+                          : "bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                      data-testid={`cas-auto-mode-${mode}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="text-[11px] text-slate-600 pb-1">
+                Status{" "}
+                <b className="font-mono-data" data-testid="cas-auto-status">
+                  {auto.status || "IDLE"}
+                </b>
+                {autoEnabled ? ` · ${autoMode}` : " · off"}
+              </div>
+            </div>
+
+            {autoLive && (
+              <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-100 rounded-sm px-2 py-1.5 flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 shrink-0" />
+                Auto-Trade Live will BUY one ATM option around 15:20. Keep classic CAS on Paper.
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <MiniCard label="Frozen NIFTY" value={fmt(auto.pre_signal_nifty, 2)} mono />
+              <MiniCard label="Locked ATM" value={auto.locked_atm != null ? String(auto.locked_atm) : "—"} mono />
+              <MiniCard label="Indicative" value={fmt(auto.indicative_nifty, 2)} mono />
+              <MiniCard
+                label="Delta"
+                value={auto.cas_delta != null ? `${auto.cas_delta > 0 ? "+" : ""}${fmt(auto.cas_delta, 2)}` : "—"}
+                mono
+              />
+              <MiniCard label="Signal" value={auto.signal || "—"} />
+              <MiniCard
+                label="Order"
+                value={auto.tradingsymbol ? `${auto.opt_type || ""} ${auto.order_status || ""}`.trim() : (auto.order_status || "—")}
+              />
+            </div>
+            {(auto.prepared_ce || auto.prepared_pe || auto.reason || auto.nse_error) && (
+              <p className="text-[11px] text-slate-600 font-mono-data break-all" data-testid="cas-auto-detail">
+                {auto.prepared_ce ? `CE ${auto.prepared_ce}` : ""}
+                {auto.prepared_pe ? ` · PE ${auto.prepared_pe}` : ""}
+                {auto.order_id ? ` · ${auto.order_id}` : ""}
+                {auto.reason ? ` · ${auto.reason}` : ""}
+                {auto.nse_error ? ` · NSE ${auto.nse_error}` : ""}
+              </p>
+            )}
+            {auto.latency?.total_signal_to_order_ms != null && (
+              <p className="text-[10px] text-slate-500">
+                Latency decide {fmtMs(auto.latency.data_to_decision_ms)} ms · order{" "}
+                {fmtMs(auto.latency.decision_to_order_ms)} ms · total{" "}
+                {fmtMs(auto.latency.total_signal_to_order_ms)} ms
+              </p>
+            )}
+
+            {isAdmin && (autoPaper || debug) && !autoLive && (
+              <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-slate-100">
+                <label className="text-[10px] uppercase tracking-wider text-slate-500">
+                  Inject print (paper)
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={injectValue}
+                    disabled={busy}
+                    onChange={(e) => setInjectValue(e.target.value)}
+                    className="mt-0.5 block w-28 h-8 px-2 text-sm border border-slate-200 rounded-sm font-mono-data"
+                    data-testid="cas-auto-inject-value"
+                  />
+                </label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-sm"
+                  onClick={injectAutoTrade}
+                  disabled={busy || !isKiteMode}
+                  data-testid="cas-auto-inject"
+                >
+                  Inject first print
+                </Button>
+              </div>
+            )}
+          </section>
+
+          {/* Live readiness — collapsed by default; open on demand */}
             {debug && !live && (
               <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-sm px-2 py-1.5">
                 Debug + Paper: CAS can arm outside market hours. Watch/move windows widen so you

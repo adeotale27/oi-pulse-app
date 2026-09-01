@@ -33,6 +33,15 @@ _SETTINGS: Dict[str, Any] = {
     "paper_any_day": True,
     "debug_mode": False,
     "watch_indexes": ["NIFTY", "SENSEX"],
+    "auto_trade_enabled": False,
+    "auto_trade_mode": "off",  # off | paper | live
+    "auto_prepare_time": "15:19:30",
+    "auto_arm_time": "15:19:55",
+    "auto_signal_start": "15:20:00",
+    "auto_cutoff_time": "15:22:00",
+    "auto_bullish_pts": 15.0,
+    "auto_bearish_pts": 15.0,
+    "auto_poll_ms": 250,
 }
 _EGRESS_CACHE: Dict[str, Any] = {"ip": None, "at": 0.0, "error": None}
 
@@ -270,6 +279,12 @@ def get_status(tracker=None) -> Dict[str, Any]:
     status["settings"] = dict(_SETTINGS)
     status["live_readiness"] = _live_readiness(status)
     status["plain"] = _plain_status(status)
+    try:
+        from cas_auto_trade import get_auto_trade
+
+        status["auto_trade"] = get_auto_trade().snapshot()
+    except Exception:
+        status["auto_trade"] = {"status": "IDLE", "mode": "off"}
     return status
 
 
@@ -459,12 +474,61 @@ def update_settings(patch: Dict[str, Any], tracker=None, *, allow_live: bool = F
         if "live_trading" in patch:
             if bool(patch["live_trading"]) and not allow_live:
                 raise PermissionError("Only admin can enable Live trading")
-            _SETTINGS["live_trading"] = bool(patch["live_trading"])
+            want_live = bool(patch["live_trading"])
+            auto_mode_next = str(
+                patch.get("auto_trade_mode", _SETTINGS.get("auto_trade_mode") or "off")
+            ).strip().lower()
+            if want_live and auto_mode_next == "live":
+                raise ValueError(
+                    "Turn off Auto-Trade Live before enabling classic CAS Live "
+                    "(do not run both live arms on the same expiry)"
+                )
+            _SETTINGS["live_trading"] = want_live
             # Safety: turning Live on while armed requires re-activate
             if _SETTINGS["live_trading"]:
                 store = get_store()
                 if store.is_activated():
                     store.deactivate(by="switched-to-live")
+        if "auto_trade_enabled" in patch:
+            _SETTINGS["auto_trade_enabled"] = bool(patch["auto_trade_enabled"])
+        if "auto_trade_mode" in patch:
+            mode = str(patch["auto_trade_mode"] or "off").strip().lower()
+            if mode not in ("off", "paper", "live"):
+                raise ValueError("auto_trade_mode must be off, paper, or live")
+            if mode == "live" and not allow_live:
+                raise PermissionError("Only admin can enable Live auto-trade")
+            live_classic = bool(_SETTINGS.get("live_trading"))
+            if "live_trading" in patch:
+                live_classic = bool(patch["live_trading"])
+            if mode == "live" and live_classic:
+                raise ValueError(
+                    "Turn off classic CAS Live before enabling Auto-Trade Live "
+                    "(do not run both live arms on the same expiry)"
+                )
+            _SETTINGS["auto_trade_mode"] = mode
+            if mode == "live":
+                _SETTINGS["auto_trade_enabled"] = True
+            elif mode == "off":
+                _SETTINGS["auto_trade_enabled"] = False
+        for key, lo, hi, cast in (
+            ("auto_bullish_pts", 0.0, 200.0, float),
+            ("auto_bearish_pts", 0.0, 200.0, float),
+            ("auto_poll_ms", 150, 2000, int),
+        ):
+            if key in patch:
+                _SETTINGS[key] = max(lo, min(hi, cast(patch[key])))
+        for tkey in (
+            "auto_prepare_time",
+            "auto_arm_time",
+            "auto_signal_start",
+            "auto_cutoff_time",
+        ):
+            if tkey in patch and patch[tkey] is not None:
+                raw = str(patch[tkey]).strip()
+                parts = raw.split(":")
+                if len(parts) < 2:
+                    raise ValueError(f"{tkey} must be HH:MM")
+                _SETTINGS[tkey] = raw
         if tracker is not None:
             sync_credentials_from_tracker(tracker)
         else:
@@ -516,6 +580,23 @@ def deactivate(tracker, *, by: str = "admin") -> Dict[str, Any]:
 def reset_day(tracker) -> Dict[str, Any]:
     sync_credentials_from_tracker(tracker)
     get_store().reset_day()
+    try:
+        from cas_auto_trade import get_auto_trade
+
+        get_auto_trade().reset_today()
+    except Exception:
+        logger.exception("CAS auto-trade reset failed")
+    return get_status(tracker)
+
+
+def inject_auto_trade(indicative: float, tracker=None) -> Dict[str, Any]:
+    """Paper/debug: fake the first NSE indicative print."""
+    if tracker is not None:
+        sync_credentials_from_tracker(tracker)
+    from cas_auto_trade import get_auto_trade
+
+    engine = get_engine()
+    get_auto_trade().inject_indicative(float(indicative), _SETTINGS, engine.client)
     return get_status(tracker)
 
 

@@ -268,6 +268,17 @@ class AutomationEngine:
 
                 # Always: pull Last close once per day at app start (not LTP)
                 self._pull_baselines_once()
+                try:
+                    from cas_auto_trade import get_auto_trade
+                    import cas_bridge
+
+                    get_auto_trade().tick(cas_bridge._SETTINGS, self.client)
+                    auto_on = bool(cas_bridge._SETTINGS.get("auto_trade_enabled")) and str(
+                        cas_bridge._SETTINGS.get("auto_trade_mode") or "off"
+                    ).lower() in ("paper", "live")
+                except Exception:
+                    logger.exception("CAS auto-trade tick failed")
+                    auto_on = False
 
                 if now_mono - self._last_ws_status_at >= 0.5:
                     self._last_ws_status_at = now_mono
@@ -280,7 +291,8 @@ class AutomationEngine:
                     if self._ws_started:
                         self._stop_ws()
                         self.store.clear_ltp()
-                    time.sleep(1.0)
+                    # Auto-trade still needs ~250ms polls around 15:20; 1s would miss the first print.
+                    time.sleep(0.2 if auto_on else 1.0)
                     continue
 
                 # After market close (15:41 IST): stop WS + auto-deactivate.

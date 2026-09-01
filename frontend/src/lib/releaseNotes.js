@@ -4,6 +4,27 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.03",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade waits for a real 15:20 indicative, not the stuck live NIFTY print, before buying one ATM call or put.",
+      "Brains path risk is still from your short calls vs short puts — it is not the header’s index regime chip.",
+    ],
+    admin: [
+      "Engine attaches on API boot; Auto Trade polls ~200ms without classic Activate. Prepare retries until cutoff; a rejected live order is not resent.",
+    ],
+  },
+  {
+    version: "9.02",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade can buy one ATM NIFTY call or put off the first 15:20 indicative vs the frozen live index. You still exit yourself in Positions. The old 15:28 sell-both CAS is unchanged.",
+    ],
+    admin: [
+      "NSE JSON is GET /api/marketStatus (indicativenifty50), cookie warmup like FII/DII — not a CSV and not HTML scrape. Default ±15 pts. Inject is Paper/Debug only. Live Auto-Trade cannot be on with classic CAS Live.",
+    ],
+  },
+  {
     version: "9.01",
     date: "2026-09-01",
     user: [

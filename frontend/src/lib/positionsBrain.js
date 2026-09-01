@@ -240,12 +240,17 @@ export function computePositionsBrain({ rows = [], stats = {}, vix = null } = {}
   const nearestCall = calls.slice().sort((a, b) => (strikeDistancePct(a) ?? 99) - (strikeDistancePct(b) ?? 99))[0] || null;
   const nearestPut = puts.slice().sort((a, b) => (strikeDistancePct(a) ?? 99) - (strikeDistancePct(b) ?? 99))[0] || null;
 
-  // Short calls hurt on a rally; short puts hurt on a selloff.
-  const threat = callRisk >= putRisk && calls.length
-    ? { direction: "upside", label: "A fast move up", why: "Short calls carry more sensitivity than short puts." }
-    : puts.length
-      ? { direction: "downside", label: "A fast move down", why: "Short puts carry more sensitivity than short calls." }
-      : { direction: "none", label: "No short-option path risk", why: "No sold calls or puts to stress." };
+  // Short calls hurt on a rally; short puts hurt on a selloff. Not index "regime".
+  let threat;
+  if (!calls.length && !puts.length) {
+    threat = { direction: "none", label: "No short-option path risk", why: "No sold calls or puts to stress." };
+  } else if (callRisk > putRisk || (callRisk === putRisk && netDelta > 0 && calls.length)) {
+    threat = { direction: "upside", label: "A fast move up", why: "Short calls carry more sensitivity than short puts." };
+  } else if (putRisk > callRisk || puts.length) {
+    threat = { direction: "downside", label: "A fast move down", why: "Short puts carry more sensitivity than short calls." };
+  } else {
+    threat = { direction: "upside", label: "A fast move up", why: "Short calls carry more sensitivity than short puts." };
+  }
 
   const watchList = ranked.slice(0, 3).map((row) => ({
     symbol: positionLabel(row),

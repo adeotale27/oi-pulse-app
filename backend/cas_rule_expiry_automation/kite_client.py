@@ -200,6 +200,25 @@ class KiteClient:
             return float(bars[-1]["close"])
         return 0.0
 
+    def place_market_buy(
+        self,
+        exchange: str,
+        tradingsymbol: str,
+        quantity: int,
+        product: str,
+        tag: str = "CASAUTO",
+        live: bool = False,
+    ) -> Any:
+        return self.place_market(
+            side="BUY",
+            exchange=exchange,
+            tradingsymbol=tradingsymbol,
+            quantity=quantity,
+            product=product,
+            tag=tag,
+            live=live,
+        )
+
     def place_market_sell(
         self,
         exchange: str,
@@ -236,15 +255,54 @@ class KiteClient:
         if prod not in ("NRML", "MIS"):
             raise ValueError(f"product must be NRML or MIS, got {prod}")
 
+        return self.place_market(
+            side="SELL",
+            exchange=exchange,
+            tradingsymbol=tradingsymbol,
+            quantity=quantity,
+            product=product,
+            tag=tag,
+            live=live,
+        )
+
+    def place_market(
+        self,
+        *,
+        side: str,
+        exchange: str,
+        tradingsymbol: str,
+        quantity: int,
+        product: str,
+        tag: str = "CASRULE",
+        live: bool = False,
+    ) -> Any:
+        if not self.kite:
+            self.connect()
+
+        symbol = (tradingsymbol or "").strip()
+        if not symbol:
+            raise ValueError("tradingsymbol is empty")
+        qty = int(quantity)
+        if qty <= 0:
+            raise ValueError(f"quantity must be > 0, got {qty}")
+        exch = (exchange or "").strip().upper()
+        prod = (product or "NRML").strip().upper() or "NRML"
+        if prod not in ("NRML", "MIS"):
+            raise ValueError(f"product must be NRML or MIS, got {prod}")
+        side_u = str(side or "SELL").strip().upper()
+        if side_u not in ("BUY", "SELL"):
+            raise ValueError(f"side must be BUY or SELL, got {side_u}")
+
         if not live:
             logger.warning(
-                "[DRY-RUN] MARKET SELL %s x%d %s/%s (no broker call)",
+                "[DRY-RUN] MARKET %s %s x%d %s/%s (no broker call)",
+                side_u,
                 symbol,
                 qty,
                 exch,
                 prod,
             )
-            return f"DRY-{symbol}-{int(time.time()*1000)%100000}"
+            return f"DRY-{side_u}-{symbol}-{int(time.time()*1000)%100000}"
 
         # Never pass price=0 / trigger_price=0 — those are LIMIT/SL fields and
         # the pykiteconnect client omits only None (0 would be sent to Kite).
@@ -259,7 +317,9 @@ class KiteClient:
             "variety": self.kite.VARIETY_REGULAR,
             "exchange": exch,
             "tradingsymbol": symbol,
-            "transaction_type": self.kite.TRANSACTION_TYPE_SELL,
+            "transaction_type": (
+                self.kite.TRANSACTION_TYPE_BUY if side_u == "BUY" else self.kite.TRANSACTION_TYPE_SELL
+            ),
             "quantity": qty,
             "product": prod,
             "order_type": self.kite.ORDER_TYPE_MARKET,
@@ -268,7 +328,8 @@ class KiteClient:
             "market_protection": protection,
         }
         logger.info(
-            "Kite place_order MARKET SELL %s/%s x%d product=%s validity=%s protection=%s",
+            "Kite place_order MARKET %s %s/%s x%d product=%s validity=%s protection=%s",
+            side_u,
             exch,
             symbol,
             qty,
@@ -292,7 +353,7 @@ class KiteClient:
         except Exception as exc:
             # Surface Zerodha message clearly (token / IP / symbol / margin / …)
             msg = _kite_error_message(exc)
-            logger.exception("Kite MARKET SELL rejected: %s", msg)
+            logger.exception("Kite MARKET %s rejected: %s", side_u, msg)
             raise RuntimeError(msg) from exc
 
     def clear_local_session(self) -> None:
