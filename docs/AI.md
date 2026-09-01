@@ -11,6 +11,7 @@ Deterministic code scores:
 - **News** — public RSS (Google News + ET markets)
 - **Corporate calendar** — `nse_events` joined onto those same constituents
 - **India VIX** when the poller has it
+- **Day capital** — Positions booked % of wallet (−3% caution, −5% stop adds, −8% defend). At stop/defend, Desk AI **What to do** leads with the capital line, hides sell ideas, and does not chase “prefer CE shorts”. Book score stays path-risk only.
 
 OpenAI is optional (`OPENAI_API_KEY` on the **server env**, never in git). Without a key you still get the heavyweight + news coach.
 

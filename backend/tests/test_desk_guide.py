@@ -266,6 +266,25 @@ def test_desk_guide_uses_oi_journal_and_greeks():
     assert "DO" in text
     assert "CE shorts" in text
 
+    halt = compose_rules_guide({
+        "surface": "desk",
+        "session_focus": "NIFTY",
+        "oi": [{
+            "idx": "NIFTY", "px": 24219, "atm": 24200, "pcr": 0.71,
+            "ceChg": 535800, "peChg": -94500, "callWall": 24300, "putWall": 24000,
+        }],
+        "book": {"shortCount": 3, "openCount": 4, "byIndex": {"SENSEX": {"ce": 1, "pe": 2, "n": 3}}},
+        "journal": {
+            "booked_pnl": -755159, "win_rate": 50, "trading_days": 30,
+            "day_booked_pct": -11.05, "day_booked": -394791,
+            "wallet": 3570000, "leftover": 1610,
+        },
+        "sells": {"index": "SENSEX", "ce": [{"k": 75400, "side": "PE"}]},
+    })
+    assert "Capital event" in halt
+    assert "Sell ideas" not in halt
+    assert "prefer CE shorts" not in halt
+
     carry = compose_rules_guide({
         "surface": "carry",
         "band": "REDUCE",

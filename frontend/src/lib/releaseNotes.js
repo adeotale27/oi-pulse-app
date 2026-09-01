@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.14",
+    date: "2026-09-02",
+    user: [
+      "After a large booked day (−5% / −8% of wallet), Positions and Desk AI stop pushing new shorts and sell ideas. What to do is easier to scan. Book score is path risk, not a green light to add.",
+    ],
+    admin: [
+      "desk-guide journal carries day_booked_pct / leftover / wallet. Frontend capitalGuard.js matches −3/−5/−8 bands. Tile order key oiDeskAiTileOrder.v3 puts coach first.",
+    ],
+  },
+  {
     version: "9.13",
     date: "2026-09-02",
     user: [

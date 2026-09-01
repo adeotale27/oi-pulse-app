@@ -103,4 +103,21 @@ const order = normalizeBrainOrder(["watch", "nope", "verdict", "watch"]);
 assert.deepEqual(order.slice(0, 2), ["watch", "verdict"]);
 assert.ok(order.includes("plan"));
 
+const capitalHit = computePositionsBrain({
+  rows: [farPut, farCall],
+  stats: {
+    netDelta: 2,
+    netTheta: 900,
+    adjustCount: 0,
+    shortCount: 2,
+    dayBookedPct: -11.05,
+    leftover: 1610,
+    wallet: 3_570_000,
+  },
+});
+assert.equal(capitalHit.mode, "CAPITAL");
+assert.equal(capitalHit.urgency, "HIGH");
+assert.match(capitalHit.action, /Capital event/i);
+assert.ok(!/Normal size is fine/i.test(capitalHit.deployment));
+
 console.log("positionsBrain.test.js: all assertions passed");

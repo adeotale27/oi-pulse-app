@@ -24,7 +24,7 @@ function summaryLine(outside, guide) {
   return outside?.note || "Desk AI is on the live OI tape, your book, and the cash wires.";
 }
 
-function Tile({ id, title, hint, children, dragging, over, canUp, canDown, onMove, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function Tile({ id, title, hint, children, dragging, over, canUp, canDown, onMove, onDragStart, onDragOver, onDrop, onDragEnd, wide }) {
   return (
     <article
       draggable
@@ -40,6 +40,8 @@ function Tile({ id, title, hint, children, dragging, over, canUp, canDown, onMov
       onDragEnd={onDragEnd}
       data-testid={`intel-tile-${id}`}
       className={`rounded-md border bg-white/90 dark:bg-slate-900/70 px-2.5 py-2 min-w-0 ${
+        wide ? "sm:col-span-2" : ""
+      } ${
         over ? "border-emerald-500 ring-1 ring-emerald-300" : "border-slate-200 dark:border-slate-700"
       } ${dragging ? "opacity-60" : ""}`}
       title="Drag or use arrows to reorder"
@@ -153,6 +155,11 @@ export default function MarketIntelCard({
               {adjust.avgIv != null ? ` · IV ${Number(adjust.avgIv).toFixed(0)}%` : ""}
             </p>
           ) : null}
+          {journal?.day_booked_pct != null ? (
+            <p className={Number(journal.day_booked_pct) <= -5 ? "text-rose-800 font-semibold" : "text-slate-700"}>
+              Today booked {Number(journal.day_booked_pct) >= 0 ? "+" : ""}{Number(journal.day_booked_pct).toFixed(2)}% of wallet
+            </p>
+          ) : null}
           {journal?.win_rate != null ? (
             <p>
               Journal {journal.trading_days || "—"}d · win {Number(journal.win_rate).toFixed(0)}%
@@ -215,17 +222,33 @@ export default function MarketIntelCard({
         </ul>
       ) : empty("No index-weight results in the next few days."),
       coach: (sections.do.length || sections.dont.length) ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] leading-snug" data-testid="desk-ai-guide">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-1">Do</div>
-            <ul className="space-y-1">{sections.do.map((s) => <li key={s}>{s}</li>)}</ul>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-rose-700 mb-1">Don&apos;t</div>
-            <ul className="space-y-1">{sections.dont.map((s) => <li key={s}>{s}</li>)}</ul>
+        <div className="space-y-2 text-[12px] leading-snug" data-testid="desk-ai-guide">
+          {sections.do[0] && /^Capital/i.test(sections.do[0]) ? (
+            <p className="rounded-sm border border-rose-200 bg-rose-50 px-2 py-1.5 font-semibold text-rose-950" data-testid="desk-ai-capital">
+              {sections.do[0]}
+            </p>
+          ) : null}
+          <div className="grid grid-cols-1 gap-2">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-1">Do</div>
+              <ol className="space-y-1.5 list-decimal pl-4">
+                {sections.do
+                  .filter((s, i) => !(i === 0 && /^Capital/i.test(s)))
+                  .map((s) => <li key={s}>{s}</li>)}
+              </ol>
+              {!sections.do.filter((s, i) => !(i === 0 && /^Capital/i.test(s))).length ? (
+                <p className="text-slate-500">Only the capital line above — no extra adds.</p>
+              ) : null}
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-rose-700 mb-1">Don&apos;t</div>
+              <ul className="space-y-1.5 list-disc pl-4">
+                {sections.dont.map((s) => <li key={s}>{s}</li>)}
+              </ul>
+            </div>
           </div>
         </div>
-      ) : empty("Ask AI or wait one poll — coach uses OI, book, VIX, and journal."),
+      ) : empty("Ask AI or wait one poll — coach uses OI, book, VIX, journal, and today's booked %."),
     };
   }, [movers, news, corp, breadth, compact, oi, book, adjust, journal, sections.do, sections.dont]);
 
@@ -257,7 +280,7 @@ export default function MarketIntelCard({
   };
 
   const labels = { tape: "OI tape", book: "Your book", movers: "Heavyweights", breadth: "Index breadth", news: "News", watch: "Coming up", coach: "What to do" };
-  const hints = { tape: "session writers", book: "greeks + journal", movers: "NIFTY + BNF cash", breadth: "vs the index print", news: "wires", watch: "results / board", coach: "do vs don't" };
+  const hints = { tape: "session writers", book: "greeks + journal", movers: "NIFTY + BNF cash", breadth: "vs the index print", news: "wires", watch: "results / board", coach: "one action, then don't" };
 
   return (
     <div className="space-y-2" data-testid="market-intel-card">
@@ -274,6 +297,7 @@ export default function MarketIntelCard({
             id={id}
             title={labels[id]}
             hint={hints[id]}
+            wide={id === "coach" && !compact}
             dragging={draggingId === id}
             over={overId === id}
             canUp={i > 0}

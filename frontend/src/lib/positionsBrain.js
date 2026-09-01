@@ -2,6 +2,7 @@
 // Reads the live short book. Does not invent market regime from heat,
 // fake strikes, or a 50% cut when the named leg is unknown.
 
+import { classifyDayCapital } from "./capitalGuard.js";
 import { optionSide, optionSideLabel } from "./optionSide.js";
 
 export const BRAIN_SECTION_ORDER_KEY = "oi_positions_brain_order_v2";
@@ -283,7 +284,7 @@ export function computePositionsBrain({ rows = [], stats = {}, vix = null } = {}
 
   const callStrike = nearestCall?.strike != null ? Number(nearestCall.strike) : null;
   const putStrike = nearestPut?.strike != null ? Number(nearestPut.strike) : null;
-  const plan = [];
+  let plan = [];
   if (putStrike != null && callStrike != null) {
     plan.push(`If spot stays between ${putStrike} (short put) and ${callStrike} (short call): hold and let theta work.`);
   } else if (callStrike != null) {
@@ -307,12 +308,36 @@ export function computePositionsBrain({ rows = [], stats = {}, vix = null } = {}
     plan.push("Under 45 minutes to close with a warm book: prefer reduce over a new hedge you cannot manage overnight.");
   }
 
-  const deployment =
+  let deployment =
     heat >= 70
       ? "Do not deploy more short premium. Cut the named leg first."
       : heat >= 45
         ? "Keep existing carry. New shorts only farther from the watch strike, small size."
         : "Normal size is fine if the new strike is farther than the current nearest short.";
+
+  let mode = decision.mode;
+  let urgency = decision.urgency;
+  let label = decision.label;
+  let action = decision.action;
+  let summary = decision.summary;
+
+  const cap = classifyDayCapital({
+    bookedPct: stats.dayBookedPct,
+    leftover: stats.leftover,
+    wallet: stats.wallet,
+  });
+  if (cap.level === "caution" && cap.doLine) {
+    deployment = cap.doLine;
+    plan.unshift(cap.doLine);
+  } else if (cap.stopSellIdeas) {
+    mode = "CAPITAL";
+    urgency = "HIGH";
+    label = cap.level === "defend" ? "Stop the day" : "No new shorts";
+    action = cap.doLine;
+    summary = cap.headline;
+    deployment = "Do not sell more premium. A GOOD book score is path risk, not a green light after a capital hit.";
+    plan = [cap.doLine, ...cap.dontLines, ...plan.slice(0, 2)];
+  }
 
   return {
     shortCount,
@@ -320,11 +345,11 @@ export function computePositionsBrain({ rows = [], stats = {}, vix = null } = {}
     health,
     confidence,
     dataQuality,
-    mode: decision.mode,
-    urgency: decision.urgency,
-    label: decision.label,
-    action: decision.action,
-    summary: decision.summary,
+    mode,
+    urgency,
+    label,
+    action,
+    summary,
     deployment,
     netDelta,
     netTheta,

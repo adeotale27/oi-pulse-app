@@ -77,6 +77,7 @@ import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip, { eventFromInfoTip } from "@/components/InfoTip";
 import PositionsBrainPanel from "@/components/PositionsBrainPanel";
 import { fmtBookedPct } from "@/lib/journalPct";
+import { classifyDayCapital } from "@/lib/capitalGuard";
 import {
   fetchPositionsBook,
   startPositionsBookPolling,
@@ -1030,8 +1031,21 @@ export default function PositionsPanel({
       adjustCount,
       openCount,
       exitedCount,
+      dayBookedPct: pnlToday?.booked_pct ?? funds?.booked_pct ?? null,
+      leftover: funds?.net ?? null,
+      wallet: funds?.base ?? funds?.total ?? null,
     };
-  }, [rows, pnlToday]);
+  }, [rows, pnlToday, funds]);
+
+  const dayCap = useMemo(
+    () =>
+      classifyDayCapital({
+        bookedPct: stats.dayBookedPct,
+        leftover: stats.leftover,
+        wallet: stats.wallet,
+      }),
+    [stats.dayBookedPct, stats.leftover, stats.wallet],
+  );
 
   const openRows = useMemo(() => rows.filter((r) => !r.exited), [rows]);
   const exitedRows = useMemo(() => rows.filter((r) => r.exited), [rows]);
@@ -1049,10 +1063,10 @@ export default function PositionsPanel({
     });
   }, [current, previous, vix, vixOpen, activeIndex, step, vrp]);
 
-  const sellsSnap = useMemo(
-    () => compactTopSells(sellIdeas, activeIndex),
-    [sellIdeas, activeIndex],
-  );
+  const sellsSnap = useMemo(() => {
+    if (dayCap.stopSellIdeas) return null;
+    return compactTopSells(sellIdeas, activeIndex);
+  }, [sellIdeas, activeIndex, dayCap.stopSellIdeas]);
 
   const heldShortKeys = useMemo(() => {
     const s = new Set();
@@ -1159,6 +1173,12 @@ export default function PositionsPanel({
           adjust: adjustRef.current,
           oi: oiTape ? [oiTape] : undefined,
           sells: sellsSnap,
+          journal: {
+            day_booked_pct: stats.dayBookedPct,
+            day_booked: pnlToday?.booked_after_charges ?? stats.bookedToday,
+            wallet: stats.wallet,
+            leftover: stats.leftover,
+          },
           memory: mem?.data && Array.isArray(mem.data.lines)
             ? { lines: mem.data.lines.slice(0, 6) }
             : undefined,
@@ -1175,7 +1195,7 @@ export default function PositionsPanel({
       cancelled = true;
       clearInterval(id);
     };
-  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex, sellsSnap, current, previous]);
+  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex, sellsSnap, current, previous, stats.dayBookedPct, stats.leftover, stats.wallet]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 
@@ -1602,6 +1622,31 @@ export default function PositionsPanel({
         </div>
       )}
 
+      {!privacyMode && dayCap.headline && (
+        <div
+          className={`rounded-md border px-3 py-2 text-[12px] leading-snug ${
+            dayCap.level === "defend"
+              ? "border-rose-300 bg-rose-50 text-rose-950"
+              : dayCap.level === "stopAdds"
+                ? "border-rose-200 bg-rose-50 text-rose-900"
+                : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
+          data-testid="positions-capital-guard"
+        >
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">{dayCap.headline}</p>
+              <p className="mt-0.5 text-[11px] opacity-90">
+                Wallet % is booked P&amp;L after charges. Funds available is leftover margin, not
+                dry powder. Book score is open-short path risk — a GOOD score is not a green light
+                to sell more. Desk AI hides new sell ideas on a stop/event day.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PositionsInsightTiles
         layoutAnchorId="positions-tiles-anchor"
         nodes={{
@@ -1647,9 +1692,16 @@ export default function PositionsPanel({
             const b = fundsBreakdown(funds);
             if (!b || b.available == null) return "slate";
             if (b.available < 0) return "rose";
+            if (dayCap.crumbs || dayCap.level === "defend" || dayCap.level === "stopAdds") return "rose";
             return "slate";
           })()}
-          hint={privacyMode ? "Masked" : "Kite leftover for new trades"}
+          hint={
+            privacyMode
+              ? "Masked"
+              : dayCap.crumbs || dayCap.level === "defend" || dayCap.level === "stopAdds"
+                ? "Margin crumbs — not capital"
+                : "Kite leftover for new trades"
+          }
           tip={(
             <div className="space-y-1.5">
               <p>
@@ -2398,7 +2450,11 @@ export default function PositionsPanel({
                     Sell / decay ideas · {activeIndex}
                     {current?.expiry ? ` · ${current.expiry}` : ""}
                   </div>
-                  {sellIdeas?.verdict && (
+                  {dayCap.stopSellIdeas ? (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border border-rose-200 bg-rose-50 text-rose-900">
+                      Halted — capital
+                    </span>
+                  ) : sellIdeas?.verdict ? (
                     <span
                       className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${
                         sellIdeas.verdict.tradeable
@@ -2408,7 +2464,7 @@ export default function PositionsPanel({
                     >
                       {sellIdeas.verdict.tradeable ? "OK to sell premium" : "Cautious / skip"}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               )}
 
@@ -2428,7 +2484,13 @@ export default function PositionsPanel({
                 </div>
               )}
 
-              {toggles.sellIdeas && (
+              {toggles.sellIdeas && dayCap.stopSellIdeas && (
+                <p className="text-[12px] text-rose-900 font-semibold" data-testid="positions-sell-ideas-halt">
+                  Capital stop — no new sell ideas. Reduce only. Book score does not override this.
+                </p>
+              )}
+
+              {toggles.sellIdeas && !dayCap.stopSellIdeas && (
                 <>
                   {!sellIdeas?.verdict?.tradeable && sellIdeas?.verdict?.reasons?.length > 0 && (
                     <ul className="text-[11px] text-amber-900 space-y-0.5 list-disc pl-4">

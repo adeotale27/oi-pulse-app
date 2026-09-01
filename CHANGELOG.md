@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.14 — 2026-09-02
+
+Positions day-loss circuit: −3% caution, −5% stop new shorts, −8% capital event. Funds leftover is not treated as dry powder. Desk AI **What to do** is full-width and capital-first; sell ideas and “prefer CE shorts” hide on a stop/event day. Brains verdict overrides a GOOD book score after a capital hit.
+
 ## V9.13 — 2026-09-02
 
 Journal no longer copies yesterday’s booked P&L onto the new calendar date after midnight. Snapshots use the last session until the next open (same rule as OI). Opening the journal deletes that clone if it already landed.
