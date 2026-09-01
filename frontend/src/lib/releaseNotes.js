@@ -4,6 +4,17 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.01",
+    date: "2026-09-01",
+    user: [
+      "Brains now names the stressed short, scores heat from the real book (too close, ITM, expiry, delta, concentration), and writes if/then off your nearest put and call strikes.",
+      "Info icons on Brains stay open to read; they no longer slam the side panel shut.",
+    ],
+    admin: [
+      "positionsBrain.js is the decision helper; PositionsBrainPanel is the sheet. Old v1 tile order is discarded for a six-section v2 layout.",
+    ],
+  },
+  {
     version: "9.00",
     date: "2026-09-01",
     user: [
