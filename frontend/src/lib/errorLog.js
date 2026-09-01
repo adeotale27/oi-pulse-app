@@ -32,7 +32,15 @@ export function reportDeskError({ message, stack, source = "ui", path } = {}) {
       href: String(window.location.pathname || "").slice(0, 200),
     });
     const url = `${backendOrigin()}/api/errors`;
-    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    const sameOrigin =
+      typeof window !== "undefined" &&
+      url.startsWith(String(window.location.origin || ""));
+    // Cross-origin sendBeacon is credentialed and trips CORS when the API uses `*`.
+    if (
+      sameOrigin &&
+      typeof navigator !== "undefined" &&
+      typeof navigator.sendBeacon === "function"
+    ) {
       const blob = new Blob([body], { type: "application/json" });
       if (navigator.sendBeacon(url, blob)) return;
     }
@@ -41,6 +49,8 @@ export function reportDeskError({ message, stack, source = "ui", path } = {}) {
       headers: { "Content-Type": "application/json" },
       body,
       keepalive: true,
+      credentials: "omit",
+      mode: "cors",
     }).catch(() => {});
   } catch {
     /* never throw from the reporter */

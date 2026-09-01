@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.06",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade can still take the first 15:20 print when the live NIFTY field has not updated yet, as long as the indicative close field has a real 15:20 clock.",
+    ],
+    admin: [
+      "extract_indicative_hits walks indexLast then closingValue; closingValue without a stamp is skipped. /api/errors uses credentials omit and same-origin sendBeacon only.",
+    ],
+  },
+  {
     version: "9.05",
     date: "2026-09-01",
     user: [

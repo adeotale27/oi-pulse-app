@@ -49,35 +49,39 @@ API_HEADERS = {
 FREEZE_EPS = 0.51
 
 
-def extract_indicative(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Pull a candidate NIFTY indicative print from marketStatus JSON."""
+def extract_indicative_hits(payload: Dict[str, Any]) -> list:
+    """All numeric NIFTY prints on the widget (indexLast, then closingValue)."""
     if not isinstance(payload, dict):
-        return None
+        return []
     block = payload.get("indicativenifty50")
     if not isinstance(block, dict):
-        return None
-    value = None
-    field = None
+        return []
+    hits = []
+    seen = set()
     for key in ("indexLast", "closingValue"):
         raw = block.get(key)
         try:
             n = float(raw)
         except (TypeError, ValueError):
             continue
-        if n > 0:
-            value = n
-            field = key
-            break
-    if value is None:
-        return None
-    return {
-        "value": value,
-        "field": field,
-        "status": str(block.get("status") or ""),
-        "index_name": str(block.get("indexName") or ""),
-        "indicative_time": block.get("indicativeTime") or block.get("dateTime"),
-        "raw": block,
-    }
+        if n <= 0 or n in seen:
+            continue
+        seen.add(n)
+        hits.append({
+            "value": n,
+            "field": key,
+            "status": str(block.get("status") or ""),
+            "index_name": str(block.get("indexName") or ""),
+            "indicative_time": block.get("indicativeTime") or block.get("dateTime"),
+            "raw": block,
+        })
+    return hits
+
+
+def extract_indicative(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Pull a candidate NIFTY indicative print from marketStatus JSON."""
+    hits = extract_indicative_hits(payload)
+    return hits[0] if hits else None
 
 
 def parse_nse_stamp(stamp: Any) -> Optional[datetime]:
@@ -87,6 +91,10 @@ def parse_nse_stamp(stamp: Any) -> Optional[datetime]:
     text = str(stamp).strip()
     if not text:
         return None
+    text = text.replace("Z", "")
+    if "T" in text:
+        text = text.split("+")[0].split(".")[0]
+        text = text.replace("T", " ", 1)
     for fmt in (
         "%d-%b-%Y %H:%M:%S",
         "%d-%b-%Y %H:%M",
@@ -122,6 +130,9 @@ def indicative_is_sane(hit: Dict[str, Any], *, now: Optional[datetime] = None) -
     if t < dtime(15, 20):
         return False, "before_cas_window"
     parsed = parse_nse_stamp(hit.get("indicative_time"))
+    # closingValue without a clock can be yesterday's settlement, not the 15:20 print.
+    if str(hit.get("field") or "") == "closingValue" and parsed is None:
+        return False, "closing_without_stamp"
     if parsed is not None:
         if parsed.date() != now.date():
             return False, "wrong_day"
@@ -177,7 +188,7 @@ class NseIndicativeProvider:
             logger.warning("NSE indicative warmup failed: %s", exc)
             return False
 
-    def fetch(self) -> Optional[Dict[str, Any]]:
+    def fetch(self) -> list:
         received = get_ist_now().isoformat(timespec="milliseconds")
         try:
             client = self._ensure_client()
@@ -190,19 +201,20 @@ class NseIndicativeProvider:
                 resp = client.get(NSE_MARKET_STATUS, headers=API_HEADERS, timeout=8.0)
             resp.raise_for_status()
             payload = resp.json()
-            hit = extract_indicative(payload if isinstance(payload, dict) else {})
+            hits = extract_indicative_hits(payload if isinstance(payload, dict) else {})
             self.last_fetch_at = received
-            if not hit:
-                return None
-            hit["received_at"] = received
-            self.last_hit = hit
+            if not hits:
+                return []
+            for hit in hits:
+                hit["received_at"] = received
+            self.last_hit = hits[0]
             self._last_error = None
-            return hit
+            return hits
         except Exception as exc:
             self._last_error = str(exc)[:240]
             self.last_fetch_at = received
             logger.warning("NSE indicative fetch failed: %s", exc)
-            return None
+            return []
 
     @property
     def last_error(self) -> Optional[str]:

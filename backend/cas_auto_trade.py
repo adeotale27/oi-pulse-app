@@ -37,8 +37,8 @@ INDEX = "NIFTY"
 
 def _parse_hhmm(value: str, default: dtime) -> dtime:
     text = str(value or "").strip()
-    parts = [int(p) for p in text.split(":") if p != ""]
     try:
+        parts = [int(p) for p in text.split(":") if p != ""]
         if len(parts) >= 3:
             return dtime(parts[0], parts[1], parts[2])
         if len(parts) == 2:
@@ -155,7 +155,10 @@ class CasAutoTrade:
         arm_t = _parse_hhmm(settings.get("auto_arm_time"), dtime(15, 19, 55))
         signal_t = _parse_hhmm(settings.get("auto_signal_start"), dtime(15, 20, 0))
         cutoff_t = _parse_hhmm(settings.get("auto_cutoff_time"), dtime(15, 22, 0))
-        poll_ms = max(150, min(2000, int(settings.get("auto_poll_ms") or 250)))
+        try:
+            poll_ms = max(150, min(2000, int(settings.get("auto_poll_ms") or 250)))
+        except (TypeError, ValueError):
+            poll_ms = 250
 
         status = self._state.get("status")
         if status == "EXECUTED":
@@ -205,17 +208,25 @@ class CasAutoTrade:
         if now_m - self._last_poll_mono < (poll_ms / 1000.0):
             return
         self._last_poll_mono = now_m
-        hit = self._provider.fetch()
+        hits = self._provider.fetch() or []
         with self._lock:
             self._state["nse_error"] = self._provider.last_error
-        if not hit:
-            return
+        if isinstance(hits, dict):
+            hits = [hits]
         freeze = self._state.get("pre_signal_nifty")
-        ok, why = accept_first_indicative(hit, freeze=freeze, now=now)
-        if not ok:
-            logger.info("CAS auto-trade skip indicative: %s", why)
+        chosen = None
+        last_why = "empty"
+        for hit in hits:
+            ok, why = accept_first_indicative(hit, freeze=freeze, now=now)
+            last_why = why
+            if ok:
+                chosen = hit
+                break
+        if not chosen:
+            if hits:
+                logger.info("CAS auto-trade skip indicative: %s", last_why)
             return
-        self._on_indicative(hit, settings, client)
+        self._on_indicative(chosen, settings, client)
 
     def _prepare(self, settings: Dict[str, Any], client: Optional[KiteClient], *, force: bool = False) -> None:
         with self._lock:

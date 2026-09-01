@@ -8,6 +8,7 @@ from cas_auto_trade import CasAutoTrade, decide_signal
 from cas_indicative_nse import (
     accept_first_indicative,
     extract_indicative,
+    extract_indicative_hits,
     indicative_is_sane,
     parse_nse_stamp,
 )
@@ -173,6 +174,56 @@ def test_parse_nse_stamp_keeps_seconds():
     dt = parse_nse_stamp("01-Sep-2026 15:20:01")
     assert dt is not None
     assert dt.hour == 15 and dt.minute == 20 and dt.second == 1
+    iso = parse_nse_stamp("2026-09-01T15:20:01.123+05:30")
+    assert iso is not None
+    assert iso.hour == 15 and iso.minute == 20 and iso.second == 1
+
+
+def test_extract_hits_skip_frozen_index_last_use_closing_value():
+    payload = {
+        "indicativenifty50": {
+            "indexName": "NIFTY 50",
+            "indexLast": PRE,
+            "closingValue": IND_FIRST,
+            "status": "OPEN",
+            "indicativeTime": "01-Sep-2026 15:20:01",
+        }
+    }
+    hits = extract_indicative_hits(payload)
+    assert [h["value"] for h in hits] == [PRE, IND_FIRST]
+    now = datetime(2026, 9, 1, 15, 20, 2, tzinfo=IST)
+    chosen = None
+    last_why = None
+    for hit in hits:
+        ok, why = accept_first_indicative(hit, freeze=PRE, now=now)
+        last_why = why
+        if ok:
+            chosen = hit
+            break
+    assert chosen is not None, last_why
+    assert chosen["field"] == "closingValue"
+    assert chosen["value"] == IND_FIRST
+
+
+def test_closing_value_without_stamp_is_not_first_print():
+    payload = {
+        "indicativenifty50": {
+            "indexName": "NIFTY 50",
+            "indexLast": PRE,
+            "closingValue": CLOSE_PRINT,
+            "status": "OPEN",
+        }
+    }
+    now = datetime(2026, 9, 1, 15, 20, 2, tzinfo=IST)
+    chosen = None
+    for hit in extract_indicative_hits(payload):
+        ok, why = accept_first_indicative(hit, freeze=PRE, now=now)
+        if ok:
+            chosen = hit
+            break
+        if hit["field"] == "closingValue":
+            assert why == "closing_without_stamp"
+    assert chosen is None
 
 
 def test_reject_frozen_live_print_keep_waiting():
