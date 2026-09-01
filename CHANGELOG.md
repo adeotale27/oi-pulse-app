@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.11 — 2026-09-02
+
+CAS Auto Trade Paper probes NSE JSON in cash hours and writes scrape errors, skip reasons, and the fire recap (when, how, DRY-BUY id, latency) into the strip under the cards — so you can confirm the tape before Live.
+
 ## V9.10 — 2026-09-01
 
 CAS Auto Trade **Paper** is a live-session dry-run: real Kite NIFTY freeze and real NSE first print, `DRY-BUY` only (no account fill). Inject before 15:20 is a rehearsal that does not spend the day’s fire. Classic Activate is still not required for this arm.

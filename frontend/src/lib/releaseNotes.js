@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.11",
+    date: "2026-09-02",
+    user: [
+      "On 15:20 Auto Trade, Paper now fills the strip under the cards: NSE scrape errors, why a print was skipped, and after a fire — when, how, order id, and latency.",
+    ],
+    admin: [
+      "NSE JSON is probed from 09:15 IST on Paper/Live (5s), 250ms in the 15:20 window. Snapshot adds nse_skip_why, nse_last_*, how, fired_at.",
+    ],
+  },
+  {
     version: "9.10",
     date: "2026-09-01",
     user: [

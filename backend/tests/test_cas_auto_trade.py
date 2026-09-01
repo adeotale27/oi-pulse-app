@@ -153,6 +153,9 @@ def test_inject_buys_locked_atm_ce_once(auto, monkeypatch):
     assert client.buys and client.buys[0]["live"] is False
     assert client.buys[0]["tradingsymbol"] == "NIFTY24000CE"
     assert client.buys[0]["quantity"] == 65
+    assert snap["how"] and "DRY-BUY" in snap["how"]
+    assert snap["fired_at"]
+    assert snap["latency"].get("total_signal_to_order_ms") is not None
 
     with pytest.raises(RuntimeError, match="Already executed"):
         auto.inject_indicative(IND_LATER, settings, client)
@@ -384,3 +387,70 @@ def test_prepare_retries_after_kite_blip(auto):
     auto._prepare(settings, FakeClient())
     assert auto.snapshot()["status"] == "PREPARING"
     assert auto.snapshot()["locked_atm"] == 24000
+
+
+class FakeNse:
+    def __init__(self, hits=None, error=None):
+        self._hits = hits or []
+        self.last_error = error
+        self.last_fetch_at = "2026-09-01T15:20:01.000+05:30"
+        self.calls = 0
+
+    def warmup(self):
+        return True
+
+    def fetch(self):
+        self.calls += 1
+        return list(self._hits)
+
+
+def test_tick_surfaces_nse_skip_in_snapshot(auto, monkeypatch):
+    _freeze_ist(monkeypatch, FIRE_AT)
+    auto._warmed_today = True
+    auto._last_poll_mono = 0.0
+    auto._state.update({
+        "status": "ARMED",
+        "prepared_ce": "NIFTY24000CE",
+        "prepared_pe": "NIFTY24000PE",
+        "pre_signal_nifty": PRE,
+        "locked_atm": 24000,
+    })
+    leftover = {
+        "value": PRE,
+        "field": "indexLast",
+        "status": "OPEN",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:19:59",
+    }
+    auto._provider = FakeNse([leftover])
+    auto.tick(
+        {
+            "auto_trade_mode": "paper",
+            "auto_trade_enabled": True,
+            "lots": 1,
+            "product": "NRML",
+            "auto_bullish_pts": 15,
+            "auto_bearish_pts": 15,
+        },
+        FakeClient(),
+    )
+    snap = auto.snapshot()
+    assert snap["status"] == "ARMED"
+    assert snap["nse_skip_why"] in ("same_as_freeze", "stamp_before_signal")
+    assert snap["nse_last_value"] == PRE
+    assert snap["nse_error"] is None
+
+
+def test_tick_surfaces_nse_http_error(auto, monkeypatch):
+    _freeze_ist(monkeypatch, datetime(2026, 9, 1, 11, 30, 0, tzinfo=IST))
+    auto._warmed_today = True
+    auto._last_poll_mono = 0.0
+    auto._provider = FakeNse([], error="403 Forbidden")
+    auto.tick(
+        {"auto_trade_mode": "paper", "auto_trade_enabled": True, "lots": 1, "product": "NRML"},
+        FakeClient(),
+    )
+    snap = auto.snapshot()
+    assert snap["nse_error"] == "403 Forbidden"
+    assert snap["nse_skip_why"] == "empty"
+    assert snap["status"] == "IDLE"
