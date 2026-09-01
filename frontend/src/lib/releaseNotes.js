@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.09",
+    date: "2026-09-01",
+    user: [
+      "Index regime is clearer: Ranging means the day is chopping (range bigger than the net move), Quiet means almost nothing moved. CAS has two desks on one page — 15:20 Auto Trade (pick lots, buy one ATM) vs 15:28 expiry sells.",
+    ],
+    admin: [
+      "auto_trade_lots is independent of classic CAS lots (1–50). tickerRegime.js classifies from net% and high–low span; tips include the why line.",
+    ],
+  },
+  {
     version: "9.08",
     date: "2026-09-01",
     user: [

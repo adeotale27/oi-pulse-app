@@ -35,6 +35,18 @@ STATES = (
 INDEX = "NIFTY"
 
 
+def _auto_lots(settings: Dict[str, Any]) -> int:
+    """Auto Trade size — not classic 15:28 expiry lots."""
+    raw = settings.get("auto_trade_lots")
+    if raw is None:
+        raw = settings.get("lots")
+    try:
+        n = int(raw or 1)
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, min(50, n))
+
+
 def _parse_hhmm(value: str, default: dtime) -> dtime:
     text = str(value or "").strip()
     try:
@@ -261,7 +273,7 @@ class CasAutoTrade:
             pe = self._cache._legs.get((INDEX, "PE", atm))
             if ce is None or pe is None:
                 raise RuntimeError(f"atm_legs_missing atm={atm} warmed={n}")
-            lots = max(1, int(settings.get("lots") or 1))
+            lots = _auto_lots(settings)
             qty_ce = lots * max(int(ce.lot_size), 1)
             qty_pe = lots * max(int(pe.lot_size), 1)
             frozen_at = get_ist_now().isoformat(timespec="milliseconds")
@@ -394,7 +406,7 @@ class CasAutoTrade:
                 self._state["status"] = "FAILED"
                 self._state["reason"] = "leg_or_kite_missing"
             return
-        lots = max(1, int(settings.get("lots") or 1))
+        lots = _auto_lots(settings)
         qty = lots * max(int(leg.lot_size), 1)
         product = str(settings.get("product") or "NRML").upper()
         t_order = time.perf_counter()

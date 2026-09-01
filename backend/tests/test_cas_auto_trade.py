@@ -144,10 +144,28 @@ def test_inject_buys_locked_atm_ce_once(auto):
     assert snap["pre_signal_nifty"] == PRE
     assert client.buys and client.buys[0]["live"] is False
     assert client.buys[0]["tradingsymbol"] == "NIFTY24000CE"
+    assert client.buys[0]["quantity"] == 65
 
     with pytest.raises(RuntimeError, match="Already executed"):
         auto.inject_indicative(IND_LATER, settings, client)
     assert len(client.buys) == 1
+
+
+def test_auto_trade_lots_not_classic_lots(auto):
+    settings = {
+        "auto_trade_mode": "paper",
+        "auto_trade_enabled": True,
+        "lots": 1,
+        "auto_trade_lots": 2,
+        "product": "NRML",
+        "auto_bullish_pts": 15,
+        "auto_bearish_pts": 15,
+    }
+    client = FakeClient()
+    snap = auto.inject_indicative(IND_FIRST, settings, client)
+    assert snap["status"] == "EXECUTED"
+    assert client.buys[0]["quantity"] == 130
+    assert snap["quantity"] == 130
 
 
 def test_inject_inside_threshold_is_no_trade(auto):

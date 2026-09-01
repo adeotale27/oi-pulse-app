@@ -48,12 +48,13 @@ function fmtMs(v) {
 const GUIDE = (
   <div className="space-y-2 text-[12px] leading-relaxed">
     <p>
-      Near market close the exchange prints a special <b>CAS closing price</b>.
-      This tool sells one Call + one Put the moment that print appears.
+      Near market close there are <b>two separate tools</b> on this page (not one mix):
+      <b>15:20 Auto Trade</b> buys one ATM NIFTY CE or PE from the first indicative.
+      <b>15:28 Expiry</b> sells Call + Put when the CAS print appears.
     </p>
     <p>
-      <b>Paper</b> — watches the live feed and pretends to sell (safe).
-      <b> Live</b> — places real Zerodha MARKET sells (admin only).
+      <b>Paper</b> — watches the live feed and pretends to trade (safe).
+      <b> Live</b> — places real Zerodha MARKET orders (admin only). Do not run both Live.
     </p>
     <p>
       <b>Debug</b> — Activate anytime (even after hours). With Paper, windows
@@ -128,6 +129,14 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const [watchIndexes, setWatchIndexes] = useState(["NIFTY", "SENSEX"]);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("live"); // live | backtest
+  const [casArm, setCasArm] = useState(() => {
+    try {
+      return localStorage.getItem("casDeskArm") === "auto" ? "auto" : "expiry";
+    } catch {
+      return "expiry";
+    }
+  });
+  const [autoLots, setAutoLots] = useState(1);
   const [btStart, setBtStart] = useState("");
   const [btEnd, setBtEnd] = useState("");
   const [btLots, setBtLots] = useState(1);
@@ -146,6 +155,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const statusGen = useRef(0);
   const busyRef = useRef(false);
   const lotsDirty = useRef(false);
+  const autoLotsDirty = useRef(false);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
@@ -155,6 +165,9 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const applyStatus = useCallback((data, gen) => {
     if (gen != null && gen !== statusGen.current) return; // stale
     setStatus(data);
+    if (!autoLotsDirty.current && data?.settings?.auto_trade_lots != null) {
+      setAutoLots(Number(data.settings.auto_trade_lots) || 1);
+    }
     if (!lotsDirty.current) {
       const cfgLots = data?.config?.lots ?? data?.settings?.lots;
       if (cfgLots != null) setLots(Number(cfgLots) || 1);
@@ -250,11 +263,27 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
     }
   };
 
+  const persistArm = (arm) => {
+    setCasArm(arm);
+    try {
+      localStorage.setItem("casDeskArm", arm);
+    } catch {
+      /* noop */
+    }
+  };
+
   const saveLots = async (nextLots) => {
     const n = Math.max(1, Math.min(50, Number(nextLots) || 1));
     setLots(n);
     lotsDirty.current = false;
     await patchSettings({ lots: n });
+  };
+
+  const saveAutoLots = async (nextLots) => {
+    const n = Math.max(1, Math.min(50, Number(nextLots) || 1));
+    setAutoLots(n);
+    autoLotsDirty.current = false;
+    await patchSettings({ auto_trade_lots: n });
   };
 
   const setAutoTradeMode = async (mode) => {
@@ -402,8 +431,8 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
     <div className="space-y-4" data-testid="cas-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <PageBrandTitle title="CAS Expiry" testId="cas-page-title" />
-          <InfoTip title="What is CAS?" testId="cas-guide-tip">
+          <PageBrandTitle title="CAS" testId="cas-page-title" />
+          <InfoTip title="Two CAS tools" testId="cas-guide-tip">
             {GUIDE}
           </InfoTip>
           {day.weekday && (
@@ -486,6 +515,38 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
 
       {tab === "live" && (
         <>
+          <div
+            className="flex flex-wrap gap-1 rounded-md border border-slate-200 bg-slate-50 p-1"
+            data-testid="cas-arm-toggle"
+          >
+            <button
+              type="button"
+              onClick={() => persistArm("auto")}
+              className={`px-3 h-8 text-[11px] font-semibold rounded-sm ${
+                casArm === "auto"
+                  ? "bg-sky-700 text-white"
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              }`}
+              data-testid="cas-arm-auto"
+            >
+              15:20 Auto Trade · BUY one
+            </button>
+            <button
+              type="button"
+              onClick={() => persistArm("expiry")}
+              className={`px-3 h-8 text-[11px] font-semibold rounded-sm ${
+                casArm === "expiry"
+                  ? "bg-emerald-700 text-white"
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              }`}
+              data-testid="cas-arm-expiry"
+            >
+              15:28 Expiry · SELL both
+            </button>
+          </div>
+
+          {casArm === "expiry" && (
+          <>
           <div
             className={`sticky top-0 z-20 rounded-md border px-3 py-2 shadow-sm backdrop-blur-sm ${toneBox}`}
             data-testid="cas-panic-strip"
@@ -620,7 +681,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
               </div>
 
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Lots</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Expiry lots</div>
                 <input
                   type="number"
                   min={1}
@@ -732,22 +793,23 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
               </div>
             )}
           </div>
+          </>
+          )}
 
+          {casArm === "auto" && (
           <section
-            className="rounded-md border border-slate-200 bg-white p-3 space-y-3"
+            className="rounded-md border border-sky-200 bg-sky-50/40 p-3 space-y-3"
             data-testid="cas-auto-trade"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700">
-                  CAS Auto Trade
+                <h3 className="text-xs font-bold uppercase tracking-wide text-sky-800">
+                  15:20 Auto Trade — BUY one ATM
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed max-w-prose">
-                  NIFTY only. Locks ATM from live NIFTY just before 15:20, then reads NSE{" "}
-                  <span className="font-mono-data">/api/marketStatus</span> (indicative NIFTY 50).
-                  First sane print vs frozen spot → one MARKET <b>BUY</b> CE or PE. You exit in
-                  Positions. Default threshold ±15 pts (50 would have skipped today&apos;s +27).
-                  Not the 15:28 sell-both tool.
+                  Separate from 15:28 expiry sells. NIFTY only: freeze live NIFTY ~15:19:30, lock that
+                  ATM, then one MARKET <b>BUY</b> of CE or PE if the first 15:20 indicative is ±15 pts.
+                  You exit in Positions. Lots below are <b>this arm only</b> (not expiry lots).
                 </p>
               </div>
               <InfoTip title="Auto Trade" testId="cas-auto-trade-tip">
@@ -799,6 +861,25 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                   ))}
                 </div>
               </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Auto lots</div>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={autoLots}
+                  disabled={!isAdmin || busy}
+                  onChange={(e) => {
+                    autoLotsDirty.current = true;
+                    setAutoLots(Number(e.target.value) || 1);
+                  }}
+                  onBlur={() => saveAutoLots(autoLots)}
+                  className="mt-0.5 w-16 h-8 px-2 text-sm border border-slate-200 rounded-sm font-mono-data bg-white"
+                  data-testid="cas-auto-lots"
+                  title="Contracts to BUY on the 15:20 arm. Independent of 15:28 expiry lots."
+                />
+                <div className="text-[10px] text-slate-500 mt-0.5">qty = lots × NIFTY lot</div>
+              </div>
               <div className="text-[11px] text-slate-600 pb-1">
                 Status{" "}
                 <b className="font-mono-data" data-testid="cas-auto-status">
@@ -816,6 +897,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <MiniCard label="Auto lots" value={String(autoLots)} mono />
               <MiniCard label="Frozen NIFTY" value={fmt(auto.pre_signal_nifty, 2)} mono />
               <MiniCard label="Locked ATM" value={auto.locked_atm != null ? String(auto.locked_atm) : "—"} mono />
               <MiniCard label="Indicative" value={fmt(auto.indicative_nifty, 2)} mono />
@@ -874,7 +956,10 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
               </div>
             )}
           </section>
+          )}
 
+          {casArm === "expiry" && (
+          <>
           {/* Live readiness — collapsed by default; open on demand */}
           <div className="rounded-md border border-slate-200 bg-white" data-testid="cas-live-readiness">
             <button
@@ -1126,6 +1211,8 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
               </div>
             )}
           </div>
+          </>
+          )}
         </>
       )}
 

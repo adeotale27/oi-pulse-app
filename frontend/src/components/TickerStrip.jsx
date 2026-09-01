@@ -5,7 +5,7 @@ import { isMarketQuiescent } from "@/lib/marketTimes";
 import { INDEX_CHIP_CAP } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
 import InfoTip from "@/components/InfoTip";
-import { getTickerRegime, TICKER_REGIME_GUIDE as REGIME_GUIDE, tickerRegimeLabel } from "@/lib/tickerRegime";
+import { describeTickerRegime } from "@/lib/tickerRegime";
 
 function fmtNum(v, dp = 2) {
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -179,10 +179,6 @@ function headerTileTone(indexKey, up, flat, isActive) {
   };
 }
 
-function regimeChip(changePct, isFlat, prevClose = 0, dayHigh = null, dayLow = null, ltp = null) {
-  return tickerRegimeLabel(getTickerRegime(changePct, isFlat, prevClose, dayHigh, dayLow, ltp));
-}
-
 export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default", tickers: tickersProp = null, enabledIndices = null }) {
   const [tickersLocal, setTickersLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(tickersProp == null);
@@ -263,7 +259,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
           const shortLabel = s.short;
           const ltpLabel = fmtLtp(t.ltp, 2);
           const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
-          const regime = getTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
+          const regime = describeTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
           const Tag = selectable ? "button" : "div";
           return (
             <div
@@ -307,17 +303,18 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   : `(${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%)`}
               </span>
             </Tag>
-              <div className="inline-flex items-center gap-1 h-6 rounded-full border border-slate-200 bg-white px-1 py-[1px] shadow-[0_1px_0_rgba(15,23,42,0.04)] text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                <span>{REGIME_GUIDE[regime]?.label || "Steady"}</span>
+              <div className="inline-flex items-center gap-1 h-6 rounded-full border border-slate-200 bg-white px-1 py-[1px] shadow-[0_1px_0_rgba(15,23,42,0.04)] text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 whitespace-nowrap">
+                <span>{regime.label}</span>
                 <InfoTip
-                  title="Market regime"
+                  title="Index regime"
                   size="xs"
                   className="shrink-0"
                   testId={`rail-regime-tip-${t.index}`}
                 >
                   <div className="space-y-1.5">
-                    <div><b>Current regime:</b> {REGIME_GUIDE[regime]?.label || "Steady"}</div>
-                    <div>{REGIME_GUIDE[regime]?.text || REGIME_GUIDE.steady.text}</div>
+                    <div><b>Now:</b> {regime.label}</div>
+                    <div>{regime.why}</div>
+                    <div>{regime.text}</div>
                   </div>
                 </InfoTip>
               </div>
@@ -359,7 +356,8 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const useCompact = dense || isHeader;
         const ltpLabel = fmtLtp(t.ltp, 2);
         const selectable = indexSelectable(t.index);
-        const regimeLabel = regimeChip(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
+        const regime = describeTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
+        const regimeLabel = regime.label;
         const TileTag = selectable ? "button" : "div";
         return (
           <div
@@ -421,20 +419,21 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   <div className="flex min-w-0 items-center gap-1">
                     <span className="truncate text-slate-600">Regime</span>
                     <InfoTip
-                      title="Market regime"
+                      title="Index regime"
                       size="xs"
                       className="shrink-0"
                       testId={`regime-tip-${t.index}`}
                     >
                       <div className="space-y-1.5">
-                        <div><b>Current regime:</b> {REGIME_GUIDE[getTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp)]?.label || "Steady"}</div>
-                        <div>{REGIME_GUIDE[getTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp)]?.text || REGIME_GUIDE.steady.text}</div>
-                        <div className="mt-1 pt-1 border-t border-slate-200 dark:border-slate-700">
-                          <div><b>Range:</b> price oscillates inside a band; mean reversion is often more relevant.</div>
-                          <div><b>Trend:</b> directional move remains persistent; risk control matters more.</div>
-                          <div><b>Bullish:</b> buyers are leading and momentum is supportive.</div>
-                          <div><b>Risk-off:</b> fear or defensive flow is taking over.</div>
-                          <div><b>Steady:</b> market is quiet and no fresh directional edge is obvious.</div>
+                        <div><b>Now:</b> {regime.label}</div>
+                        <div>{regime.why}</div>
+                        <div>{regime.text}</div>
+                        <div className="mt-1 pt-1 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
+                          <div><b>Ranging:</b> day high–low is wider than the net move from prev close (chop).</div>
+                          <div><b>Trend:</b> most of today’s range is one-way from prev close.</div>
+                          <div><b>Bullish / risk-off:</b> strong net % vs prev close.</div>
+                          <div><b>Quiet:</b> both net move and range are small.</div>
+                          <div className="text-slate-500">This is the index tape, not Positions Brains book risk.</div>
                         </div>
                       </div>
                     </InfoTip>

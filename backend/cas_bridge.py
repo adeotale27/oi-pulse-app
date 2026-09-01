@@ -26,6 +26,7 @@ _STATE_PATH = os.environ.get(
 _LOCK = threading.RLock()
 _SETTINGS: Dict[str, Any] = {
     "lots": 1,
+    "auto_trade_lots": 1,
     "ce_otm_steps": 1,
     "pe_otm_steps": 1,
     "product": "NRML",
@@ -448,6 +449,8 @@ def update_settings(patch: Dict[str, Any], tracker=None, *, allow_live: bool = F
     with _LOCK:
         if "lots" in patch:
             _SETTINGS["lots"] = max(1, min(50, int(patch["lots"])))
+        if "auto_trade_lots" in patch:
+            _SETTINGS["auto_trade_lots"] = max(1, min(50, int(patch["auto_trade_lots"])))
         if "ce_otm_steps" in patch:
             _SETTINGS["ce_otm_steps"] = max(0, min(5, int(patch["ce_otm_steps"])))
         if "pe_otm_steps" in patch:
