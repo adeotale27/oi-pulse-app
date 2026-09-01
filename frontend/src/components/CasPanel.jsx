@@ -134,6 +134,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const [btResult, setBtResult] = useState(null);
   const [btBusy, setBtBusy] = useState(false);
   const [injectValue, setInjectValue] = useState("24007.50");
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [readinessOpen, setReadinessOpen] = useState(() => {
     try {
       return localStorage.getItem("casLiveReadinessOpen") === "1";
