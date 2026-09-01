@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.06 — 2026-09-01
+
+CAS Auto Trade reads both `indexLast` and `closingValue` on the NSE widget: if live NIFTY is still the freeze print, a stamped 15:20 `closingValue` can still fire the CE/PE buy. Unstamped `closingValue` is ignored (yesterday’s close). Desk crash reports skip credentialed `sendBeacon` when the API is another origin (CORS `*`).
+
 ## V9.05 — 2026-09-01
 
 CAS Expiry no longer crashes (`nowMs` was missing). Regime Info icons sit **beside** index ticker buttons so HTML is not button-in-button.
