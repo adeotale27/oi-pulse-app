@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.07 — 2026-09-01
+
+Overnight the desk kept hitting `/oi/*/change` and `/expiries` like a live session: weekday after-hours was not treated as closed unless `/status` had already said so, and an empty expiry list was re-fetched every poll (that flickered “No expiries yet”). CAS status slows to 60s after hours. Saving Kite credentials before Mongo/OI is up returns 503 instead of `set_credentials` on None.
+
 ## V9.06 — 2026-09-01
 
 CAS Auto Trade reads both `indexLast` and `closingValue` on the NSE widget: if live NIFTY is still the freeze print, a stamped 15:20 `closingValue` can still fire the CE/PE buy. Unstamped `closingValue` is ignored (yesterday’s close). Desk crash reports skip credentialed `sendBeacon` when the API is another origin (CORS `*`).

@@ -74,7 +74,9 @@ def test_auth_state_survives_missing_db():
 
 
 def test_positions_kite_call_is_capped():
-    src = _fn(SERVER, "get_positions")
+    i = SERVER.index("async def get_positions")
+    j = SERVER.index("\n@api_router.", i + 1)
+    src = SERVER[i:j]
     assert "wait_for" in src
     assert "kite.positions" in src
 

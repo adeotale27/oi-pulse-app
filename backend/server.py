@@ -122,6 +122,16 @@ async def k8s_health():
 tracker = None
 
 
+def _require_tracker():
+    """Kite/OI tracker is created after Mongo boots. Saving credentials before that 500s."""
+    if tracker is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Desk is still starting (Mongo/OI tracker not ready). Wait a few seconds and try again.",
+        )
+    return tracker
+
+
 def _live_settings() -> dict:
     if tracker and isinstance(getattr(tracker, "settings", None), dict):
         return tracker.settings
@@ -997,7 +1007,9 @@ async def get_version():
 @api_router.post("/credentials")
 async def set_credentials(payload: CredentialsIn, _admin: bool = Depends(require_admin)):
     try:
-        await tracker.set_credentials(payload.api_key, payload.access_token)
+        await _require_tracker().set_credentials(payload.api_key, payload.access_token)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     # Pull true GIFT NIFTY (NSEIX:GIFT NIFTY) + VIX via Kite immediately.
@@ -1026,7 +1038,9 @@ async def set_access_token_only(payload: AccessTokenOnlyIn, _admin: bool = Depen
     if not token:
         raise HTTPException(400, "access_token required")
     try:
-        await tracker.set_credentials(api_key, token)
+        await _require_tracker().set_credentials(api_key, token)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     try:
@@ -1050,7 +1064,9 @@ async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(requ
     except Exception as e:
         raise HTTPException(400, f"{type(e).__name__}: {e}")
     try:
-        await tracker.set_credentials(payload.api_key, access_token)
+        await _require_tracker().set_credentials(payload.api_key, access_token)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(400, str(e))
     # Always vault key + secret (Fernet) so daily login needs only request_token.
@@ -1211,7 +1227,9 @@ async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_a
     except Exception as e:
         raise HTTPException(400, f"{type(e).__name__}: {e}")
     try:
-        await tracker.set_credentials(api_key, access_token)
+        await _require_tracker().set_credentials(api_key, access_token)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(400, str(e))
     if data.get("user_id"):
@@ -4357,10 +4375,10 @@ async def get_positions(
     else:
         # Prefer the live Kite client — do not drop Positions just because the OI
         # poller mode flag briefly flipped offline.
-        if not tracker.kite_service:
+        if tracker is None or not tracker.kite_service:
             await _note_token_gap()
             return {
-                "mode": tracker.mode,
+                "mode": getattr(tracker, "mode", None) or "offline",
                 "positions": [],
                 "funds": None,
                 "error": "Kite not connected. Add API key + access token in Credentials.",

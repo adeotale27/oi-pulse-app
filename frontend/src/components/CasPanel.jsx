@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { isMarketQuiescent } from "@/lib/marketTimes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import InfoTip from "@/components/InfoTip";
@@ -184,11 +185,14 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
     }
   }, [applyStatus]);
 
+  const casQuiet = isMarketQuiescent(new Date(nowMs));
+
   useEffect(() => {
     load();
-    const id = setInterval(() => load({ quiet: true }), 3000);
+    // After hours a 3s CAS poll is what floods the Network tab (2k+ calls overnight).
+    const id = setInterval(() => load({ quiet: true }), casQuiet ? 60_000 : 3000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, casQuiet]);
 
   const plain = status?.plain || {};
   const cfg = status?.config || {};

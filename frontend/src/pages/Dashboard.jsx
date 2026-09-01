@@ -860,6 +860,11 @@ export default function Dashboard() {
       const list = r.data.expiries || [];
       const meta = r.data.expiries_meta || [];
       const note = r.data.note || null;
+      if (!list.length && cached?.list?.length) {
+        const keep = { ...cached, fetched: true, asOf: today, thinTried: true, note: note || cached.note };
+        expiryByIndexRef.current[idx] = keep;
+        return keep;
+      }
       const serverSel = r.data.selected && list.includes(r.data.selected) ? r.data.selected : null;
       // Keep a still-valid user/cache pick; otherwise take server nearest (weekly roll).
       let selected = serverSel || list[0] || null;
@@ -883,7 +888,16 @@ export default function Dashboard() {
       return entry;
     } catch (e) {
       console.error(`loadExpiries(${idx}) failed`, e);
-      const entry = { list: [], meta: [], note: null, selected: null, fetched: true, asOf: today };
+      const prev = expiryByIndexRef.current[idx] || {};
+      const entry = {
+        list: prev.list || [],
+        meta: prev.meta || [],
+        note: prev.note || null,
+        selected: prev.selected || null,
+        fetched: true,
+        asOf: today,
+        thinTried: true,
+      };
       expiryByIndexRef.current[idx] = entry;
       return entry;
     } finally {
@@ -993,8 +1007,7 @@ export default function Dashboard() {
           }
         }
         setOiLoading(false);
-        const thinList = (expiryByIndexRef.current[active]?.list?.length || 0) <= 1;
-        ensureExpiryForIndex(active, { force: thinList }).catch(() => {});
+        ensureExpiryForIndex(active).catch(() => {});
         if (bootLite && first.ok) {
           window.setTimeout(() => {
             fetchOIChange(active, minutes, {
