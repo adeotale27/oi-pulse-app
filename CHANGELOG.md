@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.01 — 2026-09-01
+
+Positions **Brains** now scores the live short book instead of a canned heat story. Heat comes from too-close / ITM / near-expiry / concentration / net delta / negative theta — not from `|θ|` or a 15% “danger” band that flagged every typical short. If/then uses your nearest short put and call, not placeholder 24,000 / 24,500. Short calls are upside risk; short puts are downside. Info icons pin a portaled tip and no longer close the Brains or Radar sheet.
+
 ## V9.00 — 2026-09-01
 
 Position Brain now reads as a real decision system rather than a generic data dump: the main verdict leads with urgency, confidence, the reason it matters, and the best action to take next; the side panel also explains why the portfolio is heating, how the best and worst positions compare, and where data quality is still limiting the call.

@@ -17,7 +17,7 @@ flowchart LR
 ## Frontend
 
 - Entry: `frontend/src/pages/Dashboard.jsx` (active index, OI cache, tabs).
-- Positions: `PositionsPanel.jsx` + `PositionsAnalyzeModal.jsx`.
+- Positions: `PositionsPanel.jsx` + `PositionsAnalyzeModal.jsx` + `PositionsBrainPanel.jsx` (short-book risk in `lib/positionsBrain.js`).
 - Domain JS: `frontend/src/lib/` — `universe.js`, `positionPayoff.js`, `holidays.js`, `journalYearHeat.js`.
 - HTTP: `frontend/src/lib/api.js` (axios, admin/guest headers).
 - State: React local state + refs for poll caches. No Redux.
