@@ -23,7 +23,7 @@ The publisher Kite token polls the option chain on a cadence you set (15 / 30 / 
 | **Alerts / Activity** | Server reversal alerts + session tape |
 | **Events / Index Risk** | Calendar + event-risk tile (upload stamps stay admin-only) |
 | **Straddle** | ATM straddle premium path |
-| **CAS Expiry** | Cash-settled expiry helper (activate/live is admin) |
+| **CAS Expiry** | Classic 15:28 SELL-both, plus **15:20 Auto Trade** (one ATM BUY). Runbook: [docs/CAS_AUTO_TRADE_15_20.md](docs/CAS_AUTO_TRADE_15_20.md) |
 | **Trade journal** | Admin-only: booked P&L, notes, rating, month calendar |
 
 Guests never share the publisher positions token. If **Positions** is ticked Public, they **Connect Zerodha** for *their* book. Charts always stay on the publisher OI feed.
@@ -95,7 +95,7 @@ echo 'REACT_APP_BACKEND_URL=http://localhost:8000' > .env.local
 yarn start
 ```
 
-Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). Leaving Emergent / Oracle Cloud / GoDaddy DNS: [docs/HOSTING.md](docs/HOSTING.md). Optional LLM over OI + positions: [docs/AI.md](docs/AI.md). Domain shortlist: [docs/DOMAINS.md](docs/DOMAINS.md).
+Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). CAS 15:20 Auto Trade (admin clocks, Live vs Paper, trade logic): [docs/CAS_AUTO_TRADE_15_20.md](docs/CAS_AUTO_TRADE_15_20.md). Leaving Emergent / Oracle Cloud / GoDaddy DNS: [docs/HOSTING.md](docs/HOSTING.md). Optional LLM over OI + positions: [docs/AI.md](docs/AI.md). Domain shortlist: [docs/DOMAINS.md](docs/DOMAINS.md).
 
 The **Market Events Chrome extension** is **not** in this app. It lives in [adeotale27/Market_Events](https://github.com/adeotale27/Market_Events). A Pulse-only copy of that tree is on orphan branch `cursor/market-events-1bf9` (do not merge it into `main`).
 

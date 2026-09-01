@@ -46,7 +46,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | GET | `/market/fii-dii` | Cached NSE FII/DII cash (after 19:31 IST warm) |
 | GET | `/cas/status` | Classic CAS + Auto Trade snapshot (guests: reduced) |
 | POST | `/cas/settings` | Admin: classic CAS + Auto Trade times/thresholds/mode |
-| POST | `/cas/auto-trade/inject` | Admin paper/debug: fake first indicative print |
+| POST | `/cas/auto-trade/inject` | Admin Paper/Debug: fake first indicative. Full 15:20 runbook: [CAS_AUTO_TRADE_15_20.md](./CAS_AUTO_TRADE_15_20.md) |
 | GET | `/vrp/{index}` | Volatility risk premium (EOD-ish) |
 | GET | `/straddle/{index}` (+ `/history`) | ATM straddle series |
 | GET | `/positions` | Open F&O from Kite (admin / guest book). Also upserts `trade_cycles`. |

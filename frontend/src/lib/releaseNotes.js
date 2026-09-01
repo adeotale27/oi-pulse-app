@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.08",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade at 15:20 is documented for the desk: one ATM buy from the first indicative vs frozen NIFTY; you still exit in Positions.",
+    ],
+    admin: [
+      "Read docs/CAS_AUTO_TRADE_15_20.md before Live: clocks, Live mutex with classic CAS, in-memory settings, first-print rules, and the 1 Sep 2026 +27 example.",
+    ],
+  },
+  {
     version: "9.07",
     date: "2026-09-01",
     user: [
