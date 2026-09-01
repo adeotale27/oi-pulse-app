@@ -44,7 +44,7 @@ _SETTINGS: Dict[str, Any] = {
     "auto_bearish_pts": 15.0,
     "auto_poll_ms": 250,
 }
-_EGRESS_CACHE: Dict[str, Any] = {"ip": None, "at": 0.0, "error": None}
+_EGRESS_CACHE: Dict[str, Any] = {"ip": None, "at": 0.0, "error": None, "checked": False}
 
 
 def detect_backend_egress_ip(*, force: bool = False) -> Dict[str, Any]:
@@ -59,14 +59,14 @@ def detect_backend_egress_ip(*, force: bool = False) -> Dict[str, Any]:
     now = time.time()
     if (
         not force
-        and _EGRESS_CACHE.get("ip")
+        and _EGRESS_CACHE.get("checked")
         and now - float(_EGRESS_CACHE.get("at") or 0) < 600
     ):
         return {
-            "ip": _EGRESS_CACHE["ip"],
+            "ip": _EGRESS_CACHE.get("ip"),
             "source": "cache",
             "note": _EGRESS_CACHE.get("note"),
-            "error": None,
+            "error": _EGRESS_CACHE.get("error"),
         }
     ip = None
     err = None
@@ -92,6 +92,7 @@ def detect_backend_egress_ip(*, force: bool = False) -> Dict[str, Any]:
     )
     _EGRESS_CACHE["ip"] = ip
     _EGRESS_CACHE["at"] = now
+    _EGRESS_CACHE["checked"] = True
     _EGRESS_CACHE["error"] = None if ip else err
     _EGRESS_CACHE["note"] = note
     return {"ip": ip, "source": "live", "note": note, "error": None if ip else err}

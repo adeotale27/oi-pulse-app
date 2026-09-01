@@ -147,6 +147,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const [btResult, setBtResult] = useState(null);
   const [btBusy, setBtBusy] = useState(false);
   const [injectValue, setInjectValue] = useState("24007.50");
+  const injectTouched = useRef(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [readinessOpen, setReadinessOpen] = useState(() => {
     try {
@@ -182,19 +183,28 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
     if (Array.isArray(wi) && wi.length) {
       setWatchIndexes(wi.map((x) => String(x).toUpperCase()));
     }
+    const liveInd = data?.auto_trade?.nse_last_value;
+    if (!injectTouched.current && liveInd != null && Number(liveInd) > 0) {
+      setInjectValue(String(liveInd));
+    }
   }, []);
 
   const load = useCallback(async ({ quiet } = {}) => {
     if (busyRef.current) return; // don't overwrite mid-toggle
     const gen = ++statusGen.current;
-    if (!quiet) setLoading(true);
-    setError(null);
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const { data } = await api.get("/cas/status");
+      const { data } = await api.get("/cas/status", { timeout: 25000 });
       applyStatus(data, gen);
+      if (gen === statusGen.current) setError(null);
     } catch (e) {
       if (gen === statusGen.current) {
-        setError(e?.response?.data?.detail || e.message || "Failed to load CAS");
+        const msg = e?.response?.data?.detail || e.message || "Failed to load CAS";
+        const isTimeout = /timeout/i.test(String(msg));
+        if (!quiet || !isTimeout) setError(msg);
       }
     } finally {
       if (!quiet && gen === statusGen.current) setLoading(false);
@@ -897,11 +907,22 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
             </div>
 
             {autoPaper && (
-              <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-sm px-2 py-1.5">
-                Paper on a live session: Kite NIFTY + NSE JSON are real. Errors and the fire recap
-                show in the strip below. Order id is DRY-BUY — no fill on your account. Use this to
-                confirm scrape before Live.
-              </div>
+              <ol className="text-[11px] text-emerald-950 bg-emerald-50 border border-emerald-100 rounded-sm px-3 py-2 space-y-1.5 list-decimal list-inside leading-relaxed">
+                <li>
+                  <b>Leave Paper on</b> through the cash session (09:15–15:30 IST). The engine uses live
+                  Kite NIFTY and live NSE JSON. At ~15:19:30 it freezes ATM; at 15:20 it may DRY-BUY
+                  one CE or PE. Nothing hits your Zerodha account.
+                </li>
+                <li>
+                  Watch <b>NSE live</b> below — first pull and every change show there. Errors stay in
+                  the strip. Classic Activate is not needed.
+                </li>
+                <li>
+                  <b>Inject</b> is optional: type a fake 15:20 print (e.g. freeze+20). Before 15:20 it
+                  is only a rehearsal (does not spend today’s fire). From 15:20, inject <i>is</i> today’s
+                  paper fire — don’t inject if you want NSE to fire.
+                </li>
+              </ol>
             )}
             {autoLive && (
               <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-100 rounded-sm px-2 py-1.5 flex items-center gap-2">
@@ -922,7 +943,10 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                     step="0.05"
                     value={injectValue}
                     disabled={busy}
-                    onChange={(e) => setInjectValue(e.target.value)}
+                    onChange={(e) => {
+                      injectTouched.current = true;
+                      setInjectValue(e.target.value);
+                    }}
                     className="mt-0.5 block w-28 h-8 px-2 text-sm border border-slate-200 rounded-sm font-mono-data"
                     data-testid="cas-auto-inject-value"
                   />
@@ -938,9 +962,8 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                   Inject first print
                 </Button>
                 <p className="text-[10px] text-slate-500 max-w-md leading-snug">
-                  Before 15:20 IST this is a rehearsal on today&apos;s live freeze (DRY-BUY, does not
-                  consume the 15:20 fire). From 15:20 it is today&apos;s paper print — leave Paper on
-                  and let NSE fire instead if you are checking the live session.
+                  Number = fake NSE indicative. Example: if frozen NIFTY is 23980, enter 24007 to
+                  rehearse a +27 CE. Needs Kite connected. Before 15:20 = rehearsal only.
                 </p>
               </div>
             )}
@@ -1365,13 +1388,30 @@ function AutoTapeStrip({ auto, autoLots }) {
   const lat = auto.latency || {};
   const executed = auto.status === "EXECUTED" || auto.status === "NO_TRADE" || auto.status === "FAILED";
   const err = auto.nse_error || (auto.status === "FAILED" ? auto.reason : null);
+  const liveNse = auto.nse_last_value != null ? fmt(auto.nse_last_value, 2) : "—";
+  const firePrint = auto.indicative_nifty != null ? fmt(auto.indicative_nifty, 2) : "—";
+  const clock = auto.clock_ist ? fmtTime(auto.clock_ist) : "—";
+  const closed = auto.in_probe_window === false;
   return (
     <div className="space-y-2" data-testid="cas-auto-tape">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         <MiniCard label="Auto lots" value={String(autoLots)} mono />
         <MiniCard label="Frozen NIFTY" value={fmt(auto.pre_signal_nifty, 2)} mono />
         <MiniCard label="Locked ATM" value={auto.locked_atm != null ? String(auto.locked_atm) : "—"} mono />
-        <MiniCard label="Indicative" value={fmt(auto.indicative_nifty, 2)} mono />
+        <MiniCard
+          label="NSE live"
+          value={liveNse}
+          mono
+          highlight={auto.nse_first_at && !auto.indicative_nifty}
+          testId="cas-auto-nse-live"
+        />
+        <MiniCard
+          label="Fire print"
+          value={firePrint}
+          mono
+          highlight={!!auto.indicative_nifty}
+          testId="cas-auto-fire-print"
+        />
         <MiniCard
           label="Delta"
           value={auto.cas_delta != null ? `${auto.cas_delta > 0 ? "+" : ""}${fmt(auto.cas_delta, 2)}` : "—"}
@@ -1404,8 +1444,10 @@ function AutoTapeStrip({ auto, autoLots }) {
           </p>
         )}
         {!err && auto.nse_fetched_at && (
-          <p>
-            NSE scrape {auto.nse_error ? "failed" : "ok"}
+          <p data-testid="cas-auto-nse-line">
+            NSE scrape ok · IST {clock}
+            {auto.nse_first_at ? ` · first pull ${fmtTime(auto.nse_first_at)}` : ""}
+            {auto.nse_changed_at ? ` · last change ${fmtTime(auto.nse_changed_at)}` : ""}
             {auto.nse_fetched_at ? ` · fetched ${fmtTime(auto.nse_fetched_at)}` : ""}
             {auto.nse_last_field ? ` · ${auto.nse_last_field}` : ""}
             {auto.nse_last_value != null ? ` ${fmt(auto.nse_last_value, 2)}` : ""}
@@ -1418,8 +1460,9 @@ function AutoTapeStrip({ auto, autoLots }) {
         )}
         {!auto.nse_fetched_at && !err && !executed && (
           <p className="text-slate-500">
-            Turn Auto mode to <b>Paper</b> in cash hours. This strip shows NSE scrape errors, skip
-            reasons, then when/how the DRY-BUY fired and latency.
+            {closed
+              ? `IST ${clock} — cash NSE scrape is quiet overnight (retries every 30s). Leave Paper on; the live print appears here from 09:15 IST. Inject still works if Kite is connected.`
+              : "Waiting for the first NSE JSON pull. Leave Paper on. First indicative and later changes show in NSE live."}
           </p>
         )}
         {(auto.prepared_ce || auto.prepared_pe) && (
@@ -1460,13 +1503,20 @@ function AutoTapeStrip({ auto, autoLots }) {
           {auto.last_rehearsal.opt_type ? ` · ${auto.last_rehearsal.opt_type}` : ""}
           {auto.last_rehearsal.tradingsymbol ? ` · ${auto.last_rehearsal.tradingsymbol}` : ""}
           {auto.last_rehearsal.order_id ? ` · ${auto.last_rehearsal.order_id}` : ""}
+          {auto.last_rehearsal.pre_signal_nifty != null
+            ? ` · freeze ${fmt(auto.last_rehearsal.pre_signal_nifty, 2)}`
+            : ""}
+          {auto.last_rehearsal.locked_atm != null ? ` · ATM ${auto.last_rehearsal.locked_atm}` : ""}
+          {auto.last_rehearsal.indicative_nifty != null
+            ? ` · print ${fmt(auto.last_rehearsal.indicative_nifty, 2)}`
+            : ""}
         </p>
       )}
     </div>
   );
 }
 
-function MiniCard({ label, value, mono, highlight }) {
+function MiniCard({ label, value, mono, highlight, testId }) {
   return (
     <div
       className={`rounded-sm border px-2.5 py-2 ${
@@ -1474,6 +1524,7 @@ function MiniCard({ label, value, mono, highlight }) {
           ? "border-emerald-200 bg-emerald-50/80"
           : "border-slate-200 bg-slate-50/60"
       }`}
+      data-testid={testId}
     >
       <div className="text-[9px] uppercase tracking-wider text-slate-500">{label}</div>
       <div

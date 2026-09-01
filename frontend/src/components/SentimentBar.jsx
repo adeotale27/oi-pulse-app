@@ -1,11 +1,8 @@
 import InfoTip from "@/components/InfoTip";
 
 /**
- * Sentiment / bias bar — always reflects WHOLE-DAY OI bias
- * (session open ≈ 9:15 IST → latest snapshot), not the timeframe pill.
- * Same methodology for every index (NIFTY / SENSEX / BANKNIFTY).
- *
- * After market close we still show that session's final day bias (not a blank EOD strip).
+ * Whole-day OI bias for the active index (9:15 IST → latest snapshot).
+ * Compact desk strip — not a second “regime” of the header index tiles.
  */
 export default function SentimentBar({
   ceDelta,
@@ -19,76 +16,68 @@ export default function SentimentBar({
   const ratio = Math.max(-1, Math.min(1, net / total));
   const strength = Math.min(1, Math.abs(ratio));
   const isBullish = ratio >= 0;
-
-  const bg = isBullish
-    ? `rgba(22, 163, 74, ${0.08 + 0.55 * strength})`
-    : `rgba(220, 38, 38, ${0.08 + 0.55 * strength})`;
-  const barColor = isBullish ? "#16A34A" : "#DC2626";
-  const label = isBullish
-    ? "Bullish bias · Put writers dominating"
-    : "Bearish bias · Call writers dominating";
   const pct = (strength * 100).toFixed(0);
+  const fill = `${(strength * 50).toFixed(1)}%`;
 
   const windowNote = wholeDay
-    ? (marketOpen ? "whole day · 9:15 → now" : "whole day · 9:15 → session close")
+    ? (marketOpen ? "9:15 → now" : "9:15 → close")
     : null;
 
   return (
     <div
-      className="rounded-sm border border-slate-200 dark:border-slate-700 overflow-hidden"
+      className="rounded-md border border-slate-200 bg-white overflow-hidden"
       data-testid="sentiment-bar"
       data-market={marketOpen ? "open" : "closed"}
       data-scope="session"
     >
-      <div className="px-3 py-2 max-md:px-2 max-md:py-1 flex items-center justify-between gap-2" style={{ background: bg }}>
-        <div className="flex items-center gap-2 text-xs max-md:text-[10px] font-medium min-w-0 flex-wrap">
-          <span className="w-2 h-2 max-md:w-1.5 max-md:h-1.5 rounded-full shrink-0" style={{ background: barColor }} />
-          <span className="text-slate-800 dark:text-slate-100 max-md:truncate">{label}</span>
-          {windowNote && (
-            <span className="hidden md:inline text-[10px] text-slate-500 dark:text-slate-400 font-mono-data">
+      <div className="px-3 py-1.5 flex items-center gap-2 min-w-0">
+        <span
+          className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${
+            isBullish ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+          }`}
+        >
+          {isBullish ? "Bullish" : "Bearish"}
+        </span>
+        <p className="text-[11px] text-slate-700 min-w-0 truncate">
+          {isBullish ? "Put writers leading OI" : "Call writers leading OI"}
+          {windowNote ? (
+            <span className="text-slate-400 font-mono-data">
+              {" "}
               · {windowNote}
-              {sessionMinutes != null ? ` (${sessionMinutes}m)` : ""}
+              {sessionMinutes != null ? ` · ${sessionMinutes}m` : ""}
             </span>
+          ) : null}
+        </p>
+        <InfoTip testId="day-bias-info" size="xs" title="Whole-day OI bias" className="shrink-0">
+          <p>
+            Session OI build on the active index from ≈ 9:15 IST. It does not follow the 1m / 15m
+            pills. Bullish = put writing dominating call writing. Bearish = the opposite.
+          </p>
+          {!marketOpen && (
+            <p className="mt-2 text-slate-500">Market closed — last session&apos;s final bias.</p>
           )}
-          <InfoTip
-            testId="day-bias-info"
-            size="xs"
-            title="Whole-day bias"
-            className="shrink-0"
-          >
-            <p>
-              This bar shows the <strong>whole session&apos;s OI bias</strong> for the
-              active index — from market open (≈ 9:15 IST) through the latest snapshot
-              (or session close after EOD). It does <strong>not</strong> follow the
-              timeframe pills (1m / 15m / etc.).
-            </p>
-            <p className="mt-2">
-              <strong>Bullish</strong> = Put OI build dominating Call OI build across
-              the visible strikes. <strong>Bearish</strong> = the opposite. The same
-              method is used for NIFTY, SENSEX and BANK NIFTY — each index has its own
-              day bias from its own data.
-            </p>
-            {!marketOpen && (
-              <p className="mt-2 text-slate-500">
-                Market is closed — this is the final bias for the last session, not a live tick.
-              </p>
-            )}
-          </InfoTip>
-        </div>
-        <span className="font-mono-data text-xs font-semibold shrink-0" style={{ color: barColor }}>
-          {isBullish ? "+" : "−"}{pct}%
+        </InfoTip>
+        <span
+          className={`ml-auto shrink-0 font-mono-data text-xs font-semibold ${
+            isBullish ? "text-emerald-700" : "text-rose-700"
+          }`}
+        >
+          {isBullish ? "+" : "−"}
+          {pct}%
         </span>
       </div>
-      <div className="h-2 max-md:h-1 bg-slate-100 dark:bg-slate-800 relative">
+      <div className="h-1.5 bg-slate-100 relative" aria-hidden>
+        <div className="absolute top-0 left-1/2 -translate-x-px w-px h-full bg-slate-300" />
         <div
-          className="absolute top-0 left-1/2 h-full transition-all duration-500"
+          className="absolute top-0 left-1/2 h-full"
           style={{
-            width: `${(strength * 50).toFixed(1)}%`,
+            width: fill,
             transform: isBullish ? "translateX(0)" : "translateX(-100%)",
-            background: `linear-gradient(${isBullish ? "90deg" : "270deg"}, ${barColor}00, ${barColor})`,
+            background: isBullish
+              ? "linear-gradient(90deg, rgb(16 185 129 / 0.15), rgb(5 150 105))"
+              : "linear-gradient(270deg, rgb(244 63 94 / 0.15), rgb(225 29 72))",
           }}
         />
-        <div className="absolute top-0 left-1/2 -translate-x-px w-px h-full bg-slate-400" />
       </div>
     </div>
   );
