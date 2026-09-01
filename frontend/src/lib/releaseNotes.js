@@ -4,6 +4,26 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.10",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade Paper now follows the live 15:20 path without a real Zerodha buy, so you can watch the cash session before turning Live on.",
+    ],
+    admin: [
+      "Paper MARKET BUY skips Kite connect (dry-run only). Inject before 15:20 IST stores last_rehearsal and leaves today’s status free for the real NSE print.",
+    ],
+  },
+  {
+    version: "9.09",
+    date: "2026-09-01",
+    user: [
+      "Index regime is clearer: Ranging means the day is chopping (range bigger than the net move), Quiet means almost nothing moved. CAS has two desks on one page — 15:20 Auto Trade (pick lots, buy one ATM) vs 15:28 expiry sells.",
+    ],
+    admin: [
+      "auto_trade_lots is independent of classic CAS lots (1–50). tickerRegime.js classifies from net% and high–low span; tips include the why line.",
+    ],
+  },
+  {
     version: "9.08",
     date: "2026-09-01",
     user: [

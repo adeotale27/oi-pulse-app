@@ -5692,6 +5692,7 @@ class CasSettingsIn(BaseModel):
     watch_indexes: Optional[List[str]] = None
     auto_trade_enabled: Optional[bool] = None
     auto_trade_mode: Optional[str] = None
+    auto_trade_lots: Optional[int] = None
     auto_prepare_time: Optional[str] = None
     auto_arm_time: Optional[str] = None
     auto_signal_start: Optional[str] = None
@@ -5743,6 +5744,7 @@ async def cas_status(role: str = Depends(require_desk_user)):
                 "watch_indexes": (status.get("settings") or {}).get("watch_indexes"),
                 "auto_trade_enabled": (status.get("settings") or {}).get("auto_trade_enabled"),
                 "auto_trade_mode": (status.get("settings") or {}).get("auto_trade_mode"),
+                "auto_trade_lots": (status.get("settings") or {}).get("auto_trade_lots"),
                 "auto_bullish_pts": (status.get("settings") or {}).get("auto_bullish_pts"),
                 "auto_bearish_pts": (status.get("settings") or {}).get("auto_bearish_pts"),
             },

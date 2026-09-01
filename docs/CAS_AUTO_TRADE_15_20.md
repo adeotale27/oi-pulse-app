@@ -52,11 +52,11 @@ F&O still trades until **15:30**, so a 15:20 option BUY is inside the session.
 
 5. **Default ±15 pts, not 50.** 1 Sep 2026 was +27. Admin can raise `auto_bullish_pts` / `auto_bearish_pts` (0–200).
 
-6. **One MARKET BUY, `market_protection=-1`, validity DAY.** Same Kite MARKET shape as classic CAS sells. Quantity = CAS **lots** × NIFTY lot size. Product **NRML** or **MIS** from classic CAS settings.
+6. **One MARKET BUY, `market_protection=-1`, validity DAY.** Same Kite MARKET shape as classic CAS sells. Quantity = **Auto Trade lots** × NIFTY lot size (not 15:28 expiry lots). Product **NRML** or **MIS** from classic CAS settings.
 
 7. **No auto-exit.** Manual in Positions. No second fire after **EXECUTED** or a **failed** live order.
 
-8. **Paper default. Live is admin.** Inject is Paper/Debug only.
+8. **Paper is the live-session rehearsal.** Auto **Paper** uses **live Kite NIFTY** (freeze/ATM) and **live NSE JSON** (first print), then a **DRY-BUY** id — **no** Zerodha fill. Classic **Activate is not required**. Use this in the cash session before Auto **Live**. Inject before 15:20 is a **rehearsal** and does **not** spend today’s fire; from 15:20 inject *is* today’s paper print.
 
 9. **In-memory settings.** Auto mode **resets to Off** when the API process restarts. You must turn Paper/Live on again after a deploy.
 
@@ -75,16 +75,26 @@ Times are **IST**. Clocks below are defaults; they live in CAS settings (`auto_*
 1. Publisher **Kite API** connected (same token as OI). F&O instruments must resolve NIFTY ATM CE/PE.
 2. **Live order readiness** on the CAS page: api_key, access_token, SDK `market_protection`, F&O symbols, **static IP whitelist** = **backend egress** (shown on the page), not your laptop if the API is in the cloud.
 3. Classic CAS: keep **Paper** (or Off). Do **not** **Activate Live** if you will use Auto-Trade Live.
-4. Set **lots** and **NRML/MIS** on the classic CAS block (Auto Trade reuses them).
+4. Set **Auto Trade lots** and **NRML/MIS**. Keep classic expiry lots separate.
 5. Leave Auto mode **Off** until you intend to run the 15:20 arm.
 
-### Rehearsal (any time Kite is up)
+### Paper in a live market (check before Live on your account)
 
-1. Turn classic CAS **Debug** on if you want to inject outside 15:20.
-2. Auto mode **Paper** (not Live).
-3. **Inject first print** with a fake indicative (e.g. freeze+20). You should see **EXECUTED**, paper order id `DRY-…`, **CE** or **PE** on the **locked ATM**.
-4. Inject again → rejected (**already executed**).
-5. **Reset** the CAS day if you need another rehearsal (`POST /cas/reset` / Reset on the page). That also clears Auto Trade state for the IST day.
+This is the same 15:20 path as Live, except the BUY is a dry-run.
+
+1. Publisher **Kite connected** (quotes and ATM symbols). Classic CAS: **do not Activate Live**.
+2. CAS page → **15:20 Auto Trade** → Auto mode **Paper** (classic Activate **not** needed).
+3. Optional before 15:20: **Inject first print** → rehearsal `DRY-BUY…` on **today’s live freeze**. Status stays idle for the 15:20 fire; a **Last rehearsal** line appears.
+4. Leave **Paper** on through **15:19:30–15:22**. Frozen NIFTY / Locked ATM should match the tape. First sane NSE print → **EXECUTED** + `DRY-…` order id, **no** fill on the account.
+5. Do **not** Inject at/after 15:20 if you want NSE to be the day’s paper print (inject would consume that fire).
+6. If the dry-run CE/PE, ATM, and delta look right, turn Auto **Off**, then next session (or after Reset) use **Live**.
+
+### Rehearsal inject (morning / any time before 15:20)
+
+1. Auto mode **Paper** (not Live, not Off). Kite must quote NIFTY.
+2. **Inject first print** with a fake indicative (e.g. freeze+20). You should see **Last rehearsal** **EXECUTED**, paper order id `DRY-…`, **CE** or **PE** on the **locked ATM**. Today’s status is **not** EXECUTED.
+3. Inject again before 15:20 → another rehearsal (does not block 15:20).
+4. **Reset** the CAS day if you need a clean Auto Trade state (`POST /cas/reset`).
 
 ### Live session — 15:19–15:22 (the real run)
 
@@ -94,7 +104,7 @@ Times are **IST**. Clocks below are defaults; they live in CAS settings (`auto_*
 | **15:19:30** | **PREPARING**: quote live NIFTY, round ATM, cache ATM CE + PE symbols | Confirm Frozen NIFTY and Locked ATM look right |
 | **15:19:55** | **ARMED** if both legs exist | Do not change lots/ATM; do not enable classic Live |
 | **15:20:00** | Poll NSE JSON every **auto_poll_ms** (default **250 ms**) | Watch Status; do not mash Inject |
-| **First sane print** | **CAS_DATA_RECEIVED** → **SIGNAL_DECIDED** → **EXECUTING** | If Live: one BUY hits Kite |
+| **First sane print** | **CAS_DATA_RECEIVED** → **SIGNAL_DECIDED** → **EXECUTING** | Paper: `DRY-…` id, no fill. Live: one BUY hits Kite |
 | **CE if Δ ≥ +15** | BUY ATM **CE** | Open **Positions**; plan your exit |
 | **PE if Δ ≤ −15** | BUY ATM **PE** | Same |
 | **\|Δ\| inside band** | **NO_TRADE** for the day | Nothing to exit |
@@ -235,7 +245,7 @@ Engine is attached on API boot so Auto Trade can run **without** opening the CAS
 
 - **GET `/api/cas/status`** — `settings` + `auto_trade` snapshot (frozen NIFTY, ATM, signal, order, NSE error, latency).
 - **POST `/api/cas/settings`** — `auto_trade_mode`, times, thresholds, lots, product. Live Auto Trade = admin. Cannot set classic `live_trading` and `auto_trade_mode=live` together.
-- **POST `/api/cas/auto-trade/inject`** `{ "indicative": 24007.5 }` — Paper/Debug only.
+- **POST `/api/cas/auto-trade/inject`** `{ "indicative": 24007.5 }` — Paper only. Before 15:20: rehearsal (does not spend today’s fire). From 15:20: today’s paper print.
 - **POST `/api/cas/reset`** — clears classic day **and** Auto Trade today.
 
 Guests can view a reduced CAS status if the CAS page is Public. They cannot enable Live or inject.

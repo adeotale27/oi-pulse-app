@@ -14,6 +14,7 @@ from cas_indicative_nse import (
 )
 from cas_rule_expiry_automation.expiry_calendar import INDEX_META
 from cas_rule_expiry_automation.strike_resolver import Leg, StrikeCache, round_atm
+from cas_rule_expiry_automation.kite_client import KiteClient
 from cas_rule_expiry_automation.time_utils import IST
 
 
@@ -21,6 +22,12 @@ PRE = 23980.55
 IND_FIRST = 24007.50  # 15:20:01 CSV
 IND_LATER = 24125.20
 CLOSE_PRINT = 24055.80
+FIRE_AT = datetime(2026, 9, 1, 15, 20, 5, tzinfo=IST)
+REHEARSE_AT = datetime(2026, 9, 1, 11, 5, 0, tzinfo=IST)
+
+
+def _freeze_ist(monkeypatch, when):
+    monkeypatch.setattr("cas_auto_trade.get_ist_now", lambda: when)
 
 
 class FakeClient:
@@ -126,7 +133,8 @@ def test_extract_indicative_and_reject_close():
     assert why2 == "stale_close"
 
 
-def test_inject_buys_locked_atm_ce_once(auto):
+def test_inject_buys_locked_atm_ce_once(auto, monkeypatch):
+    _freeze_ist(monkeypatch, FIRE_AT)
     settings = {
         "auto_trade_mode": "paper",
         "auto_trade_enabled": True,
@@ -144,13 +152,33 @@ def test_inject_buys_locked_atm_ce_once(auto):
     assert snap["pre_signal_nifty"] == PRE
     assert client.buys and client.buys[0]["live"] is False
     assert client.buys[0]["tradingsymbol"] == "NIFTY24000CE"
+    assert client.buys[0]["quantity"] == 65
 
     with pytest.raises(RuntimeError, match="Already executed"):
         auto.inject_indicative(IND_LATER, settings, client)
     assert len(client.buys) == 1
 
 
-def test_inject_inside_threshold_is_no_trade(auto):
+def test_auto_trade_lots_not_classic_lots(auto, monkeypatch):
+    _freeze_ist(monkeypatch, FIRE_AT)
+    settings = {
+        "auto_trade_mode": "paper",
+        "auto_trade_enabled": True,
+        "lots": 1,
+        "auto_trade_lots": 2,
+        "product": "NRML",
+        "auto_bullish_pts": 15,
+        "auto_bearish_pts": 15,
+    }
+    client = FakeClient()
+    snap = auto.inject_indicative(IND_FIRST, settings, client)
+    assert snap["status"] == "EXECUTED"
+    assert client.buys[0]["quantity"] == 130
+    assert snap["quantity"] == 130
+
+
+def test_inject_inside_threshold_is_no_trade(auto, monkeypatch):
+    _freeze_ist(monkeypatch, FIRE_AT)
     settings = {
         "auto_trade_mode": "paper",
         "lots": 1,
@@ -166,8 +194,53 @@ def test_inject_inside_threshold_is_no_trade(auto):
 
 def test_inject_refuses_live(auto):
     settings = {"auto_trade_mode": "live"}
-    with pytest.raises(RuntimeError, match="Paper"):
+    with pytest.raises(RuntimeError, match="paper-only"):
         auto.inject_indicative(IND_FIRST, settings, FakeClient())
+
+
+def test_inject_refuses_off(auto):
+    with pytest.raises(RuntimeError, match="Paper first"):
+        auto.inject_indicative(IND_FIRST, {"auto_trade_mode": "off"}, FakeClient())
+
+
+def test_inject_before_signal_is_rehearsal_not_day_fire(auto, monkeypatch):
+    _freeze_ist(monkeypatch, REHEARSE_AT)
+    settings = {
+        "auto_trade_mode": "paper",
+        "auto_trade_enabled": True,
+        "lots": 1,
+        "product": "NRML",
+        "auto_bullish_pts": 15,
+        "auto_bearish_pts": 15,
+    }
+    client = FakeClient()
+    snap = auto.inject_indicative(IND_FIRST, settings, client)
+    assert snap["status"] != "EXECUTED"
+    reh = snap.get("last_rehearsal") or {}
+    assert reh.get("status") == "EXECUTED"
+    assert reh.get("opt_type") == "CE"
+    assert reh.get("locked_atm") == 24000
+    assert client.buys and client.buys[0]["live"] is False
+
+    _freeze_ist(monkeypatch, FIRE_AT)
+    snap2 = auto.inject_indicative(IND_FIRST, settings, client)
+    assert snap2["status"] == "EXECUTED"
+    assert snap2["opt_type"] == "CE"
+    assert len(client.buys) == 2
+
+
+def test_paper_market_buy_skips_kite_connect():
+    client = KiteClient.__new__(KiteClient)
+    client.kite = None
+    oid = client.place_market(
+        side="BUY",
+        exchange="NFO",
+        tradingsymbol="NIFTY24000CE",
+        quantity=65,
+        product="NRML",
+        live=False,
+    )
+    assert str(oid).startswith("DRY-BUY-NIFTY24000CE")
 
 
 def test_parse_nse_stamp_keeps_seconds():
