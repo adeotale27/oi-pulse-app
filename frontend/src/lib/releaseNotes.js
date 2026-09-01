@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.13",
+    date: "2026-09-02",
+    user: [
+      "Journal calendar no longer shows the same booked loss on today as yesterday after midnight. Today stays empty until the session actually books something.",
+    ],
+    admin: [
+      "trade_journal writes session_anchor_date (pre-open = last session). Auto clones of the previous day’s booked/exits/win counts are purged.",
+    ],
+  },
+  {
     version: "9.12",
     date: "2026-09-02",
     user: [

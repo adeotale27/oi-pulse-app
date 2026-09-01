@@ -4795,7 +4795,7 @@ async def get_positions(
         try:
             from account_equity import booked_pct as equity_booked_pct
             from account_equity import choose_funds_base, pnl_after_charges
-            day_iso = journal.ist_ymd()
+            day_iso = journal.journal_session_ymd()
             wallet = funds.get("total")
             jdoc = None
             if db is not None:
@@ -4976,7 +4976,7 @@ async def _persist_trade_ledger(
 async def _stamp_journal_from_ledger(cycles: List[Dict[str, Any]]) -> None:
     if db is None:
         return
-    day = journal.ist_ymd()
+    day = journal.journal_session_ymd()
     doc = await db.trade_journal.find_one({"date": day}, {"legs": 1})
     if not doc:
         return
@@ -5084,14 +5084,24 @@ async def _journal_live_session_today(day: str) -> bool:
 
 
 async def _purge_closed_session_journal_autos() -> int:
-    """Drop Sat/Sun/full-holiday P&L rows created by the Positions poll. Keep user notes."""
+    """Drop Sat/Sun/full-holiday P&L rows created by the Positions poll. Keep user notes.
+
+    Also drop a new calendar date that cloned last session's book (Kite day P&L
+    stays until the next open).
+    """
     if db is None:
         return 0
+    n = 0
     try:
         docs = await db.trade_journal.find(
             {},
             {
                 "date": 1,
+                "booked_pnl": 1,
+                "pnl_exited": 1,
+                "exited_count": 1,
+                "win_trades": 1,
+                "loss_trades": 1,
                 "went_well": 1,
                 "went_wrong": 1,
                 "notes": 1,
@@ -5104,14 +5114,28 @@ async def _purge_closed_session_journal_autos() -> int:
     except Exception:
         return 0
     dates = [d.get("date") for d in docs if journal.is_closed_session_auto_snapshot(d)]
-    dates = [x for x in dates if x]
+    now = now_ist()
+    cal = journal.ist_ymd(now)
+    sess = journal.journal_session_ymd(now)
+    by_date = {str(d.get("date") or "")[:10]: d for d in docs if d.get("date")}
+    today_doc = by_date.get(cal)
+    if today_doc and journal.is_pre_session_auto_snapshot(today_doc, now):
+        dates.append(cal)
+    prev_day = None
+    if cal:
+        older = sorted((k for k in by_date if k < cal), reverse=True)
+        prev_day = older[0] if older else None
+    if today_doc and prev_day and not journal.has_user_journal_content(today_doc):
+        if journal.is_stale_carryover_snapshot(today_doc, by_date[prev_day]):
+            dates.append(cal)
+    dates = list({x for x in dates if x})
     if not dates:
         return 0
     try:
         result = await db.trade_journal.delete_many({"date": {"$in": dates}})
         n = int(getattr(result, "deleted_count", 0) or 0)
         if n:
-            logging.getLogger("server").info("Purged %s weekend/holiday journal auto-snapshots", n)
+            logging.getLogger("server").info("Purged %s stale journal auto-snapshots", n)
         return n
     except Exception:
         return 0
@@ -5133,7 +5157,7 @@ async def _snapshot_trade_journal(
     if db is None:
         return
     now = now_ist()
-    day = journal.ist_ymd(now)
+    day = journal.journal_session_ymd(now)
     calendar_session = journal.iso_is_trading_day(day)
     if not calendar_session and not live_session:
         live_session = await _journal_live_session_today(day)
@@ -5145,6 +5169,18 @@ async def _snapshot_trade_journal(
     try:
         snap = journal.snapshot_from_positions(payload, date=day)
         existing = await db.trade_journal.find_one({"date": day})
+        prev_book = await db.trade_journal.find_one(
+            {"date": {"$lt": day}},
+            {
+                "date": 1, "trading_date": 1, "booked_pnl": 1, "pnl_exited": 1,
+                "exited_count": 1, "win_trades": 1, "loss_trades": 1,
+            },
+            sort=[("date", -1)],
+        )
+        if journal.is_stale_carryover_snapshot(snap, prev_book):
+            if existing and not journal.has_user_journal_content(existing):
+                await db.trade_journal.delete_one({"date": day})
+            return
         if snap.get("funds_base") and (not existing or existing.get("inferred_cashflow") is None):
             prev = await db.trade_journal.find_one(
                 {"date": {"$lt": day}},
@@ -5193,7 +5229,7 @@ async def _journal_eod_lock_loop() -> None:
         try:
             await asyncio.sleep(20)
             now = now_ist()
-            day = journal.ist_ymd(now)
+            day = journal.journal_session_ymd(now)
             calendar_session = journal.iso_is_trading_day(day)
             live = False
             if not calendar_session:
@@ -5367,7 +5403,8 @@ async def journal_day(day: str, _admin: bool = Depends(require_admin)):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         raise HTTPException(400, "Use YYYY-MM-DD")
     await _purge_closed_session_journal_autos()
-    if day == journal.ist_ymd():
+    session_day = journal.journal_session_ymd()
+    if day == session_day:
         try:
             mid = await get_positions(None, "admin")
             await _snapshot_trade_journal(mid)
@@ -5376,7 +5413,7 @@ async def journal_day(day: str, _admin: bool = Depends(require_admin)):
     doc = await db.trade_journal.find_one({"date": day}, {"_id": 0})
     if not doc:
         return {"date": day, "empty": True, "tags": journal.DEFAULT_TAGS}
-    if day == journal.ist_ymd() and doc.get("charges_total") is None:
+    if day == session_day and doc.get("charges_total") is None:
         charges = await _maybe_journal_charges(force=True)
         if journal.charges_usable(charges):
             journal.apply_charges(doc, charges)
