@@ -141,9 +141,10 @@ export function nseCashSessionLive(status) {
 
 export function isMarketQuiescent(maybeStatusOrDate = undefined) {
   // Prefer live hours from status when present.
-  if (maybeStatusOrDate && typeof maybeStatusOrDate === "object" && (maybeStatusOrDate.market || maybeStatusOrDate.holidays)) {
+  if (maybeStatusOrDate && typeof maybeStatusOrDate === "object" && !(maybeStatusOrDate instanceof Date) && (maybeStatusOrDate.market || maybeStatusOrDate.holidays)) {
     applyMarketHoursFromStatus(maybeStatusOrDate);
     const status = maybeStatusOrDate;
+    if (status.market && status.market.is_market_open === true) return false;
     if (status.market && status.market.is_market_open === false) return true;
     if (Array.isArray(status.holidays) && status.holidays.length) {
       try {
@@ -170,5 +171,8 @@ export function isMarketQuiescent(maybeStatusOrDate = undefined) {
   })(weekdayPart.value) : new Date(dt).getUTCDay();
   const minutesOfDay = hour * 60 + minute;
   // Weekend begins on Friday at configured close, or any Sat/Sun
-  return (wk === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || wk === 6 || wk === 0;
+  if ((wk === 5 && minutesOfDay >= WEEKEND_START_MINUTE) || wk === 6 || wk === 0) return true;
+  // Weekday after hours / pre-open: do not keep live OI polling (missing /status ≠ session open).
+  if (minutesOfDay < _openMinute || minutesOfDay >= _closeMinute) return true;
+  return false;
 }

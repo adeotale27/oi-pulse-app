@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.07",
+    date: "2026-09-01",
+    user: [
+      "After the cash market close the board no longer hammers OI and expiry APIs, so the page should not flicker overnight.",
+    ],
+    admin: [
+      "isMarketQuiescent uses IST open/close when /status is missing. Failed expiry fetches keep the last list. /credentials waits for the OI tracker instead of NoneType set_credentials. CAS /cas/status is 60s after hours.",
+    ],
+  },
+  {
     version: "9.06",
     date: "2026-09-01",
     user: [
