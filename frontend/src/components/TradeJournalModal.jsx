@@ -35,6 +35,19 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function todayIstYmd(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  return `${year}-${month}-${day}`;
+}
+
 function Money({ v, privacy, signed = true }) {
   if (privacy) return "••••";
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -193,7 +206,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     const t = new Date();
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-01`;
   });
-  const [periodTo, setPeriodTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [periodTo, setPeriodTo] = useState(() => todayIstYmd());
   const [periodIndex, setPeriodIndex] = useState("ALL");
   const [periodData, setPeriodData] = useState(null);
   const [periodLoading, setPeriodLoading] = useState(false);
@@ -273,7 +286,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   };
 
   const goThisMonth = () => {
-    const t = data?.today || new Date().toISOString().slice(0, 10);
+    const t = data?.today || todayIstYmd();
     setYear(Number(t.slice(0, 4)));
     setMonth(Number(t.slice(5, 7)));
     setSelected(null);
@@ -557,14 +570,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   ))}
                 </div>
               )}
-              {(Number(periodStats.inferred_withdrawn) >= 1000 || Number(periodStats.inferred_deposited) >= 1000) && (
-                <p className="text-[11px] text-amber-800" data-testid="journal-period-cashflow">
-                  Kite has no withdrawal feed.
-                  {Number(periodStats.inferred_withdrawn) >= 1000 ? ` Est. out ${privacy ? "••••" : fmtInr(periodStats.inferred_withdrawn, 0)}.` : ""}
-                  {Number(periodStats.inferred_deposited) >= 1000 ? ` Est. in ${privacy ? "••••" : fmtInr(periodStats.inferred_deposited, 0)}.` : ""}
-                  {" "}This is wallet vs the prior close (overnight MTM included).
-                </p>
-              )}
+              {/* Hidden for now: Kite withdrawal/deposit feed is not available.
+                  The estimate logic remains available for future use when Kite exposes a proper ledger. */}
             </div>
           )}
           {tab === "calendar" && (

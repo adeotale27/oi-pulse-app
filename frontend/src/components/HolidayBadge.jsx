@@ -29,7 +29,7 @@ export default function HolidayBadge({ onOpenCalendar }) {
 
   const extras = upcoming.filter((h) => !info || h.date !== info.date).slice(0, 8);
   const tileBase =
-    "w-full rounded-sm border px-2 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 cursor-pointer";
+    "w-full min-h-[76px] rounded-md border px-1.5 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 cursor-pointer overflow-hidden";
 
   const toggle = (e) => {
     e?.stopPropagation?.();
@@ -75,32 +75,32 @@ export default function HolidayBadge({ onOpenCalendar }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
-          {urgent ? <AlertTriangle className="w-3 h-3" /> : <CalendarClock className="w-3 h-3" />}
-          {info ? `Next Holiday · ${relative}` : "Next Holiday"}
+        <div className="flex items-center gap-1 text-[8px] uppercase tracking-widest opacity-80">
+          {urgent ? <AlertTriangle className="w-2.5 h-2.5" /> : <CalendarClock className="w-2.5 h-2.5" />}
+          <span className="truncate">{info ? `Next Holiday · ${relative}` : "Next Holiday"}</span>
           <span className="ml-auto inline-flex items-center gap-0.5 opacity-70">
             {extras.length > 0 ? `+${extras.length}` : null}
-            <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+            <ChevronDown className={`w-2.5 h-2.5 transition-transform ${open ? "rotate-180" : ""}`} />
           </span>
         </div>
         {info ? (
           <>
-            <div className="text-xs font-semibold font-mono-data leading-tight" data-testid="holiday-badge-date">
+            <div className="text-[10px] font-semibold font-mono-data leading-tight truncate" data-testid="holiday-badge-date">
               {formatDatePretty(info.date)}
             </div>
-            <div className="text-[10px] leading-tight truncate" data-testid="holiday-badge-name">
+            <div className="text-[9px] leading-tight truncate" data-testid="holiday-badge-name">
               {info.name}
             </div>
             {info.longWeekend ? (
-              <div className="text-[9px] font-semibold text-amber-800 mt-0.5" data-testid="holiday-long-weekend">
+              <div className="text-[8px] font-semibold text-amber-800 mt-0.5 truncate" data-testid="holiday-long-weekend">
                 Long weekend · extra theta
               </div>
             ) : null}
           </>
         ) : (
           <>
-            <div className="text-xs font-semibold leading-snug">No upcoming holiday</div>
-            <div className="text-[10px] leading-tight opacity-60">Tap for the holiday list</div>
+            <div className="text-[10px] font-semibold leading-snug truncate">No upcoming holiday</div>
+            <div className="text-[9px] leading-tight opacity-60">Tap for the holiday list</div>
           </>
         )}
       </div>

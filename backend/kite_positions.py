@@ -311,6 +311,7 @@ def booked_today_from_row(row: Optional[dict]) -> float:
         booked = 0.0
     if booked != booked:
         booked = 0.0
+
     if row.get("exited"):
         if abs(booked) > 1e-9:
             return booked
@@ -322,13 +323,26 @@ def booked_today_from_row(row: Optional[dict]) -> float:
             if v == v:
                 return v
         return 0.0
-    try:
-        realised = float(row.get("realised") if row.get("realised") is not None else booked)
-    except (TypeError, ValueError):
-        realised = booked
-    if realised != realised:
-        realised = 0.0
-    return realised
+
+    partial = bool(row.get("partial")) or bool(int(row.get("closed_quantity") or 0) > 0)
+    for key in ("booked_pnl", "realised"):
+        try:
+            v = float(row.get(key) or 0)
+        except (TypeError, ValueError):
+            continue
+        if v == v and abs(v) > 1e-9:
+            return v
+
+    if partial:
+        for key in ("pnl",):
+            try:
+                v = float(row.get(key) or 0)
+            except (TypeError, ValueError):
+                continue
+            if v == v and abs(v) > 1e-9:
+                return v
+
+    return 0.0
 
 
 # NSE options tick is ₹0.05. Leftover expiry hedges often sit there because

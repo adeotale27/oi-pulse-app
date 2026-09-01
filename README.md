@@ -84,7 +84,7 @@ Details: [docs/DATA.md](docs/DATA.md) · APIs: [docs/ABOUT.md](docs/ABOUT.md).
 
 ```bash
 # Backend
-cd backend && python -m venv .venv && source .venv/bin/activate
+cd backend && python -m venv .venv && source .venv/Scripts/activate
 pip install -r requirements.txt
 # backend/.env → MONGO_URL, DB_NAME, ADMIN_USERNAME, ADMIN_PASSWORD
 uvicorn server:app --reload --port 8000

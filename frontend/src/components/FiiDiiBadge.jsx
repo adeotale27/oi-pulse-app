@@ -109,7 +109,7 @@ export default function FiiDiiBadge({ isAdmin = false }) {
   const hasData = !!(fii || dii || segments.nse?.rows?.length || segments.combined?.rows?.length);
 
   const tileBase =
-    "w-full rounded-sm border px-2 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 cursor-pointer";
+    "w-full min-h-[76px] rounded-md border px-1.5 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 cursor-pointer overflow-hidden";
 
   const fiiNet = fii?.net;
   const diiNet = dii?.net;
@@ -171,48 +171,40 @@ export default function FiiDiiBadge({ isAdmin = false }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
-          <Building2 className="w-3 h-3" />
-          FII · DII
+        <div className="flex items-center gap-1 text-[8px] uppercase tracking-widest opacity-80">
+          <Building2 className="w-2.5 h-2.5" />
+          <span className="truncate">FII · DII</span>
           {snap?.stale && (
             <span
               data-testid="fiidii-stale-chip"
-              className="ml-0.5 rounded px-1 py-0 text-[8px] font-bold tracking-wider bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100"
+              className="ml-0.5 rounded px-1 py-0 text-[7px] font-bold tracking-wider bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100"
             >
               STALE
             </span>
           )}
           <span className="ml-auto inline-flex items-center opacity-70">
-            <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+            <ChevronDown className={`w-2.5 h-2.5 transition-transform ${open ? "rotate-180" : ""}`} />
           </span>
         </div>
 
         {hasData ? (
           <>
-            <div className="text-xs font-semibold leading-tight font-mono-data" data-testid="fiidii-date">
+            <div className="text-[10px] font-semibold leading-tight font-mono-data truncate" data-testid="fiidii-date">
               {dateLabel}
             </div>
-            <div className="flex items-center justify-between gap-2 text-[10px] leading-tight font-mono-data">
-              <span>
-                FII{" "}
-                <span className={`font-semibold ${netTone(fiiNet)}`}>
-                  {fiiNet != null && fiiNet > 0 ? "+" : ""}
-                  {fmtCr(fiiNet)}
-                </span>
+            <div className="flex items-center justify-between gap-1 text-[9px] leading-tight font-mono-data">
+              <span className="truncate">
+                FII <span className={`font-semibold ${netTone(fiiNet)}`}>{fiiNet != null && fiiNet > 0 ? "+" : ""}{fmtCr(fiiNet)}</span>
               </span>
-              <span>
-                DII{" "}
-                <span className={`font-semibold ${netTone(diiNet)}`}>
-                  {diiNet != null && diiNet > 0 ? "+" : ""}
-                  {fmtCr(diiNet)}
-                </span>
+              <span className="truncate">
+                DII <span className={`font-semibold ${netTone(diiNet)}`}>{diiNet != null && diiNet > 0 ? "+" : ""}{fmtCr(diiNet)}</span>
               </span>
             </div>
           </>
         ) : (
           <>
-            <div className="text-xs font-semibold leading-snug">{snap ? "Awaiting evening update" : "Loading FII / DII"}</div>
-            <div className="text-[10px] opacity-60">NSE Capital Market · ~19:31 IST</div>
+            <div className="text-[10px] font-semibold leading-snug truncate">{snap ? "Awaiting evening update" : "Loading FII / DII"}</div>
+            <div className="text-[9px] opacity-60 truncate">NSE Capital Market · ~19:31 IST</div>
           </>
         )}
       </div>

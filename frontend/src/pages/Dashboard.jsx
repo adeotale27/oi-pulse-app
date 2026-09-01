@@ -152,6 +152,19 @@ function loadStrikesAround() {
   return 5;
 }
 
+function istDateYmd(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return `${year}-${month}-${day}`;
+}
+
 function formatDayLabel(iso) {
   const d = iso ? new Date(iso) : new Date();
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
@@ -319,8 +332,8 @@ export default function Dashboard() {
       const raw = localStorage.getItem("vixSessionOpen");
       if (!raw) return null;
       const { date, vix } = JSON.parse(raw);
-      const today = new Date().toISOString().slice(0, 10);
-      if (date !== today) return null;
+      const todayIst = istDateYmd();
+      if (date !== todayIst) return null;
       return vix;
     } catch { return null; }
   });
@@ -718,7 +731,7 @@ export default function Dashboard() {
   useEffect(() => {
     const v = current?.vix;
     if (v == null || v <= 0 || vixSessionOpen) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istDateYmd();
     setVixSessionOpen(v);
     try { localStorage.setItem("vixSessionOpen", JSON.stringify({ date: today, vix: v })); } catch (_) { /* noop */ }
   }, [current?.vix, vixSessionOpen]);
@@ -812,7 +825,7 @@ export default function Dashboard() {
 
   const istToday = useCallback(() => {
     try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      return istDateYmd();
     } catch {
       return new Date().toISOString().slice(0, 10);
     }
@@ -2289,7 +2302,7 @@ export default function Dashboard() {
                       activeIndex={activeIndex}
                       onOpenHolidays={openHolidaysTab}
                       onOpenIndexEvents={openIndexEventsTab}
-                      wide
+                      compact
                       testId="dashboard-info-tiles"
                     />
                   </div>

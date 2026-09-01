@@ -232,6 +232,12 @@ def test_booked_today_from_row_sums_exit_and_partial():
     assert booked_today_from_row({"exited": False, "realised": 0, "pnl": 800, "booked_pnl": 0}) == 0.0
 
 
+def test_booked_today_from_row_ignores_plain_open_mtm():
+    from kite_positions import booked_today_from_row
+    assert booked_today_from_row({"exited": False, "pnl": 4500, "realised": 0, "booked_pnl": 0}) == 0.0
+    assert booked_today_from_row({"exited": False, "partial": True, "pnl": 2200, "realised": 0, "booked_pnl": 1200}) == 1200.0
+
+
 def test_open_partial_when_api_dumps_pnl_into_unrealised():
     """Kite UI Booked on a still-open short; API realised=0, unrealised=full pnl."""
     bits = booked_pnl_from_kite_row(

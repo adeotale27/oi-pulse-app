@@ -62,6 +62,22 @@ def test_mode_endpoint_accepts_valid_and_rejects_invalid(monkeypatch):
     assert r.status_code == 400
 
 
+def test_get_alerts_returns_empty_list_when_mongo_is_unreachable(monkeypatch):
+    class FailingAlertsCollection:
+        def find(self, *args, **kwargs):
+            raise RuntimeError("SSL handshake failed")
+
+    fake_db = type("DB", (), {"alerts": FailingAlertsCollection()})
+
+    monkeypatch.setattr(server, "db", fake_db)
+    monkeypatch.setattr(server, "tracker", FakeTracker())
+
+    client = TestClient(server.app)
+    r = client.get("/api/alerts", params={"limit": 10})
+    assert r.status_code == 200
+    assert r.json() == {"alerts": []}
+
+
 def test_get_oi_change_offline_returns_data_status_and_anchor_prev(monkeypatch):
     ft = FakeTracker()
     # Current snapshot is "fresh" so /change won't replace it from DB.

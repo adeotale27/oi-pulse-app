@@ -139,6 +139,13 @@ def apply_charges(doc: Dict[str, Any], charges: Optional[Dict[str, Any]] = None)
     return doc
 
 
+def _resolve_trading_date(existing: Optional[Dict[str, Any]], snap: Optional[Dict[str, Any]]) -> str:
+    if not existing and not snap:
+        return ist_ymd()
+    value = (existing or {}).get("trading_date") or (existing or {}).get("date") or (snap or {}).get("trading_date") or (snap or {}).get("date") or ist_ymd()
+    return str(value)[:10]
+
+
 def snapshot_from_positions(
     payload: Dict[str, Any],
     *,
@@ -204,6 +211,7 @@ def snapshot_from_positions(
     full_exits = sum(1 for r in rows if r.get("exited"))
     doc = {
         "date": day,
+        "trading_date": day,
         "pnl_total": round(total, 2),
         "pnl_open": round(open_pnl, 2),
         "pnl_exited": round(booked, 2),
@@ -285,14 +293,29 @@ def apply_snapshot(
     """
     now = now or now_ist()
     existing = existing or {}
+    keep_day = _resolve_trading_date(existing, snap)
+    snap_day = str(snap.get("date") or "")
     if existing.get("eod_locked"):
         if snapshot_is_empty(snap):
             return None
-        exist_day = str(existing.get("date") or "")
-        snap_day = str(snap.get("date") or "")
+        exist_day = str(existing.get("trading_date") or existing.get("date") or "")
         if exist_day and snap_day and exist_day != snap_day:
-            return None
+            out = dict(snap)
+            out["date"] = exist_day
+            out["trading_date"] = exist_day
+            _carry_charges(out, existing)
+            booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
+            out["booked_pnl"] = booked
+            out["eod_locked"] = True
+            out["eod_locked_at"] = existing.get("eod_locked_at") or datetime.now(timezone.utc).isoformat()
+            out["frozen_pnl"] = booked
+            if out.get("charges_total") is not None:
+                out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
+            _carry_funds(out, existing, lock=True)
+            return out
         out = dict(snap)
+        out["date"] = keep_day
+        out["trading_date"] = keep_day
         _carry_charges(out, existing)
         booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
         out["booked_pnl"] = booked
@@ -328,9 +351,13 @@ def apply_snapshot(
         if _is_traded(existing):
             return None
         empty_out = dict(snap)
+        empty_out["date"] = keep_day
+        empty_out["trading_date"] = keep_day
         _carry_funds(empty_out, existing, lock=False)
         return empty_out
     out = dict(snap)
+    out["date"] = keep_day
+    out["trading_date"] = keep_day
     _carry_charges(out, existing)
     booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
     out["booked_pnl"] = booked

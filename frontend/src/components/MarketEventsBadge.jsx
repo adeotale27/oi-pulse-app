@@ -29,7 +29,7 @@ export default function MarketEventsBadge({ onClick }) {
 
   const primary = near[0] || upcoming[0];
   const tileBase =
-    "w-full rounded-sm border px-2 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5";
+    "w-full min-h-[76px] rounded-md border px-1.5 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 overflow-hidden";
 
   const toggle = (e) => {
     e?.stopPropagation?.();
@@ -91,18 +91,18 @@ export default function MarketEventsBadge({ onClick }) {
         aria-haspopup={extras.length > 0 ? "menu" : undefined}
         aria-expanded={extras.length > 0 ? open : undefined}
       >
-        <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
-          {urgent ? <AlertTriangle className="w-3 h-3" /> : <CalendarClock className="w-3 h-3" />}
-          Next Event · {rel}
+        <div className="flex items-center gap-1 text-[8px] uppercase tracking-widest opacity-80">
+          {urgent ? <AlertTriangle className="w-2.5 h-2.5" /> : <CalendarClock className="w-2.5 h-2.5" />}
+          <span className="truncate">Next Event · {rel}</span>
           <span className="ml-auto inline-flex items-center gap-0.5 opacity-70">
             {extras.length > 0 ? `+${extras.length}` : null}
-            <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+            <ChevronDown className={`w-2.5 h-2.5 transition-transform ${open ? "rotate-180" : ""}`} />
           </span>
         </div>
-        <div className="text-xs font-semibold leading-tight truncate" data-testid="events-badge-name">
+        <div className="text-[10px] font-semibold leading-tight truncate" data-testid="events-badge-name">
           {primary.name}
         </div>
-        <div className="text-[10px] leading-tight opacity-80 font-mono-data">
+        <div className="text-[9px] leading-tight opacity-80 font-mono-data truncate">
           {formatDatePretty(primary.date)}
         </div>
       </div>

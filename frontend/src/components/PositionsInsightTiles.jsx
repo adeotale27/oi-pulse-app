@@ -75,7 +75,7 @@ export default function PositionsInsightTiles({ nodes = {}, layoutAnchorId = nul
         : layoutAnchorId
           ? null
           : <div className="flex items-center justify-end">{layoutButton}</div>}
-      <div className="grid grid-flow-col auto-cols-[minmax(8.75rem,11rem)] gap-1.5 overflow-x-auto pb-1 snap-x snap-mandatory">
+      <div className="grid grid-flow-col auto-cols-[minmax(6rem,7.25rem)] gap-1 overflow-x-auto pb-1 snap-x snap-mandatory">
         {visible.map((id) => {
           return (
             <div
@@ -106,8 +106,8 @@ export default function PositionsInsightTiles({ nodes = {}, layoutAnchorId = nul
                   setOrder((prev) => reorderInsights(prev, from, id));
                 }
               }}
-              className={`relative h-full min-h-[4.75rem] min-w-[8.75rem] snap-start ${dragging === id ? "opacity-40" : ""} ${
-                overId === id && dragging && dragging !== id ? "ring-2 ring-emerald-400 rounded-xl" : ""
+              className={`relative h-full min-h-[3.4rem] min-w-[6rem] snap-start rounded-[10px] ${dragging === id ? "opacity-40" : ""} ${
+                overId === id && dragging && dragging !== id ? "ring-2 ring-emerald-400 rounded-[10px]" : ""
               }`}
             >
               <span className="absolute top-1 right-1 z-10 text-slate-300 cursor-grab active:cursor-grabbing" title="Drag to move">

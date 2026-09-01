@@ -2741,6 +2741,10 @@ async def get_alerts(limit: int = 50):
     and a new trading day no longer surfaces prior-day alerts.
     Filtered to the current admin alert-focus indices when set.
     """
+    if db is None or not hasattr(db, "alerts"):
+        return {"alerts": []}
+
+    docs = []
     try:
         anchor = session_anchor_date()
         start_utc, _ = session_window_utc(anchor)
@@ -2762,12 +2766,15 @@ async def get_alerts(limit: int = 50):
                     query["index"] = {"$in": focus}
         except Exception:
             pass
+
         docs = await db.alerts.find(
             query,
             {"_id": 0},
         ).sort("created_at", -1).to_list(length=limit)
     except Exception:
-        docs = await db.alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=limit)
+        logger.warning("alerts query failed; returning empty list", exc_info=True)
+        docs = []
+
     return {"alerts": docs}
 
 

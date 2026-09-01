@@ -89,6 +89,44 @@
   background-image: linear-gradient(to bottom, rgba(254, 243, 199, 0.85), rgba(255, 255, 255, 0.9));
 }
 
+@keyframes ticker-sweep {
+  0% { transform: translateX(120%); opacity: 0; }
+  18% { opacity: 1; }
+  100% { transform: translateX(-120%); opacity: 0; }
+}
+
+.header-index-tile {
+  position: relative;
+  overflow: hidden;
+  border-radius: 9999px;
+  isolation: isolate;
+}
+
+.header-index-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 15%, rgba(255,255,255,0.52) 46%, transparent 72%);
+  transform: translateX(120%);
+  animation: ticker-sweep 3.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.header-index-tile > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes brain-risk-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.18); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+.brain-risk-pulse {
+  animation: brain-risk-pulse 1.4s ease-in-out infinite;
+}
+
 /* Mobile: keep tab row scrollable instead of crushing the layout */
 .tabs-scroll {
   overflow-x: auto;

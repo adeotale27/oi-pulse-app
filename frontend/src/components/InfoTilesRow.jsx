@@ -144,17 +144,17 @@ export default function InfoTilesRow({
   const tileTitle = tipParts.length ? tipParts.join(" · ") : undefined;
 
   const widthCls = compact
-    ? "min-w-0 w-full"
+    ? "w-[11rem] min-w-[9.5rem] shrink-0"
     : wide
-      ? "w-44 2xl:w-48 shrink-0"
-      : "w-44 shrink-0";
+      ? "w-32 2xl:w-36 shrink-0"
+      : "w-32 shrink-0";
 
   return (
     <div
       className={
         compact
-          ? "grid grid-cols-2 gap-1.5 items-start relative z-30 overflow-visible"
-          : "flex items-stretch gap-2 relative z-30 overflow-visible"
+          ? "flex items-stretch gap-1.5 relative z-30 overflow-x-auto pb-0.5"
+          : "flex items-stretch gap-1.5 relative z-30 overflow-visible"
       }
       data-testid={testId}
       onClickCapture={onCaptureClick}
@@ -178,7 +178,7 @@ export default function InfoTilesRow({
             onKeyDown={(e) => onTileKeyDown(e, t.id)}
             onDoubleClick={(e) => onTileDoubleClick(e, t.id)}
             title={tileTitle}
-            className={`${widthCls} outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-sm ${
+            className={`${widthCls} outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-md min-h-[4.1rem] ${
               canReorder ? "cursor-grab active:cursor-grabbing" : ""
             } ${isDrag ? "opacity-40" : ""} ${isOver ? "ring-2 ring-emerald-400" : ""}`}
           >

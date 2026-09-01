@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { isMarketQuiescent } from "@/lib/marketTimes";
 import { INDEX_CHIP_CAP } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
+import InfoTip from "@/components/InfoTip";
 
 function fmtNum(v, dp = 2) {
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -24,6 +25,17 @@ const INDEX_STYLE = {
     selectedBorder: "border-sky-500",
     idleShell: "bg-gradient-to-br from-sky-50 to-cyan-50 text-sky-900 border-sky-100 hover:from-sky-100 hover:to-cyan-100",
     activeShell: "bg-gradient-to-br from-sky-500 to-cyan-600 text-white border-sky-500 shadow-md shadow-sky-500/20",
+    idleChgUp: "text-emerald-700",
+    idleChgDn: "text-rose-700",
+    activeChg: "text-white/90",
+  },
+  GIFTNIFTY: {
+    label: "GIFT NIFTY",
+    short: "GIFTN",
+    dot: "bg-violet-500",
+    selectedBorder: "border-violet-500",
+    idleShell: "bg-gradient-to-br from-violet-50 to-indigo-50 text-violet-900 border-violet-100 hover:from-violet-100 hover:to-indigo-100",
+    activeShell: "bg-gradient-to-br from-violet-500 to-indigo-600 text-white border-violet-500 shadow-md shadow-violet-500/20",
     idleChgUp: "text-emerald-700",
     idleChgDn: "text-rose-700",
     activeChg: "text-white/90",
@@ -166,6 +178,64 @@ function headerTileTone(indexKey, up, flat, isActive) {
   };
 }
 
+function getTickerRegime(changePct, isFlat, prevClose = 0, dayHigh = null, dayLow = null, ltp = null) {
+  if (isFlat || !Number.isFinite(changePct)) return "steady";
+
+  const absMove = Math.abs(Number(changePct) || 0);
+  const refBasis = Number(prevClose) || 0;
+  const livePrice = Number(ltp ?? 0) || 0;
+  const moveFromPrev = refBasis > 0 ? Math.abs((livePrice - refBasis) / refBasis) * 100 : absMove;
+  const intradaySpan = (dayHigh != null && dayLow != null && refBasis > 0)
+    ? ((Number(dayHigh) - Number(dayLow)) / refBasis) * 100
+    : 0;
+
+  // Strong directional break: meaningful move away from prior close.
+  if (moveFromPrev >= 0.7) return changePct > 0 ? "bullish" : "risk-off";
+
+  // Moderate directional move: still trending, but not yet a full breakout leg.
+  if (moveFromPrev >= 0.18) return "trending";
+
+  // Tight range: small move and limited intraday span = range behaviour.
+  if (intradaySpan <= 0.5 || absMove < 0.18) return "range";
+
+  return "steady";
+}
+
+function regimeChip(changePct, isFlat, prevClose = 0, dayHigh = null, dayLow = null, ltp = null) {
+  const regime = getTickerRegime(changePct, isFlat, prevClose, dayHigh, dayLow, ltp);
+  const labels = {
+    bullish: "Bullish",
+    trending: "Trend",
+    "risk-off": "Risk-off",
+    range: "Range",
+    steady: "Steady",
+  };
+  return labels[regime] || "Steady";
+}
+
+const REGIME_GUIDE = {
+  bullish: {
+    label: "Bullish",
+    text: "Bullish means the index is holding above support and buyers are leading. This often supports continuation, but can also make call-side risk more fragile if momentum gets too aggressive.",
+  },
+  trending: {
+    label: "Trend",
+    text: "Trend means the move is directional and persistent. This can still work, but it usually demands tighter risk control and more caution on heavy short-call exposure.",
+  },
+  "risk-off": {
+    label: "Risk-off",
+    text: "Risk-off means the market is reducing exposure and defensive flows are dominating. This usually weakens bullish conviction and can favour wider risk ranges or lower premium selling aggression.",
+  },
+  range: {
+    label: "Range",
+    text: "Range means the market is oscillating without a fresh directional push. This is often a better environment for theta-friendly, mean-reversion-style selling when the range remains intact.",
+  },
+  steady: {
+    label: "Steady",
+    text: "Steady means the market is calm and not showing a strong directional move. This usually means lower urgency and more patience before adding or reducing risk.",
+  },
+};
+
 export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default", tickers: tickersProp = null, enabledIndices = null }) {
   const [tickersLocal, setTickersLocal] = useState([]);
   const [loadingLocal, setLoadingLocal] = useState(tickersProp == null);
@@ -246,6 +316,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
           const shortLabel = s.short;
           const ltpLabel = fmtLtp(t.ltp, 2);
           const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
+          const regime = getTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
           const Tag = selectable ? "button" : "div";
           return (
             <Tag
@@ -285,6 +356,20 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   ? "(0.00%)"
                   : `(${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%)`}
               </span>
+              <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-[1px] shadow-[0_1px_0_rgba(15,23,42,0.04)] text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                <span>{REGIME_GUIDE[regime]?.label || "Steady"}</span>
+                <InfoTip
+                  title="Market regime"
+                  size="xs"
+                  className="shrink-0"
+                  testId={`rail-regime-tip-${t.index}`}
+                >
+                  <div className="space-y-1.5">
+                    <div><b>Current regime:</b> {REGIME_GUIDE[regime]?.label || "Steady"}</div>
+                    <div>{REGIME_GUIDE[regime]?.text || REGIME_GUIDE.steady.text}</div>
+                  </div>
+                </InfoTip>
+              </div>
             </Tag>
           );
         })}
@@ -319,10 +404,11 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               chg: flat ? "text-slate-500" : up ? "text-emerald-600" : "text-rose-600",
             };
         const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
-        const shortLabel = s.short;
+        const shortLabel = String(s.short || s.label || "INDEX").toUpperCase();
         const useCompact = dense || isHeader;
         const ltpLabel = fmtLtp(t.ltp, 2);
         const selectable = indexSelectable(t.index);
+        const regimeLabel = regimeChip(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
         const TileTag = selectable ? "button" : "div";
         return (
           <TileTag
@@ -331,25 +417,25 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             onClick={selectable ? () => onSelectIndex?.(t.index) : undefined}
             data-testid={`ticker-${t.index}`}
             aria-disabled={selectable ? undefined : "true"}
-            className={`text-left rounded-md border-2 ${tones.shell} ${
+            className={`text-left border-2 ${tones.shell} ${
               isHeader
-                ? `px-2 py-1.5 shrink-0 ${many ? "min-w-[6.5rem] max-w-[9.5rem] snap-start" : "min-w-[7.25rem] max-w-[11rem]"}`
+                ? `header-index-tile px-2 py-1.5 shrink-0 ${many ? "min-w-[6.7rem] max-w-[9.25rem] snap-start" : "min-w-[7.1rem] max-w-[10.5rem]"}`
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
-            } ${selectable ? "hover:brightness-[0.99] transition-all" : ""} ${isActive && selectable ? "shadow-md" : ""}`}
+            } ${selectable ? "hover:brightness-[0.99] transition-all" : ""} ${isActive && selectable ? "shadow-md" : ""} ${isHeader ? "rounded-full" : "rounded-md"}`}
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
               : `${s.label} is on the quote strip but not enabled for the desk`}
           >
             <div className={`flex items-center justify-between gap-1 uppercase tracking-wide font-semibold ${tones.label || ""} ${
-              isHeader ? "text-[11px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"
+              isHeader ? "text-[10px]" : useCompact ? "text-[9px] tracking-widest font-semibold gap-0.5" : "text-[9px] tracking-widest font-semibold gap-3"
             }`}>
               <div className="flex items-center gap-1 min-w-0">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive && isHeader ? "bg-white/90" : s.dot}`} />
                 <span className="truncate">{useCompact ? shortLabel : s.label}</span>
               </div>
-              <div className={`font-mono-data tabular-nums shrink-0 font-semibold ${tones.chg} ${isHeader ? "text-[11px]" : "text-[10px]"}`} data-testid={`ticker-${t.index}-pct`}>
+              <div className={`font-mono-data tabular-nums shrink-0 font-semibold ${tones.chg} ${isHeader ? "text-[10px]" : "text-[10px]"}`} data-testid={`ticker-${t.index}-pct`}>
                 {flat ? "0.00%" : `${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%`}
               </div>
             </div>
@@ -362,16 +448,44 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               </div>
               <div
                 className={`inline-flex items-center gap-1 font-mono-data tabular-nums leading-none ${tones.chg} ${
-                  isHeader ? "text-[11px]" : useCompact ? "text-[10px]" : "gap-1.5 text-xs sm:text-[11px]"
+                  isHeader ? "text-[10px]" : useCompact ? "text-[10px]" : "gap-1.5 text-xs sm:text-[11px]"
                 }`}
                 data-testid={`ticker-${t.index}-chg`}
               >
-                <Arrow className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+                <Arrow className="w-3 h-3 shrink-0" strokeWidth={2.25} aria-hidden />
                 <span>
                   {flat ? "0.00" : `${t.change > 0 ? "+" : ""}${fmtNum(t.change, 2)}`}
                 </span>
               </div>
             </div>
+            {isHeader && (
+              <div className="mt-1.5 rounded-[8px] border border-slate-200 bg-white/80 px-1.5 py-1 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+                <div className="flex items-center justify-between gap-1 text-[8px] uppercase tracking-[0.14em] text-slate-500">
+                  <div className="flex min-w-0 items-center gap-1">
+                    <span className="truncate text-slate-600">Regime</span>
+                    <InfoTip
+                      title="Market regime"
+                      size="xs"
+                      className="shrink-0"
+                      testId={`regime-tip-${t.index}`}
+                    >
+                      <div className="space-y-1.5">
+                        <div><b>Current regime:</b> {REGIME_GUIDE[getTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp)]?.label || "Steady"}</div>
+                        <div>{REGIME_GUIDE[getTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp)]?.text || REGIME_GUIDE.steady.text}</div>
+                        <div className="mt-1 pt-1 border-t border-slate-200 dark:border-slate-700">
+                          <div><b>Range:</b> price oscillates inside a band; mean reversion is often more relevant.</div>
+                          <div><b>Trend:</b> directional move remains persistent; risk control matters more.</div>
+                          <div><b>Bullish:</b> buyers are leading and momentum is supportive.</div>
+                          <div><b>Risk-off:</b> fear or defensive flow is taking over.</div>
+                          <div><b>Steady:</b> market is quiet and no fresh directional edge is obvious.</div>
+                        </div>
+                      </div>
+                    </InfoTip>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-[2px] font-mono-data text-[8px] font-semibold text-slate-800">{regimeLabel}</span>
+                </div>
+              </div>
+            )}
           </TileTag>
         );
       })}

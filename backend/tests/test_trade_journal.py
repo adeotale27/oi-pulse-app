@@ -125,6 +125,34 @@ def test_month_stats_win_rate_and_best_day():
     assert 0 <= s["desk_score"] <= 100
 
 
+def test_apply_snapshot_keeps_existing_trading_date_after_midnight():
+    existing = {
+        "date": "2026-09-01",
+        "trading_date": "2026-09-01",
+        "booked_pnl": 20000.0,
+        "pnl_exited": 20000.0,
+        "exited_count": 1,
+    }
+    payload = {
+        "open_count": 0,
+        "exited_count": 1,
+        "pnl_today": {"open": 0.0, "exited": 20000.0, "booked": 20000.0, "total": 20000.0},
+        "positions": [{
+            "tradingsymbol": "NIFTY 24000 CE",
+            "index": "NIFTY",
+            "side": "CE",
+            "quantity": 0,
+            "exited": True,
+            "pnl": 20000.0,
+            "booked_pnl": 20000.0,
+        }],
+    }
+    snap = snapshot_from_positions(payload, date="2026-09-02")
+    out = apply_snapshot(existing, snap)
+    assert out["date"] == "2026-09-01"
+    assert out["trading_date"] == "2026-09-01"
+
+
 def test_sanitize_clips_and_tags():
     out = sanitize_journal_fields({
         "went_well": "a" * 9000,

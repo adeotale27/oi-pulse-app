@@ -4,6 +4,147 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.00",
+    date: "2026-09-01",
+    user: [
+      "Brains launches as the live decision layer: Master Brain, Market Regime Engine, edge/risk/capital deployment, do-not-touch watchlist, adjustment-cost logic, overnight summary, and desk AI priorities.",
+      "The brain button now shows a Brain icon and is labeled Brains. The panel keeps the decision flow visible without turning the desk into a generic raw-data dump.",
+    ],
+    admin: [
+      "V9 release adds the practical decision engine: regime detection, risk interpretation, capital sizing logic, and a persistent tile order for the Brains panel.",
+    ],
+  },
+  {
+    version: "8.12",
+    date: "2026-08-30",
+    user: [
+      "Brain controls are now visually clearer and better prioritized, with a clear read on portfolio heat, action, and when to de-risk.",
+    ],
+    admin: [
+      "Position Brain now keeps a stable tile order and stronger decision grouping for risk-first review.",
+    ],
+  },
+  {
+    version: "8.11",
+    date: "2026-08-28",
+    user: [
+      "The desk adds clearer decision-state blocks so the user can understand edge, risk, and deployment without reading raw metrics.",
+    ],
+    admin: [
+      "UI decision blocks are normalized and separated from the raw overviews for cleaner desk workflows.",
+    ],
+  },
+  {
+    version: "8.10",
+    date: "2026-08-27",
+    user: [
+      "Regression polish on the Positions page reduces noise and keeps the active decision layer in front of the book details.",
+    ],
+    admin: [
+      "Compacted tile ordering and panel sequencing improve the desk workflow without disturbing the underlying data model.",
+    ],
+  },
+  {
+    version: "8.09",
+    date: "2026-08-26",
+    user: [
+      "Reduced tile clutter and tightened the desk layout to keep the most relevant decisions visible in one place.",
+    ],
+    admin: [
+      "Compact row and panel adjustments standardize the dashboard without disrupting the risk logic underneath.",
+    ],
+  },
+  {
+    version: "8.08",
+    date: "2026-08-25",
+    user: [
+      "The alert and tile layout feel cleaner on the desk without losing the actual signal quality or book information.",
+    ],
+    admin: [
+      "Compact layout standardization improves the density and readability of the dashboard and position workbench.",
+    ],
+  },
+  {
+    version: "8.07",
+    date: "2026-08-24",
+    user: [
+      "The decision layer now keeps focus on portfolio heat and trade quality instead of raw data overload.",
+    ],
+    admin: [
+      "The desk now prioritizes the decision narrative over generic chart noise in the key risk surfaces.",
+    ],
+  },
+  {
+    version: "8.06",
+    date: "2026-08-23",
+    user: [
+      "Radar and Brain stay synchronized so the desk reads like a single intelligence flow instead of separate tools.",
+    ],
+    admin: [
+      "Sidebar architecture is aligned between the Radar and Brains interaction patterns for a consistent desk model.",
+    ],
+  },
+  {
+    version: "8.05",
+    date: "2026-08-22",
+    user: [
+      "The desk adds a more actionable read of the current book, with risk and action presented before raw details.",
+    ],
+    admin: [
+      "Action-first risk panels are introduced to summarize exposure and recommended next moves.",
+    ],
+  },
+  {
+    version: "8.04",
+    date: "2026-08-21",
+    user: [
+      "A tighter right-panel layout makes the desk easier to scan and operate while still preserving the same data depth.",
+    ],
+    admin: [
+      "The right-side panel structure is standardized for more predictable navigation and reduced visual noise.",
+    ],
+  },
+  {
+    version: "8.03",
+    date: "2026-08-21",
+    user: [
+      "Position insight tiles are made more compact and easier to use without losing context for the live desk.",
+    ],
+    admin: [
+      "Tile compactness and spacing are standardized so the desk reads consistently across pages.",
+    ],
+  },
+  {
+    version: "8.02",
+    date: "2026-08-20",
+    user: [
+      "The desk starts using more compact, action-oriented tiles across the main workbench and position views.",
+    ],
+    admin: [
+      "Compact view components are unified across the dashboard and positions lanes for consistency.",
+    ],
+  },
+  {
+    version: "8.01",
+    date: "2026-08-20",
+    user: [
+      "The Brains concept is refined into a more direct portfolio decision surface, with a dedicated right-side panel and stronger action hierarchy.",
+    ],
+    admin: [
+      "The side-panel architecture is normalized so the Brain experience behaves like an extension of the existing Radar model.",
+    ],
+  },
+  {
+    version: "8.00",
+    date: "2026-08-19",
+    user: [
+      "The portfolio workbench gets a more decision-first interface with Brain, risk framing, and a tighter right-panel experience.",
+    ],
+    admin: [
+      "This release delivers the first full portfolio-intelligence pass: Brain panel, interactive controls, and a cleaner desk decision flow.",
+    ],
+  },
+  {
     version: "7.18",
     date: "2026-08-20",
     user: [

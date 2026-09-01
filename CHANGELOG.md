@@ -1,5 +1,11 @@
 # Changelog
 
+## V9.00 — 2026-09-01
+
+Position Brain now reads as a real decision system rather than a generic data dump: the main verdict leads with urgency, confidence, the reason it matters, and the best action to take next; the side panel also explains why the portfolio is heating, how the best and worst positions compare, and where data quality is still limiting the call.
+
+The compact desk tile layout was tightened into a cleaner single-row system, stale withdrawal-copy messaging was hidden behind the future Kite-led data path, and event tiles were tightened so they fit without crowding the dashboard.
+
 ## V8.15 — 2026-08-25
 
 Positions tiles stay one line: **Profit booked** (no “today”) shows rupees; % of wallet sits in the hint. Funds available is Kite leftover only — the 72L “total book” (cash + SPAN on hedges) is not shown and is not the % base. Duplicate commodity cash is not added on top of equity.

@@ -80,7 +80,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
       : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300";
 
   const tileBase =
-    "w-full rounded-sm border px-2 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5";
+    "w-full min-h-[76px] rounded-sm border px-1.5 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 overflow-hidden";
 
   const toggle = () => {
     setOpen((v) => {
@@ -116,19 +116,19 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
+        <div className="flex items-center gap-1 text-[8px] uppercase tracking-widest opacity-80">
           {tone === "red" ? (
-            <AlertTriangle className="w-3 h-3" />
+            <AlertTriangle className="w-2.5 h-2.5" />
           ) : (
-            <TrendingUp className="w-3 h-3" />
+            <TrendingUp className="w-2.5 h-2.5" />
           )}
 
-          {primary ? `Index Impact · ${daysText(primary.days_remaining)}` : "Index Impact"}
+          <span className="truncate">{primary ? `Index Impact · ${daysText(primary.days_remaining)}` : "Index Impact"}</span>
 
           <span className="ml-auto inline-flex items-center gap-0.5 opacity-70">
             {upcoming.length > 1 && `+${upcoming.length - 1}`}
             <ChevronDown
-              className={`w-3 h-3 transition-transform ${
+              className={`w-2.5 h-2.5 transition-transform ${
                 open ? "rotate-180" : ""
               }`}
             />
@@ -138,15 +138,15 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
         {primary ? (
           <>
             <div
-              className="flex items-center text-xs font-semibold leading-tight truncate mt-0.5"
+              className="flex items-center text-[10px] font-semibold leading-tight truncate mt-0.5"
               data-testid="market-impact-name"
             >
               <span className="truncate">
                 {eventDisplayName(primary, activeIndex)}
               </span>
-              <span className="ml-3">{primary.event_type}</span>
+              <span className="ml-2">{primary.event_type}</span>
             </div>
-            <div className="text-[10px] leading-tight opacity-80 font-mono-data">
+            <div className="text-[9px] leading-tight opacity-80 font-mono-data truncate">
               {primary.weightage != null
                 ? `${primary.weightage.toFixed(2)}% Weightage`
                 : "Weightage N/A"}
@@ -154,10 +154,10 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
           </>
         ) : (
           <>
-            <div className="text-xs font-semibold leading-snug mt-0.5" data-testid="market-impact-empty">
+            <div className="text-[10px] font-semibold leading-snug mt-0.5 truncate" data-testid="market-impact-empty">
               {emptyCopy}
             </div>
-            <div className="text-[10px] leading-tight opacity-60">Tap for the event list</div>
+            <div className="text-[9px] leading-tight opacity-60">Tap for the event list</div>
           </>
         )}
       </div>

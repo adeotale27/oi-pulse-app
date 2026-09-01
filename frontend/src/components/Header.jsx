@@ -596,7 +596,7 @@ export default function Header({
               <X className="w-4 h-4" />
             </button>
           </div>
-          <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
+          <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenSettings?.(); }}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
           </Button>
@@ -900,49 +900,53 @@ export default function Header({
                 <DropdownMenuItem
                   data-testid="menu-refresh-day"
                   disabled={refreshing}
-                  onSelect={(e) => { e.preventDefault(); onRefreshDay(); }}
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onRefreshDay(); }}
                 >
                   <Database className={`w-4 h-4 ${refreshing ? "animate-pulse" : ""}`} />
                   {refreshing ? "Refreshing…" : "Fresh Pull"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-upload"
-                  onSelect={(e) => { e.preventDefault(); onOpenUpload?.(); }}
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenUpload?.(); }}
                 >
                   <UploadCloud className="w-4 h-4" />
                   Upload
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-telegram"
-                  onSelect={(e) => { e.preventDefault(); onOpenTelegramPrefs?.(); }}
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenTelegramPrefs?.(); }}
                 >
                   <Send className="w-4 h-4" />
                   Telegram
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-journal"
-                  onSelect={(e) => { e.preventDefault(); onOpenJournal?.(); }}
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenJournal?.(); }}
                 >
                   <BookOpen className="w-4 h-4" />
                   Trade journal
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-error-log"
-                  onSelect={(e) => { e.preventDefault(); onOpenErrorLog?.(); }}
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenErrorLog?.(); }}
                 >
                   <ScrollText className="w-4 h-4" />
                   Error log
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-settings"
-                  onSelect={(e) => { e.preventDefault(); onOpenSettings?.(); }}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setAdminMenuOpen(false);
+                    onOpenSettings?.();
+                  }}
                 >
                   <Settings2 className="w-4 h-4" />
                   Admin configuration
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-index-manager"
-                  onSelect={(e) => { e.preventDefault(); onOpenIndexManager?.(); }}
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenIndexManager?.(); }}
                 >
                   <Layers className="w-4 h-4" />
                   Index management
@@ -955,6 +959,7 @@ export default function Header({
                   data-testid="menu-open-access-control"
                   onSelect={(e) => {
                     e.preventDefault();
+                    setAdminMenuOpen(false);
                     try {
                       window.__oi_access_open_pending = true;
                       window.dispatchEvent(new CustomEvent("oi-admin-open-access"));
@@ -970,6 +975,7 @@ export default function Header({
                   data-testid="menu-change-password"
                   onSelect={(e) => {
                     e.preventDefault();
+                    setAdminMenuOpen(false);
                     try {
                       window.__oi_password_open_pending = true;
                       window.dispatchEvent(new CustomEvent("oi-admin-open-password"));
@@ -986,6 +992,7 @@ export default function Header({
                   className="text-rose-600 focus:text-rose-700 focus:bg-rose-50"
                   onSelect={async (e) => {
                     e.preventDefault();
+                    setAdminMenuOpen(false);
                     try { await api.post("/auth/logout"); } catch (_) {}
                     clearAdminAuth({ clearRemember: true });
                     toast.success("Signed out.");
@@ -1072,7 +1079,7 @@ export default function Header({
           <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
             Admin tools
           </div>
-          <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSettings}>
+          <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenSettings?.(); }}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
           </Button>
@@ -1086,7 +1093,7 @@ export default function Header({
             <Layers className="w-4 h-4 mr-1.5" />
             Index management
           </Button>
-          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
+          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={() => { setMobileToolsOpen(false); onOpenCreds?.(); }} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
             <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
               {kiteBtnLabel}
@@ -1095,18 +1102,18 @@ export default function Header({
           <Button
             data-testid="btn-tablet-fresh-pull"
             size="sm"
-            onClick={onRefreshDay}
+            onClick={() => { setMobileToolsOpen(false); onRefreshDay(); }}
             disabled={refreshing}
             className="rounded-sm bg-rose-600 hover:bg-rose-700 text-white"
           >
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh Pull"}
           </Button>
-          <Button data-testid="btn-tablet-upload" size="sm" onClick={onOpenUpload} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
+          <Button data-testid="btn-tablet-upload" size="sm" onClick={() => { setMobileToolsOpen(false); onOpenUpload?.(); }} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm" onClick={onOpenTelegramPrefs}>
+          <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenTelegramPrefs?.(); }}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>
@@ -1383,7 +1390,7 @@ function ExtraTickerCell({ label, data, windows, serverIst, onOpenSessions, open
             <span className={`inline-block w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-slate-300"}`} />
           )}
           <span className="uppercase tracking-wider text-slate-400 font-semibold">
-            {isGift ? "GIFT" : label}
+            {isGift ? "GIFTN" : label}
           </span>
           <span className="font-semibold text-slate-900 dark:text-slate-100">
             {hasData ? Number(data.last).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}

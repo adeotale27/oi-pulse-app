@@ -107,6 +107,8 @@ export function computeIndexPayoff({
 
   const lo = S0 * (1 - rangePct);
   const hi = S0 * (1 + rangePct);
+  const bandLow = S0 * (1 - Math.min(rangePct, 0.04));
+  const bandHigh = S0 * (1 + Math.min(rangePct, 0.04));
   const spots = [];
   const expiryPnl = [];
   const targetPnl = [];
@@ -165,15 +167,16 @@ export function computeIndexPayoff({
   const cappedProfit = Number.isFinite(maxProfit) ? maxProfit : null;
   const uncappedLoss = maxLoss === expiryPnl[0] || maxLoss === expiryPnl[expiryPnl.length - 1];
 
-  // Crude POP: fraction of expiry curve above 0 weighted flat in range
-  const above = expiryPnl.filter((v) => v >= 0).length;
-  const popHint = Math.round((above / expiryPnl.length) * 100);
+  const inBandCount = spots.filter((s) => s >= bandLow && s <= bandHigh).length;
+  const bandProfitCount = spots.filter((s) => s >= bandLow && s <= bandHigh && expiryPnl[spots.indexOf(s)] >= 0).length;
+  const popHint = inBandCount ? Math.round((bandProfitCount / inBandCount) * 100) : 0;
 
   return {
     spots,
     expiryPnl,
     targetPnl,
     spot: S0,
+    band: { low: bandLow, high: bandHigh },
     greeks: { delta: netDelta, gamma: netGamma, theta: netTheta, vega: netVega },
     summary: {
       maxProfit: cappedProfit,

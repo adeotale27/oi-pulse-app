@@ -432,15 +432,15 @@ export default function PositionsAnalyzeModal({
     if (!open) return;
     const key = String(activeIndex);
     const legs = byIndex.get(activeIndex) || [];
-    const openSyms = legs.filter((l) => !l.exited && Number(l.quantity) !== 0).map((l) => l.tradingsymbol);
+    const allSyms = Array.from(new Set(legs.map((l) => l.tradingsymbol).filter(Boolean)));
     if (selectionKeyRef.current !== key) {
       selectionKeyRef.current = key;
       targetDirtyRef.current = false;
-      setSelected(new Set(openSyms));
+      setSelected(new Set(allSyms));
       return;
     }
     setSelected((prev) => {
-      const alive = new Set(openSyms);
+      const alive = new Set(allSyms);
       let changed = false;
       const next = new Set();
       for (const s of prev) {
@@ -470,7 +470,7 @@ export default function PositionsAnalyzeModal({
 
   const legs = byIndex.get(activeIndex) || [];
   const activeLegs = useMemo(
-    () => legs.filter((l) => selected.has(l.tradingsymbol) && !l.exited && Number(l.quantity) !== 0),
+    () => legs.filter((l) => selected.has(l.tradingsymbol) && Number(l.quantity) !== 0),
     [legs, selected],
   );
 
@@ -732,8 +732,8 @@ export default function PositionsAnalyzeModal({
                         >
                           <input
                             type="checkbox"
-                            checked={checked && !exited}
-                            disabled={exited || !isActive}
+                            checked={checked}
+                            disabled={!isActive}
                             onChange={() => {
                               if (!isActive) selectIndex(idx);
                               toggle(l.tradingsymbol);
