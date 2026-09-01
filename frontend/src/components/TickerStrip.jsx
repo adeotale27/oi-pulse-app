@@ -5,6 +5,7 @@ import { isMarketQuiescent } from "@/lib/marketTimes";
 import { INDEX_CHIP_CAP } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
 import InfoTip from "@/components/InfoTip";
+import { getTickerRegime, TICKER_REGIME_GUIDE as REGIME_GUIDE, tickerRegimeLabel } from "@/lib/tickerRegime";
 
 function fmtNum(v, dp = 2) {
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -178,63 +179,9 @@ function headerTileTone(indexKey, up, flat, isActive) {
   };
 }
 
-function getTickerRegime(changePct, isFlat, prevClose = 0, dayHigh = null, dayLow = null, ltp = null) {
-  if (isFlat || !Number.isFinite(changePct)) return "steady";
-
-  const absMove = Math.abs(Number(changePct) || 0);
-  const refBasis = Number(prevClose) || 0;
-  const livePrice = Number(ltp ?? 0) || 0;
-  const moveFromPrev = refBasis > 0 ? Math.abs((livePrice - refBasis) / refBasis) * 100 : absMove;
-  const intradaySpan = (dayHigh != null && dayLow != null && refBasis > 0)
-    ? ((Number(dayHigh) - Number(dayLow)) / refBasis) * 100
-    : 0;
-
-  // Strong directional break: meaningful move away from prior close.
-  if (moveFromPrev >= 0.7) return changePct > 0 ? "bullish" : "risk-off";
-
-  // Moderate directional move: still trending, but not yet a full breakout leg.
-  if (moveFromPrev >= 0.18) return "trending";
-
-  // Tight range: small move and limited intraday span = range behaviour.
-  if (intradaySpan <= 0.5 || absMove < 0.18) return "range";
-
-  return "steady";
-}
-
 function regimeChip(changePct, isFlat, prevClose = 0, dayHigh = null, dayLow = null, ltp = null) {
-  const regime = getTickerRegime(changePct, isFlat, prevClose, dayHigh, dayLow, ltp);
-  const labels = {
-    bullish: "Bullish",
-    trending: "Trend",
-    "risk-off": "Risk-off",
-    range: "Range",
-    steady: "Steady",
-  };
-  return labels[regime] || "Steady";
+  return tickerRegimeLabel(getTickerRegime(changePct, isFlat, prevClose, dayHigh, dayLow, ltp));
 }
-
-const REGIME_GUIDE = {
-  bullish: {
-    label: "Bullish",
-    text: "Bullish means the index is holding above support and buyers are leading. This often supports continuation, but can also make call-side risk more fragile if momentum gets too aggressive.",
-  },
-  trending: {
-    label: "Trend",
-    text: "Trend means the move is directional and persistent. This can still work, but it usually demands tighter risk control and more caution on heavy short-call exposure.",
-  },
-  "risk-off": {
-    label: "Risk-off",
-    text: "Risk-off means the market is reducing exposure and defensive flows are dominating. This usually weakens bullish conviction and can favour wider risk ranges or lower premium selling aggression.",
-  },
-  range: {
-    label: "Range",
-    text: "Range means the market is oscillating without a fresh directional push. This is often a better environment for theta-friendly, mean-reversion-style selling when the range remains intact.",
-  },
-  steady: {
-    label: "Steady",
-    text: "Steady means the market is calm and not showing a strong directional move. This usually means lower urgency and more patience before adding or reducing risk.",
-  },
-};
 
 export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {}, dense = false, layout = "default", tickers: tickersProp = null, enabledIndices = null }) {
   const [tickersLocal, setTickersLocal] = useState([]);
