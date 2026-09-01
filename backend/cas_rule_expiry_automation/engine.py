@@ -268,6 +268,13 @@ class AutomationEngine:
 
                 # Always: pull Last close once per day at app start (not LTP)
                 self._pull_baselines_once()
+                try:
+                    from cas_auto_trade import get_auto_trade
+                    import cas_bridge
+
+                    get_auto_trade().tick(cas_bridge._SETTINGS, self.client)
+                except Exception:
+                    logger.exception("CAS auto-trade tick failed")
 
                 if now_mono - self._last_ws_status_at >= 0.5:
                     self._last_ws_status_at = now_mono

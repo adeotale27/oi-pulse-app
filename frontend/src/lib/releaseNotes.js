@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.02",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade can buy one ATM NIFTY call or put off the first 15:20 indicative vs the frozen live index. You still exit yourself in Positions. The old 15:28 sell-both CAS is unchanged.",
+    ],
+    admin: [
+      "NSE JSON is GET /api/marketStatus (indicativenifty50), cookie warmup like FII/DII — not a CSV and not HTML scrape. Default ±15 pts. Inject is Paper/Debug only. Live Auto-Trade cannot be on with classic CAS Live.",
+    ],
+  },
+  {
     version: "9.01",
     date: "2026-09-01",
     user: [

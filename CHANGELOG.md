@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.02 — 2026-09-01
+
+CAS **Auto Trade** (separate from the 15:28 sell-both arm): freeze live NIFTY just before 15:20, lock that ATM, poll NSE `GET /api/marketStatus` for Indicative NIFTY 50, and place **one MARKET BUY** of ATM CE or PE if the first sane print is ±15 pts vs freeze. You exit in Positions. Paper by default. Overnight CLOSE leftovers are ignored. Do not run Auto-Trade Live together with classic CAS Live.
+
 ## V9.01 — 2026-09-01
 
 Positions **Brains** now scores the live short book instead of a canned heat story. Heat comes from too-close / ITM / near-expiry / concentration / net delta / negative theta — not from `|θ|` or a 15% “danger” band that flagged every typical short. If/then uses your nearest short put and call, not placeholder 24,000 / 24,500. Short calls are upside risk; short puts are downside. Info icons pin a portaled tip and no longer close the Brains or Radar sheet.
