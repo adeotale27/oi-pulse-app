@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.08 — 2026-09-01
+
+CAS Auto Trade 15:20 has a full operator manual: [docs/CAS_AUTO_TRADE_15_20.md](docs/CAS_AUTO_TRADE_15_20.md) (two CAS arms, clocks, what admin does, first-print rules, CE/PE math, Live vs Paper).
+
 ## V9.07 — 2026-09-01
 
 Overnight the desk kept hitting `/oi/*/change` and `/expiries` like a live session: weekday after-hours was not treated as closed unless `/status` had already said so, and an empty expiry list was re-fetched every poll (that flickered “No expiries yet”). CAS status slows to 60s after hours. Saving Kite credentials before Mongo/OI is up returns 503 instead of `set_credentials` on None.

@@ -129,6 +129,10 @@ Every finished change: bump version → PR → **merge to `main`**. Do not leave
 
 Kite stays in `oi_service` / `user_kite` / `kite_positions`. Telegram in `notifier.py`. Do not call Kite from the browser for OI.
 
+## CAS Auto Trade (15:20)
+
+Operator runbook (clocks, Live vs Paper, first-print rules, CE/PE math): [CAS_AUTO_TRADE_15_20.md](./CAS_AUTO_TRADE_15_20.md). Do not rewrite `CasPanel.jsx` / `cas_bridge.py` “for cleanliness.”
+
 ## Deployment
 
 [HOSTING.md](./HOSTING.md). Set `CREDENTIALS_FERNET_KEY` in production. `ENABLE_DEV_MOCK` must stay false.
