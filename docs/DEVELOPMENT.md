@@ -43,6 +43,7 @@ node frontend/src/lib/holidays.test.js
 node frontend/src/lib/holidayReminder.test.js
 node frontend/src/lib/journalYearHeat.test.js
 node frontend/src/lib/journalPct.test.js
+node frontend/src/lib/capitalGuard.test.js
 node frontend/src/lib/positionsBrain.test.js
 node frontend/src/lib/tickerRegime.test.js
 ```

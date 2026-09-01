@@ -95,7 +95,11 @@ export default function PositionsBrainPanel({ open, onClose, rows = [], stats = 
     switch (id) {
       case "verdict":
         return (
-          <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-slate-50 p-3" data-testid="brain-section-verdict">
+          <div className={`rounded-2xl border p-3 ${
+            brain.mode === "CAPITAL"
+              ? "border-rose-300 bg-gradient-to-br from-rose-50 via-white to-slate-50"
+              : "border-violet-200 bg-gradient-to-br from-violet-50 via-white to-slate-50"
+          }`} data-testid="brain-section-verdict">
             <BrainSectionHeader
               title="Decision"
               tone="violet"
@@ -140,7 +144,10 @@ export default function PositionsBrainPanel({ open, onClose, rows = [], stats = 
               </div>
             </div>
             <div className="mt-2 text-[11px] text-slate-600">
-              Seller verdict: <span className="font-semibold text-slate-900">{seller.headline}</span>
+            Seller verdict:{" "}
+            <span className="font-semibold text-slate-900">
+              {brain.mode === "CAPITAL" ? "Capital stop — ignore add-from-book-score" : seller.headline}
+            </span>
               <span className="text-slate-400"> · data {brain.dataQuality}%</span>
             </div>
           </div>

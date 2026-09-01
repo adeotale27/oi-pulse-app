@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, fetchOIChange, fetchJournalPeriod, fetchExtras } from "@/lib/api";
 import { upcomingHolidays, todayIST } from "@/lib/holidays";
 import { eventDisplayName } from "@/lib/carryFocus";
+import { attachDayCapital, classifyDayCapital } from "@/lib/capitalGuard";
 import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, daysAgoIST, summarizeIndexTape } from "@/lib/deskAiTape";
 import { cashSessionFocusIndex, cashSessionFocusLabel, filterCashHeavyMovers, istWeekdaySun0, overnightBiasIndices } from "@/lib/deskFocus";
 import MarketIntelCard from "@/components/MarketIntelCard";
@@ -74,16 +75,23 @@ export default function DeskAiBar({
       const oi = oiPacks
         .map((data) => summarizeIndexTape(data?.current, data?.also_windows?.session?.previous || data?.previous))
         .filter(Boolean);
-      const journal = compactJournalFromPeriod(journalRes);
+      const journal = attachDayCapital(compactJournalFromPeriod(journalRes), posRes.data);
       const memory = memRes?.data && Array.isArray(memRes.data.lines) ? { lines: memRes.data.lines.slice(0, 6) } : null;
       const vix = extrasRes?.vix?.last ?? extrasRes?.vix?.ltp ?? extrasRes?.vix;
       const focusPack = oiPacks.find((data) => String(data?.current?.index || "") === focusIndex) || oiPacks[0];
-      const sells = compactSellIdeas(
-        focusIndex,
-        focusPack?.current,
-        focusPack?.also_windows?.session?.previous || focusPack?.previous,
-        vix != null ? Number(vix) : undefined,
-      );
+      const dayCap = classifyDayCapital({
+        bookedPct: journal?.day_booked_pct,
+        leftover: journal?.leftover,
+        wallet: journal?.wallet,
+      });
+      const sells = dayCap.stopSellIdeas
+        ? null
+        : compactSellIdeas(
+          focusIndex,
+          focusPack?.current,
+          focusPack?.also_windows?.session?.previous || focusPack?.previous,
+          vix != null ? Number(vix) : undefined,
+        );
       setIntel({ oi, book: packed.book, adjust: packed.adjust, journal });
       const { data } = await api.post("/desk-guide", {
         surface: "desk",

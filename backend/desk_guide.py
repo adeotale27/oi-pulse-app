@@ -371,6 +371,10 @@ def _compact_journal(raw: Any) -> Optional[Dict[str, Any]]:
         "win_trades": inum("win_trades") if stats.get("win_trades") is not None else inum("win_days"),
         "loss_trades": inum("loss_trades") if stats.get("loss_trades") is not None else inum("lose_days"),
         "by_index": by_index or None,
+        "day_booked_pct": fnum("day_booked_pct"),
+        "day_booked": fnum("day_booked"),
+        "wallet": fnum("wallet") if stats.get("wallet") is not None else fnum("funds_base"),
+        "leftover": fnum("leftover") if stats.get("leftover") is not None else fnum("funds_available"),
     }
     if all(v is None for k, v in out.items() if k != "by_index") and not by_index:
         return None
@@ -636,6 +640,72 @@ def _named_action_lines(snap: Dict[str, Any]) -> Dict[str, List[str]]:
     return {"do": do, "dont": dont, "named": named}
 
 
+def _capital_coach(snap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Day-loss circuit. Same bands as frontend capitalGuard.js (−3 / −5 / −8%)."""
+    j = snap.get("journal") if isinstance(snap.get("journal"), dict) else None
+    if not j:
+        return None
+    try:
+        pct = float(j["day_booked_pct"]) if j.get("day_booked_pct") is not None else None
+    except (TypeError, ValueError):
+        pct = None
+    try:
+        leftover = float(j["leftover"]) if j.get("leftover") is not None else None
+    except (TypeError, ValueError):
+        leftover = None
+    try:
+        wallet = float(j["wallet"]) if j.get("wallet") is not None else None
+    except (TypeError, ValueError):
+        wallet = None
+    crumbs = (
+        leftover is not None
+        and wallet is not None
+        and wallet >= 1
+        and leftover / wallet < 0.005
+    )
+    level = "ok"
+    if pct is not None and pct <= -8:
+        level = "defend"
+    elif (pct is not None and pct <= -5) or crumbs:
+        level = "stopAdds"
+    elif pct is not None and pct <= -3:
+        level = "caution"
+    if level == "ok":
+        return None
+    pct_s = f"{pct:.2f}% of wallet" if pct is not None else "wallet"
+    if level == "caution":
+        return {
+            "level": level,
+            "stop_sells": False,
+            "do": f"Capital caution: booked {pct_s}. Size down. Do not double the book to win it back.",
+            "dont": ["Do not add a second index or extra lots because the day is red."],
+        }
+    if level == "stopAdds":
+        do = (
+            "Capital: leftover margin is tiny vs wallet — no new shorts."
+            if crumbs and not (pct is not None and pct <= -5)
+            else f"Capital stop: booked {pct_s}. Freeze new shorts and CAS Live. Only manage what is open."
+        )
+        return {
+            "level": level,
+            "stop_sells": True,
+            "do": do,
+            "dont": [
+                "Do not sell more premium to recover the day.",
+                "Do not treat Funds available as dry powder — that is leftover SPAN room.",
+            ],
+        }
+    return {
+        "level": level,
+        "stop_sells": True,
+        "do": f"Capital event: booked {pct_s}. Stop the day. No new shorts, no Auto-Trade Live, no one more lot.",
+        "dont": [
+            "Do not average losers or switch index to make it back.",
+            "Do not confuse leftover rupees with wallet — wallet already took the hit.",
+        ],
+    }
+
+
 def _journal_line(snap: Dict[str, Any]) -> Optional[str]:
     j = snap.get("journal") if isinstance(snap.get("journal"), dict) else None
     if not j:
@@ -645,6 +715,8 @@ def _journal_line(snap: Dict[str, Any]) -> Optional[str]:
         bits.append(f"{int(j['trading_days'])} booked days")
     if j.get("win_rate") is not None:
         bits.append(f"win {float(j['win_rate']):.0f}%")
+    if j.get("day_booked_pct") is not None:
+        bits.append(f"today {float(j['day_booked_pct']):+.2f}% of wallet")
     if j.get("booked_pnl") is not None:
         bits.append(f"booked {float(j['booked_pnl']):+.0f}")
     if not bits:
@@ -768,6 +840,10 @@ def _compose_carry(snap: Dict[str, Any]) -> str:
     named_lines = _named_action_lines(snap)
     do = named_lines["do"] + do
     dont = named_lines["dont"] + dont
+    cap = _capital_coach(snap)
+    if cap:
+        do = [cap["do"]] + do
+        dont = list(cap.get("dont") or []) + dont
 
     # Dedup while keeping order
     seen = set()
@@ -870,25 +946,30 @@ def _compose_desk(snap: Dict[str, Any]) -> str:
 
     do: List[str] = []
     dont: List[str] = []
+    cap = _capital_coach(snap)
+    if cap:
+        do.append(cap["do"])
+        dont.extend(cap["dont"])
     seller = [e.get("seller") for e in evs[:3] if e.get("seller")]
     buyer = [e.get("buyer") for e in evs[:3] if e.get("buyer")]
-    for row in (snap.get("oi") or [])[:2]:
-        if not isinstance(row, dict):
-            continue
-        ce = int(row.get("ceChg") or 0)
-        pe = int(row.get("peChg") or 0)
-        idx = row.get("idx") or "Index"
-        if ce > pe:
-            do.append(f"{idx}: call writers — prefer CE shorts / do not chase PE shorts.")
-            dont.append(f"{idx}: do not add PE shorts into a call-writer tape.")
-        else:
-            do.append(f"{idx}: put writers — prefer PE shorts / do not chase CE shorts.")
-            dont.append(f"{idx}: do not add CE shorts into a put-writer tape.")
+    if not (cap and cap.get("stop_sells")):
+        for row in (snap.get("oi") or [])[:2]:
+            if not isinstance(row, dict):
+                continue
+            ce = int(row.get("ceChg") or 0)
+            pe = int(row.get("peChg") or 0)
+            idx = row.get("idx") or "Index"
+            if ce > pe:
+                do.append(f"{idx}: call writers — prefer CE shorts / do not chase PE shorts.")
+                dont.append(f"{idx}: do not add PE shorts into a call-writer tape.")
+            else:
+                do.append(f"{idx}: put writers — prefer PE shorts / do not chase CE shorts.")
+                dont.append(f"{idx}: do not add CE shorts into a put-writer tape.")
     named_lines = _named_action_lines(snap)
     do.extend(named_lines["do"])
     dont.extend(named_lines["dont"])
     sl = _sells_line(snap)
-    if sl:
+    if sl and not (cap and cap.get("stop_sells")):
         do.append(sl)
     do.extend(seller[:2])
     if buyer:
@@ -932,8 +1013,11 @@ def _compose_positions(snap: Dict[str, Any]) -> str:
         if hedge not in watch:
             watch.append(hedge)
     sl = _sells_line(snap)
-    if sl:
+    cap = _capital_coach(snap)
+    if sl and not (cap and cap.get("stop_sells")):
         watch.append(sl)
+    if cap:
+        watch = [cap["do"]] + list(cap.get("dont") or []) + watch
     ml = _memory_line(snap)
     if ml:
         watch.append(ml)
@@ -1073,21 +1157,24 @@ async def _call_llm(snap: Dict[str, Any]) -> str:
             "You write an overnight HOLD note for NSE index-option sellers. "
             "Format exactly: DO (bullets) then DON'T (bullets). "
             "Use why/whyNot, band, vix, giftPct, adjust (delta/theta/IV/legs), oi writer tape, journal, memory, holidays, outside events. "
-            "Name tradingsymbols from adjust.legs (Hold / Cut/define / Roll). Max 10 short lines. Never invent prices or strikes."
+            "Name tradingsymbols from adjust.legs (Hold / Cut/define / Roll). Max 10 short lines. Never invent prices or strikes. "
+            "If journal.day_booked_pct is <= -5 or leftover is crumbs vs wallet: first DO is stop the day — no new shorts, no Auto-Trade Live."
         )
     elif surface == "positions":
         system = (
             "You coach the open shorts book on Radar. Use ONLY adjust.legs / netDelta, optional sells "
             "(explain the ranker, do not invent a list), memory.lines, and a one-line outside.briefing if present. "
             "Name each short: ITM = buy back/roll; too close = roll; fighting tape = reduce; |Δ| large = hedge, not more shorts. "
-            "Lead with WATCH NEXT. Max 6 lines. Never invent prices."
+            "Lead with WATCH NEXT. Max 6 lines. Never invent prices. "
+            "If journal.day_booked_pct <= -5: lead with capital stop; do not recommend new sells."
         )
     else:
         system = (
             "You are an NSE index-options desk for sellers first, then buyers. "
             "Format exactly: TAPE / BOOK / JOURNAL / WHAT CHANGED / DO / DON'T. "
             "Use oi (PCR, CE/PE, walls), book, adjust greeks, journal, memory.lines, sells (explain top 3 from the ranker only). "
-            "Name tradingsymbols from adjust.legs. DO/DON'T must be trade actions. Never invent prices or extra sell strikes. Max 16 lines."
+            "Name tradingsymbols from adjust.legs. DO/DON'T must be trade actions. Never invent prices or extra sell strikes. Max 16 lines. "
+            "If journal.day_booked_pct <= -5: first DO is the capital stop; omit Sell ideas and writer-chase shorts."
         )
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(

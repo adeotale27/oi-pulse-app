@@ -3,6 +3,7 @@ import { firstSentence, parseGuideSections } from "./deskAiLayout.js";
 
 assert.ok(!/^Session focus/i.test(firstSentence("Session focus NIFTY (Mon–Tue).\nNIFTY · call writers · PCR 0.71")));
 assert.match(firstSentence("Session focus NIFTY.\nNIFTY · call writers · PCR 0.71"), /call writers/);
+assert.match(firstSentence("DO\n  Capital event: booked -11.05% of wallet. Stop the day."), /Capital event/);
 
 const g = parseGuideSections(`TAPE
   NIFTY PCR 0.71
