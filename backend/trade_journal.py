@@ -12,6 +12,7 @@ from market_hours import (
     now_ist,
     IST,
     eod_lock_time,
+    session_anchor_date,
 )
 from universe import DESK_IDS, HEATMAP_IDS, match_symbol_prefix
 from account_equity import (
@@ -52,6 +53,51 @@ DEFAULT_TAGS = [
 def ist_ymd(dt=None) -> str:
     d = dt or now_ist()
     return d.strftime("%Y-%m-%d")
+
+
+def journal_session_ymd(dt=None) -> str:
+    """IST date the journal may write. Pre-open / weekend / holiday → last session.
+
+    Kite day P&L does not reset at midnight. Writing ``ist_ymd()`` after 00:00
+    cloned yesterday's booked day onto the new calendar date.
+    """
+    return session_anchor_date(dt).isoformat()
+
+
+def is_pre_session_auto_snapshot(doc: Optional[Dict[str, Any]], now=None) -> bool:
+    """True when a Positions poll wrote today's calendar row before the session opens."""
+    if not doc:
+        return False
+    now = now or now_ist()
+    cal = ist_ymd(now)
+    if str(doc.get("date") or "")[:10] != cal:
+        return False
+    if journal_session_ymd(now) == cal:
+        return False
+    return not has_user_journal_content(doc)
+
+
+def is_stale_carryover_snapshot(
+    snap: Optional[Dict[str, Any]],
+    prev: Optional[Dict[str, Any]],
+) -> bool:
+    """True when this snapshot is the previous session's book still sitting on Kite."""
+    if not snap or not prev:
+        return False
+    snap_day = str(snap.get("date") or snap.get("trading_date") or "")[:10]
+    prev_day = str(prev.get("date") or prev.get("trading_date") or "")[:10]
+    if not snap_day or not prev_day or snap_day == prev_day:
+        return False
+    if abs(_num(snap.get("booked_pnl") if snap.get("booked_pnl") is not None else snap.get("pnl_exited"))
+           - _num(prev.get("booked_pnl") if prev.get("booked_pnl") is not None else prev.get("pnl_exited"))) > 1.0:
+        return False
+    if int(snap.get("exited_count") or 0) != int(prev.get("exited_count") or 0):
+        return False
+    if int(snap.get("win_trades") or 0) != int(prev.get("win_trades") or 0):
+        return False
+    if int(snap.get("loss_trades") or 0) != int(prev.get("loss_trades") or 0):
+        return False
+    return True
 
 
 def iso_is_trading_day(iso: Optional[str]) -> bool:

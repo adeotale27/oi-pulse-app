@@ -1,5 +1,7 @@
 from datetime import datetime, timezone, timedelta
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 from trade_journal import (
     snapshot_from_positions,
     month_stats,
@@ -17,6 +19,9 @@ from trade_journal import (
     is_closed_session_auto_snapshot,
     include_on_journal_calendar,
     period_stats,
+    journal_session_ymd,
+    is_pre_session_auto_snapshot,
+    is_stale_carryover_snapshot,
 )
 
 
@@ -151,6 +156,42 @@ def test_apply_snapshot_keeps_existing_trading_date_after_midnight():
     out = apply_snapshot(existing, snap)
     assert out["date"] == "2026-09-01"
     assert out["trading_date"] == "2026-09-01"
+
+
+def test_journal_session_ymd_preopen_stays_on_last_session():
+    pre = datetime(2026, 9, 2, 2, 51, tzinfo=IST)
+    assert journal_session_ymd(pre) == "2026-09-01"
+    assert journal_session_ymd(datetime(2026, 9, 2, 9, 20, tzinfo=IST)) == "2026-09-02"
+
+
+def test_preopen_clone_of_yesterday_is_stale():
+    pre = datetime(2026, 9, 2, 2, 51, tzinfo=IST)
+    clone = {
+        "date": "2026-09-02",
+        "booked_pnl": -394790.5,
+        "pnl_exited": -394790.5,
+        "exited_count": 21,
+        "win_trades": 10,
+        "loss_trades": 11,
+        "went_well": "",
+        "notes": "",
+        "tags": [],
+    }
+    prev = {
+        "date": "2026-09-01",
+        "booked_pnl": -394790.5,
+        "exited_count": 21,
+        "win_trades": 10,
+        "loss_trades": 11,
+    }
+    assert is_pre_session_auto_snapshot(clone, pre) is True
+    assert is_pre_session_auto_snapshot({**clone, "notes": "review"}, pre) is False
+    assert is_pre_session_auto_snapshot(clone, datetime(2026, 9, 2, 10, 0, tzinfo=IST)) is False
+    assert is_stale_carryover_snapshot(clone, prev) is True
+    assert is_stale_carryover_snapshot(
+        {**clone, "booked_pnl": -1200, "exited_count": 2, "win_trades": 0, "loss_trades": 2},
+        prev,
+    ) is False
 
 
 def test_sanitize_clips_and_tags():

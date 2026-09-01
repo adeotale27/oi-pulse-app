@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.13 — 2026-09-02
+
+Journal no longer copies yesterday’s booked P&L onto the new calendar date after midnight. Snapshots use the last session until the next open (same rule as OI). Opening the journal deletes that clone if it already landed.
+
 ## V9.12 — 2026-09-02
 
 Paper Auto Trade shows **NSE live** (first pull + later changes) vs the **fire print**, keeps probing after EXECUTED, and explains leave-Paper-on / inject. CAS `/cas/status` no longer re-hits ipify on every failed lookup (that caused 12s timeouts). Header index tiles use a small regime chip; OI bias bar is a compact label, not a pink wash.
