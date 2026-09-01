@@ -332,3 +332,21 @@ def test_named_hold_cut_and_sells_memory():
     assert "Buy back / roll: NIFTY25814C24500" in radar
     assert "Hedge |Δ|" in radar
 
+
+def test_desk_put_writers_marks_short_calls_as_fight():
+    from desk_guide import _tape_side_from_oi, named_leg_actions
+
+    snap = {"oi": [{"idx": "NIFTY", "ceChg": -10000, "peChg": 200000}]}
+    assert _tape_side_from_oi(snap) == "put_writers"
+    named = named_leg_actions(
+        {
+            "legs": [
+                {"s": "NIFTY24000CE", "side": "CE", "close": False, "itm": False},
+                {"s": "NIFTY23800PE", "side": "PE", "close": False, "itm": False},
+            ]
+        },
+        "put_writers",
+    )
+    assert "NIFTY23800PE" in named["holds"]
+    assert "NIFTY24000CE" in named["fight"]
+

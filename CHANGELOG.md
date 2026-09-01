@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.04 — 2026-09-01
+
+CAS page compiles again: leftover duplicate alerts after the Auto Trade block had an extra `</div>` that Babel read as an unclosed fragment. Header index regime no longer treats a missing LTP as price 0 (that looked like a 100% crash).
+
 ## V9.03 — 2026-09-01
 
 CAS Auto Trade will not treat the frozen live NIFTY print as the 15:20 indicative (that would have locked NO_TRADE before +27 printed). Prepare retries if Kite blips; the engine stays on a 200ms loop when Auto Trade is on even without classic Activate; MARKET BUY still uses Kite `order_type=MARKET` + `market_protection=-1`. Brains path risk stays the short book (calls = upside, puts = downside), not a fake index regime.

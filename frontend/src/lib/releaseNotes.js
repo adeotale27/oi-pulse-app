@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.04",
+    date: "2026-09-01",
+    user: [
+      "CAS Expiry page loads again (broken JSX after Auto Trade). Index regime chips ignore a blank LTP instead of calling it a crash.",
+    ],
+    admin: [
+      "Ticker regime lives in tickerRegime.js with tests. Desk AI still maps CE OI lead → call writers / short-call hold; PE OI lead → put writers / short-put hold.",
+    ],
+  },
+  {
     version: "9.03",
     date: "2026-09-01",
     user: [

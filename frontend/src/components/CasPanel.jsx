@@ -871,28 +871,6 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
           </section>
 
           {/* Live readiness — collapsed by default; open on demand */}
-            {debug && !live && (
-              <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-sm px-2 py-1.5">
-                Debug + Paper: CAS can arm outside market hours. Watch/move windows widen so you
-                can see ticks, last close, and dry-run timing.
-              </div>
-            )}
-            {marketClosed && !debug && (
-              <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-100 rounded-sm px-2 py-1.5">
-                Market closed for CAS (after 15:41 IST). Turn on Debug to rehearse, or try tomorrow.
-              </div>
-            )}
-            {plain.last_error && (
-              <div
-                className="text-[11px] text-rose-800 bg-rose-50 border border-rose-200 rounded-sm px-2 py-1.5"
-                data-testid="cas-last-error"
-              >
-                Last order/engine error: {plain.last_error}
-              </div>
-            )}
-          </div>
-
-          {/* Live readiness — collapsed by default; open on demand */}
           <div className="rounded-md border border-slate-200 bg-white" data-testid="cas-live-readiness">
             <button
               type="button"
