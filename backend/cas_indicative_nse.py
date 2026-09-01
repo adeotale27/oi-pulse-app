@@ -39,7 +39,14 @@ API_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Referer": NSE_CAS_PAGE,
     "X-Requested-With": "XMLHttpRequest",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
 }
+
+# Live NIFTY often sits on indexLast until the 15:20 indicative actually prints.
+# Treat that leftover as "not yet" — do not consume it as the day's first CAS print.
+FREEZE_EPS = 0.51
 
 
 def extract_indicative(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -73,6 +80,29 @@ def extract_indicative(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+def parse_nse_stamp(stamp: Any) -> Optional[datetime]:
+    """Parse NSE widget clocks like '01-Sep-2026 15:20:01' (do not slice seconds off)."""
+    if stamp is None:
+        return None
+    text = str(stamp).strip()
+    if not text:
+        return None
+    for fmt in (
+        "%d-%b-%Y %H:%M:%S",
+        "%d-%b-%Y %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        except Exception:
+            return None
+    return None
+
+
 def indicative_is_sane(hit: Dict[str, Any], *, now: Optional[datetime] = None) -> Tuple[bool, str]:
     """Reject leftover CLOSE prints and garbage numbers."""
     now = now or get_ist_now()
@@ -91,20 +121,31 @@ def indicative_is_sane(hit: Dict[str, Any], *, now: Optional[datetime] = None) -
         return False, "stale_close"
     if t < dtime(15, 20):
         return False, "before_cas_window"
-    stamp = hit.get("indicative_time")
-    if stamp:
-        today = now.date().isoformat()
-        text = str(stamp)
-        # '01-Sep-2026 15:20' or ISO
-        parsed_day = None
-        for fmt in ("%d-%b-%Y %H:%M", "%d-%b-%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-            try:
-                parsed_day = datetime.strptime(text[:19] if len(text) >= 19 else text, fmt).date()
-                break
-            except ValueError:
-                continue
-        if parsed_day is not None and parsed_day.isoformat() != today:
+    parsed = parse_nse_stamp(hit.get("indicative_time"))
+    if parsed is not None:
+        if parsed.date() != now.date():
             return False, "wrong_day"
+        if parsed.time() < dtime(15, 20):
+            return False, "stamp_before_signal"
+    return True, "ok"
+
+
+def accept_first_indicative(
+    hit: Dict[str, Any],
+    *,
+    freeze: Optional[float],
+    now: Optional[datetime] = None,
+) -> Tuple[bool, str]:
+    """Stay ARMED until the print is a new CAS indicative, not the frozen live LTP."""
+    ok, why = indicative_is_sane(hit, now=now)
+    if not ok:
+        return False, why
+    if freeze is not None:
+        try:
+            if abs(float(hit.get("value") or 0) - float(freeze)) < FREEZE_EPS:
+                return False, "same_as_freeze"
+        except (TypeError, ValueError):
+            return False, "bad_value"
     return True, "ok"
 
 

@@ -5,7 +5,12 @@ from datetime import datetime
 import pytest
 
 from cas_auto_trade import CasAutoTrade, decide_signal
-from cas_indicative_nse import extract_indicative, indicative_is_sane
+from cas_indicative_nse import (
+    accept_first_indicative,
+    extract_indicative,
+    indicative_is_sane,
+    parse_nse_stamp,
+)
 from cas_rule_expiry_automation.expiry_calendar import INDEX_META
 from cas_rule_expiry_automation.strike_resolver import Leg, StrikeCache, round_atm
 from cas_rule_expiry_automation.time_utils import IST
@@ -162,3 +167,96 @@ def test_inject_refuses_live(auto):
     settings = {"auto_trade_mode": "live"}
     with pytest.raises(RuntimeError, match="Paper"):
         auto.inject_indicative(IND_FIRST, settings, FakeClient())
+
+
+def test_parse_nse_stamp_keeps_seconds():
+    dt = parse_nse_stamp("01-Sep-2026 15:20:01")
+    assert dt is not None
+    assert dt.hour == 15 and dt.minute == 20 and dt.second == 1
+
+
+def test_reject_frozen_live_print_keep_waiting():
+    now = datetime(2026, 9, 1, 15, 20, 1, tzinfo=IST)
+    leftover = {
+        "value": PRE,
+        "field": "indexLast",
+        "status": "OPEN",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:19:59",
+    }
+    ok, why = accept_first_indicative(leftover, freeze=PRE, now=now)
+    assert not ok
+    assert why in ("stamp_before_signal", "same_as_freeze")
+
+    same_px = {
+        "value": PRE,
+        "field": "indexLast",
+        "status": "OPEN",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:20:00",
+    }
+    ok2, why2 = accept_first_indicative(same_px, freeze=PRE, now=now)
+    assert not ok2
+    assert why2 == "same_as_freeze"
+
+    real = {
+        "value": IND_FIRST,
+        "field": "indexLast",
+        "status": "OPEN",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:20:01",
+    }
+    ok3, why3 = accept_first_indicative(real, freeze=PRE, now=now)
+    assert ok3, why3
+
+
+def test_skip_freeze_then_first_real_print_buys_ce(auto):
+    settings = {
+        "auto_trade_mode": "paper",
+        "lots": 1,
+        "product": "NRML",
+        "auto_bullish_pts": 15,
+        "auto_bearish_pts": 15,
+    }
+    client = FakeClient()
+    auto._prepare(settings, client)
+    auto._state["status"] = "ARMED"
+    now = datetime(2026, 9, 1, 15, 20, 1, tzinfo=IST)
+    leftover = {
+        "value": PRE,
+        "field": "indexLast",
+        "status": "OPEN",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:20:00",
+        "received_at": now.isoformat(),
+    }
+    ok, why = accept_first_indicative(leftover, freeze=PRE, now=now)
+    assert not ok
+    assert auto.snapshot()["status"] == "ARMED"
+    assert client.buys == []
+
+    real = {
+        "value": IND_FIRST,
+        "field": "indexLast",
+        "status": "OPEN",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:20:01",
+        "received_at": now.isoformat(),
+    }
+    assert accept_first_indicative(real, freeze=PRE, now=now)[0]
+    auto._on_indicative(real, settings, client)
+    snap = auto.snapshot()
+    assert snap["status"] == "EXECUTED"
+    assert snap["opt_type"] == "CE"
+    assert snap["locked_atm"] == 24000
+    assert len(client.buys) == 1
+    assert client.buys[0]["live"] is False
+
+
+def test_prepare_retries_after_kite_blip(auto):
+    settings = {"auto_trade_mode": "paper", "lots": 1, "product": "NRML"}
+    auto._prepare(settings, client=None)
+    assert auto.snapshot()["status"] == "FAILED"
+    auto._prepare(settings, FakeClient())
+    assert auto.snapshot()["status"] == "PREPARING"
+    assert auto.snapshot()["locked_atm"] == 24000

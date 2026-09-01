@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.03 — 2026-09-01
+
+CAS Auto Trade will not treat the frozen live NIFTY print as the 15:20 indicative (that would have locked NO_TRADE before +27 printed). Prepare retries if Kite blips; the engine stays on a 200ms loop when Auto Trade is on even without classic Activate; MARKET BUY still uses Kite `order_type=MARKET` + `market_protection=-1`. Brains path risk stays the short book (calls = upside, puts = downside), not a fake index regime.
+
 ## V9.02 — 2026-09-01
 
 CAS **Auto Trade** (separate from the 15:28 sell-both arm): freeze live NIFTY just before 15:20, lock that ATM, poll NSE `GET /api/marketStatus` for Indicative NIFTY 50, and place **one MARKET BUY** of ATM CE or PE if the first sane print is ±15 pts vs freeze. You exit in Positions. Paper by default. Overnight CLOSE leftovers are ignored. Do not run Auto-Trade Live together with classic CAS Live.

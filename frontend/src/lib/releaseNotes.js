@@ -4,6 +4,17 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.03",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade waits for a real 15:20 indicative, not the stuck live NIFTY print, before buying one ATM call or put.",
+      "Brains path risk is still from your short calls vs short puts — it is not the header’s index regime chip.",
+    ],
+    admin: [
+      "Engine attaches on API boot; Auto Trade polls ~200ms without classic Activate. Prepare retries until cutoff; a rejected live order is not resent.",
+    ],
+  },
+  {
     version: "9.02",
     date: "2026-09-01",
     user: [

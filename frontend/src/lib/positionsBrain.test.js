@@ -92,6 +92,13 @@ const onlyPuts = computePositionsBrain({
 assert.equal(onlyPuts.threat.direction, "downside");
 assert.equal(onlyPuts.putShare, 100);
 
+const putHeavy = computePositionsBrain({
+  rows: [farPut, { ...farPut, tradingsymbol: "NIFTY25SEP24100PE", strike: 24100, quantity: -80, delta: -0.2 }],
+  stats: { netDelta: -12, netTheta: 400, shortCount: 2 },
+});
+assert.equal(putHeavy.threat.direction, "downside");
+assert.ok(putHeavy.putShare > putHeavy.callShare);
+
 const order = normalizeBrainOrder(["watch", "nope", "verdict", "watch"]);
 assert.deepEqual(order.slice(0, 2), ["watch", "verdict"]);
 assert.ok(order.includes("plan"));

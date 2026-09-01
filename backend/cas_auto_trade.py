@@ -12,7 +12,7 @@ import time
 from datetime import datetime, time as dtime
 from typing import Any, Dict, Optional, Tuple
 
-from cas_indicative_nse import NseIndicativeProvider, indicative_is_sane
+from cas_indicative_nse import NseIndicativeProvider, accept_first_indicative
 from cas_rule_expiry_automation.expiry_calendar import INDEX_META
 from cas_rule_expiry_automation.kite_client import KiteClient
 from cas_rule_expiry_automation.strike_resolver import StrikeCache, round_atm
@@ -158,9 +158,14 @@ class CasAutoTrade:
         poll_ms = max(150, min(2000, int(settings.get("auto_poll_ms") or 250)))
 
         status = self._state.get("status")
-        if status in ("EXECUTED", "NO_TRADE", "FAILED") and not debug:
-            return
         if status == "EXECUTED":
+            return
+        if self._state.get("order_status") == "failed":
+            # Do not re-send a MARKET order that the broker already rejected.
+            return
+        if status == "NO_TRADE" and not debug:
+            return
+        if status == "FAILED" and tnow > cutoff_t and not debug:
             return
 
         warmup_t = dtime(max(0, prepare_t.hour), max(0, prepare_t.minute - 10), 0)
@@ -170,10 +175,8 @@ class CasAutoTrade:
                 with self._lock:
                     self._state["nse_error"] = self._provider.last_error
 
-        if tnow >= prepare_t or (debug and status == "IDLE"):
-            if status in ("IDLE",) or (
-                debug and status in ("IDLE", "FAILED") and not self._state.get("prepared_ce")
-            ):
+        if (tnow >= prepare_t or debug) and not self._state.get("prepared_ce"):
+            if status in ("IDLE", "FAILED", "PREPARING") or debug:
                 self._prepare(settings, client)
 
         status = self._state.get("status")
@@ -207,7 +210,8 @@ class CasAutoTrade:
             self._state["nse_error"] = self._provider.last_error
         if not hit:
             return
-        ok, why = indicative_is_sane(hit, now=now)
+        freeze = self._state.get("pre_signal_nifty")
+        ok, why = accept_first_indicative(hit, freeze=freeze, now=now)
         if not ok:
             logger.info("CAS auto-trade skip indicative: %s", why)
             return
@@ -228,6 +232,8 @@ class CasAutoTrade:
             key = INDEX_META[INDEX]["spot_key"]
             q = client.quote([key])[key]
             spot = float(q.get("last_price") or 0)
+            if spot <= 0:
+                spot = float((q.get("ohlc") or {}).get("close") or 0)
             if spot <= 0:
                 raise RuntimeError("nifty_ltp_missing")
             gap = int(INDEX_META[INDEX]["strike_gap"])
@@ -363,6 +369,12 @@ class CasAutoTrade:
     ) -> None:
         mode = str(settings.get("auto_trade_mode") or "paper").lower()
         live = mode == "live"
+        if live and not getattr(client, "kite", None):
+            with self._lock:
+                self._state["status"] = "FAILED"
+                self._state["reason"] = "kite_not_connected"
+                self._state["order_status"] = "failed"
+            return
         atm = int(self._state["locked_atm"])
         symbol = self._state["prepared_ce"] if opt == "CE" else self._state["prepared_pe"]
         leg = self._cache._legs.get((INDEX, opt, atm))

@@ -6425,6 +6425,12 @@ async def _boot_rest():
     except Exception as e:
         logger.warning("load_settings on startup: %s", e)
     await tracker.start()
+    try:
+        import cas_bridge
+
+        await asyncio.to_thread(cas_bridge.sync_credentials_from_tracker, tracker)
+    except Exception as e:
+        logger.warning("CAS engine attach on boot: %s", e)
     await _seed_last_snapshots()
     extra_tickers.attach_db(db)
     extra_tickers.attach_kite_provider(
