@@ -266,8 +266,11 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
           const regime = getTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
           const Tag = selectable ? "button" : "div";
           return (
-            <Tag
+            <div
               key={t.index}
+              className={`inline-flex items-center gap-0.5 shrink-0 ${many ? "snap-start" : ""}`}
+            >
+            <Tag
               type={selectable ? "button" : undefined}
               onClick={selectable ? () => onSelectIndex?.(t.index) : undefined}
               data-testid={`ticker-${t.index}`}
@@ -275,7 +278,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
               : `${s.label} is on the quote strip but not enabled for the desk`}
-              className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[11px] tabular-nums shrink-0 transition-colors ${many ? "snap-start" : ""} ${
+              className={`inline-flex items-center gap-1 h-6 px-1.5 rounded-sm border text-[11px] tabular-nums transition-colors ${
                 !selectable
                   ? "border-transparent"
                   : isActive
@@ -303,7 +306,8 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   ? "(0.00%)"
                   : `(${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%)`}
               </span>
-              <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-[1px] shadow-[0_1px_0_rgba(15,23,42,0.04)] text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            </Tag>
+              <div className="inline-flex items-center gap-1 h-6 rounded-full border border-slate-200 bg-white px-1 py-[1px] shadow-[0_1px_0_rgba(15,23,42,0.04)] text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 <span>{REGIME_GUIDE[regime]?.label || "Steady"}</span>
                 <InfoTip
                   title="Market regime"
@@ -317,7 +321,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   </div>
                 </InfoTip>
               </div>
-            </Tag>
+            </div>
           );
         })}
       </div>
@@ -358,19 +362,24 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const regimeLabel = regimeChip(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
         const TileTag = selectable ? "button" : "div";
         return (
-          <TileTag
+          <div
             key={t.index}
+            className={`text-left border-2 ${tones.shell} ${
+              isHeader
+                ? `header-index-tile overflow-hidden shrink-0 ${many ? "min-w-[6.7rem] max-w-[9.25rem] snap-start" : "min-w-[7.1rem] max-w-[10.5rem]"}`
+                : dense
+                  ? "px-1.5 py-1.5"
+                  : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
+            } ${isActive && selectable ? "shadow-md" : ""} ${isHeader ? "rounded-full" : "rounded-md"}`}
+          >
+          <TileTag
             type={selectable ? "button" : undefined}
             onClick={selectable ? () => onSelectIndex?.(t.index) : undefined}
             data-testid={`ticker-${t.index}`}
             aria-disabled={selectable ? undefined : "true"}
-            className={`text-left border-2 ${tones.shell} ${
-              isHeader
-                ? `header-index-tile px-2 py-1.5 shrink-0 ${many ? "min-w-[6.7rem] max-w-[9.25rem] snap-start" : "min-w-[7.1rem] max-w-[10.5rem]"}`
-                : dense
-                  ? "px-1.5 py-1.5"
-                  : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
-            } ${selectable ? "hover:brightness-[0.99] transition-all" : ""} ${isActive && selectable ? "shadow-md" : ""} ${isHeader ? "rounded-full" : "rounded-md"}`}
+            className={`w-full text-left ${
+              isHeader ? "px-2 py-1.5" : ""
+            } ${selectable ? "hover:brightness-[0.99] transition-all" : ""}`}
             title={selectable
               ? `Prev close ${fmtNum(t.prev_close)} · O ${fmtNum(t.day_open)} · H ${fmtNum(t.day_high)} · L ${fmtNum(t.day_low)}`
               : `${s.label} is on the quote strip but not enabled for the desk`}
@@ -405,8 +414,9 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 </span>
               </div>
             </div>
+          </TileTag>
             {isHeader && (
-              <div className="mt-1.5 rounded-[8px] border border-slate-200 bg-white/80 px-1.5 py-1 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+              <div className="mx-1.5 mb-1.5 rounded-[8px] border border-slate-200 bg-white/80 px-1.5 py-1 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
                 <div className="flex items-center justify-between gap-1 text-[8px] uppercase tracking-[0.14em] text-slate-500">
                   <div className="flex min-w-0 items-center gap-1">
                     <span className="truncate text-slate-600">Regime</span>
@@ -433,7 +443,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 </div>
               </div>
             )}
-          </TileTag>
+          </div>
         );
       })}
     </div>

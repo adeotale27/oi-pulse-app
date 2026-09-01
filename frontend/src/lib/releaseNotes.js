@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.05",
+    date: "2026-09-01",
+    user: [
+      "CAS Expiry opens again. Market-regime info on the index chips is next to the quote, not nested inside it.",
+    ],
+    admin: [
+      "TickerStrip: InfoTip is a sibling of the index <button>. CasPanel restores the IST countdown clock state.",
+    ],
+  },
+  {
     version: "9.04",
     date: "2026-09-01",
     user: [

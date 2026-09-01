@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.05 — 2026-09-01
+
+CAS Expiry no longer crashes (`nowMs` was missing). Regime Info icons sit **beside** index ticker buttons so HTML is not button-in-button.
+
 ## V9.04 — 2026-09-01
 
 CAS page compiles again: leftover duplicate alerts after the Auto Trade block had an extra `</div>` that Babel read as an unclosed fragment. Header index regime no longer treats a missing LTP as price 0 (that looked like a 100% crash).
