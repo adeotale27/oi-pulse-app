@@ -896,56 +896,22 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
               </div>
             </div>
 
+            {autoPaper && (
+              <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-sm px-2 py-1.5">
+                Paper on a live session: Kite NIFTY + NSE JSON are real. Errors and the fire recap
+                show in the strip below. Order id is DRY-BUY — no fill on your account. Use this to
+                confirm scrape before Live.
+              </div>
+            )}
             {autoLive && (
               <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-100 rounded-sm px-2 py-1.5 flex items-center gap-2">
                 <Shield className="w-3.5 h-3.5 shrink-0" />
-                Auto-Trade Live will BUY one ATM option around 15:20. Keep classic CAS on Paper.
+                Auto-Trade Live will BUY one ATM option around 15:20. Keep classic CAS on Paper. To
+                only check NSE scrape, switch this toggle to Paper.
               </div>
             )}
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-              <MiniCard label="Auto lots" value={String(autoLots)} mono />
-              <MiniCard label="Frozen NIFTY" value={fmt(auto.pre_signal_nifty, 2)} mono />
-              <MiniCard label="Locked ATM" value={auto.locked_atm != null ? String(auto.locked_atm) : "—"} mono />
-              <MiniCard label="Indicative" value={fmt(auto.indicative_nifty, 2)} mono />
-              <MiniCard
-                label="Delta"
-                value={auto.cas_delta != null ? `${auto.cas_delta > 0 ? "+" : ""}${fmt(auto.cas_delta, 2)}` : "—"}
-                mono
-              />
-              <MiniCard label="Signal" value={auto.signal || "—"} />
-              <MiniCard
-                label="Order"
-                value={auto.tradingsymbol ? `${auto.opt_type || ""} ${auto.order_status || ""}`.trim() : (auto.order_status || "—")}
-              />
-            </div>
-            {(auto.prepared_ce || auto.prepared_pe || auto.reason || auto.nse_error) && (
-              <p className="text-[11px] text-slate-600 font-mono-data break-all" data-testid="cas-auto-detail">
-                {auto.prepared_ce ? `CE ${auto.prepared_ce}` : ""}
-                {auto.prepared_pe ? ` · PE ${auto.prepared_pe}` : ""}
-                {auto.order_id ? ` · ${auto.order_id}` : ""}
-                {auto.reason ? ` · ${auto.reason}` : ""}
-                {auto.nse_error ? ` · NSE ${auto.nse_error}` : ""}
-              </p>
-            )}
-            {auto.latency?.total_signal_to_order_ms != null && (
-              <p className="text-[10px] text-slate-500">
-                Latency decide {fmtMs(auto.latency.data_to_decision_ms)} ms · order{" "}
-                {fmtMs(auto.latency.decision_to_order_ms)} ms · total{" "}
-                {fmtMs(auto.latency.total_signal_to_order_ms)} ms
-              </p>
-            )}
-            {auto.last_rehearsal?.status && (
-              <p className="text-[11px] text-sky-800" data-testid="cas-auto-rehearsal">
-                Last rehearsal (did not spend today&apos;s 15:20 fire): {auto.last_rehearsal.status}
-                {auto.last_rehearsal.opt_type ? ` · ${auto.last_rehearsal.opt_type}` : ""}
-                {auto.last_rehearsal.tradingsymbol ? ` · ${auto.last_rehearsal.tradingsymbol}` : ""}
-                {auto.last_rehearsal.order_id ? ` · ${auto.last_rehearsal.order_id}` : ""}
-                {auto.last_rehearsal.cas_delta != null
-                  ? ` · Δ ${auto.last_rehearsal.cas_delta > 0 ? "+" : ""}${fmt(auto.last_rehearsal.cas_delta, 2)}`
-                  : ""}
-              </p>
-            )}
+            <AutoTapeStrip auto={auto} autoLots={autoLots} />
 
             {isAdmin && autoPaper && !autoLive && (
               <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-slate-100">
@@ -1374,6 +1340,127 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function skipWhyLabel(why) {
+  const map = {
+    empty: "NSE JSON had no NIFTY print yet",
+    same_as_freeze: "widget still showing live NIFTY (not the 15:20 print)",
+    stamp_before_signal: "print clock is still before 15:20",
+    before_cas_window: "before 15:20 IST — scrape can still be checked",
+    stale_close: "overnight CLOSE leftover — ignored",
+    closing_without_stamp: "closingValue has no clock (yesterday)",
+    wrong_day: "print date is not today",
+    out_of_range: "print looks like garbage",
+    non_positive: "print is missing",
+    wrong_index: "not NIFTY 50",
+  };
+  return map[why] || why;
+}
+
+function AutoTapeStrip({ auto, autoLots }) {
+  const lat = auto.latency || {};
+  const executed = auto.status === "EXECUTED" || auto.status === "NO_TRADE" || auto.status === "FAILED";
+  const err = auto.nse_error || (auto.status === "FAILED" ? auto.reason : null);
+  return (
+    <div className="space-y-2" data-testid="cas-auto-tape">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <MiniCard label="Auto lots" value={String(autoLots)} mono />
+        <MiniCard label="Frozen NIFTY" value={fmt(auto.pre_signal_nifty, 2)} mono />
+        <MiniCard label="Locked ATM" value={auto.locked_atm != null ? String(auto.locked_atm) : "—"} mono />
+        <MiniCard label="Indicative" value={fmt(auto.indicative_nifty, 2)} mono />
+        <MiniCard
+          label="Delta"
+          value={auto.cas_delta != null ? `${auto.cas_delta > 0 ? "+" : ""}${fmt(auto.cas_delta, 2)}` : "—"}
+          mono
+        />
+        <MiniCard label="Signal" value={auto.signal || "—"} />
+        <MiniCard
+          label="Order"
+          value={
+            auto.tradingsymbol
+              ? `${auto.opt_type || ""} ${auto.order_status || ""}`.trim()
+              : auto.order_status || "—"
+          }
+        />
+      </div>
+
+      <div
+        className={`rounded-sm border px-2.5 py-2 text-[11px] leading-relaxed space-y-1 ${
+          err
+            ? "border-rose-200 bg-rose-50 text-rose-900"
+            : executed
+              ? "border-emerald-200 bg-emerald-50/80 text-slate-800"
+              : "border-slate-200 bg-white text-slate-700"
+        }`}
+        data-testid="cas-auto-detail"
+      >
+        {err && (
+          <p className="font-semibold break-all" data-testid="cas-auto-error">
+            Error: {auto.nse_error ? `NSE ${auto.nse_error}` : auto.reason}
+          </p>
+        )}
+        {!err && auto.nse_fetched_at && (
+          <p>
+            NSE scrape {auto.nse_error ? "failed" : "ok"}
+            {auto.nse_fetched_at ? ` · fetched ${fmtTime(auto.nse_fetched_at)}` : ""}
+            {auto.nse_last_field ? ` · ${auto.nse_last_field}` : ""}
+            {auto.nse_last_value != null ? ` ${fmt(auto.nse_last_value, 2)}` : ""}
+            {auto.nse_last_stamp ? ` · widget ${auto.nse_last_stamp}` : ""}
+            {auto.nse_last_status ? ` · ${auto.nse_last_status}` : ""}
+          </p>
+        )}
+        {!err && auto.nse_skip_why && auto.nse_skip_why !== "ok" && (
+          <p>Waiting: {skipWhyLabel(auto.nse_skip_why)}</p>
+        )}
+        {!auto.nse_fetched_at && !err && !executed && (
+          <p className="text-slate-500">
+            Turn Auto mode to <b>Paper</b> in cash hours. This strip shows NSE scrape errors, skip
+            reasons, then when/how the DRY-BUY fired and latency.
+          </p>
+        )}
+        {(auto.prepared_ce || auto.prepared_pe) && (
+          <p className="font-mono-data break-all text-[10px] text-slate-600">
+            {auto.prepared_ce ? `CE ${auto.prepared_ce}` : ""}
+            {auto.prepared_pe ? ` · PE ${auto.prepared_pe}` : ""}
+          </p>
+        )}
+        {auto.how && (
+          <p className="font-semibold" data-testid="cas-auto-how">
+            {auto.how}
+          </p>
+        )}
+        {auto.order_id && (
+          <p className="font-mono-data break-all">
+            Order {auto.order_id}
+            {auto.tradingsymbol ? ` · ${auto.tradingsymbol}` : ""}
+            {auto.quantity != null ? ` ×${auto.quantity}` : ""}
+          </p>
+        )}
+        {auto.fired_at && <p>When: {fmtTime(auto.fired_at)} IST</p>}
+        {lat.total_signal_to_order_ms != null && (
+          <p data-testid="cas-auto-latency">
+            Latency: decide {fmtMs(lat.data_to_decision_ms)} ms · send {fmtMs(lat.decision_to_order_ms)}{" "}
+            ms · total {fmtMs(lat.total_signal_to_order_ms)} ms
+            {lat.received_at ? ` · print ${fmtTime(lat.received_at)}` : ""}
+            {lat.order_ack_at ? ` · ack ${fmtTime(lat.order_ack_at)}` : ""}
+          </p>
+        )}
+        {auto.reason && auto.status !== "FAILED" && !auto.how && (
+          <p className="text-slate-600">{auto.reason}</p>
+        )}
+      </div>
+
+      {auto.last_rehearsal?.status && (
+        <p className="text-[11px] text-sky-800" data-testid="cas-auto-rehearsal">
+          Last rehearsal (did not spend today&apos;s 15:20 fire): {auto.last_rehearsal.status}
+          {auto.last_rehearsal.opt_type ? ` · ${auto.last_rehearsal.opt_type}` : ""}
+          {auto.last_rehearsal.tradingsymbol ? ` · ${auto.last_rehearsal.tradingsymbol}` : ""}
+          {auto.last_rehearsal.order_id ? ` · ${auto.last_rehearsal.order_id}` : ""}
+        </p>
       )}
     </div>
   );
