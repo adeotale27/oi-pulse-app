@@ -114,6 +114,21 @@ export function describeTickerRegime(changePct, isFlat, prevClose = 0, dayHigh =
   };
 }
 
+export function tickerRegimeChipClass(key, { onDark = false } = {}) {
+  if (onDark) {
+    return "bg-white/15 text-white border-white/25";
+  }
+  return (
+    {
+      bullish: "bg-emerald-50 text-emerald-800 border-emerald-200",
+      trending: "bg-sky-50 text-sky-800 border-sky-200",
+      "risk-off": "bg-rose-50 text-rose-800 border-rose-200",
+      range: "bg-amber-50 text-amber-900 border-amber-200",
+      steady: "bg-slate-100 text-slate-600 border-slate-200",
+    }[key] || "bg-slate-100 text-slate-600 border-slate-200"
+  );
+}
+
 export function tickerRegimeLabel(regime) {
   return TICKER_REGIME_GUIDE[regime]?.label || TICKER_REGIME_GUIDE.steady.label;
 }

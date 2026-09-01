@@ -127,6 +127,8 @@ class CasAutoTrade:
             "nse_last_stamp": None,
             "nse_last_status": None,
             "nse_skip_why": None,
+            "nse_first_at": None,
+            "nse_changed_at": None,
             "how": None,
             "fired_at": None,
             "last_rehearsal": None,
@@ -142,8 +144,13 @@ class CasAutoTrade:
                 self._cache = StrikeCache()
 
     def snapshot(self) -> Dict[str, Any]:
+        now = get_ist_now()
+        tnow = time_only(now)
         with self._lock:
-            return dict(self._state)
+            out = dict(self._state)
+        out["clock_ist"] = now.isoformat(timespec="seconds")
+        out["in_probe_window"] = tnow >= dtime(9, 15, 0) and tnow <= dtime(15, 40, 0)
+        return out
 
     def inject_indicative(self, value: float, settings: Dict[str, Any], client: Optional[KiteClient]) -> Dict[str, Any]:
         """Paper/debug: pretend NSE just printed ``value``.
@@ -232,28 +239,19 @@ class CasAutoTrade:
             poll_ms = 250
 
         status = self._state.get("status")
-        if status == "EXECUTED":
-            return
-        if self._state.get("order_status") == "failed":
-            # Do not re-send a MARKET order that the broker already rejected.
-            return
-        if status == "NO_TRADE" and not debug:
-            return
-        skip_prepare = status == "FAILED" and tnow > cutoff_t and not debug
-
-        warmup_t = dtime(max(0, prepare_t.hour), max(0, prepare_t.minute - 10), 0)
-        if tnow >= warmup_t or debug:
-            if not self._warmed_today:
-                self._warmed_today = self._provider.warmup()
-                with self._lock:
-                    self._state["nse_error"] = self._provider.last_error
+        latched = (
+            status == "EXECUTED"
+            or self._state.get("order_status") == "failed"
+            or (status == "NO_TRADE" and not debug)
+        )
+        skip_prepare = latched or (status == "FAILED" and tnow > cutoff_t and not debug)
 
         if not skip_prepare and (tnow >= prepare_t or debug) and not self._state.get("prepared_ce"):
             if status in ("IDLE", "FAILED", "PREPARING") or debug:
                 self._prepare(settings, client)
 
         status = self._state.get("status")
-        if status == "PREPARING" and (tnow >= arm_t or debug):
+        if not latched and status == "PREPARING" and (tnow >= arm_t or debug):
             with self._lock:
                 if self._state.get("prepared_ce") and self._state.get("prepared_pe"):
                     self._state["status"] = "ARMED"
@@ -266,22 +264,27 @@ class CasAutoTrade:
                     self._state["status"] = "NO_TRADE"
                     self._state["reason"] = "cutoff_passed_no_indicative"
                     self._state["how"] = "No BUY: cutoff 15:22 with no usable NSE indicative"
-            return
+            latched = True
 
+        status = self._state.get("status")
         in_hot = (
-            status == "ARMED"
+            not latched
+            and status == "ARMED"
             and (tnow >= signal_t or debug)
             and (tnow <= cutoff_t or debug)
         )
         cash = tnow >= dtime(9, 15, 0) and tnow <= dtime(15, 40, 0)
-        if debug or cash or tnow >= warmup_t:
-            now_m = time.monotonic()
-            gap = (poll_ms / 1000.0) if in_hot else 5.0
-            if now_m - self._last_poll_mono >= gap:
-                self._last_poll_mono = now_m
-                chosen = self._probe_nse(now)
-                if in_hot and chosen:
-                    self._on_indicative(chosen, settings, client)
+        now_m = time.monotonic()
+        gap = (poll_ms / 1000.0) if in_hot else (5.0 if cash else 30.0)
+        if now_m - self._last_poll_mono >= gap:
+            self._last_poll_mono = now_m
+            if not self._warmed_today:
+                self._warmed_today = self._provider.warmup()
+                with self._lock:
+                    self._state["nse_error"] = self._provider.last_error
+            chosen = self._probe_nse(now)
+            if in_hot and chosen:
+                self._on_indicative(chosen, settings, client)
 
     def _probe_nse(self, now: datetime) -> Optional[Dict[str, Any]]:
         """Hit NSE JSON. Always update the tape strip; return a fireable hit or None."""
@@ -304,7 +307,18 @@ class CasAutoTrade:
             self._state["nse_fetched_at"] = getattr(self._provider, "last_fetch_at", None)
             self._state["nse_skip_why"] = None if chosen else last_why
             if hit0:
-                self._state["nse_last_value"] = hit0.get("value")
+                prev = self._state.get("nse_last_value")
+                val = hit0.get("value")
+                stamp = get_ist_now().isoformat(timespec="milliseconds")
+                if prev is None and val is not None:
+                    self._state["nse_first_at"] = stamp
+                try:
+                    changed = prev is not None and abs(float(val) - float(prev)) > 0.001
+                except (TypeError, ValueError):
+                    changed = prev != val
+                if changed:
+                    self._state["nse_changed_at"] = stamp
+                self._state["nse_last_value"] = val
                 self._state["nse_last_field"] = hit0.get("field")
                 self._state["nse_last_stamp"] = hit0.get("indicative_time")
                 self._state["nse_last_status"] = hit0.get("status")

@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.12 — 2026-09-02
+
+Paper Auto Trade shows **NSE live** (first pull + later changes) vs the **fire print**, keeps probing after EXECUTED, and explains leave-Paper-on / inject. CAS `/cas/status` no longer re-hits ipify on every failed lookup (that caused 12s timeouts). Header index tiles use a small regime chip; OI bias bar is a compact label, not a pink wash.
+
 ## V9.11 — 2026-09-02
 
 CAS Auto Trade Paper probes NSE JSON in cash hours and writes scrape errors, skip reasons, and the fire recap (when, how, DRY-BUY id, latency) into the strip under the cards — so you can confirm the tape before Live.

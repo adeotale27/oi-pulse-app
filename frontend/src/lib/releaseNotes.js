@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.12",
+    date: "2026-09-02",
+    user: [
+      "15:20 Paper: NSE live print updates in the cards as scrape arrives; fire print is separate. Header index tiles show a small regime chip. Day OI bias bar is cleaner.",
+    ],
+    admin: [
+      "Egress IP lookup caches misses (CAS status was waiting on ipify). Auto Trade still probes NSE after EXECUTED for display only.",
+    ],
+  },
+  {
     version: "9.11",
     date: "2026-09-02",
     user: [

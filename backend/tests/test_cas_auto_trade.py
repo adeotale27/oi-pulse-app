@@ -454,3 +454,35 @@ def test_tick_surfaces_nse_http_error(auto, monkeypatch):
     assert snap["nse_error"] == "403 Forbidden"
     assert snap["nse_skip_why"] == "empty"
     assert snap["status"] == "IDLE"
+
+
+def test_tick_after_executed_still_updates_live_nse(auto, monkeypatch):
+    _freeze_ist(monkeypatch, FIRE_AT)
+    auto._warmed_today = True
+    auto._last_poll_mono = 0.0
+    auto._state["status"] = "EXECUTED"
+    auto._provider = FakeNse(
+        [
+            {
+                "value": 24055.8,
+                "field": "indexLast",
+                "status": "OPEN",
+                "index_name": "NIFTY 50",
+                "indicative_time": "01-Sep-2026 15:20:40",
+            }
+        ]
+    )
+    auto.tick(
+        {
+            "auto_trade_mode": "paper",
+            "auto_trade_enabled": True,
+            "lots": 1,
+            "product": "NRML",
+        },
+        FakeClient(),
+    )
+    snap = auto.snapshot()
+    assert snap["status"] == "EXECUTED"
+    assert snap["nse_last_value"] == 24055.8
+    assert snap["nse_first_at"]
+    assert snap["in_probe_window"] is True

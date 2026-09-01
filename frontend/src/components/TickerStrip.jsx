@@ -5,7 +5,7 @@ import { isMarketQuiescent } from "@/lib/marketTimes";
 import { INDEX_CHIP_CAP } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
 import InfoTip from "@/components/InfoTip";
-import { describeTickerRegime } from "@/lib/tickerRegime";
+import { describeTickerRegime, tickerRegimeChipClass } from "@/lib/tickerRegime";
 
 function fmtNum(v, dp = 2) {
   if (v == null || Number.isNaN(Number(v))) return "—";
@@ -414,32 +414,33 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             </div>
           </TileTag>
             {isHeader && (
-              <div className="mx-1.5 mb-1.5 rounded-[8px] border border-slate-200 bg-white/80 px-1.5 py-1 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-                <div className="flex items-center justify-between gap-1 text-[8px] uppercase tracking-[0.14em] text-slate-500">
-                  <div className="flex min-w-0 items-center gap-1">
-                    <span className="truncate text-slate-600">Regime</span>
-                    <InfoTip
-                      title="Index regime"
-                      size="xs"
-                      className="shrink-0"
-                      testId={`regime-tip-${t.index}`}
-                    >
-                      <div className="space-y-1.5">
-                        <div><b>Now:</b> {regime.label}</div>
-                        <div>{regime.why}</div>
-                        <div>{regime.text}</div>
-                        <div className="mt-1 pt-1 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
-                          <div><b>Ranging:</b> day high–low is wider than the net move from prev close (chop).</div>
-                          <div><b>Trend:</b> most of today’s range is one-way from prev close.</div>
-                          <div><b>Bullish / risk-off:</b> strong net % vs prev close.</div>
-                          <div><b>Quiet:</b> both net move and range are small.</div>
-                          <div className="text-slate-500">This is the index tape, not Positions Brains book risk.</div>
-                        </div>
-                      </div>
-                    </InfoTip>
+              <div className="flex items-center gap-1 px-2 pb-1.5">
+                <span
+                  className={`inline-flex min-w-0 truncate rounded-sm border px-1 py-px text-[9px] font-semibold leading-tight ${tickerRegimeChipClass(regime.key, { onDark: isActive })}`}
+                  title={regime.why}
+                  data-testid={`regime-chip-${t.index}`}
+                >
+                  {regimeLabel}
+                </span>
+                <InfoTip
+                  title="Index tape"
+                  size="xs"
+                  className="shrink-0"
+                  testId={`regime-tip-${t.index}`}
+                >
+                  <div className="space-y-1.5">
+                    <div><b>Now:</b> {regime.label}</div>
+                    <div>{regime.why}</div>
+                    <div>{regime.text}</div>
+                    <div className="mt-1 pt-1 border-t border-slate-200 space-y-0.5">
+                      <div><b>Ranging:</b> high–low wider than net from prev close.</div>
+                      <div><b>Trend:</b> most of the day’s range is one-way.</div>
+                      <div><b>Bullish / risk-off:</b> strong net %.</div>
+                      <div><b>Quiet:</b> net and range both small.</div>
+                      <div className="text-slate-500">Index tape, not Positions Brains.</div>
+                    </div>
                   </div>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-[2px] font-mono-data text-[8px] font-semibold text-slate-800">{regimeLabel}</span>
-                </div>
+                </InfoTip>
               </div>
             )}
           </div>

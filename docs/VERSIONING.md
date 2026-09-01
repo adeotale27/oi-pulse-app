@@ -2,7 +2,7 @@
 
 Product **name** lives in **`APP_NAME`** at repo root (currently **StrikLenz**). Change that one line and rebuild; backend and UI read it.
 
-Product **version** lives in **`VERSION`** at repo root (currently **V9.11**). Display it as `V` + that number (`V5.10`).
+Product **version** lives in **`VERSION`** at repo root (currently **V9.12**). Display it as `V` + that number (`V5.10`).
 
 Keep these in lockstep on every ship:
 

@@ -84,7 +84,7 @@ This is the same 15:20 path as Live, except the BUY is a dry-run.
 
 1. Publisher **Kite connected** (quotes and ATM symbols). Classic CAS: **do not Activate Live**.
 2. CAS page → **15:20 Auto Trade** → Auto mode **Paper** (not Live). Classic Activate **not** needed.
-3. In cash hours the strip **under the cards** shows NSE scrape: last fetch, widget field/value, or the HTTP error. Skips like “still live NIFTY” are waiting, not a fire.
+3. **NSE live** is the widget print as it changes. **Fire print** is the one print used for the BUY. After a fire, NSE live still updates; there is no second order.
 4. When it fires: same strip shows **when** (IST), **how** (CE/PE, freeze vs indicative, DRY-BUY), and **latency**.
 5. Optional before 15:20: **Inject first print** → rehearsal on today’s live freeze (does not spend the 15:20 fire).
 6. Leave **Paper** on through **15:19:30–15:22** for the real NSE print. Do **not** Inject at/after 15:20 if you want NSE to be the day’s paper print.
