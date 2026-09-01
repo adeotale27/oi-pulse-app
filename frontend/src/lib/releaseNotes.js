@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.10",
+    date: "2026-09-01",
+    user: [
+      "CAS Auto Trade Paper now follows the live 15:20 path without a real Zerodha buy, so you can watch the cash session before turning Live on.",
+    ],
+    admin: [
+      "Paper MARKET BUY skips Kite connect (dry-run only). Inject before 15:20 IST stores last_rehearsal and leaves today’s status free for the real NSE print.",
+    ],
+  },
+  {
     version: "9.09",
     date: "2026-09-01",
     user: [

@@ -111,6 +111,7 @@ class CasAutoTrade:
             "quantity": None,
             "latency": {},
             "nse_error": None,
+            "last_rehearsal": None,
         }
 
     def reset_if_new_day(self) -> None:
@@ -127,27 +128,67 @@ class CasAutoTrade:
             return dict(self._state)
 
     def inject_indicative(self, value: float, settings: Dict[str, Any], client: Optional[KiteClient]) -> Dict[str, Any]:
-        """Paper/debug: pretend NSE just printed ``value``."""
+        """Paper/debug: pretend NSE just printed ``value``.
+
+        Before 15:20 this is a **rehearsal** (live Kite freeze + dry order) and does
+        not consume today's 15:20 fire. From 15:20 it is the day's paper/live path.
+        """
         mode = str(settings.get("auto_trade_mode") or "off").lower()
         if mode == "live":
-            raise RuntimeError("Inject is Paper/Debug only")
+            raise RuntimeError("Inject is paper-only. Switch Auto mode to Paper, then inject.")
+        if mode != "paper":
+            raise RuntimeError("Turn Auto mode to Paper first (live Kite tape, dry-run BUY). Inject is disabled while Off.")
         self.reset_if_new_day()
+        signal_t = _parse_hhmm(settings.get("auto_signal_start"), dtime(15, 20, 0))
+        rehearsal = time_only(get_ist_now()) < signal_t
+        saved_state = None
+        saved_cache = None
+        if rehearsal:
+            with self._lock:
+                saved_state = dict(self._state)
+                saved_cache = self._cache
         with self._lock:
-            if self._state.get("status") in ("EXECUTED", "EXECUTING"):
+            if not rehearsal and self._state.get("status") in ("EXECUTED", "EXECUTING"):
                 raise RuntimeError("Already executed today")
-        if not self._state.get("prepared_ce"):
-            self._prepare(settings, client, force=True)
-        if not self._state.get("prepared_ce"):
-            raise RuntimeError(self._state.get("reason") or "prepare_failed")
-        hit = {
-            "value": float(value),
-            "field": "inject",
-            "status": "INJECT",
-            "index_name": "NIFTY 50",
-            "indicative_time": get_ist_now().strftime("%d-%b-%Y %H:%M:%S"),
-            "received_at": get_ist_now().isoformat(timespec="milliseconds"),
-        }
-        self._on_indicative(hit, settings, client)
+        ran = None
+        try:
+            if not self._state.get("prepared_ce"):
+                self._prepare(settings, client, force=True)
+            if not self._state.get("prepared_ce"):
+                ran = dict(self._state)
+                raise RuntimeError(self._state.get("reason") or "prepare_failed")
+            hit = {
+                "value": float(value),
+                "field": "inject",
+                "status": "INJECT",
+                "index_name": "NIFTY 50",
+                "indicative_time": get_ist_now().strftime("%d-%b-%Y %H:%M:%S"),
+                "received_at": get_ist_now().isoformat(timespec="milliseconds"),
+            }
+            self._on_indicative(hit, settings, client)
+            ran = dict(self._state)
+        finally:
+            if rehearsal and saved_state is not None:
+                with self._lock:
+                    self._state = saved_state
+                    self._cache = saved_cache
+                    if ran is not None:
+                        ran["rehearsal"] = True
+                        self._state["last_rehearsal"] = {
+                            "status": ran.get("status"),
+                            "signal": ran.get("signal"),
+                            "opt_type": ran.get("opt_type"),
+                            "tradingsymbol": ran.get("tradingsymbol"),
+                            "order_id": ran.get("order_id"),
+                            "order_status": ran.get("order_status"),
+                            "locked_atm": ran.get("locked_atm"),
+                            "pre_signal_nifty": ran.get("pre_signal_nifty"),
+                            "indicative_nifty": ran.get("indicative_nifty"),
+                            "cas_delta": ran.get("cas_delta"),
+                            "quantity": ran.get("quantity"),
+                            "reason": ran.get("reason"),
+                            "at": get_ist_now().isoformat(timespec="milliseconds"),
+                        }
         return self.snapshot()
 
     def tick(self, settings: Dict[str, Any], client: Optional[KiteClient]) -> None:
@@ -392,7 +433,7 @@ class CasAutoTrade:
     ) -> None:
         mode = str(settings.get("auto_trade_mode") or "paper").lower()
         live = mode == "live"
-        if live and not getattr(client, "kite", None):
+        if live and (client is None or not getattr(client, "kite", None)):
             with self._lock:
                 self._state["status"] = "FAILED"
                 self._state["reason"] = "kite_not_connected"

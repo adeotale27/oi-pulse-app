@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.10 — 2026-09-01
+
+CAS Auto Trade **Paper** is a live-session dry-run: real Kite NIFTY freeze and real NSE first print, `DRY-BUY` only (no account fill). Inject before 15:20 is a rehearsal that does not spend the day’s fire. Classic Activate is still not required for this arm.
+
 ## V9.09 — 2026-09-01
 
 Index regime chips use net % vs previous close **and** the day’s high–low: **Ranging** when the band is wider than the net move (chop), **Quiet** when both are small, **Trend / Bullish / Risk-off** when the session is one-way. Tooltips show the numbers. CAS page splits **15:20 Auto Trade** (own lots, BUY one) from **15:28 Expiry** (own lots, SELL both).

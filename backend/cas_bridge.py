@@ -593,7 +593,7 @@ def reset_day(tracker) -> Dict[str, Any]:
 
 
 def inject_auto_trade(indicative: float, tracker=None) -> Dict[str, Any]:
-    """Paper/debug: fake the first NSE indicative print."""
+    """Paper: fake the first NSE indicative (rehearsal before 15:20)."""
     if tracker is not None:
         sync_credentials_from_tracker(tracker)
     from cas_auto_trade import get_auto_trade

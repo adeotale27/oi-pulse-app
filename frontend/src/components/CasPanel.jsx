@@ -53,15 +53,18 @@ const GUIDE = (
       <b>15:28 Expiry</b> sells Call + Put when the CAS print appears.
     </p>
     <p>
-      <b>Paper</b> — watches the live feed and pretends to trade (safe).
-      <b> Live</b> — places real Zerodha MARKET orders (admin only). Do not run both Live.
+      <b>Paper</b> — live Kite NIFTY + live NSE prints, but the MARKET is a dry-run
+      (no fill on your account). Use Auto Trade Paper in the cash session to
+      check 15:20 before switching Live.
+      <b> Live</b> — real Zerodha MARKET orders (admin only). Do not run both Live.
     </p>
     <p>
-      <b>Debug</b> — Activate anytime (even after hours). With Paper, windows
+      <b>Debug</b> — classic Activate anytime (even after hours). With Paper, windows
       widen so you can see ticks, last close, and dry-run timing.
     </p>
     <p>
-      Nothing fires until you click <b>Activate</b>. Normal window ≈ 15:27–15:35 IST.
+      Classic 15:28 expiry does not fire until you click <b>Activate</b> (window ≈ 15:27–15:35 IST).
+      15:20 Auto Trade runs from the Auto mode toggle (Paper or Live); classic Activate is not required.
       Tue = NIFTY · Thu = SENSEX.
     </p>
   </div>
@@ -807,16 +810,20 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                   15:20 Auto Trade — BUY one ATM
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed max-w-prose">
-                  Separate from 15:28 expiry sells. NIFTY only: freeze live NIFTY ~15:19:30, lock that
-                  ATM, then one MARKET <b>BUY</b> of CE or PE if the first 15:20 indicative is ±15 pts.
-                  You exit in Positions. Lots below are <b>this arm only</b> (not expiry lots).
+                  Separate from 15:28 expiry sells. NIFTY only: freeze live Kite NIFTY ~15:19:30, lock that
+                  ATM, then one MARKET <b>BUY</b> of CE or PE if the first 15:20 NSE indicative is ±15 pts.
+                  <b>Paper</b> uses that same live tape and prints a <b>DRY-BUY</b> id (no Zerodha fill) so you
+                  can watch a real session before Live. You exit in Positions. Lots below are{" "}
+                  <b>this arm only</b> (not expiry lots).
                 </p>
               </div>
               <InfoTip title="Auto Trade" testId="cas-auto-trade-tip">
                 <div className="space-y-2 text-[12px] leading-relaxed">
                   <p>
-                    Website JSON is seconds-late, not exchange multicast. Paper first. Do not run
-                    Auto-Trade Live together with classic CAS Live on expiry Tuesday.
+                    Website JSON is seconds-late, not exchange multicast. Leave Auto mode on{" "}
+                    <b>Paper</b> during cash hours: real NIFTY freeze, real NSE first print, dry-run
+                    BUY. Switch Live only after that looks right. Do not run Auto-Trade Live together
+                    with classic CAS Live.
                   </p>
                   <p>
                     ATM is never taken from the indicative print. Overnight CLOSE leftovers are
@@ -928,8 +935,19 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                 {fmtMs(auto.latency.total_signal_to_order_ms)} ms
               </p>
             )}
+            {auto.last_rehearsal?.status && (
+              <p className="text-[11px] text-sky-800" data-testid="cas-auto-rehearsal">
+                Last rehearsal (did not spend today&apos;s 15:20 fire): {auto.last_rehearsal.status}
+                {auto.last_rehearsal.opt_type ? ` · ${auto.last_rehearsal.opt_type}` : ""}
+                {auto.last_rehearsal.tradingsymbol ? ` · ${auto.last_rehearsal.tradingsymbol}` : ""}
+                {auto.last_rehearsal.order_id ? ` · ${auto.last_rehearsal.order_id}` : ""}
+                {auto.last_rehearsal.cas_delta != null
+                  ? ` · Δ ${auto.last_rehearsal.cas_delta > 0 ? "+" : ""}${fmt(auto.last_rehearsal.cas_delta, 2)}`
+                  : ""}
+              </p>
+            )}
 
-            {isAdmin && (autoPaper || debug) && !autoLive && (
+            {isAdmin && autoPaper && !autoLive && (
               <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-slate-100">
                 <label className="text-[10px] uppercase tracking-wider text-slate-500">
                   Inject print (paper)
@@ -953,6 +971,11 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                 >
                   Inject first print
                 </Button>
+                <p className="text-[10px] text-slate-500 max-w-md leading-snug">
+                  Before 15:20 IST this is a rehearsal on today&apos;s live freeze (DRY-BUY, does not
+                  consume the 15:20 fire). From 15:20 it is today&apos;s paper print — leave Paper on
+                  and let NSE fire instead if you are checking the live session.
+                </p>
               </div>
             )}
           </section>

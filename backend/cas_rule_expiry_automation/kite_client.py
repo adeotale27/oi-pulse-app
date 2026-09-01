@@ -241,7 +241,7 @@ class KiteClient:
           variety=regular, transaction_type=SELL, validity=DAY,
           product=NRML|MIS, market_protection=-1
         """
-        if not self.kite:
+        if live and not self.kite:
             self.connect()
 
         symbol = (tradingsymbol or "").strip()
@@ -276,9 +276,6 @@ class KiteClient:
         tag: str = "CASRULE",
         live: bool = False,
     ) -> Any:
-        if not self.kite:
-            self.connect()
-
         symbol = (tradingsymbol or "").strip()
         if not symbol:
             raise ValueError("tradingsymbol is empty")
@@ -303,6 +300,9 @@ class KiteClient:
                 prod,
             )
             return f"DRY-{side_u}-{symbol}-{int(time.time()*1000)%100000}"
+
+        if not self.kite:
+            self.connect()
 
         # Never pass price=0 / trigger_price=0 — those are LIMIT/SL fields and
         # the pykiteconnect client omits only None (0 would be sent to Kite).
