@@ -1,7 +1,13 @@
 """NSE Indicative NIFTY 50 — structured JSON, not HTML scrape.
 
-The CAS page widget is fed by GET /api/marketStatus → indicativenifty50.
-Same cookie warmup pattern as FII/DII (Akamai).
+The nseindia.com homepage **Indicative Close** is not the leftover
+``/api/marketStatus`` CLOSE print. At 15:20 it lives on:
+
+- ``/api/NextApi/apiClient?functionName=getIndexData&&type=ALL`` → NIFTY 50 ``indicativeClose`` + ``timeVal``
+- ``/api/allIndices`` → NIFTY 50 ``indicativeClose``
+
+``/api/marketStatus`` → ``indicativenifty50`` is a fallback only. Overnight CLOSE
+leftovers are still ignored. Same cookie warmup pattern as FII/DII (Akamai).
 """
 
 from __future__ import annotations
@@ -19,6 +25,11 @@ logger = logging.getLogger(__name__)
 NSE_HOME = "https://www.nseindia.com/"
 NSE_CAS_PAGE = "https://www.nseindia.com/market-data/closing-auction-session"
 NSE_MARKET_STATUS = "https://www.nseindia.com/api/marketStatus"
+NSE_INDEX_DATA = (
+    "https://www.nseindia.com/api/NextApi/apiClient"
+    "?functionName=getIndexData&&type=ALL"
+)
+NSE_ALL_INDICES = "https://www.nseindia.com/api/allIndices"
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -44,9 +55,51 @@ API_HEADERS = {
     "Sec-Fetch-Site": "same-origin",
 }
 
+HOME_API_HEADERS = {**API_HEADERS, "Referer": NSE_HOME}
+
 # Live NIFTY often sits on indexLast until the 15:20 indicative actually prints.
 # Treat that leftover as "not yet" — do not consume it as the day's first CAS print.
 FREEZE_EPS = 0.51
+NIFTY_50_NAMES = frozenset({"NIFTY 50", "NIFTY50"})
+
+
+def _norm_index_name(name: Any) -> str:
+    return " ".join(str(name or "").upper().split())
+
+
+def _is_nifty_50(name: Any) -> bool:
+    return _norm_index_name(name) in NIFTY_50_NAMES
+
+
+def _pos_float(raw: Any) -> Optional[float]:
+    try:
+        n = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    return n
+
+
+def _hit(
+    value: float,
+    field: str,
+    *,
+    status: Any = "",
+    index_name: Any = "NIFTY 50",
+    indicative_time: Any = None,
+    raw: Optional[Dict[str, Any]] = None,
+    source: str = "",
+) -> Dict[str, Any]:
+    return {
+        "value": value,
+        "field": field,
+        "status": str(status or ""),
+        "index_name": str(index_name or "NIFTY 50"),
+        "indicative_time": indicative_time,
+        "raw": raw or {},
+        "source": source,
+    }
 
 
 def extract_indicative_hits(payload: Dict[str, Any]) -> list:
@@ -67,14 +120,15 @@ def extract_indicative_hits(payload: Dict[str, Any]) -> list:
         if n <= 0 or n in seen:
             continue
         seen.add(n)
-        hits.append({
-            "value": n,
-            "field": key,
-            "status": str(block.get("status") or ""),
-            "index_name": str(block.get("indexName") or ""),
-            "indicative_time": block.get("indicativeTime") or block.get("dateTime"),
-            "raw": block,
-        })
+        hits.append(_hit(
+            n,
+            key,
+            status=block.get("status"),
+            index_name=block.get("indexName") or "NIFTY 50",
+            indicative_time=block.get("indicativeTime") or block.get("dateTime"),
+            raw=block,
+            source="marketStatus",
+        ))
     return hits
 
 
@@ -82,6 +136,97 @@ def extract_indicative(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Pull a candidate NIFTY indicative print from marketStatus JSON."""
     hits = extract_indicative_hits(payload)
     return hits[0] if hits else None
+
+
+def _rows_from_payload(payload: Any) -> list:
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        return []
+    data = payload.get("data")
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("data", "indexData", "indices", "index"):
+            inner = data.get(key)
+            if isinstance(inner, list):
+                return inner
+    for key in ("indexData", "indices"):
+        inner = payload.get(key)
+        if isinstance(inner, list):
+            return inner
+    return []
+
+
+def extract_index_data_hits(payload: Any) -> list:
+    """Homepage Indicative Close: NextApi getIndexData NIFTY 50 indicativeClose."""
+    hits = []
+    for row in _rows_from_payload(payload):
+        if not isinstance(row, dict):
+            continue
+        name = row.get("indexName") or row.get("index") or row.get("name")
+        if not _is_nifty_50(name):
+            continue
+        stamp = row.get("timeVal") or row.get("timeStamp") or row.get("timestamp")
+        for key in ("indicativeClose", "last"):
+            n = _pos_float(row.get(key))
+            if n is None:
+                continue
+            hits.append(_hit(
+                n,
+                key,
+                status=row.get("status") or "",
+                index_name=name,
+                indicative_time=stamp,
+                raw=row,
+                source="getIndexData",
+            ))
+        break
+    return hits
+
+
+def extract_all_indices_hits(payload: Any) -> list:
+    """Fallback homepage number: /api/allIndices NIFTY 50 indicativeClose."""
+    hits = []
+    for row in _rows_from_payload(payload):
+        if not isinstance(row, dict):
+            continue
+        name = row.get("index") or row.get("indexName") or row.get("name")
+        if not _is_nifty_50(name):
+            continue
+        stamp = row.get("timeVal") or row.get("timeStamp") or row.get("timestamp")
+        for key in ("indicativeClose", "last"):
+            n = _pos_float(row.get(key))
+            if n is None:
+                continue
+            hits.append(_hit(
+                n,
+                key,
+                status=row.get("status") or "",
+                index_name=name,
+                indicative_time=stamp,
+                raw=row,
+                source="allIndices",
+            ))
+        break
+    return hits
+
+
+def merge_nse_indicative_hits(*groups: list) -> list:
+    """Homepage indicativeClose first; de-dupe identical field+price."""
+    out = []
+    seen = set()
+    for group in groups:
+        for hit in group or []:
+            try:
+                dkey = (str(hit.get("field") or ""), round(float(hit["value"]), 2))
+            except (TypeError, ValueError, KeyError):
+                continue
+            if dkey in seen:
+                continue
+            seen.add(dkey)
+            out.append(hit)
+    return out
 
 
 def parse_nse_stamp(stamp: Any) -> Optional[datetime]:
@@ -197,19 +342,20 @@ class NseIndicativeProvider:
     def fetch(self) -> list:
         received = get_ist_now().isoformat(timespec="milliseconds")
         try:
-            client = self._ensure_client()
             if not self._warmed:
                 self.warmup()
-            resp = client.get(NSE_MARKET_STATUS, headers=API_HEADERS, timeout=8.0)
-            if resp.status_code in (401, 403):
-                self._warmed = False
-                self.warmup()
-                resp = client.get(NSE_MARKET_STATUS, headers=API_HEADERS, timeout=8.0)
-            resp.raise_for_status()
-            payload = resp.json()
-            hits = extract_indicative_hits(payload if isinstance(payload, dict) else {})
+            idx = self._get_json(NSE_INDEX_DATA, HOME_API_HEADERS)
+            alli = self._get_json(NSE_ALL_INDICES, HOME_API_HEADERS)
+            mkt = self._get_json(NSE_MARKET_STATUS, API_HEADERS)
+            hits = merge_nse_indicative_hits(
+                extract_index_data_hits(idx),
+                extract_all_indices_hits(alli),
+                extract_indicative_hits(mkt if isinstance(mkt, dict) else {}),
+            )
             self.last_fetch_at = received
             if not hits:
+                if not self._last_error:
+                    self._last_error = "no_nifty_print"
                 return []
             for hit in hits:
                 hit["received_at"] = received
@@ -221,6 +367,24 @@ class NseIndicativeProvider:
             self.last_fetch_at = received
             logger.warning("NSE indicative fetch failed: %s", exc)
             return []
+
+    def _get_json(self, url: str, headers: Dict[str, str]) -> Any:
+        client = self._ensure_client()
+        resp = client.get(url, headers=headers, timeout=8.0)
+        if resp.status_code in (401, 403):
+            self._warmed = False
+            self.warmup()
+            resp = client.get(url, headers=headers, timeout=8.0)
+        if resp.status_code >= 400:
+            logger.warning("NSE GET %s status=%s", url.split("?")[0], resp.status_code)
+            self._last_error = f"HTTP {resp.status_code}"
+            return None
+        try:
+            return resp.json()
+        except Exception as exc:
+            logger.warning("NSE GET %s JSON failed: %s", url.split("?")[0], exc)
+            self._last_error = str(exc)[:240]
+            return None
 
     @property
     def last_error(self) -> Optional[str]:

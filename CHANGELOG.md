@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.16 — 2026-09-02
+
+CAS Auto Trade 15:20 now uses the nseindia.com **Indicative Close** (`getIndexData` / `allIndices`), not the leftover `marketStatus` CLOSE print (previous close). Overnight CLOSE leftovers stay ignored. Live still needs the **backend** IP on the Kite developer allowlist.
+
 ## V9.15 — 2026-09-02
 
 CAS Auto Trade **Paper** is WATCHING as soon as you switch it on: NSE cookies and ATM preview load before 15:20, then the same freeze / first-print / DRY-BUY path as Live (no Zerodha fill). Paper fires are stored in a test log on the CAS page.

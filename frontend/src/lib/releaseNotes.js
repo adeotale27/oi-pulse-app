@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.16",
+    date: "2026-09-02",
+    user: [
+      "15:20 Auto Trade now reads the NSE homepage Indicative Close (the live 15:20 number), not yesterday’s previous close leftover on the old widget.",
+    ],
+    admin: [
+      "cas_indicative_nse polls getIndexData + allIndices indicativeClose first; marketStatus CLOSE leftover is last and still rejected. Live Kite IP allowlist is backend egress, not the scrape.",
+    ],
+  },
+  {
     version: "9.15",
     date: "2026-09-02",
     user: [
