@@ -2,7 +2,7 @@
 
 ## V9.16 — 2026-09-02
 
-CAS Auto Trade 15:20 now uses the nseindia.com **Indicative Close** (`getIndexData` / `allIndices`), not the leftover `marketStatus` CLOSE print (previous close). Overnight CLOSE leftovers stay ignored. Live still needs the **backend** IP on the Kite developer allowlist.
+CAS Auto Trade 15:20 now uses the nseindia.com **Indicative Close** (`getIndexData?type=ALL` / `allIndices` field `indicativeClose` only). Do not use cash `last`, and do not call getIndexData with `index=NIFTY 50` (that zeros the field). Leftover `marketStatus` CLOSE / previous close stay ignored. Live still needs the **backend** IP on the Kite developer allowlist.
 
 ## V9.15 — 2026-09-02
 

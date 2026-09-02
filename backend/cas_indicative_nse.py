@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 NSE_HOME = "https://www.nseindia.com/"
 NSE_CAS_PAGE = "https://www.nseindia.com/market-data/closing-auction-session"
 NSE_MARKET_STATUS = "https://www.nseindia.com/api/marketStatus"
+# type=ALL is required. Adding &&index=NIFTY%2050 returns the same rows but
+# zeros NIFTY 50 indicativeClose (verified on nseindia.com 2 Sep 2026 15:30).
 NSE_INDEX_DATA = (
     "https://www.nseindia.com/api/NextApi/apiClient"
     "?functionName=getIndexData&&type=ALL"
@@ -158,9 +160,29 @@ def _rows_from_payload(payload: Any) -> list:
     return []
 
 
+def _homepage_indicative_hit(row: Dict[str, Any], *, source: str, stamp: Any) -> Optional[Dict[str, Any]]:
+    """Homepage widget field only. Cash ``last`` is not Indicative Close."""
+    name = row.get("indexName") or row.get("index") or row.get("name")
+    n = _pos_float(row.get("indicativeClose"))
+    if n is None:
+        return None
+    prev = _pos_float(row.get("previousClose"))
+    hit = _hit(
+        n,
+        "indicativeClose",
+        status=row.get("status") or "",
+        index_name=name,
+        indicative_time=stamp,
+        raw=row,
+        source=source,
+    )
+    if prev is not None:
+        hit["previous_close"] = prev
+    return hit
+
+
 def extract_index_data_hits(payload: Any) -> list:
     """Homepage Indicative Close: NextApi getIndexData NIFTY 50 indicativeClose."""
-    hits = []
     for row in _rows_from_payload(payload):
         if not isinstance(row, dict):
             continue
@@ -168,48 +190,26 @@ def extract_index_data_hits(payload: Any) -> list:
         if not _is_nifty_50(name):
             continue
         stamp = row.get("timeVal") or row.get("timeStamp") or row.get("timestamp")
-        for key in ("indicativeClose", "last"):
-            n = _pos_float(row.get(key))
-            if n is None:
-                continue
-            hits.append(_hit(
-                n,
-                key,
-                status=row.get("status") or "",
-                index_name=name,
-                indicative_time=stamp,
-                raw=row,
-                source="getIndexData",
-            ))
-        break
-    return hits
+        hit = _homepage_indicative_hit(row, source="getIndexData", stamp=stamp)
+        return [hit] if hit else []
+    return []
 
 
 def extract_all_indices_hits(payload: Any) -> list:
     """Fallback homepage number: /api/allIndices NIFTY 50 indicativeClose."""
-    hits = []
+    top_stamp = None
+    if isinstance(payload, dict):
+        top_stamp = payload.get("timestamp")
     for row in _rows_from_payload(payload):
         if not isinstance(row, dict):
             continue
         name = row.get("index") or row.get("indexName") or row.get("name")
         if not _is_nifty_50(name):
             continue
-        stamp = row.get("timeVal") or row.get("timeStamp") or row.get("timestamp")
-        for key in ("indicativeClose", "last"):
-            n = _pos_float(row.get(key))
-            if n is None:
-                continue
-            hits.append(_hit(
-                n,
-                key,
-                status=row.get("status") or "",
-                index_name=name,
-                indicative_time=stamp,
-                raw=row,
-                source="allIndices",
-            ))
-        break
-    return hits
+        stamp = row.get("timeVal") or row.get("timeStamp") or top_stamp
+        hit = _homepage_indicative_hit(row, source="allIndices", stamp=stamp)
+        return [hit] if hit else []
+    return []
 
 
 def merge_nse_indicative_hits(*groups: list) -> list:
@@ -300,6 +300,13 @@ def accept_first_indicative(
         try:
             if abs(float(hit.get("value") or 0) - float(freeze)) < FREEZE_EPS:
                 return False, "same_as_freeze"
+        except (TypeError, ValueError):
+            return False, "bad_value"
+    prev = hit.get("previous_close")
+    if prev is not None:
+        try:
+            if abs(float(hit.get("value") or 0) - float(prev)) < FREEZE_EPS:
+                return False, "same_as_prev_close"
         except (TypeError, ValueError):
             return False, "bad_value"
     return True, "ok"

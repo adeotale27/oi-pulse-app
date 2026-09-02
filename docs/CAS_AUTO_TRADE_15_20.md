@@ -155,9 +155,11 @@ Do **not** recompute `atm` when the indicative arrives.
 
 Walk prints in this order (skip duplicate field+price):
 
-1. Homepage **`indicativeClose`** (`getIndexData`, then `allIndices`)
-2. Homepage cash **`last`** on those payloads (usually the freeze — skipped)
-3. `marketStatus` **`indexLast` then `closingValue`**
+1. Homepage **`indicativeClose`** from `getIndexData?functionName=getIndexData&&type=ALL` (do **not** add `&&index=NIFTY 50` — that URL zeros `indicativeClose`)
+2. Same field on `/api/allIndices` (clock from payload `timestamp` if the row has none)
+3. `marketStatus` **`indexLast` then `closingValue`** as fallback only
+
+Cash **`last`** on those payloads is the continuous NIFTY print, **not** Indicative Close. After ~15:30 NSE often sets `indicativeClose` to **0**; ignore that and do not substitute `last`. Also skip an `indicativeClose` that still equals **`previousClose`**.
 
 A hit is **rejected** if:
 

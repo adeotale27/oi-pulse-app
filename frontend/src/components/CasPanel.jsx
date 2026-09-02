@@ -1378,6 +1378,7 @@ function skipWhyLabel(why) {
     stamp_before_signal: "print clock is still before 15:20",
     before_cas_window: "before 15:20 IST — scrape can still be checked",
     stale_close: "marketStatus CLOSE leftover (previous close) — ignored; waiting for homepage Indicative Close",
+    same_as_prev_close: "indicativeClose still equal to previous close — not a live 15:20 print",
     closing_without_stamp: "closingValue has no clock (yesterday)",
     wrong_day: "print date is not today — waiting for today’s 15:20",
     out_of_range: "print looks like garbage",
