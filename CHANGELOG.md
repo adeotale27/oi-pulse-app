@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.15 — 2026-09-02
+
+CAS Auto Trade **Paper** is WATCHING as soon as you switch it on: NSE cookies and ATM preview load before 15:20, then the same freeze / first-print / DRY-BUY path as Live (no Zerodha fill). Paper fires are stored in a test log on the CAS page.
+
 ## V9.14 — 2026-09-02
 
 Positions day-loss circuit: −3% caution, −5% stop new shorts, −8% capital event. Funds leftover is not treated as dry powder. Desk AI **What to do** is full-width and capital-first; sell ideas and “prefer CE shorts” hide on a stop/event day. Brains verdict overrides a GOOD book score after a capital hit.

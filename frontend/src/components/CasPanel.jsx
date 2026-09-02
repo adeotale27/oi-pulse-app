@@ -909,9 +909,10 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
             {autoPaper && (
               <ol className="text-[11px] text-emerald-950 bg-emerald-50 border border-emerald-100 rounded-sm px-3 py-2 space-y-1.5 list-decimal list-inside leading-relaxed">
                 <li>
-                  <b>Leave Paper on</b> through the cash session (09:15–15:30 IST). The engine uses live
-                  Kite NIFTY and live NSE JSON. At ~15:19:30 it freezes ATM; at 15:20 it may DRY-BUY
-                  one CE or PE. Nothing hits your Zerodha account.
+                  <b>Leave Paper on now</b> (09:15–15:30 IST). Switching to Paper starts NSE cookie
+                  warmup and ATM preview immediately. Status should be <b>WATCHING</b> until ~15:19:30
+                  freeze, then <b>ARMED</b>, then one DRY-BUY at the first sane 15:20 print. Nothing
+                  hits Zerodha. The test log below stores that DRY-BUY.
                 </li>
                 <li>
                   Watch <b>NSE live</b> below — first pull and every change show there. Errors stay in
@@ -1374,9 +1375,9 @@ function skipWhyLabel(why) {
     same_as_freeze: "widget still showing live NIFTY (not the 15:20 print)",
     stamp_before_signal: "print clock is still before 15:20",
     before_cas_window: "before 15:20 IST — scrape can still be checked",
-    stale_close: "overnight CLOSE leftover — ignored",
+    stale_close: "yesterday’s CLOSE leftover — ignored until today’s 15:20 print",
     closing_without_stamp: "closingValue has no clock (yesterday)",
-    wrong_day: "print date is not today",
+    wrong_day: "print date is not today — waiting for today’s 15:20",
     out_of_range: "print looks like garbage",
     non_positive: "print is missing",
     wrong_index: "not NIFTY 50",
@@ -1397,7 +1398,17 @@ function AutoTapeStrip({ auto, autoLots }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         <MiniCard label="Auto lots" value={String(autoLots)} mono />
         <MiniCard label="Frozen NIFTY" value={fmt(auto.pre_signal_nifty, 2)} mono />
-        <MiniCard label="Locked ATM" value={auto.locked_atm != null ? String(auto.locked_atm) : "—"} mono />
+        <MiniCard
+          label={auto.locked_atm != null ? "Locked ATM" : "ATM preview"}
+          value={
+            auto.locked_atm != null
+              ? String(auto.locked_atm)
+              : auto.atm_preview != null
+                ? String(auto.atm_preview)
+                : "—"
+          }
+          mono
+        />
         <MiniCard
           label="NSE live"
           value={liveNse}
@@ -1495,7 +1506,43 @@ function AutoTapeStrip({ auto, autoLots }) {
         {auto.reason && auto.status !== "FAILED" && !auto.how && (
           <p className="text-slate-600">{auto.reason}</p>
         )}
+        {(auto.cookies_ok || (auto.cookie_names || []).length > 0) && (
+          <p data-testid="cas-auto-cookies">
+            NSE cookies {auto.cookies_ok ? "warm" : "partial"}
+            {(auto.cookie_names || []).length ? ` · ${(auto.cookie_names || []).slice(0, 6).join(", ")}` : ""}
+          </p>
+        )}
+        {!auto.prepared_ce && (auto.preview_ce || auto.preview_pe) && (
+          <p className="font-mono-data break-all text-[10px] text-slate-600">
+            ATM preview {auto.atm_preview != null ? auto.atm_preview : ""}
+            {auto.preview_ce ? ` · CE ${auto.preview_ce}` : ""}
+            {auto.preview_pe ? ` · PE ${auto.preview_pe}` : ""}
+          </p>
+        )}
       </div>
+
+      {Array.isArray(auto.test_log) && auto.test_log.length > 0 && (
+        <div
+          className="rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-[11px] space-y-1"
+          data-testid="cas-auto-test-log"
+        >
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+            Paper / test log (not a Zerodha fill)
+          </div>
+          <ul className="space-y-1">
+            {auto.test_log.slice().reverse().slice(0, 8).map((row, i) => (
+              <li key={`${row.at || i}-${row.order_id || row.kind}`} className="font-mono-data text-slate-800">
+                {row.kind || row.status}
+                {row.paper ? " · PAPER" : row.live_kite ? " · LIVE" : ""}
+                {row.opt_type ? ` · ${row.opt_type}` : ""}
+                {row.tradingsymbol ? ` · ${row.tradingsymbol}` : ""}
+                {row.order_id ? ` · ${row.order_id}` : ""}
+                {row.cas_delta != null ? ` · Δ ${row.cas_delta}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {auto.last_rehearsal?.status && (
         <p className="text-[11px] text-sky-800" data-testid="cas-auto-rehearsal">

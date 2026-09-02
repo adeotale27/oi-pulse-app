@@ -5755,6 +5755,33 @@ class CasBacktestIn(BaseModel):
     indexes: Optional[List[str]] = None
 
 
+async def _persist_cas_auto_log() -> None:
+    """Keep Paper DRY-BUY / NO_TRADE rows in Mongo so a test session is reviewable."""
+    if db is None:
+        return
+    try:
+        from cas_auto_trade import get_auto_trade
+        rows = get_auto_trade().drain_persists()
+    except Exception:
+        return
+    for rec in rows:
+        doc = dict(rec)
+        doc["saved_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            await db.cas_auto_log.update_one(
+                {
+                    "day": doc.get("day"),
+                    "at": doc.get("at"),
+                    "kind": doc.get("kind"),
+                    "order_id": doc.get("order_id"),
+                },
+                {"$set": doc},
+                upsert=True,
+            )
+        except Exception:
+            logger.debug("cas auto log persist skipped", exc_info=True)
+
+
 @api_router.get("/cas/status")
 async def cas_status(role: str = Depends(require_desk_user)):
     """CAS desk status — admin + guest (read-only for guests)."""
@@ -5765,6 +5792,8 @@ async def cas_status(role: str = Depends(require_desk_user)):
     except Exception as e:
         logger.warning("cas status failed: %s", e, exc_info=True)
         raise HTTPException(500, "CAS status unavailable")
+    await _persist_cas_auto_log()
+    await _persist_cas_auto_log()
     # Guests never see raw kite errors that might leak broker details
     if role == "guest":
         plain = status.get("plain") or {}
@@ -6420,6 +6449,7 @@ async def _ensure_mongo_indexes():
         await db.user_kite.create_index("guest_token")
         await db.user_kite.create_index([("guest_name", 1), ("ip", 1)])
         await db.trade_journal.create_index("date", unique=True, name="uniq_journal_date")
+        await db.cas_auto_log.create_index([("day", 1), ("at", -1)])
         await db.trade_cycles.create_index("cycle_id", unique=True, name="uniq_trade_cycle")
         await db.trade_cycles.create_index([("owner_id", 1), ("status", 1)])
         await db.trade_cycles.create_index([("owner_id", 1), ("entry_date", 1)])
