@@ -167,6 +167,7 @@ class NseIndicativeProvider:
         self._last_error: Optional[str] = None
         self.last_fetch_at: Optional[str] = None
         self.last_hit: Optional[Dict[str, Any]] = None
+        self.last_cookie_names: list = []
 
     def warmup(self) -> bool:
         try:
@@ -180,11 +181,16 @@ class NseIndicativeProvider:
             )
             if page.status_code >= 400:
                 logger.warning("NSE CAS page warmup status=%s", page.status_code)
+            names = sorted({str(c) for c in client.cookies.keys()})
             self._warmed = True
             self._last_error = None
+            self.last_cookie_names = names
+            if not names:
+                logger.warning("NSE indicative warmup returned no cookies")
             return True
         except Exception as exc:
             self._last_error = str(exc)[:240]
+            self.last_cookie_names = []
             logger.warning("NSE indicative warmup failed: %s", exc)
             return False
 

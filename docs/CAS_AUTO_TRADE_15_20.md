@@ -83,9 +83,9 @@ Times are **IST**. Clocks below are defaults; they live in CAS settings (`auto_*
 This is the same 15:20 path as Live, except the BUY is a dry-run.
 
 1. Publisher **Kite connected** (quotes and ATM symbols). Classic CAS: **do not Activate Live**.
-2. CAS page → **15:20 Auto Trade** → Auto mode **Paper** (not Live). Classic Activate **not** needed.
-3. **NSE live** is the widget print as it changes. **Fire print** is the one print used for the BUY. After a fire, NSE live still updates; there is no second order.
-4. When it fires: same strip shows **when** (IST), **how** (CE/PE, freeze vs indicative, DRY-BUY), and **latency**.
+2. CAS page → **15:20 Auto Trade** → Auto mode **Paper** (not Live). Classic Activate **not** needed. Status becomes **WATCHING** immediately: NSE cookies warm, ATM preview from live Kite.
+3. **NSE live** is the widget print as it changes. Yesterday’s `CLOSE` leftover is ignored. **Fire print** is the one print used for the BUY. After a fire, NSE live still updates; there is no second order.
+4. When it fires: same strip shows **when** (IST), **how** (CE/PE, freeze vs indicative, DRY-BUY), and **latency**. The **Paper / test log** stores the DRY-BUY (Mongo `cas_auto_log`) — not a Zerodha fill, not the trade journal.
 5. Optional before 15:20: **Inject first print** → rehearsal on today’s live freeze (does not spend the 15:20 fire).
 6. Leave **Paper** on through **15:19:30–15:22** for the real NSE print. Do **not** Inject at/after 15:20 if you want NSE to be the day’s paper print.
 7. If the dry-run looks right, turn Auto **Off**, then next session (or after Reset) use **Live**.

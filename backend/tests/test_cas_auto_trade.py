@@ -397,6 +397,7 @@ class FakeNse:
         self.calls = 0
 
     def warmup(self):
+        self.last_cookie_names = ["ak_bmsc", "nsit"]
         return True
 
     def fetch(self):
@@ -453,7 +454,68 @@ def test_tick_surfaces_nse_http_error(auto, monkeypatch):
     snap = auto.snapshot()
     assert snap["nse_error"] == "403 Forbidden"
     assert snap["nse_skip_why"] == "empty"
-    assert snap["status"] == "IDLE"
+    assert snap["status"] == "WATCHING"
+
+
+def test_paper_watch_warms_cookies_and_atm_before_1520(auto, monkeypatch):
+    watch = datetime(2026, 9, 2, 15, 11, 0, tzinfo=IST)
+    _freeze_ist(monkeypatch, watch)
+    leftover = {
+        "value": CLOSE_PRINT,
+        "field": "closingValue",
+        "status": "CLOSE",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:30",
+    }
+    auto._provider = FakeNse([leftover])
+    auto._last_poll_mono = 0.0
+    auto.arm_watch()
+    auto.tick(
+        {
+            "auto_trade_mode": "paper",
+            "auto_trade_enabled": True,
+            "lots": 12,
+            "auto_trade_lots": 12,
+            "product": "NRML",
+        },
+        FakeClient(),
+    )
+    snap = auto.snapshot()
+    assert snap["status"] == "WATCHING"
+    assert snap["waiting_for"] == "15:20 first NSE indicative"
+    assert snap["cookies_ok"] is True
+    assert snap["atm_preview"] == 24000
+    assert snap["preview_ce"]
+    assert snap["nse_skip_why"] in ("stale_close", "wrong_day", "before_cas_window")
+    assert snap["locked_atm"] is None
+
+
+def test_paper_fire_is_logged_without_live_flag(auto, monkeypatch):
+    _freeze_ist(monkeypatch, FIRE_AT)
+    client = FakeClient()
+    auto._prepare({"auto_trade_mode": "paper", "lots": 1, "product": "NRML"}, client)
+    auto._state["status"] = "ARMED"
+    real = {
+        "value": IND_FIRST,
+        "field": "indexLast",
+        "status": "OPEN",
+        "index_name": "NIFTY 50",
+        "indicative_time": "01-Sep-2026 15:20:01",
+        "received_at": FIRE_AT.isoformat(),
+    }
+    auto._on_indicative(
+        real,
+        {"auto_trade_mode": "paper", "auto_trade_enabled": True, "lots": 1, "product": "NRML",
+         "auto_bullish_pts": 15, "auto_bearish_pts": 15},
+        client,
+    )
+    snap = auto.snapshot()
+    assert snap["status"] == "EXECUTED"
+    assert client.buys[0]["live"] is False
+    assert snap["test_log"]
+    assert snap["test_log"][-1]["paper"] is True
+    assert snap["test_log"][-1]["live_kite"] is False
+    assert snap["test_log"][-1]["order_id"]
 
 
 def test_tick_after_executed_still_updates_live_nse(auto, monkeypatch):

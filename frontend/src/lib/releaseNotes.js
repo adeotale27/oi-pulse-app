@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.15",
+    date: "2026-09-02",
+    user: [
+      "CAS Paper now waits live for 15:20: cookies and ATM load as soon as you switch Paper on. The 15:20 BUY is a DRY-BUY (no Zerodha fill) and is stored in the Paper test log.",
+    ],
+    admin: [
+      "Auto mode Paper sets enabled immediately and arm_watch() warms NSE cookies. cas_auto_log persists DRY-BUY / NO_TRADE / inject rehearsal rows.",
+    ],
+  },
+  {
     version: "9.14",
     date: "2026-09-02",
     user: [

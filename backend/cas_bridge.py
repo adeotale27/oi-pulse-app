@@ -510,10 +510,16 @@ def update_settings(patch: Dict[str, Any], tracker=None, *, allow_live: bool = F
                     "(do not run both live arms on the same expiry)"
                 )
             _SETTINGS["auto_trade_mode"] = mode
-            if mode == "live":
+            if mode in ("live", "paper"):
                 _SETTINGS["auto_trade_enabled"] = True
             elif mode == "off":
                 _SETTINGS["auto_trade_enabled"] = False
+            if mode in ("paper", "live"):
+                try:
+                    from cas_auto_trade import get_auto_trade
+                    get_auto_trade().arm_watch()
+                except Exception:
+                    pass
         for key, lo, hi, cast in (
             ("auto_bullish_pts", 0.0, 200.0, float),
             ("auto_bearish_pts", 0.0, 200.0, float),
