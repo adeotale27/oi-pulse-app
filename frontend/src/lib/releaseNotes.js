@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.17",
+    date: "2026-09-02",
+    user: [
+      "15:20 cards show homepage Indicative Close, streaming NIFTY, and previous close. Live needs Start before any BUY. After a fire, the strip explains freeze vs indicative and why CE or PE.",
+    ],
+    admin: [
+      "Live sets mode without enabling until Start. getIndexData is fetched first (2s hot timeout). marketStatus leftover is labeled ignored, not used as NSE live.",
+    ],
+  },
+  {
     version: "9.16",
     date: "2026-09-02",
     user: [

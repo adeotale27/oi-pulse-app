@@ -134,6 +134,15 @@ class CasAutoTrade:
             "nse_skip_why": None,
             "nse_first_at": None,
             "nse_changed_at": None,
+            "nse_streaming_last": None,
+            "nse_indicative_close": None,
+            "nse_previous_close": None,
+            "nse_widget_time": None,
+            "nse_ic_change": None,
+            "nse_ic_per_change": None,
+            "nse_fallback_value": None,
+            "nse_fallback_field": None,
+            "decision": None,
             "how": None,
             "fired_at": None,
             "last_rehearsal": None,
@@ -273,13 +282,28 @@ class CasAutoTrade:
         mode = str(settings.get("auto_trade_mode") or "off").lower()
         enabled = bool(settings.get("auto_trade_enabled")) and mode in ("paper", "live")
         with self._lock:
-            self._state["mode"] = mode if enabled else "off"
+            self._state["mode"] = mode if mode in ("paper", "live") else "off"
             self._state["enabled"] = enabled
         if not enabled:
             with self._lock:
-                if self._state.get("status") == "WATCHING":
+                if self._state.get("status") == "WATCHING" and mode != "live":
                     self._state["status"] = "IDLE"
                     self._state["waiting_for"] = None
+                if mode == "live":
+                    if self._state.get("status") in ("IDLE", "WATCHING", None):
+                        self._state["status"] = "IDLE"
+                    self._state["waiting_for"] = "Press Start to run Auto Trade"
+                    self._state["reason"] = (
+                        "Live selected — Start runs the 15:20 BUY. Homepage Indicative Close still updates below."
+                    )
+            if mode == "live":
+                now = get_ist_now()
+                tnow = time_only(now)
+                cash = tnow >= dtime(9, 15, 0) and tnow <= dtime(15, 40, 0)
+                now_m = time.monotonic()
+                if cash and now_m - self._last_poll_mono >= 2.0:
+                    self._last_poll_mono = now_m
+                    self._probe_nse(now, hot=False)
             return
 
         now = get_ist_now()
@@ -314,7 +338,8 @@ class CasAutoTrade:
                     )
 
         if cash or debug:
-            self._maybe_warm()
+            if not (tnow >= signal_t and tnow <= cutoff_t):
+                self._maybe_warm()
             if not latched and (tnow < prepare_t or debug) and not self._state.get("prepared_ce"):
                 self._preview_atm(settings, client)
 
@@ -335,7 +360,10 @@ class CasAutoTrade:
                 if self._state["status"] == "ARMED":
                     self._state["status"] = "NO_TRADE"
                     self._state["reason"] = "cutoff_passed_no_indicative"
-                    self._state["how"] = "No BUY: cutoff 15:22 with no usable NSE indicative"
+                    self._state["how"] = (
+                        "No BUY: cutoff 15:22 with no usable homepage Indicative Close "
+                        "(marketStatus leftover / cash last is not that print)"
+                    )
             latched = True
 
         status = self._state.get("status")
@@ -349,8 +377,7 @@ class CasAutoTrade:
         gap = (poll_ms / 1000.0) if in_hot else (5.0 if cash else 30.0)
         if now_m - self._last_poll_mono >= gap:
             self._last_poll_mono = now_m
-            self._maybe_warm()
-            chosen = self._probe_nse(now)
+            chosen = self._probe_nse(now, hot=in_hot)
             if in_hot and chosen:
                 self._on_indicative(chosen, settings, client)
 
@@ -403,9 +430,13 @@ class CasAutoTrade:
             self._test_log = self._test_log[-40:]
             self._pending_persist.append(rec)
 
-    def _probe_nse(self, now: datetime) -> Optional[Dict[str, Any]]:
+    def _probe_nse(self, now: datetime, *, hot: bool = False) -> Optional[Dict[str, Any]]:
         """Hit NSE JSON. Always update the tape strip; return a fireable hit or None."""
-        hits = self._provider.fetch() or []
+        fetch = getattr(self._provider, "fetch")
+        try:
+            hits = fetch(hot=hot) or []
+        except TypeError:
+            hits = fetch() or []
         if isinstance(hits, dict):
             hits = [hits]
         freeze = self._state.get("pre_signal_nifty")
@@ -418,29 +449,47 @@ class CasAutoTrade:
                 chosen = hit
                 last_why = "ok"
                 break
+        tape = getattr(self._provider, "last_tape", None) or {}
         hit0 = hits[0] if hits else None
         with self._lock:
             self._state["nse_error"] = self._provider.last_error
             self._state["nse_fetched_at"] = getattr(self._provider, "last_fetch_at", None)
             self._state["nse_skip_why"] = None if chosen else last_why
-            if hit0:
+            if tape:
+                self._state["nse_streaming_last"] = tape.get("streaming_last")
+                self._state["nse_indicative_close"] = tape.get("indicative_close")
+                self._state["nse_previous_close"] = tape.get("previous_close")
+                self._state["nse_widget_time"] = tape.get("time_val")
+                self._state["nse_ic_change"] = tape.get("ic_change")
+                self._state["nse_ic_per_change"] = tape.get("ic_per_change")
+            display = tape.get("indicative_close") if tape else None
+            field_lbl = "getIndexData:indicativeClose"
+            stamp_w = tape.get("time_val") if tape else None
+            if display is None and hit0 and str(hit0.get("source") or "") != "marketStatus":
+                display = hit0.get("value")
+                src = hit0.get("source")
+                field = hit0.get("field")
+                field_lbl = f"{src}:{field}" if src else field
+                stamp_w = hit0.get("indicative_time")
+            if display is not None:
                 prev = self._state.get("nse_last_value")
-                val = hit0.get("value")
                 stamp = get_ist_now().isoformat(timespec="milliseconds")
-                if prev is None and val is not None:
+                if prev is None:
                     self._state["nse_first_at"] = stamp
                 try:
-                    changed = prev is not None and abs(float(val) - float(prev)) > 0.001
+                    changed = prev is not None and abs(float(display) - float(prev)) > 0.001
                 except (TypeError, ValueError):
-                    changed = prev != val
+                    changed = prev != display
                 if changed:
                     self._state["nse_changed_at"] = stamp
-                self._state["nse_last_value"] = val
-                field = hit0.get("field")
-                src = hit0.get("source")
-                self._state["nse_last_field"] = f"{src}:{field}" if src else field
-                self._state["nse_last_stamp"] = hit0.get("indicative_time")
-                self._state["nse_last_status"] = hit0.get("status")
+                self._state["nse_last_value"] = display
+                self._state["nse_last_field"] = field_lbl
+                self._state["nse_last_stamp"] = stamp_w or self._state.get("nse_last_stamp")
+                if tape:
+                    self._state["nse_last_status"] = "indicative"
+            if hit0 and str(hit0.get("source") or "") == "marketStatus":
+                self._state["nse_fallback_value"] = hit0.get("value")
+                self._state["nse_fallback_field"] = hit0.get("field")
         if not chosen and (hits or self._provider.last_error):
             logger.info(
                 "CAS auto-trade NSE probe skip=%s err=%s",
@@ -555,9 +604,21 @@ class CasAutoTrade:
                 self._state["reason"] = f"delta {delta:.2f} inside thresholds +{bull}/-{bear}"
                 self._state["fired_at"] = decided_at
                 self._state["how"] = (
-                    f"No BUY at {_clock(decided_at)}: first NSE {hit.get('field')} {indicative:.2f} "
-                    f"vs freeze {float(pre):.2f} (Δ {delta:+.2f}) inside +{bull}/-{bear}"
+                    f"No BUY at {_clock(decided_at)}: homepage Indicative Close {indicative:.2f} "
+                    f"vs frozen NIFTY {float(pre):.2f} is Δ {delta:+.2f}, inside +{bull:g}/−{bear:g}. "
+                    f"ATM {atm} stays locked from freeze."
                 )
+                self._state["decision"] = {
+                    "freeze": float(pre),
+                    "indicative": indicative,
+                    "delta": round(delta, 2),
+                    "bullish_pts": bull,
+                    "bearish_pts": bear,
+                    "atm": atm,
+                    "opt_type": None,
+                    "signal": "NO_TRADE",
+                    "because": self._state["how"],
+                }
             logger.info("CAS auto-trade NO_TRADE delta=%.2f", delta)
             self._append_test_log({
                 "kind": "NO_TRADE",
@@ -682,10 +743,14 @@ class CasAutoTrade:
         )
         with self._lock:
             kind = "Paper DRY-BUY (no Zerodha fill)" if not live else "Live MARKET BUY"
-            field = self._state.get("indicative_field") or "indicative"
+            bull = float(settings.get("auto_bullish_pts") if settings.get("auto_bullish_pts") is not None else 15)
+            bear = float(settings.get("auto_bearish_pts") if settings.get("auto_bearish_pts") is not None else 15)
             recap = (
-                f"{kind} at {_clock(ack_at)}: {opt} {symbol} ×{qty} because first NSE {field} "
-                f"{indicative:.2f} vs freeze {pre:.2f} (Δ {delta:+.2f})"
+                f"{kind} at {_clock(ack_at)}: {opt} {symbol} ×{qty} because Indicative Close "
+                f"{indicative:.2f} vs frozen NIFTY {pre:.2f} is Δ {delta:+.2f} "
+                f"({'≥ +' + format(bull, 'g') if opt == 'CE' else '≤ −' + format(bear, 'g')} threshold) → "
+                f"{'BULLISH so BUY CE' if opt == 'CE' else 'BEARISH so BUY PE'} "
+                f"ATM {atm} (ATM from freeze, not from indicative)."
             )
             if err:
                 recap = f"FAILED at {_clock(ack_at)}: {err}"
@@ -703,6 +768,17 @@ class CasAutoTrade:
             self._state["latency"] = latency
             self._state["how"] = recap
             self._state["fired_at"] = ack_at
+            self._state["decision"] = {
+                "freeze": pre,
+                "indicative": indicative,
+                "delta": round(delta, 2),
+                "atm": atm,
+                "opt_type": opt,
+                "signal": "BULLISH" if opt == "CE" else "BEARISH",
+                "tradingsymbol": symbol,
+                "quantity": qty,
+                "because": recap,
+            }
         self._append_test_log({
             "kind": "BUY" if not err else "FAILED",
             "mode": mode,

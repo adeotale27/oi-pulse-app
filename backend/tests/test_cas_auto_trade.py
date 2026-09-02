@@ -9,6 +9,7 @@ from cas_indicative_nse import (
     accept_first_indicative,
     extract_all_indices_hits,
     extract_index_data_hits,
+    extract_index_tape,
     extract_indicative,
     extract_indicative_hits,
     indicative_is_sane,
@@ -104,6 +105,37 @@ def test_decide_signal_bearish_pe():
     assert sig == "BEARISH"
     assert opt == "PE"
     assert delta <= -15
+
+
+def test_index_tape_matches_homepage_not_closing_value():
+    payload = {
+        "data": [{
+            "indexName": "NIFTY 50",
+            "last": 23914.45,
+            "previousClose": 24055.80,
+            "indicativeClose": 23914.45,
+            "icChange": -141.37,
+            "icPerChange": -0.59,
+            "timeVal": "02-Sep-2026 15:30",
+        }],
+    }
+    tape = extract_index_tape(payload)
+    assert tape["streaming_last"] == 23914.45
+    assert tape["indicative_close"] == 23914.45
+    assert tape["previous_close"] == 24055.80
+    zeroed = {
+        "data": [{
+            "indexName": "NIFTY 50",
+            "last": 23914.45,
+            "previousClose": 24055.80,
+            "indicativeClose": 0,
+            "timeVal": "02-Sep-2026 15:30",
+        }],
+    }
+    z = extract_index_tape(zeroed)
+    assert z["streaming_last"] == 23914.45
+    assert z["indicative_close"] is None
+    assert extract_index_data_hits(zeroed) == []
 
 
 def test_extract_indicative_and_reject_close():
@@ -487,7 +519,7 @@ class FakeNse:
         self.last_cookie_names = ["ak_bmsc", "nsit"]
         return True
 
-    def fetch(self):
+    def fetch(self, **_kwargs):
         self.calls += 1
         return list(self._hits)
 
@@ -635,3 +667,36 @@ def test_tick_after_executed_still_updates_live_nse(auto, monkeypatch):
     assert snap["nse_last_value"] == 24055.8
     assert snap["nse_first_at"]
     assert snap["in_probe_window"] is True
+
+
+def test_probe_uses_homepage_indicative_not_market_status_leftover(auto, monkeypatch):
+    when = datetime(2026, 9, 2, 15, 30, 25, tzinfo=IST)
+    _freeze_ist(monkeypatch, when)
+
+    class HomeTape:
+        last_error = None
+        last_fetch_at = when.isoformat()
+        last_tape = {
+            "streaming_last": 23914.45,
+            "indicative_close": 23914.45,
+            "previous_close": 24055.80,
+            "time_val": "02-Sep-2026 15:30",
+            "ic_change": -141.37,
+        }
+
+        def fetch(self, **_k):
+            return [{
+                "value": 23917.95,
+                "field": "closingValue",
+                "source": "marketStatus",
+                "status": "CLOSE",
+                "index_name": "NIFTY 50",
+            }]
+
+    auto._provider = HomeTape()
+    auto._probe_nse(when, hot=False)
+    snap = auto.snapshot()
+    assert snap["nse_indicative_close"] == 23914.45
+    assert snap["nse_streaming_last"] == 23914.45
+    assert snap["nse_last_value"] == 23914.45
+    assert snap["nse_fallback_value"] == 23917.95

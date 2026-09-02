@@ -64,7 +64,7 @@ const GUIDE = (
     </p>
     <p>
       Classic 15:28 expiry does not fire until you click <b>Activate</b> (window ≈ 15:27–15:35 IST).
-      15:20 Auto Trade runs from the Auto mode toggle (Paper or Live); classic Activate is not required.
+      15:20 Auto Trade Paper starts from the toggle. Live is select-then-<b>Start</b> (classic Activate is not required).
       Tue = NIFTY · Thu = SENSEX.
     </p>
   </div>
@@ -239,6 +239,8 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const autoMode = String(status?.settings?.auto_trade_mode || auto.mode || "off").toLowerCase();
   const autoEnabled = !!(status?.settings?.auto_trade_enabled || auto.enabled);
   const autoLive = autoMode === "live";
+  const autoLiveArmed = autoLive && autoEnabled;
+  const autoLiveWaiting = autoLive && !autoEnabled;
   const autoPaper = autoMode === "paper";
   const fills = state.fills || [];
   const timings = state.timings || [];
@@ -303,15 +305,31 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
     if (!isAdmin) return;
     if (mode === "live") {
       const ok = window.confirm(
-        "AUTO-TRADE LIVE?\n\nAt ~15:20 IST this will place ONE real MARKET BUY of ATM NIFTY CE or PE.\nYou exit yourself in Positions. Do not also Activate classic CAS Live."
+        "Select AUTO-TRADE LIVE?\n\nThis does not place orders yet. Press Start when you want the 15:20 BUY to run."
       );
       if (!ok) return;
+      await patchSettings({ auto_trade_mode: "live", auto_trade_enabled: false });
+      return;
     }
     if (mode === "off") {
       await patchSettings({ auto_trade_mode: "off", auto_trade_enabled: false });
       return;
     }
     await patchSettings({ auto_trade_mode: mode, auto_trade_enabled: true });
+  };
+
+  const startAutoLive = async () => {
+    if (!isAdmin) return;
+    const ok = window.confirm(
+      "START Auto Trade Live?\n\nThis will freeze NIFTY ~15:19:30 and place ONE real MARKET BUY of ATM CE or PE if the homepage Indicative Close is ±15 pts. You exit in Positions."
+    );
+    if (!ok) return;
+    await patchSettings({ auto_trade_mode: "live", auto_trade_enabled: true });
+  };
+
+  const stopAutoLive = async () => {
+    if (!isAdmin) return;
+    await patchSettings({ auto_trade_mode: "live", auto_trade_enabled: false });
   };
 
   const injectAutoTrade = async () => {
@@ -902,10 +920,39 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
               <div className="text-[11px] text-slate-600 pb-1">
                 Status{" "}
                 <b className="font-mono-data" data-testid="cas-auto-status">
-                  {auto.status || "IDLE"}
+                  {autoLiveWaiting ? "LIVE — press Start" : auto.status || "IDLE"}
                 </b>
-                {autoEnabled ? ` · ${autoMode}` : " · off"}
+                {autoLiveWaiting
+                  ? " · live not started"
+                  : autoEnabled
+                    ? ` · ${autoMode}`
+                    : " · off"}
               </div>
+              {autoLiveWaiting && isAdmin && (
+                <Button
+                  size="sm"
+                  className="h-8 rounded-sm bg-rose-600 hover:bg-rose-700 text-white"
+                  onClick={startAutoLive}
+                  disabled={busy || !isKiteMode}
+                  data-testid="cas-auto-live-start"
+                >
+                  <Play className="w-3.5 h-3.5 mr-1" />
+                  Start Auto Trade
+                </Button>
+              )}
+              {autoLiveArmed && isAdmin && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-sm"
+                  onClick={stopAutoLive}
+                  disabled={busy}
+                  data-testid="cas-auto-live-stop"
+                >
+                  <Square className="w-3.5 h-3.5 mr-1" />
+                  Stop
+                </Button>
+              )}
             </div>
 
             {autoPaper && (
@@ -927,11 +974,16 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                 </li>
               </ol>
             )}
-            {autoLive && (
+            {autoLiveWaiting && (
+              <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-100 rounded-sm px-2 py-1.5">
+                Live is selected. Homepage Indicative Close updates in the cards. Press{" "}
+                <b>Start Auto Trade</b> when you want freeze + BUY to run. Keep classic CAS on Paper.
+              </div>
+            )}
+            {autoLiveArmed && (
               <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-100 rounded-sm px-2 py-1.5 flex items-center gap-2">
                 <Shield className="w-3.5 h-3.5 shrink-0" />
-                Auto-Trade Live will BUY one ATM option around 15:20. Keep classic CAS on Paper. To
-                only check NSE scrape, switch this toggle to Paper.
+                Auto-Trade is running Live: one ATM BUY around 15:20. Keep classic CAS on Paper.
               </div>
             )}
 
@@ -1392,10 +1444,14 @@ function AutoTapeStrip({ auto, autoLots }) {
   const lat = auto.latency || {};
   const executed = auto.status === "EXECUTED" || auto.status === "NO_TRADE" || auto.status === "FAILED";
   const err = auto.nse_error || (auto.status === "FAILED" ? auto.reason : null);
-  const liveNse = auto.nse_last_value != null ? fmt(auto.nse_last_value, 2) : "—";
+  const indicative = auto.nse_indicative_close != null ? auto.nse_indicative_close : auto.nse_last_value;
+  const liveNse = indicative != null ? fmt(indicative, 2) : "—";
+  const streaming = auto.nse_streaming_last != null ? fmt(auto.nse_streaming_last, 2) : "—";
+  const prevClose = auto.nse_previous_close != null ? fmt(auto.nse_previous_close, 2) : "—";
   const firePrint = auto.indicative_nifty != null ? fmt(auto.indicative_nifty, 2) : "—";
   const clock = auto.clock_ist ? fmtTime(auto.clock_ist) : "—";
   const closed = auto.in_probe_window === false;
+  const decision = auto.decision || {};
   return (
     <div className="space-y-2" data-testid="cas-auto-tape">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
@@ -1413,12 +1469,14 @@ function AutoTapeStrip({ auto, autoLots }) {
           mono
         />
         <MiniCard
-          label="NSE live"
+          label="Indicative Close"
           value={liveNse}
           mono
           highlight={auto.nse_first_at && !auto.indicative_nifty}
           testId="cas-auto-nse-live"
         />
+        <MiniCard label="NSE streaming" value={streaming} mono testId="cas-auto-nse-stream" />
+        <MiniCard label="Previous close" value={prevClose} mono testId="cas-auto-nse-prev" />
         <MiniCard
           label="Fire print"
           value={firePrint}
@@ -1465,8 +1523,20 @@ function AutoTapeStrip({ auto, autoLots }) {
             {auto.nse_fetched_at ? ` · fetched ${fmtTime(auto.nse_fetched_at)}` : ""}
             {auto.nse_last_field ? ` · ${auto.nse_last_field}` : ""}
             {auto.nse_last_value != null ? ` ${fmt(auto.nse_last_value, 2)}` : ""}
-            {auto.nse_last_stamp ? ` · widget ${auto.nse_last_stamp}` : ""}
+            {auto.nse_widget_time ? ` · widget ${auto.nse_widget_time}` : auto.nse_last_stamp ? ` · widget ${auto.nse_last_stamp}` : ""}
             {auto.nse_last_status ? ` · ${auto.nse_last_status}` : ""}
+          </p>
+        )}
+        {auto.nse_ic_change != null && (
+          <p>
+            Indicative vs prev close: {auto.nse_ic_change > 0 ? "+" : ""}
+            {fmt(auto.nse_ic_change, 2)}
+            {auto.nse_ic_per_change != null ? ` (${auto.nse_ic_per_change}%)` : ""}
+          </p>
+        )}
+        {auto.nse_fallback_value != null && (
+          <p className="text-amber-800" data-testid="cas-auto-nse-fallback">
+            Ignored leftover {auto.nse_fallback_field || "marketStatus"} {fmt(auto.nse_fallback_value, 2)} (not homepage Indicative Close)
           </p>
         )}
         {!err && auto.nse_skip_why && auto.nse_skip_why !== "ok" && (
@@ -1483,6 +1553,15 @@ function AutoTapeStrip({ auto, autoLots }) {
           <p className="font-mono-data break-all text-[10px] text-slate-600">
             {auto.prepared_ce ? `CE ${auto.prepared_ce}` : ""}
             {auto.prepared_pe ? ` · PE ${auto.prepared_pe}` : ""}
+          </p>
+        )}
+        {decision.because && (
+          <p className="font-semibold text-slate-900" data-testid="cas-auto-decision">
+            Why {decision.opt_type || "no BUY"}: freeze {fmt(decision.freeze, 2)} → Indicative Close{" "}
+            {fmt(decision.indicative, 2)} Δ {decision.delta > 0 ? "+" : ""}
+            {fmt(decision.delta, 2)}
+            {decision.atm != null ? ` · ATM ${decision.atm}` : ""}
+            {decision.tradingsymbol ? ` · ${decision.tradingsymbol}` : ""}
           </p>
         )}
         {auto.how && (

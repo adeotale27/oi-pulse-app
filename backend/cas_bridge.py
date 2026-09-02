@@ -510,11 +510,17 @@ def update_settings(patch: Dict[str, Any], tracker=None, *, allow_live: bool = F
                     "(do not run both live arms on the same expiry)"
                 )
             _SETTINGS["auto_trade_mode"] = mode
-            if mode in ("live", "paper"):
-                _SETTINGS["auto_trade_enabled"] = True
-            elif mode == "off":
+            if mode == "off":
                 _SETTINGS["auto_trade_enabled"] = False
-            if mode in ("paper", "live"):
+            elif mode == "paper":
+                _SETTINGS["auto_trade_enabled"] = True
+            elif mode == "live":
+                # Live is selected only. Start button must send auto_trade_enabled true.
+                if "auto_trade_enabled" in patch:
+                    _SETTINGS["auto_trade_enabled"] = bool(patch["auto_trade_enabled"])
+                else:
+                    _SETTINGS["auto_trade_enabled"] = False
+            if mode == "paper" or (mode == "live" and bool(_SETTINGS.get("auto_trade_enabled"))):
                 try:
                     from cas_auto_trade import get_auto_trade
                     get_auto_trade().arm_watch()

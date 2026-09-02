@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.17 — 2026-09-02
+
+CAS 15:20 shows homepage **Indicative Close** (not leftover `closingValue` like 23,917 vs 23,914). Streaming last and previous close are on the same strip. Live is select-then-**Start**. Fetch uses `getIndexData` first with a short timeout. Admin recap states freeze vs indicative and why CE or PE.
+
 ## V9.16 — 2026-09-02
 
 CAS Auto Trade 15:20 now uses the nseindia.com **Indicative Close** (`getIndexData?type=ALL` / `allIndices` field `indicativeClose` only). Do not use cash `last`, and do not call getIndexData with `index=NIFTY 50` (that zeros the field). Leftover `marketStatus` CLOSE / previous close stay ignored. Live still needs the **backend** IP on the Kite developer allowlist.
