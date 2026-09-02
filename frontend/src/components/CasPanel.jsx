@@ -821,7 +821,8 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed max-w-prose">
                   Separate from 15:28 expiry sells. NIFTY only: freeze live Kite NIFTY ~15:19:30, lock that
-                  ATM, then one MARKET <b>BUY</b> of CE or PE if the first 15:20 NSE indicative is ±15 pts.
+                  ATM, then one MARKET <b>BUY</b> of CE or PE if the first 15:20 NSE <b>Indicative Close</b>{" "}
+                  (homepage JSON, not leftover previous close) is ±15 pts.
                   <b>Paper</b> uses that same live tape and prints a <b>DRY-BUY</b> id (no Zerodha fill) so you
                   can watch a real session before Live. You exit in Positions. Lots below are{" "}
                   <b>this arm only</b> (not expiry lots).
@@ -836,8 +837,9 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                     with classic CAS Live.
                   </p>
                   <p>
-                    ATM is never taken from the indicative print. Overnight CLOSE leftovers are
-                    ignored.
+                    ATM is never taken from the indicative print. The number on nseindia.com is
+                    Indicative Close from getIndexData — not the marketStatus CLOSE leftover
+                    (previous close). That leftover is ignored.
                   </p>
                 </div>
               </InfoTip>
@@ -1375,7 +1377,8 @@ function skipWhyLabel(why) {
     same_as_freeze: "widget still showing live NIFTY (not the 15:20 print)",
     stamp_before_signal: "print clock is still before 15:20",
     before_cas_window: "before 15:20 IST — scrape can still be checked",
-    stale_close: "yesterday’s CLOSE leftover — ignored until today’s 15:20 print",
+    stale_close: "marketStatus CLOSE leftover (previous close) — ignored; waiting for homepage Indicative Close",
+    same_as_prev_close: "indicativeClose still equal to previous close — not a live 15:20 print",
     closing_without_stamp: "closingValue has no clock (yesterday)",
     wrong_day: "print date is not today — waiting for today’s 15:20",
     out_of_range: "print looks like garbage",

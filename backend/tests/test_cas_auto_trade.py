@@ -7,9 +7,12 @@ import pytest
 from cas_auto_trade import CasAutoTrade, decide_signal
 from cas_indicative_nse import (
     accept_first_indicative,
+    extract_all_indices_hits,
+    extract_index_data_hits,
     extract_indicative,
     extract_indicative_hits,
     indicative_is_sane,
+    merge_nse_indicative_hits,
     parse_nse_stamp,
 )
 from cas_rule_expiry_automation.expiry_calendar import INDEX_META
@@ -131,6 +134,90 @@ def test_extract_indicative_and_reject_close():
     ok2, why2 = indicative_is_sane(chit, now=now)
     assert not ok2
     assert why2 == "stale_close"
+
+
+def test_homepage_indicative_close_beats_stale_market_status():
+    """2 Sep 2026 15:20: homepage Indicative Close vs leftover CLOSE 24055.80."""
+    freeze = 23882.85
+    index_data = {
+        "data": [{
+            "indexName": "NIFTY 50",
+            "last": freeze,
+            "previousClose": 24055.80,
+            "indicativeClose": 24012.90,
+            "timeVal": "02-Sep-2026 15:20",
+        }],
+    }
+    all_idx = {
+        "timestamp": "02-Sep-2026 15:20",
+        "data": [{
+            "index": "NIFTY 50",
+            "last": freeze,
+            "previousClose": 24055.80,
+            "indicativeClose": 24012.90,
+        }],
+    }
+    stale = {
+        "indicativenifty50": {
+            "indexName": "NIFTY 50",
+            "closingValue": 24055.80,
+            "status": "CLOSE",
+            "dateTime": "01-Sep-2026 15:30",
+        }
+    }
+    hits = merge_nse_indicative_hits(
+        extract_index_data_hits(index_data),
+        extract_all_indices_hits(all_idx),
+        extract_indicative_hits(stale),
+    )
+    assert hits[0]["field"] == "indicativeClose"
+    assert hits[0]["value"] == 24012.90
+    assert hits[0]["source"] == "getIndexData"
+    now = datetime(2026, 9, 2, 15, 20, 5, tzinfo=IST)
+    chosen = None
+    last_why = None
+    for hit in hits:
+        ok, why = accept_first_indicative(hit, freeze=freeze, now=now)
+        last_why = why
+        if ok:
+            chosen = hit
+            break
+    assert chosen is not None, last_why
+    assert chosen["value"] == 24012.90
+    assert chosen["field"] == "indicativeClose"
+    all_hits = extract_all_indices_hits(all_idx)
+    assert all_hits[0]["indicative_time"] == "02-Sep-2026 15:20"
+
+
+def test_zero_indicative_close_does_not_use_cash_last():
+    """After 15:30 (and the &&index=NIFTY 50 URL) NSE zeros indicativeClose."""
+    payload = {
+        "data": [{
+            "indexName": "NIFTY 50",
+            "last": 23914.45,
+            "previousClose": 24055.80,
+            "indicativeClose": 0,
+            "timeVal": "02-Sep-2026 15:30",
+        }],
+    }
+    assert extract_index_data_hits(payload) == []
+
+
+def test_indicative_equal_previous_close_is_not_first_print():
+    freeze = 23882.85
+    hit = {
+        "value": 24055.80,
+        "field": "indicativeClose",
+        "status": "",
+        "index_name": "NIFTY 50",
+        "indicative_time": "02-Sep-2026 15:20",
+        "previous_close": 24055.80,
+        "source": "getIndexData",
+    }
+    now = datetime(2026, 9, 2, 15, 20, 5, tzinfo=IST)
+    ok, why = accept_first_indicative(hit, freeze=freeze, now=now)
+    assert not ok
+    assert why == "same_as_prev_close"
 
 
 def test_inject_buys_locked_atm_ce_once(auto, monkeypatch):

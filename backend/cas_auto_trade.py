@@ -436,7 +436,9 @@ class CasAutoTrade:
                 if changed:
                     self._state["nse_changed_at"] = stamp
                 self._state["nse_last_value"] = val
-                self._state["nse_last_field"] = hit0.get("field")
+                field = hit0.get("field")
+                src = hit0.get("source")
+                self._state["nse_last_field"] = f"{src}:{field}" if src else field
                 self._state["nse_last_stamp"] = hit0.get("indicative_time")
                 self._state["nse_last_status"] = hit0.get("status")
         if not chosen and (hits or self._provider.last_error):
@@ -519,7 +521,9 @@ class CasAutoTrade:
             self._state["status"] = "CAS_DATA_RECEIVED"
             self._state["indicative_nifty"] = indicative
             self._state["indicative_at"] = received_at
-            self._state["indicative_field"] = hit.get("field")
+            field = hit.get("field")
+            src = hit.get("source")
+            self._state["indicative_field"] = f"{src}:{field}" if src else field
         if pre is None or atm is None or not ce_sym or not pe_sym:
             with self._lock:
                 self._state["status"] = "FAILED"

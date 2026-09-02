@@ -44,7 +44,7 @@ F&O still trades until **15:30**, so a 15:20 option BUY is inside the session.
 
 1. **New arm, not a rewrite of 15:28.** Classic SELL-both stays in `cas_rule_expiry_automation` + `cas_bridge.py`. Auto Trade is `cas_auto_trade.py` + `cas_indicative_nse.py` + the Auto Trade block on `CasPanel.jsx`.
 
-2. **NSE JSON, not CSV, not HTML scrape.** Source is `GET https://www.nseindia.com/api/marketStatus` → `indicativenifty50`. Cookie warmup hits nseindia.com home + the CAS page (same Akamai pattern as FII/DII).
+2. **NSE JSON, not CSV, not HTML scrape.** The homepage **Indicative Close** is `GET /api/NextApi/apiClient?functionName=getIndexData&&type=ALL` → NIFTY 50 `indicativeClose` + `timeVal` (fallback `/api/allIndices`). `GET /api/marketStatus` → `indicativenifty50` is fallback only; overnight `status: CLOSE` leftovers (previous close) are ignored. Cookie warmup hits nseindia.com home + the CAS page (same Akamai pattern as FII/DII).
 
 3. **ATM from frozen live NIFTY, never from the indicative.** If you re-rounded ATM from 24,125 you would have bought the wrong strike. Indicative is **direction only**.
 
@@ -153,7 +153,13 @@ Do **not** recompute `atm` when the indicative arrives.
 
 ### 2. First print (accept / reject)
 
-From `indicativenifty50`, consider **`indexLast` then `closingValue`** (skip duplicate prices).
+Walk prints in this order (skip duplicate field+price):
+
+1. Homepage **`indicativeClose`** from `getIndexData?functionName=getIndexData&&type=ALL` (do **not** add `&&index=NIFTY 50` — that URL zeros `indicativeClose`)
+2. Same field on `/api/allIndices` (clock from payload `timestamp` if the row has none)
+3. `marketStatus` **`indexLast` then `closingValue`** as fallback only
+
+Cash **`last`** on those payloads is the continuous NIFTY print, **not** Indicative Close. After ~15:30 NSE often sets `indicativeClose` to **0**; ignore that and do not substitute `last`. Also skip an `indicativeClose` that still equals **`previousClose`**.
 
 A hit is **rejected** if:
 

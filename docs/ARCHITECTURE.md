@@ -35,7 +35,7 @@ The desk UI is **index-agnostic** given `enabled_indices` from `/config`. Strike
 | `market_hours.py` | NSE + per-`session_group` MCX hours; Muhurat; journal EOD lock |
 | `kite_positions.py` / `user_kite.py` | Publisher vs guest book |
 | `cas_bridge.py` / `cas_rule_expiry_automation/` | Classic 15:28 CAS **SELL both** wings |
-| `cas_auto_trade.py` / `cas_indicative_nse.py` | Separate 15:20 arm: NSE `marketStatus` indicative vs frozen NIFTY → one ATM **BUY**; manual exit. Operator manual: [CAS_AUTO_TRADE_15_20.md](./CAS_AUTO_TRADE_15_20.md) |
+| `cas_auto_trade.py` / `cas_indicative_nse.py` | Separate 15:20 arm: NSE homepage `indicativeClose` vs frozen Kite NIFTY → one ATM **BUY**; manual exit. Operator manual: [CAS_AUTO_TRADE_15_20.md](./CAS_AUTO_TRADE_15_20.md) |
 | `trade_journal.py` | Admin journal snapshots |
 | `notifier.py` | Telegram |
 
