@@ -84,7 +84,7 @@ This is the same 15:20 path as Live, except the BUY is a dry-run.
 
 1. Publisher **Kite connected** (quotes and ATM symbols). Classic CAS: **do not Activate Live**.
 2. CAS page → **15:20 Auto Trade** → Auto mode **Paper** (not Live). Classic Activate **not** needed. Status becomes **WATCHING** immediately: NSE cookies warm, ATM preview from live Kite.
-3. **NSE live** is the widget print as it changes. Yesterday’s `CLOSE` leftover is ignored. **Fire print** is the one print used for the BUY. After a fire, NSE live still updates; there is no second order.
+3. **Indicative Close** is the homepage field (`getIndexData`). **NSE streaming** is cash `last`. **Previous close** is labeled separately. A leftover `marketStatus` `closingValue` (e.g. 23,917 vs homepage 23,914) is shown as ignored, not as Indicative Close. **Fire print** is the one print used for the BUY. After a fire, the tape still updates; there is no second order.
 4. When it fires: same strip shows **when** (IST), **how** (CE/PE, freeze vs indicative, DRY-BUY), and **latency**. The **Paper / test log** stores the DRY-BUY (Mongo `cas_auto_log`) — not a Zerodha fill, not the trade journal.
 5. Optional before 15:20: **Inject first print** → rehearsal on today’s live freeze (does not spend the 15:20 fire).
 6. Leave **Paper** on through **15:19:30–15:22** for the real NSE print. Do **not** Inject at/after 15:20 if you want NSE to be the day’s paper print.
@@ -101,7 +101,8 @@ This is the same 15:20 path as Live, except the BUY is a dry-run.
 
 | Clock | What the machine does | What you do |
 |-------|----------------------|-------------|
-| **~15:09** | NSE cookie warmup (10 min before prepare) | Desk open, Kite live, Auto **Paper** or **Live** already on |
+| **Before 15:19** | Selecting **Live** does **not** run the BUY. Homepage Indicative Close / streaming / previous close still update on the CAS cards. | Press **Start Auto Trade** when you want freeze + BUY. Paper still starts from the toggle. |
+| **~15:09** | NSE cookie warmup (after Start or Paper) | Desk open, Kite live, classic CAS not Live |
 | **15:19:30** | **PREPARING**: quote live NIFTY, round ATM, cache ATM CE + PE symbols | Confirm Frozen NIFTY and Locked ATM look right |
 | **15:19:55** | **ARMED** if both legs exist | Do not change lots/ATM; do not enable classic Live |
 | **15:20:00** | Poll NSE JSON every **auto_poll_ms** (default **250 ms**) | Watch Status; do not mash Inject |

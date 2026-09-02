@@ -195,6 +195,33 @@ def extract_index_data_hits(payload: Any) -> list:
     return []
 
 
+def extract_index_tape(payload: Any) -> Optional[Dict[str, Any]]:
+    """Homepage NIFTY 50 row as shown on nseindia.com (streaming + Indicative Close)."""
+    for row in _rows_from_payload(payload):
+        if not isinstance(row, dict):
+            continue
+        name = row.get("indexName") or row.get("index") or row.get("name")
+        if not _is_nifty_50(name):
+            continue
+        ic_raw = row.get("indicativeClose")
+        try:
+            ic_num = float(ic_raw) if ic_raw is not None else None
+        except (TypeError, ValueError):
+            ic_num = None
+        return {
+            "streaming_last": _pos_float(row.get("last")),
+            "indicative_close": _pos_float(ic_raw),
+            "indicative_close_raw": ic_num,
+            "previous_close": _pos_float(row.get("previousClose")),
+            "time_val": row.get("timeVal") or row.get("timeStamp"),
+            "ic_change": _pos_float(row.get("icChange")),
+            "ic_per_change": _pos_float(row.get("icPerChange")),
+            "perc_change": _pos_float(row.get("percChange")),
+            "index_name": str(name),
+        }
+    return None
+
+
 def extract_all_indices_hits(payload: Any) -> list:
     """Fallback homepage number: /api/allIndices NIFTY 50 indicativeClose."""
     top_stamp = None
@@ -319,6 +346,7 @@ class NseIndicativeProvider:
         self._last_error: Optional[str] = None
         self.last_fetch_at: Optional[str] = None
         self.last_hit: Optional[Dict[str, Any]] = None
+        self.last_tape: Optional[Dict[str, Any]] = None
         self.last_cookie_names: list = []
 
     def warmup(self) -> bool:
@@ -346,22 +374,40 @@ class NseIndicativeProvider:
             logger.warning("NSE indicative warmup failed: %s", exc)
             return False
 
-    def fetch(self) -> list:
+    def fetch(self, *, hot: bool = False) -> list:
         received = get_ist_now().isoformat(timespec="milliseconds")
+        timeout = 2.0 if hot else 6.0
         try:
-            if not self._warmed:
+            if not self._warmed and not hot:
                 self.warmup()
-            idx = self._get_json(NSE_INDEX_DATA, HOME_API_HEADERS)
-            alli = self._get_json(NSE_ALL_INDICES, HOME_API_HEADERS)
-            mkt = self._get_json(NSE_MARKET_STATUS, API_HEADERS)
-            hits = merge_nse_indicative_hits(
-                extract_index_data_hits(idx),
-                extract_all_indices_hits(alli),
-                extract_indicative_hits(mkt if isinstance(mkt, dict) else {}),
+            idx = self._get_json(
+                NSE_INDEX_DATA, HOME_API_HEADERS, timeout=timeout, allow_warmup=not hot
             )
+            tape = extract_index_tape(idx)
+            if tape:
+                self.last_tape = tape
+            hits = extract_index_data_hits(idx)
+            # Homepage Indicative Close is enough to fire — do not wait on slower APIs.
+            if not hits:
+                alli = self._get_json(
+                    NSE_ALL_INDICES, HOME_API_HEADERS, timeout=timeout, allow_warmup=not hot
+                )
+                if self.last_tape is None:
+                    tape2 = extract_index_tape(alli)
+                    if tape2:
+                        self.last_tape = tape2
+                hits = merge_nse_indicative_hits(hits, extract_all_indices_hits(alli))
+            if not hits and not hot:
+                mkt = self._get_json(
+                    NSE_MARKET_STATUS, API_HEADERS, timeout=timeout, allow_warmup=True
+                )
+                hits = merge_nse_indicative_hits(
+                    hits,
+                    extract_indicative_hits(mkt if isinstance(mkt, dict) else {}),
+                )
             self.last_fetch_at = received
             if not hits:
-                if not self._last_error:
+                if not self._last_error and self.last_tape is None:
                     self._last_error = "no_nifty_print"
                 return []
             for hit in hits:
@@ -375,13 +421,20 @@ class NseIndicativeProvider:
             logger.warning("NSE indicative fetch failed: %s", exc)
             return []
 
-    def _get_json(self, url: str, headers: Dict[str, str]) -> Any:
+    def _get_json(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        timeout: float = 8.0,
+        *,
+        allow_warmup: bool = True,
+    ) -> Any:
         client = self._ensure_client()
-        resp = client.get(url, headers=headers, timeout=8.0)
-        if resp.status_code in (401, 403):
+        resp = client.get(url, headers=headers, timeout=timeout)
+        if resp.status_code in (401, 403) and allow_warmup:
             self._warmed = False
             self.warmup()
-            resp = client.get(url, headers=headers, timeout=8.0)
+            resp = client.get(url, headers=headers, timeout=timeout)
         if resp.status_code >= 400:
             logger.warning("NSE GET %s status=%s", url.split("?")[0], resp.status_code)
             self._last_error = f"HTTP {resp.status_code}"
