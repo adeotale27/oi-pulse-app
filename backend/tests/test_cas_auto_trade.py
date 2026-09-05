@@ -542,7 +542,7 @@ def test_tick_surfaces_nse_skip_in_snapshot(auto, monkeypatch):
         "index_name": "NIFTY 50",
         "indicative_time": "01-Sep-2026 15:19:59",
     }
-    auto._provider = FakeNse([leftover])
+    auto._providers["NIFTY"] = FakeNse([leftover])
     auto.tick(
         {
             "auto_trade_mode": "paper",
@@ -565,7 +565,7 @@ def test_tick_surfaces_nse_http_error(auto, monkeypatch):
     _freeze_ist(monkeypatch, datetime(2026, 9, 1, 11, 30, 0, tzinfo=IST))
     auto._warmed_today = True
     auto._last_poll_mono = 0.0
-    auto._provider = FakeNse([], error="403 Forbidden")
+    auto._providers["NIFTY"] = FakeNse([], error="403 Forbidden")
     auto.tick(
         {"auto_trade_mode": "paper", "auto_trade_enabled": True, "lots": 1, "product": "NRML"},
         FakeClient(),
@@ -586,7 +586,7 @@ def test_paper_watch_warms_cookies_and_atm_before_1520(auto, monkeypatch):
         "index_name": "NIFTY 50",
         "indicative_time": "01-Sep-2026 15:30",
     }
-    auto._provider = FakeNse([leftover])
+    auto._providers["NIFTY"] = FakeNse([leftover])
     auto._last_poll_mono = 0.0
     auto.arm_watch()
     auto.tick(
@@ -601,7 +601,7 @@ def test_paper_watch_warms_cookies_and_atm_before_1520(auto, monkeypatch):
     )
     snap = auto.snapshot()
     assert snap["status"] == "WATCHING"
-    assert snap["waiting_for"] == "15:20 first NSE indicative"
+    assert snap["waiting_for"] == "15:20 first NIFTY indicative"
     assert snap["cookies_ok"] is True
     assert snap["atm_preview"] == 24000
     assert snap["preview_ce"]
@@ -642,7 +642,7 @@ def test_tick_after_executed_still_updates_live_nse(auto, monkeypatch):
     auto._warmed_today = True
     auto._last_poll_mono = 0.0
     auto._state["status"] = "EXECUTED"
-    auto._provider = FakeNse(
+    auto._providers["NIFTY"] = FakeNse(
         [
             {
                 "value": 24055.8,
@@ -693,8 +693,8 @@ def test_probe_uses_homepage_indicative_not_market_status_leftover(auto, monkeyp
                 "index_name": "NIFTY 50",
             }]
 
-    auto._provider = HomeTape()
-    auto._probe_nse(when, hot=False)
+    auto._providers["NIFTY"] = HomeTape()
+    auto._probe_index("NIFTY", when, hot=False)
     snap = auto.snapshot()
     assert snap["nse_indicative_close"] == 23914.45
     assert snap["nse_streaming_last"] == 23914.45
