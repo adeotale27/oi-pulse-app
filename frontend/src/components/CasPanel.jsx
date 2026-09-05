@@ -224,28 +224,29 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
   const cfg = status?.config || {};
   const state = status?.state || {};
   const day = status?.day || {};
+  const settings = status?.settings || {};
   const activated = !!plain.activated || !!state.activated;
   const live = !!(
     plain.live ??
     cfg.live_trading ??
-    status?.settings?.live_trading
+    settings.live_trading
   );
   const debug = !!(
     plain.debug ??
     cfg.debug_mode ??
-    status?.settings?.debug_mode
+    settings.debug_mode
   );
   const autoData = status?.auto_trade || {};
-  const autoMode = String(status?.settings?.auto_trade_mode || autoData.mode || "off").toLowerCase();
-  const autoEnabled = !!(status?.settings?.auto_trade_enabled || autoData.enabled);
+  const autoMode = String(settings.auto_trade_mode || autoData.mode || "off").toLowerCase();
+  const autoEnabled = !!(settings.auto_trade_enabled || autoData.enabled);
   const autoLive = autoMode === "live";
   const autoLiveArmed = autoLive && autoEnabled;
   const autoLiveWaiting = autoLive && !autoEnabled;
   const autoPaper = autoMode === "paper";
 
   // Get index-specific auto trade data based on indicative_index setting
-  const indicativeIndex = String(status?.settings?.indicative_index || "NIFTY").toUpperCase();
-  const bseEnabled = !!status?.settings?.bse_enabled;
+  const indicativeIndex = String(settings.indicative_index || "NIFTY").toUpperCase();
+  const bseEnabled = !!settings.bse_enabled;
   const activeIndex = indicativeIndex === "BOTH" && bseEnabled ? "BOTH" :
                      indicativeIndex === "SENSEX" && bseEnabled ? "SENSEX" : "NIFTY";
 
@@ -1521,7 +1522,7 @@ function AutoTapeStrip({ auto, autoLots, index }) {
           label={`${index} Indicative Close`}
           value={liveValue}
           mono
-          highlight={auto[`${index.toLowerCase()}_first_at`] && !auto[`indicative_${index.toLowerCase()}`]}
+          highlight={auto.nse_first_at && !auto[`indicative_${index.toLowerCase()}`]}
           testId={`cas-auto-${index.toLowerCase()}-live`}
         />
         <MiniCard label={`${index} streaming`} value={streaming} mono testId={`cas-auto-${index.toLowerCase()}-stream`} />
@@ -1530,7 +1531,7 @@ function AutoTapeStrip({ auto, autoLots, index }) {
           label="Fire print"
           value={firePrint}
           mono
-          highlight={!!auto[`indicative_${index.toLowerCase()}`]}
+          highlight={!!auto.indicative_nifty}
           testId={`cas-auto-${index.toLowerCase()}-fire-print`}
         />
         <MiniCard

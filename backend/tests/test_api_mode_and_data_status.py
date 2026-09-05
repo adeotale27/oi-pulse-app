@@ -21,6 +21,12 @@ class FakeTracker:
             # simulate missing credentials by raising
             raise RuntimeError("No Kite credentials configured")
         self.mode = mode
+    async def start(self):
+        pass
+    async def stop(self):
+        pass
+    async def get_status(self):
+        return {"mode": self.mode}
     def _get_service(self):
         return None
     def snapshot_age_seconds(self, snap):
@@ -44,6 +50,10 @@ class FakeCollection:
 def test_mode_endpoint_accepts_valid_and_rejects_invalid(monkeypatch):
     ft = FakeTracker()
     monkeypatch.setattr(server, "tracker", ft)
+    # Mock _is_admin_request to return True (admin) for the test
+    async def mock_is_admin_request(request):
+        return True
+    monkeypatch.setattr(server, "_is_admin_request", mock_is_admin_request)
     client = TestClient(server.app)
 
     # valid mode: offline
@@ -281,10 +291,10 @@ def test_tracker_metrics_exist(monkeypatch):
 
 
 def test_admin_settings_update_and_effect(monkeypatch):
-    # Fake admin allow
-    async def allow_admin(request):
-        return True
-    monkeypatch.setattr(server, "require_admin", allow_admin)
+    # Mock _admin_from_request to return a dummy payload (so that _is_admin_request returns True)
+    async def mock_admin_from_request(request):
+        return {"sub": "admin"}
+    monkeypatch.setattr(server, "_admin_from_request", mock_admin_from_request)
 
     class FakeTrackerForSettings:
         def __init__(self):
