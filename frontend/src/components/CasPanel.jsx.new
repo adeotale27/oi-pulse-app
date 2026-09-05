@@ -1,0 +1,206 @@
+// Updated version with index parameter support
+function AutoTapeStrip({ auto, autoLots, index }) {
+  const lat = auto.latency || {};
+  const executed = auto.status === "EXECUTED" || auto.status === "NO_TRADE" || auto.status === "FAILED";
+  const err = auto.nse_error || (auto.status === "FAILED" ? auto.reason : null);
+  const indicative = auto.nse_indicative_close != null ? auto.nse_indicative_close : auto.nse_last_value;
+  const liveValue = indicative != null ? fmt(indicative, 2) : "—";
+  const streaming = auto.nse_streaming_last != null ? fmt(auto.nse_streaming_last, 2) : "—";
+  const prevClose = auto.nse_previous_close != null ? fmt(auto.nse_previous_close, 2) : "—";
+  const firePrint = auto.indicative_nifty != null ? fmt(auto.indicative_nifty, 2) : "—";
+  const clock = auto.clock_ist ? fmtTime(auto.clock_ist) : "—";
+  const closed = auto.in_probe_window === false;
+  const decision = auto.decision || {};
+  return (
+    <div className="space-y-2" data-testid="cas-auto-tape">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        <MiniCard label="Auto lots" value={String(autoLots)} mono />
+        <MiniCard label={`Frozen ${index}`} value={fmt(auto.pre_signal_nifty, 2)} mono />
+        <MiniCard
+          label={auto.locked_atm != null ? "Locked ATM" : "ATM preview"}
+          value={
+            auto.locked_atm != null
+              ? String(auto.locked_atm)
+              : auto.atm_preview != null
+                ? String(auto.atm_preview)
+                : "—"
+          }
+          mono
+        />
+        <MiniCard
+          label={`${index} Indicative Close`}
+          value={liveValue}
+          mono
+          highlight={auto.nse_first_at && !auto.indicative_nifty}
+          testId={`cas-auto-${index.toLowerCase()}-live`}
+        />
+        <MiniCard label={`${index} streaming`} value={streaming} mono testId={`cas-auto-${index.toLowerCase()}-stream`} />
+        <MiniCard label={`Previous close ${index}`} value={prevClose} mono testId={`cas-auto-${index.toLowerCase()}-prev`} />
+        <MiniCard
+          label="Fire print"
+          value={firePrint}
+          mono
+          highlight={!!auto.indicative_nifty}
+          testId={`cas-auto-${index.toLowerCase()}-fire-print`}
+        />
+        <MiniCard
+          label="Delta"
+          value={auto.cas_delta != null ? `${auto.cas_delta > 0 ? "+" : ""}${fmt(auto.cas_delta, 2)}` : "—"}
+          mono
+        />
+        <MiniCard label="Signal" value={auto.signal || "—"} />
+        <MiniCard
+          label="Order"
+          value={
+            auto.tradingsymbol
+              ? `${auto.opt_type || ""} ${auto.order_status || ""}`.trim()
+              : auto.order_status || "—"
+          }
+        />
+      </div>
+
+      <div
+        className={`rounded-sm border px-2.5 py-2 text-[11px] leading-relaxed space-y-1 ${
+          err
+            ? "border-rose-200 bg-rose-50 text-rose-900"
+            : executed
+              ? "border-emerald-200 bg-emerald-50/80 text-slate-800"
+              : "border-slate-200 bg-white text-slate-700"
+        }`}
+        data-testid="cas-auto-detail"
+      >
+        {err && (
+          <p className="font-semibold break-all" data-testid="cas-auto-error">
+            Error: {auto.nse_error ? `{index} ${auto.nse_error}` : auto.reason}
+          </p>
+        )}
+        {!err && auto.nse_fetched_at && (
+          <p data-testid="cas-auto-nse-line">
+            {index} scrape ok · IST {clock}
+            {auto.nse_first_at ? ` · first pull ${fmtTime(auto.nse_first_at)}` : ""}
+            {auto.nse_changed_at ? ` · last change ${fmtTime(auto.nse_changed_at)}` : ""}
+            {auto.nse_fetched_at ? ` · fetched ${fmtTime(auto.nse_fetched_at)}` : ""}
+            {auto.nse_last_field ? ` · ${auto.nse_last_field}` : ""}
+            {auto.nse_last_value != null ? ` ${fmt(auto.nse_last_value, 2)}` : ""}
+            {auto.nse_widget_time ? ` · widget ${auto.nse_widget_time}` : auto.nse_last_stamp ? ` · widget ${auto.nse_last_stamp}` : ""}
+            {auto.nse_last_status ? ` · ${auto.nse_last_status}` : ""}
+          </p>
+        )}
+        {auto.nse_ic_change != null && (
+          <p>
+            Indicative vs prev close: {auto.nse_ic_change > 0 ? "+" : ""}
+            {fmt(auto.nse_ic_change, 2)}
+            {auto.nse_ic_per_change != null ? ` (${auto.nse_ic_perchange}%)` : ""}
+          </p>
+        )}
+        {auto.nse_fallback_value != null && (
+          <p className="text-amber-800" data-testid="cas-auto-nse-fallback">
+            Ignored leftover {auto.nse_fallback_field || "marketStatus"} {fmt(auto.nse_fallback_value, 2)} (not homepage Indicative Close)
+          </p>
+        )}
+        {!err && auto.nse_skip_why && auto.nse_skip_why !== "ok" && (
+          <p>Waiting: {skipWhyLabel(auto.nse_skip_why)}</p>
+        )}
+        {!auto.nse_fetched_at && !err && !executed && (
+          <p className="text-slate-500">
+            {closed
+              ? `IST ${clock} — cash {index} scrape is quiet overnight (retries every 30s). Leave Paper on; the live print appears here from 09:15 IST. Inject still works if Kite is connected.`
+              : "Waiting for the first {index} JSON pull. Leave Paper on. First indicative and later changes show in {index} live."
+            }
+          </p>
+        )}
+        {(auto.prepared_ce || auto.prepared_pe) && (
+          <p className="font-mono-data break-all text-[10px] text-slate-600">
+            {auto.prepared_ce ? `CE ${auto.prepared_ce}` : ""}
+            {auto.prepared_pe ? ` · PE ${auto.prepared_pe}` : ""}
+          </p>
+        )}
+        {decision.because && (
+          <p className="font-semibold text-slate-900" data-testid="cas-auto-decision">
+            Why {decision.opt_type || "no BUY"}: freeze {fmt(decision.freeze, 2)} → Indicative Close{" "}
+            {fmt(decision.indicative, 2)} Δ {decision.delta > 0 ? "+" : ""}
+            {fmt(decision.delta, 2)}
+            {decision.atm != null ? ` · ATM ${decision.atm}` : ""}
+            {decision.tradingsymbol ? ` · ${decision.tradingsymbol}` : ""}
+          </p>
+        )}
+        {auto.how && (
+          <p className="font-semibold" data-testid="cas-auto-how">
+            {auto.how}
+          </p>
+        )}
+        {auto.order_id && (
+          <p className="font-mono-data break-all">
+            Order {auto.order_id}
+            {auto.tradingsymbol ? ` · ${auto.tradingsymbol}` : ""}
+            {auto.quantity != null ? ` ×${auto.quantity}` : ""}
+          </p>
+        )}
+        {auto.fired_at && <p>When: {fmtTime(auto.fired_at)} IST</p>}
+        {lat.total_signal_to_order_ms != null && (
+          <p data-testid="cas-auto-latency">
+            Latency: decide {fmtMs(lat.data_to_decision_ms)} ms · send {fmtMs(lat.decision_to_order_ms)}{" "}
+            ms · total {fmtMs(lat.total_signal_to_order_ms)} ms
+            {lat.received_at ? ` · print ${fmtTime(lat.received_at)}` : ""}
+            {lat.order_ack_at ? ` · ack ${fmtTime(lat.order_ack_at)}` : ""}
+          </p>
+        )}
+        {auto.reason && auto.status !== "FAILED" && !auto.how && (
+          <p className="text-slate-600">{auto.reason}</p>
+        )}
+        {(auto.cookies_ok || (auto.cookie_names || []).length > 0) && (
+          <p data-testid="cas-auto-cookies">
+            {index} cookies {auto.cookies_ok ? "warm" : "partial"}
+            {(auto.cookie_names || []).length ? ` · ${(auto.cookie_names || []).slice(0, 6).join(", ")}` : ""}
+          </p>
+        )}
+        {!auto.prepared_ce && (auto.preview_ce || auto.preview_pe) && (
+          <p className="font-mono-data break-all text-[10px] text-slate-600">
+            ATM preview {auto.atm_preview != null ? auto.atm_preview : ""}
+            {auto.preview_ce ? ` · CE ${auto.preview_ce}` : ""}
+            {auto.preview_pe ? ` · PE ${auto.preview_pe}` : ""}
+          </p>
+        )}
+      </div>
+
+      {Array.isArray(auto.test_log) && auto.test_log.length > 0 && (
+        <div
+          className="rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-[11px] space-y-1"
+          data-testid="cas-auto-test-log"
+        >
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+            Paper / test log (not a Zerodha fill)
+          </div>
+          <ul className="space-y-1">
+            {auto.test_log.slice().reverse().slice(0, 8).map((row, i) => (
+              <li key={`${row.at || i}-${row.order_id || row.kind}`} className="font-mono-data text-slate-800">
+                {row.kind || row.status}
+                {row.paper ? " · PAPER" : row.live_kite ? " · LIVE" : ""}
+                {row.opt_type ? ` · ${row.opt_type}` : ""}
+                {row.tradingsymbol ? ` · ${row.tradingsymbol}` : ""}
+                {row.order_id ? ` · ${row.order_id}` : ""}
+                {row.cas_delta != null ? ` · Δ ${row.cas_delta}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {auto.last_rehearsal?.status && (
+        <p className="text-[11px] text-sky-800" data-testid="cas-auto-rehearsal">
+          Last rehearsal (did not spend today&apos;s 15:20 fire): {auto.last_rehearsal.status}
+          {auto.last_rehearsal.opt_type ? ` · ${auto.last_rehearsal.opt_type}` : ""}
+          {auto.last_rehearsal.tradingsymbol ? ` · ${auto.last_rehearsal.tradingsymbol}` : ""}
+          {auto.last_rehearsal.order_id ? ` · ${auto.last_rehearsal.order_id}` : ""}
+          {auto.last_rehearsal.pre_signal_nifty != null
+            ? ` · freeze ${fmt(auto.last_rehearsal.pre_signal_nifty, 2)}`
+            : ""}
+          {auto.last_rehearsal.locked_atm != null ? ` · ATM ${auto.last_rehearsal.locked_atm}` : ""}
+          {auto.last_rehearsal.indicative_nifty != null
+            ? ` · print ${fmt(auto.last_rehearsal.indicative_nifty, 2)}`
+            : ""}
+        </p>
+      )}
+    </div>
+  );
+}

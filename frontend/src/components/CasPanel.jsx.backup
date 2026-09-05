@@ -1041,7 +1041,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
             {isAdmin && autoPaper && !autoLive && (
               <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-slate-100">
                 <label className="text-[10px] uppercase tracking-wider text-slate-500">
-                  Inject indicative (paper)
+                  Inject print (paper)
                   <input
                     type="number"
                     step="0.05"
@@ -1066,7 +1066,7 @@ export default function CasPanel({ isAdmin = false, isKiteMode = false, onOpenKi
                   Inject first print
                 </Button>
                 <p className="text-[10px] text-slate-500 max-w-md leading-snug">
-                  Number = fake indicative. Example: if frozen indicative is 23980, enter 24007 to
+                  Number = fake NSE indicative. Example: if frozen NIFTY is 23980, enter 24007 to
                   rehearse a +27 CE. Needs Kite connected. Before 15:20 = rehearsal only.
                 </p>
               </div>
@@ -1489,12 +1489,12 @@ function skipWhyLabel(why) {
   return map[why] || why;
 }
 
-function AutoTapeStrip({ auto, autoLots, index }) {
+function AutoTapeStrip({ auto, autoLots }) {
   const lat = auto.latency || {};
   const executed = auto.status === "EXECUTED" || auto.status === "NO_TRADE" || auto.status === "FAILED";
   const err = auto.nse_error || (auto.status === "FAILED" ? auto.reason : null);
   const indicative = auto.nse_indicative_close != null ? auto.nse_indicative_close : auto.nse_last_value;
-  const liveValue = indicative != null ? fmt(indicative, 2) : "—";
+  const liveNse = indicative != null ? fmt(indicative, 2) : "—";
   const streaming = auto.nse_streaming_last != null ? fmt(auto.nse_streaming_last, 2) : "—";
   const prevClose = auto.nse_previous_close != null ? fmt(auto.nse_previous_close, 2) : "—";
   const firePrint = auto.indicative_nifty != null ? fmt(auto.indicative_nifty, 2) : "—";
@@ -1505,7 +1505,7 @@ function AutoTapeStrip({ auto, autoLots, index }) {
     <div className="space-y-2" data-testid="cas-auto-tape">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         <MiniCard label="Auto lots" value={String(autoLots)} mono />
-        <MiniCard label={`Frozen ${index}`} value={fmt(auto.pre_signal_nifty, 2)} mono />
+        <MiniCard label="Frozen NIFTY" value={fmt(auto.pre_signal_nifty, 2)} mono />
         <MiniCard
           label={auto.locked_atm != null ? "Locked ATM" : "ATM preview"}
           value={
@@ -1518,20 +1518,20 @@ function AutoTapeStrip({ auto, autoLots, index }) {
           mono
         />
         <MiniCard
-          label={`${index} Indicative Close`}
-          value={liveValue}
+          label="Indicative Close"
+          value={liveNse}
           mono
-          highlight={auto[`${index.toLowerCase()}_first_at`] && !auto[`indicative_${index.toLowerCase()}`]}
-          testId={`cas-auto-${index.toLowerCase()}-live`}
+          highlight={auto.nse_first_at && !auto.indicative_nifty}
+          testId="cas-auto-nse-live"
         />
-        <MiniCard label={`${index} streaming`} value={streaming} mono testId={`cas-auto-${index.toLowerCase()}-stream`} />
-        <MiniCard label={`Previous close ${index}`} value={prevClose} mono testId={`cas-auto-${index.toLowerCase()}-prev`} />
+        <MiniCard label="NSE streaming" value={streaming} mono testId="cas-auto-nse-stream" />
+        <MiniCard label="Previous close" value={prevClose} mono testId="cas-auto-nse-prev" />
         <MiniCard
           label="Fire print"
           value={firePrint}
           mono
-          highlight={!!auto[`indicative_${index.toLowerCase()}`]}
-          testId={`cas-auto-${index.toLowerCase()}-fire-print`}
+          highlight={!!auto.indicative_nifty}
+          testId="cas-auto-fire-print"
         />
         <MiniCard
           label="Delta"
@@ -1560,13 +1560,13 @@ function AutoTapeStrip({ auto, autoLots, index }) {
         data-testid="cas-auto-detail"
       >
         {err && (
-          <p className="font-semibold break-all" data-testid={`cas-auto-${index.toLowerCase()}-error`}>
-            Error: {auto.nse_error ? `${index} ${auto.nse_error}` : auto.reason}
+          <p className="font-semibold break-all" data-testid="cas-auto-error">
+            Error: {auto.nse_error ? `NSE ${auto.nse_error}` : auto.reason}
           </p>
         )}
         {!err && auto.nse_fetched_at && (
-          <p data-testid="cas-auto-${index.toLowerCase()}-line">
-            {index} scrape ok · IST {clock}
+          <p data-testid="cas-auto-nse-line">
+            NSE scrape ok · IST {clock}
             {auto.nse_first_at ? ` · first pull ${fmtTime(auto.nse_first_at)}` : ""}
             {auto.nse_changed_at ? ` · last change ${fmtTime(auto.nse_changed_at)}` : ""}
             {auto.nse_fetched_at ? ` · fetched ${fmtTime(auto.nse_fetched_at)}` : ""}
@@ -1584,7 +1584,7 @@ function AutoTapeStrip({ auto, autoLots, index }) {
           </p>
         )}
         {auto.nse_fallback_value != null && (
-          <p className="text-amber-800" data-testid={`cas-auto-${index.toLowerCase()}-fallback`}>
+          <p className="text-amber-800" data-testid="cas-auto-nse-fallback">
             Ignored leftover {auto.nse_fallback_field || "marketStatus"} {fmt(auto.nse_fallback_value, 2)} (not homepage Indicative Close)
           </p>
         )}
@@ -1594,8 +1594,8 @@ function AutoTapeStrip({ auto, autoLots, index }) {
         {!auto.nse_fetched_at && !err && !executed && (
           <p className="text-slate-500">
             {closed
-              ? `IST ${clock} — cash ${index} scrape is quiet overnight (retries every 30s). Leave Paper on; the live print appears here from 09:15 IST. Inject still works if Kite is connected.`
-              : `Waiting for the first ${index} JSON pull. Leave Paper on. First indicative and later changes show in ${index} live.`}
+              ? `IST ${clock} — cash NSE scrape is quiet overnight (retries every 30s). Leave Paper on; the live print appears here from 09:15 IST. Inject still works if Kite is connected.`
+              : "Waiting for the first NSE JSON pull. Leave Paper on. First indicative and later changes show in NSE live."}
           </p>
         )}
         {(auto.prepared_ce || auto.prepared_pe) && (
@@ -1638,8 +1638,8 @@ function AutoTapeStrip({ auto, autoLots, index }) {
           <p className="text-slate-600">{auto.reason}</p>
         )}
         {(auto.cookies_ok || (auto.cookie_names || []).length > 0) && (
-          <p data-testid={`cas-auto-${index.toLowerCase()}-cookies`}>
-            ${index} cookies {auto.cookies_ok ? "warm" : "partial"}
+          <p data-testid="cas-auto-cookies">
+            NSE cookies {auto.cookies_ok ? "warm" : "partial"}
             {(auto.cookie_names || []).length ? ` · ${(auto.cookie_names || []).slice(0, 6).join(", ")}` : ""}
           </p>
         )}
@@ -1681,12 +1681,12 @@ function AutoTapeStrip({ auto, autoLots, index }) {
           {auto.last_rehearsal.opt_type ? ` · ${auto.last_rehearsal.opt_type}` : ""}
           {auto.last_rehearsal.tradingsymbol ? ` · ${auto.last_rehearsal.tradingsymbol}` : ""}
           {auto.last_rehearsal.order_id ? ` · ${auto.last_rehearsal.order_id}` : ""}
-          {auto.last_rehearsal.pre_signal != null
-            ? ` · freeze ${fmt(auto.last_rehearsal.pre_signal, 2)}`
+          {auto.last_rehearsal.pre_signal_nifty != null
+            ? ` · freeze ${fmt(auto.last_rehearsal.pre_signal_nifty, 2)}`
             : ""}
           {auto.last_rehearsal.locked_atm != null ? ` · ATM ${auto.last_rehearsal.locked_atm}` : ""}
-          {auto.last_rehearsal.indicative != null
-            ? ` · print ${fmt(auto.last_rehearsal.indicative, 2)}`
+          {auto.last_rehearsal.indicative_nifty != null
+            ? ` · print ${fmt(auto.last_rehearsal.indicative_nifty, 2)}`
             : ""}
         </p>
       )}

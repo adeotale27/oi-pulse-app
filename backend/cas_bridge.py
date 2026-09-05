@@ -43,6 +43,13 @@ _SETTINGS: Dict[str, Any] = {
     "auto_bullish_pts": 15.0,
     "auto_bearish_pts": 15.0,
     "auto_poll_ms": 250,
+    # BSE SENSEX indicative settings
+    "bse_enabled": False,  # Enable BSE SENSEX indicative support
+    "bse_poll_ms": 500,    # BSE polling interval (ms)
+    "bse_default_days": ["wed", "thu"],  # Default days for BSE (0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun)
+    "nse_default_days": ["mon", "tue"],  # Default days for NSE
+    # Indicative index selection for 15:20 Auto Trade: "NIFTY", "SENSEX", or "BOTH"
+    "indicative_index": "NIFTY",
 }
 _EGRESS_CACHE: Dict[str, Any] = {"ip": None, "at": 0.0, "error": None, "checked": False}
 

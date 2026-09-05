@@ -12,7 +12,8 @@ import time
 from datetime import datetime, time as dtime
 from typing import Any, Dict, Optional, Tuple
 
-from cas_indicative_nse import NseIndicativeProvider, accept_first_indicative
+from cas_indicative_nse import NseIndicativeProvider, accept_first_indicative as accept_first_nse_indicative
+from cas_indicative_bse import BseIndicativeProvider, accept_first_indicative as accept_first_bse_indicative
 from cas_rule_expiry_automation.expiry_calendar import INDEX_META
 from cas_rule_expiry_automation.kite_client import KiteClient
 from cas_rule_expiry_automation.strike_resolver import StrikeCache, round_atm
@@ -91,7 +92,10 @@ class CasAutoTrade:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._exec_lock = threading.Lock()
-        self._provider = NseIndicativeProvider()
+        self._providers = {
+            "NIFTY": NseIndicativeProvider(),
+            "SENSEX": BseIndicativeProvider()
+        }
         self._cache = StrikeCache()
         self._day: Optional[str] = None
         self._last_poll_mono = 0.0
@@ -100,7 +104,10 @@ class CasAutoTrade:
         self._warmed_today = False
         self._test_log: list = []
         self._pending_persist: list = []
-        self._state: Dict[str, Any] = self._empty_state()
+        self._states: Dict[str, Dict[str, Any]] = {
+            "NIFTY": self._empty_state(),
+            "SENSEX": self._empty_state()
+        }
 
     @staticmethod
     def _empty_state() -> Dict[str, Any]:
@@ -164,17 +171,25 @@ class CasAutoTrade:
                 self._last_preview_mono = 0.0
                 self._test_log = []
                 self._pending_persist = []
-                self._state = self._empty_state()
+                self._states = {
+                    "NIFTY": self._empty_state(),
+                    "SENSEX": self._empty_state()
+                }
                 self._cache = StrikeCache()
 
     def snapshot(self) -> Dict[str, Any]:
         now = get_ist_now()
         tnow = time_only(now)
         with self._lock:
-            out = dict(self._state)
-        out["clock_ist"] = now.isoformat(timespec="seconds")
-        out["in_probe_window"] = tnow >= dtime(9, 15, 0) and tnow <= dtime(15, 40, 0)
-        out["test_log"] = list(self._test_log[-20:])
+            # Return combined state for backward compatibility, plus per-index data
+            out = {
+                "NIFTY": dict(self._states["NIFTY"]),
+                "SENSEX": dict(self._states["SENSEX"]),
+                "active_index": self._get_active_index_for_day(),
+                "clock_ist": now.isoformat(timespec="seconds"),
+                "in_probe_window": tnow >= dtime(9, 15, 0) and tnow <= dtime(15, 40, 0),
+                "test_log": list(self._test_log[-20:])
+            }
         return out
 
     def arm_watch(self) -> None:
@@ -185,10 +200,11 @@ class CasAutoTrade:
         self._last_preview_mono = 0.0
         self._warmed_today = False
         with self._lock:
-            if self._state.get("status") in ("IDLE", "WATCHING", None):
-                self._state["status"] = "WATCHING"
-                self._state["waiting_for"] = "15:20 first NSE indicative"
-                self._state["reason"] = "Paper/Live on — warming NSE cookies and ATM preview; freeze at 15:19:30"
+            # Initialize both indices to WATCHING state
+            for index in self._states:
+                self._states[index]["status"] = "WATCHING"
+                self._states[index]["waiting_for"] = f"15:20 first {index} indicative"
+                self._states[index]["reason"] = f"Paper/Live on — warming {index} cookies and ATM preview; freeze at 15:19:30"
 
     def drain_persists(self) -> list:
         with self._lock:
@@ -286,9 +302,10 @@ class CasAutoTrade:
             self._state["enabled"] = enabled
         if not enabled:
             with self._lock:
-                if self._state.get("status") == "WATCHING" and mode != "live":
-                    self._state["status"] = "IDLE"
-                    self._state["waiting_for"] = None
+                # Reset all indices to IDLE when not enabled
+                for index in self._states:
+                    self._states[index]["status"] = "IDLE"
+                    self._states[index]["waiting_for"] = None
                 if mode == "live":
                     if self._state.get("status") in ("IDLE", "WATCHING", None):
                         self._state["status"] = "IDLE"
@@ -303,7 +320,10 @@ class CasAutoTrade:
                 now_m = time.monotonic()
                 if cash and now_m - self._last_poll_mono >= 2.0:
                     self._last_poll_mono = now_m
-                    self._probe_nse(now, hot=False)
+                    # Probe active indices based on indicative_index setting
+                    active_indices = self._get_active_indices(settings)
+                    for index in active_indices:
+                        self._probe_index(index, now, hot=False)
             return
 
         now = get_ist_now()
@@ -318,7 +338,46 @@ class CasAutoTrade:
         except (TypeError, ValueError):
             poll_ms = 250
 
-        status = self._state.get("status")
+        # Determine which indices are active for this session
+        active_indices = self._get_active_indices(settings)
+
+        # Update states for all indices
+        with self._lock:
+            for index in self._states:
+                status = self._states[index].get("status")
+                # Handle WATCHING state transitions
+                if not enabled and status == "WATCHING" and mode != "live":
+                    self._states[index]["status"] = "IDLE"
+                    self._states[index]["waiting_for"] = None
+                elif enabled and mode == "live" and self._states[index].get("status") in ("IDLE", "WATCHING", None):
+                    self._states[index]["status"] = "IDLE"
+                    self._states[index]["waiting_for"] = "Press Start to run Auto Trade"
+                    self._states[index]["reason"] = (
+                        f"Live selected — Start runs the 15:20 BUY. {index} Indicative Close still updates below."
+                    )
+
+                # Initialize WATCHING state when enabling
+                if enabled and status in ("IDLE", "WATCHING", None) and mode != "live":
+                    self._states[index]["status"] = "WATCHING"
+                    self._states[index]["waiting_for"] = f"15:20 first {index} indicative"
+                    self._states[index]["reason"] = (
+                        f"Paper/Live on — warming {index} cookies and ATM preview; freeze at 15:19:30"
+                    )
+
+        # Handle live mode polling when not actively trading
+        if mode == "live" and enabled:
+            now = get_ist_now()
+            tnow = time_only(now)
+            cash = tnow >= dtime(9, 15, 0) and tnow <= dtime(15, 40, 0)
+            now_m = time.monotonic()
+            if cash and now_m - self._last_poll_mono >= 2.0:
+                self._last_poll_mono = now_m
+                # Probe active indices
+                for index in active_indices:
+                    self._probe_index(index, now, hot=False)
+
+        # Main trading logic
+        status = self._state.get("status")  # Keep for backward compatibility with single index logic
         latched = (
             status == "EXECUTED"
             or self._state.get("order_status") == "failed"
@@ -330,7 +389,7 @@ class CasAutoTrade:
         if not latched and status in ("IDLE", "WATCHING"):
             with self._lock:
                 self._state["status"] = "WATCHING"
-                self._state["waiting_for"] = "15:20 first NSE indicative"
+                self._state["waiting_for"] = "15:20 first NSE indicative"  # Backward compatibility
                 if tnow < prepare_t and not debug:
                     self._state["reason"] = (
                         "Waiting for 15:19:30 freeze / 15:20 fire. NSE cookies + ATM preview load now. "
@@ -377,49 +436,73 @@ class CasAutoTrade:
         gap = (poll_ms / 1000.0) if in_hot else (5.0 if cash else 30.0)
         if now_m - self._last_poll_mono >= gap:
             self._last_poll_mono = now_m
-            chosen = self._probe_nse(now, hot=in_hot)
-            if in_hot and chosen:
-                self._on_indicative(chosen, settings, client)
+            # Probe active indices in hot mode when armed
+            if in_hot:
+                for index in active_indices:
+                    chosen = self._probe_index(index, now, hot=in_hot)
+                    if chosen:
+                        self._on_indicative(chosen, settings, client)
 
     def _maybe_warm(self) -> None:
         now_m = time.monotonic()
+        # Warm all providers if needed
+        for index, provider in self._providers.items():
+            # We'll track warming per index if needed, but for simplicity warm all together
+            pass
         if self._warmed_today and (now_m - self._last_warm_mono) < 480:
             return
-        ok = self._provider.warmup()
-        self._warmed_today = bool(ok)
+        # Warm all providers
+        results = {}
+        for index, provider in self._providers.items():
+            results[index] = provider.warmup()
+        self._warmed_today = all(results.values())
         self._last_warm_mono = now_m
-        names = list(getattr(self._provider, "last_cookie_names", None) or [])
+        # Update state for each index
         with self._lock:
-            self._state["nse_error"] = self._provider.last_error
-            self._state["cookies_ok"] = bool(ok and names)
-            self._state["cookie_names"] = names[:12]
+            for index, provider in self._providers.items():
+                names = list(getattr(provider, "last_cookie_names", None) or [])
+                self._states[index]["nse_error"] = provider.last_error  # Keep field name for compatibility
+                self._states[index]["cookies_ok"] = bool(results[index] and names)
+                self._states[index]["cookie_names"] = names[:12]
 
     def _preview_atm(self, settings: Dict[str, Any], client: Optional[KiteClient]) -> None:
         now_m = time.monotonic()
-        if (now_m - self._last_preview_mono) < 20 and self._state.get("atm_preview"):
-            return
         if client is None or client.kite is None:
             return
-        try:
-            key = INDEX_META[INDEX]["spot_key"]
-            q = client.quote([key])[key]
-            spot = float(q.get("last_price") or 0)
-            if spot <= 0:
-                spot = float((q.get("ohlc") or {}).get("close") or 0)
-            if spot <= 0:
-                return
-            gap = int(INDEX_META[INDEX]["strike_gap"])
-            atm = round_atm(spot, gap)
-            self._cache.prewarm(client.kite, INDEX, spot, ce_steps=0, pe_steps=0, radius=2)
-            ce = self._cache._legs.get((INDEX, "CE", atm))
-            pe = self._cache._legs.get((INDEX, "PE", atm))
-            self._last_preview_mono = now_m
-            with self._lock:
-                self._state["atm_preview"] = atm
-                self._state["preview_ce"] = ce.tradingsymbol if ce else None
-                self._state["preview_pe"] = pe.tradingsymbol if pe else None
-        except Exception as exc:
-            logger.debug("CAS auto-trade ATM preview skipped: %s", exc)
+
+        # Preview ATM for each active index
+        active_indices = self._get_active_indices(settings)
+        for index in active_indices:
+            # Simple debounce per index - using a dict to track last preview time per index
+            if not hasattr(self, '_last_preview_mono_per_index'):
+                self._last_preview_mono_per_index = {}
+            last_preview = self._last_preview_mono_per_index.get(index, 0.0)
+            if (now_m - last_preview) < 20 and self._states[index].get("atm_preview"):
+                continue
+
+            try:
+                key = INDEX_META[index]["spot_key"]
+                q = client.quote([key])[key]
+                spot = float(q.get("last_price") or 0)
+                if spot <= 0:
+                    spot = float((q.get("ohlc") or {}).get("close") or 0)
+                if spot <= 0:
+                    continue
+                gap = int(INDEX_META[index]["strike_gap"])
+                atm = round_atm(spot, gap)
+                # Use a separate cache per index or clear and rewarm
+                self._cache.prewarm(client.kite, index, spot, ce_steps=0, pe_steps=0, radius=2)
+                ce = self._cache._legs.get((index, "CE", atm))
+                pe = self._cache._legs.get((index, "PE", atm))
+                if ce is None or pe is None:
+                    continue
+                self._last_preview_mono_per_index[index] = now_m
+                with self._lock:
+                    self._states[index]["atm_preview"] = atm
+                    self._states[index]["preview_ce"] = ce.tradingsymbol if ce else None
+                    self._states[index]["preview_pe"] = pe.tradingsymbol if pe else None
+            except Exception as exc:
+                logger.debug("CAS auto-trade ATM preview skipped for %s: %s", index, exc)
 
     def _append_test_log(self, rec: Dict[str, Any]) -> None:
         rec = dict(rec)
@@ -430,38 +513,45 @@ class CasAutoTrade:
             self._test_log = self._test_log[-40:]
             self._pending_persist.append(rec)
 
-    def _probe_nse(self, now: datetime, *, hot: bool = False) -> Optional[Dict[str, Any]]:
-        """Hit NSE JSON. Always update the tape strip; return a fireable hit or None."""
-        fetch = getattr(self._provider, "fetch")
+    def _probe_index(self, index: str, now: datetime, *, hot: bool = False) -> Optional[Dict[str, Any]]:
+        """Hit the index JSON (NSE or BSE). Always update the tape strip; return a fireable hit or None."""
+        provider = self._providers[index]
+        state = self._states[index]
+        fetch = getattr(provider, "fetch")
         try:
             hits = fetch(hot=hot) or []
         except TypeError:
             hits = fetch() or []
         if isinstance(hits, dict):
             hits = [hits]
-        freeze = self._state.get("pre_signal_nifty")
+        freeze = state.get("pre_signal_nifty")  # Note: we keep the field name as pre_signal_nifty for compatibility
         chosen = None
         last_why = "empty"
         for hit in hits:
-            ok, why = accept_first_indicative(hit, freeze=freeze, now=now)
+            # Use the appropriate accept function based on index
+            if index == "NIFTY":
+                ok, why = accept_first_nse_indicative(hit, freeze=freeze, now=now)
+            else:  # SENSEX
+                ok, why = accept_first_bse_indicative(hit, freeze=freeze, now=now)
             last_why = why
             if ok:
                 chosen = hit
                 last_why = "ok"
                 break
-        tape = getattr(self._provider, "last_tape", None) or {}
+        tape = getattr(provider, "last_tape", None) or {}
         hit0 = hits[0] if hits else None
         with self._lock:
-            self._state["nse_error"] = self._provider.last_error
-            self._state["nse_fetched_at"] = getattr(self._provider, "last_fetch_at", None)
-            self._state["nse_skip_why"] = None if chosen else last_why
+            # Update state for this index
+            state["nse_error"] = provider.last_error  # Keeping field name for compatibility
+            state["nse_fetched_at"] = getattr(provider, "last_fetch_at", None)
+            state["nse_skip_why"] = None if chosen else last_why
             if tape:
-                self._state["nse_streaming_last"] = tape.get("streaming_last")
-                self._state["nse_indicative_close"] = tape.get("indicative_close")
-                self._state["nse_previous_close"] = tape.get("previous_close")
-                self._state["nse_widget_time"] = tape.get("time_val")
-                self._state["nse_ic_change"] = tape.get("ic_change")
-                self._state["nse_ic_per_change"] = tape.get("ic_per_change")
+                state["nse_streaming_last"] = tape.get("streaming_last")
+                state["nse_indicative_close"] = tape.get("indicative_close")
+                state["nse_previous_close"] = tape.get("previous_close")
+                state["nse_widget_time"] = tape.get("time_val")
+                state["nse_ic_change"] = tape.get("ic_change")
+                state["nse_ic_per_change"] = tape.get("ic_per_change")
             display = tape.get("indicative_close") if tape else None
             field_lbl = "getIndexData:indicativeClose"
             stamp_w = tape.get("time_val") if tape else None
@@ -472,111 +562,138 @@ class CasAutoTrade:
                 field_lbl = f"{src}:{field}" if src else field
                 stamp_w = hit0.get("indicative_time")
             if display is not None:
-                prev = self._state.get("nse_last_value")
+                prev = state.get("nse_last_value")
                 stamp = get_ist_now().isoformat(timespec="milliseconds")
                 if prev is None:
-                    self._state["nse_first_at"] = stamp
+                    state["nse_first_at"] = stamp
                 try:
                     changed = prev is not None and abs(float(display) - float(prev)) > 0.001
                 except (TypeError, ValueError):
                     changed = prev != display
                 if changed:
-                    self._state["nse_changed_at"] = stamp
-                self._state["nse_last_value"] = display
-                self._state["nse_last_field"] = field_lbl
-                self._state["nse_last_stamp"] = stamp_w or self._state.get("nse_last_stamp")
+                    state["nse_changed_at"] = stamp
+                state["nse_last_value"] = display
+                state["nse_last_field"] = field_lbl
+                state["nse_last_stamp"] = stamp_w or state.get("nse_last_stamp")
                 if tape:
-                    self._state["nse_last_status"] = "indicative"
+                    state["nse_last_status"] = "indicative"
             if hit0 and str(hit0.get("source") or "") == "marketStatus":
-                self._state["nse_fallback_value"] = hit0.get("value")
-                self._state["nse_fallback_field"] = hit0.get("field")
-        if not chosen and (hits or self._provider.last_error):
+                state["nse_fallback_value"] = hit0.get("value")
+                state["nse_fallback_field"] = hit0.get("field")
+        if not chosen and (hits or provider.last_error):
             logger.info(
-                "CAS auto-trade NSE probe skip=%s err=%s",
+                "CAS auto-trade %s probe skip=%s err=%s",
+                index,
                 last_why,
-                self._provider.last_error,
+                provider.last_error,
             )
         return chosen
 
     def _prepare(self, settings: Dict[str, Any], client: Optional[KiteClient], *, force: bool = False) -> None:
-        with self._lock:
-            if self._state.get("status") in ("EXECUTING", "EXECUTED"):
-                return
-            self._state["status"] = "PREPARING"
-            self._state["reason"] = None
         if client is None or client.kite is None:
             with self._lock:
-                self._state["status"] = "FAILED"
-                self._state["reason"] = "kite_not_connected"
+                for index in self._states:
+                    self._states[index]["status"] = "FAILED"
+                    self._states[index]["reason"] = "kite_not_connected"
             return
-        try:
-            key = INDEX_META[INDEX]["spot_key"]
-            q = client.quote([key])[key]
-            spot = float(q.get("last_price") or 0)
-            if spot <= 0:
-                spot = float((q.get("ohlc") or {}).get("close") or 0)
-            if spot <= 0:
-                raise RuntimeError("nifty_ltp_missing")
-            gap = int(INDEX_META[INDEX]["strike_gap"])
-            atm = round_atm(spot, gap)
-            n = self._cache.prewarm(
-                client.kite,
-                INDEX,
-                spot,
-                ce_steps=0,
-                pe_steps=0,
-                radius=2,
-            )
-            ce = self._cache._legs.get((INDEX, "CE", atm))
-            pe = self._cache._legs.get((INDEX, "PE", atm))
-            if ce is None or pe is None:
-                raise RuntimeError(f"atm_legs_missing atm={atm} warmed={n}")
-            lots = _auto_lots(settings)
-            qty_ce = lots * max(int(ce.lot_size), 1)
-            qty_pe = lots * max(int(pe.lot_size), 1)
-            frozen_at = get_ist_now().isoformat(timespec="milliseconds")
+
+        # Prepare each active index
+        active_indices = self._get_active_indices(settings)
+        for index in active_indices:
             with self._lock:
-                self._state.update({
-                    "status": "PREPARING",
-                    "pre_signal_nifty": spot,
-                    "pre_signal_at": frozen_at,
-                    "locked_atm": atm,
-                    "prepared_ce": ce.tradingsymbol,
-                    "prepared_pe": pe.tradingsymbol,
-                    "quantity": qty_ce,
-                    "reason": f"locked ATM {atm} from live NIFTY {spot:.2f}",
-                })
-            logger.info(
-                "CAS auto-trade prepared spot=%.2f atm=%s CE=%s PE=%s qty=%s/%s",
-                spot, atm, ce.tradingsymbol, pe.tradingsymbol, qty_ce, qty_pe,
-            )
-        except Exception as exc:
-            logger.exception("CAS auto-trade prepare failed")
-            with self._lock:
-                self._state["status"] = "FAILED"
-                self._state["reason"] = str(exc)[:240]
+                if self._states[index].get("status") in ("EXECUTING", "EXECUTED"):
+                    continue
+                self._states[index]["status"] = "PREPARING"
+                self._states[index]["reason"] = None
+
+            try:
+                key = INDEX_META[index]["spot_key"]
+                q = client.quote([key])[key]
+                spot = float(q.get("last_price") or 0)
+                if spot <= 0:
+                    spot = float((q.get("ohlc") or {}).get("close") or 0)
+                if spot <= 0:
+                    raise RuntimeError(f"{index}_ltp_missing")
+                gap = int(INDEX_META[index]["strike_gap"])
+                atm = round_atm(spot, gap)
+                n = self._cache.prewarm(
+                    client.kite,
+                    index,
+                    spot,
+                    ce_steps=0,
+                    pe_steps=0,
+                    radius=2,
+                )
+                ce = self._cache._legs.get((index, "CE", atm))
+                pe = self._cache._legs.get((index, "PE", atm))
+                if ce is None or pe is None:
+                    raise RuntimeError(f"atm_legs_missing atm={atm} warmed={n} for {index}")
+                lots = _auto_lots(settings)
+                qty_ce = lots * max(int(ce.lot_size), 1)
+                qty_pe = lots * max(int(pe.lot_size), 1)
+                frozen_at = get_ist_now().isoformat(timespec="milliseconds")
+                with self._lock:
+                    self._states[index].update({
+                        "status": "PREPARING",
+                        "pre_signal_nifty": spot,  # Keeping field name for compatibility
+                        "pre_signal_at": frozen_at,
+                        "locked_atm": atm,
+                        "prepared_ce": ce.tradingsymbol,
+                        "prepared_pe": pe.tradingsymbol,
+                        "quantity": qty_ce,
+                        "reason": f"locked ATM {atm} from live {index} {spot:.2f}",
+                    })
+                logger.info(
+                    "CAS auto-trade [%s] prepared spot=%.2f atm=%s CE=%s PE=%s qty=%s/%s",
+                    index, spot, atm, ce.tradingsymbol, pe.tradingsymbol, qty_ce, qty_pe,
+                )
+            except Exception as exc:
+                logger.exception("CAS auto-trade prepare failed for %s", index)
+                with self._lock:
+                    self._states[index]["status"] = "FAILED"
+                    self._states[index]["reason"] = str(exc)[:240]
 
     def _on_indicative(self, hit: Dict[str, Any], settings: Dict[str, Any], client: Optional[KiteClient]) -> None:
+        # Determine which index this hit belongs to
+        index_name = hit.get("index_name", "").upper()
+        target_index = None
+        if "NIFTY" in index_name:
+            target_index = "NIFTY"
+        elif "SENSEX" in index_name:
+            target_index = "SENSEX"
+        else:
+            # Default to NIFTY if we can't determine
+            target_index = "NIFTY"
+
+        # Only process if this index is active
+        active_indices = self._get_active_indices(settings)
+        if target_index not in active_indices:
+            logger.debug(f"Ignoring indicative for {target_index} - not active")
+            return
+
         t_recv = time.perf_counter()
         received_at = hit.get("received_at") or get_ist_now().isoformat(timespec="milliseconds")
         indicative = float(hit["value"])
+        state = self._states[target_index]
+
         with self._lock:
-            if self._state.get("status") not in ("ARMED", "PREPARING"):
+            if state.get("status") not in ("ARMED", "PREPARING"):
                 return
-            pre = self._state.get("pre_signal_nifty")
-            atm = self._state.get("locked_atm")
-            ce_sym = self._state.get("prepared_ce")
-            pe_sym = self._state.get("prepared_pe")
-            self._state["status"] = "CAS_DATA_RECEIVED"
-            self._state["indicative_nifty"] = indicative
-            self._state["indicative_at"] = received_at
+            pre = state.get("pre_signal_nifty")
+            atm = state.get("locked_atm")
+            ce_sym = state.get("prepared_ce")
+            pe_sym = state.get("prepared_pe")
+            state["status"] = "CAS_DATA_RECEIVED"
+            state["indicative_nifty"] = indicative  # Keeping field name for compatibility
+            state["indicative_at"] = received_at
             field = hit.get("field")
             src = hit.get("source")
-            self._state["indicative_field"] = f"{src}:{field}" if src else field
+            state["indicative_field"] = f"{src}:{field}" if src else field
+
         if pre is None or atm is None or not ce_sym or not pe_sym:
             with self._lock:
-                self._state["status"] = "FAILED"
-                self._state["reason"] = "not_prepared"
+                state["status"] = "FAILED"
+                state["reason"] = "not_prepared"
             return
 
         bull = float(settings.get("auto_bullish_pts") if settings.get("auto_bullish_pts") is not None else 15)
@@ -590,25 +707,25 @@ class CasAutoTrade:
         t_decided = time.perf_counter()
         decided_at = get_ist_now().isoformat(timespec="milliseconds")
         with self._lock:
-            self._state["status"] = "SIGNAL_DECIDED"
-            self._state["signal"] = signal
-            self._state["cas_delta"] = round(delta, 2)
-            self._state["opt_type"] = opt
-            self._state["latency"] = {
+            state["status"] = "SIGNAL_DECIDED"
+            state["signal"] = signal
+            state["cas_delta"] = round(delta, 2)
+            state["opt_type"] = opt
+            state["latency"] = {
                 "data_to_decision_ms": round((t_decided - t_recv) * 1000, 3),
             }
 
         if signal == "NO_TRADE" or opt is None:
             with self._lock:
-                self._state["status"] = "NO_TRADE"
-                self._state["reason"] = f"delta {delta:.2f} inside thresholds +{bull}/-{bear}"
-                self._state["fired_at"] = decided_at
-                self._state["how"] = (
+                state["status"] = "NO_TRADE"
+                state["reason"] = f"delta {delta:.2f} inside thresholds +{bull}/-{bear}"
+                state["fired_at"] = decided_at
+                state["how"] = (
                     f"No BUY at {_clock(decided_at)}: homepage Indicative Close {indicative:.2f} "
-                    f"vs frozen NIFTY {float(pre):.2f} is Δ {delta:+.2f}, inside +{bull:g}/−{bear:g}. "
+                    f"vs frozen {target_index} {float(pre):.2f} is Δ {delta:+.2f}, inside +{bull:g}/−{bear:g}. "
                     f"ATM {atm} stays locked from freeze."
                 )
-                self._state["decision"] = {
+                state["decision"] = {
                     "freeze": float(pre),
                     "indicative": indicative,
                     "delta": round(delta, 2),
@@ -617,12 +734,13 @@ class CasAutoTrade:
                     "atm": atm,
                     "opt_type": None,
                     "signal": "NO_TRADE",
-                    "because": self._state["how"],
+                    "because": state["how"],
                 }
-            logger.info("CAS auto-trade NO_TRADE delta=%.2f", delta)
+            logger.info(f"CAS auto-trade {target_index} NO_TRADE delta=%.2f", delta)
             self._append_test_log({
                 "kind": "NO_TRADE",
                 "mode": str(settings.get("auto_trade_mode") or "").lower(),
+                "index": target_index,
                 "status": "NO_TRADE",
                 "signal": signal,
                 "pre_signal_nifty": float(pre),
@@ -631,7 +749,7 @@ class CasAutoTrade:
                 "locked_atm": atm,
                 "order_id": None,
                 "paper": str(settings.get("auto_trade_mode") or "").lower() != "live",
-                "how": self._state.get("how"),
+                "how": state.get("how"),
             })
             return
 
@@ -639,9 +757,9 @@ class CasAutoTrade:
             return
         try:
             with self._lock:
-                if self._state.get("status") in ("EXECUTING", "EXECUTED"):
+                if state.get("status") in ("EXECUTING", "EXECUTED"):
                     return
-                self._state["status"] = "EXECUTING"
+                state["status"] = "EXECUTING"
             self._execute(
                 settings,
                 client,
@@ -669,8 +787,50 @@ class CasAutoTrade:
             self._cache = StrikeCache()
             self._last_poll_mono = 0.0
 
+    def _get_active_index_for_day(self) -> str:
+        """Get the index that should be active based on day-of-week settings."""
+        # Get current day of week (0=Monday, 6=Sunday)
+        today_weekday = get_ist_now().weekday()
+        day_map = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+        today_day = day_map[today_weekday]
+
+        # Check if BSE is enabled and today is a BSE default day
+        bse_enabled = self._get_setting_safely("bse_enabled", False)
+        bse_default_days = self._get_setting_safely("bse_default_days", ["wed", "thu"])
+        nse_default_days = self._get_setting_safely("nse_default_days", ["mon", "tue"])
+
+        if bse_enabled and today_day in bse_default_days:
+            return "SENSEX"
+        elif today_day in nse_default_days:
+            return "NIFTY"
+        else:
+            # Default to NIFTY if no specific rule matches
+            return "NIFTY"
+
+    def _get_active_indices(self, settings: Dict[str, Any]) -> list:
+        """Get list of indices that should be active based on indicative_index setting."""
+        indicative_index = str(settings.get("indicative_index", "NIFTY")).upper()
+        bse_enabled = self._get_setting_safely("bse_enabled", False)
+
+        if indicative_index == "BOTH" and bse_enabled:
+            return ["NIFTY", "SENSEX"]
+        elif indicative_index == "SENSEX" and bse_enabled:
+            return ["SENSEX"]
+        else:
+            return ["NIFTY"]
+
+    def _get_setting_safely(self, key: str, default: Any) -> Any:
+        """Safely get a setting from either self._state or default."""
+        # Try to get from state (for backward compatibility)
+        state_settings = self._state.get("settings", {})
+        if key in state_settings:
+            return state_settings[key]
+        # Fall back to default
+        return default
+
     def _execute(
         self,
+        index: str,
         settings: Dict[str, Any],
         client: Optional[KiteClient],
         opt: str,
@@ -686,17 +846,17 @@ class CasAutoTrade:
         live = mode == "live"
         if live and (client is None or not getattr(client, "kite", None)):
             with self._lock:
-                self._state["status"] = "FAILED"
-                self._state["reason"] = "kite_not_connected"
-                self._state["order_status"] = "failed"
+                self._states[index]["status"] = "FAILED"
+                self._states[index]["reason"] = "kite_not_connected"
+                self._states[index]["order_status"] = "failed"
             return
-        atm = int(self._state["locked_atm"])
-        symbol = self._state["prepared_ce"] if opt == "CE" else self._state["prepared_pe"]
-        leg = self._cache._legs.get((INDEX, opt, atm))
+        atm = int(self._states[index]["locked_atm"])
+        symbol = self._states[index]["prepared_ce"] if opt == "CE" else self._states[index]["prepared_pe"]
+        leg = self._cache._legs.get((index, opt, atm))
         if leg is None or client is None:
             with self._lock:
-                self._state["status"] = "FAILED"
-                self._state["reason"] = "leg_or_kite_missing"
+                self._states[index]["status"] = "FAILED"
+                self._states[index]["reason"] = "leg_or_kite_missing"
             return
         lots = _auto_lots(settings)
         qty = lots * max(int(leg.lot_size), 1)
@@ -729,7 +889,8 @@ class CasAutoTrade:
             "order_ack_at": ack_at,
         }
         logger.info(
-            "CAS AUTO TRADE mode=%s pre=%.2f ind=%.2f delta=%+.2f atm=%s signal=%s BUY %s x%d order=%s err=%s",
+            "CAS AUTO TRADE [%s] mode=%s pre=%.2f ind=%.2f delta=%+.2f atm=%s signal=%s BUY %s x%d order=%s err=%s",
+            index,
             mode.upper(),
             pre,
             indicative,
@@ -747,7 +908,7 @@ class CasAutoTrade:
             bear = float(settings.get("auto_bearish_pts") if settings.get("auto_bearish_pts") is not None else 15)
             recap = (
                 f"{kind} at {_clock(ack_at)}: {opt} {symbol} ×{qty} because Indicative Close "
-                f"{indicative:.2f} vs frozen NIFTY {pre:.2f} is Δ {delta:+.2f} "
+                f"{indicative:.2f} vs frozen {index} {pre:.2f} is Δ {delta:+.2f} "
                 f"({'≥ +' + format(bull, 'g') if opt == 'CE' else '≤ −' + format(bear, 'g')} threshold) → "
                 f"{'BULLISH so BUY CE' if opt == 'CE' else 'BEARISH so BUY PE'} "
                 f"ATM {atm} (ATM from freeze, not from indicative)."
@@ -755,20 +916,20 @@ class CasAutoTrade:
             if err:
                 recap = f"FAILED at {_clock(ack_at)}: {err}"
             if err:
-                self._state["status"] = "FAILED"
-                self._state["reason"] = err
-                self._state["order_status"] = "failed"
+                self._states[index]["status"] = "FAILED"
+                self._states[index]["reason"] = err
+                self._states[index]["order_status"] = "failed"
             else:
-                self._state["status"] = "EXECUTED"
-                self._state["reason"] = "exit_manually_in_positions"
-                self._state["order_status"] = "paper" if not live else "submitted"
-            self._state["order_id"] = order_id
-            self._state["tradingsymbol"] = symbol
-            self._state["quantity"] = qty
-            self._state["latency"] = latency
-            self._state["how"] = recap
-            self._state["fired_at"] = ack_at
-            self._state["decision"] = {
+                self._states[index]["status"] = "EXECUTED"
+                self._states[index]["reason"] = "exit_manually_in_positions"
+                self._states[index]["order_status"] = "paper" if not live else "submitted"
+            self._states[index]["order_id"] = order_id
+            self._states[index]["tradingsymbol"] = symbol
+            self._states[index]["quantity"] = qty
+            self._states[index]["latency"] = latency
+            self._states[index]["how"] = recap
+            self._states[index]["fired_at"] = ack_at
+            self._states[index]["decision"] = {
                 "freeze": pre,
                 "indicative": indicative,
                 "delta": round(delta, 2),
@@ -779,9 +940,23 @@ class CasAutoTrade:
                 "quantity": qty,
                 "because": recap,
             }
+        # Update backward compatibility fields (for single index mode)
+        if self._get_setting_safely("indicative_index", "NIFTY").upper() == "NIFTY" and not self._get_setting_safely("bse_enabled", False):
+            with self._lock:
+                self._state["status"] = self._states[index]["status"]
+                self._state["reason"] = self._states[index]["reason"]
+                self._state["order_status"] = self._states[index]["order_status"]
+                self._state["order_id"] = order_id
+                self._state["tradingsymbol"] = symbol
+                self._state["quantity"] = qty
+                self._state["latency"] = latency
+                self._state["how"] = recap
+                self._state["fired_at"] = ack_at
+                self._state["decision"] = self._states[index]["decision"]
         self._append_test_log({
             "kind": "BUY" if not err else "FAILED",
             "mode": mode,
+            "index": index,
             "status": "FAILED" if err else "EXECUTED",
             "signal": opt,
             "opt_type": opt,
