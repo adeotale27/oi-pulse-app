@@ -67,3 +67,36 @@ export function writeCarryLeft(px) {
     /* ignore */
   }
 }
+
+/** Keep floating docks below the ticker / Kite API header. */
+export function deskHeaderClearance() {
+  if (typeof document === "undefined") return 88;
+  let top = 56;
+  for (const sel of [
+    "[data-testid='dashboard-header']",
+    ".oi-header",
+    "[data-testid='kite-maintenance-banner']",
+    "[data-testid='kite-token-banner']",
+  ]) {
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    if (r.height > 0) top = Math.max(top, r.bottom);
+  }
+  return Math.min(220, Math.max(56, Math.round(top + 8)));
+}
+
+/**
+ * CSS `bottom` so the panel top (drag handle) stays below the header.
+ * `panelHeight` is the rendered height of the chip or sheet.
+ */
+export function clampDockBottom(raw, viewportHeight, opts = {}) {
+  const vh = Number(viewportHeight) || 800;
+  const min = Math.max(8, Number(opts.minBottom) || 12);
+  const header = Math.max(48, Number(opts.headerClearance) || 88);
+  const h = Math.max(40, Number(opts.panelHeight) || 48);
+  const max = Math.max(min, vh - header - h);
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, n));
+}

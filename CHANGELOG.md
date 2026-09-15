@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.10 — 2026-09-15
+
+Mkt Intel and Overnight docks cannot sit under the ticker / Kite API header. Dragging them up keeps the handle on screen so they stay movable. Overnight sits above the header stacking order.
+
 ## V10.09 — 2026-09-15
 
 Market Intelligence tab no longer vanishes after a few seconds (user `page_enabled` pref no longer hides the page). RSS `pubDate` values are parsed so today’s stories show and stay in Mongo `mi_articles` for the retention-days setting. Popup on/off reloads immediately; clicking the Mkt Intel chip no longer unmounts it. Positions **Warn @** sits on the Kite Positions / Unhedged Exposure row, far right.

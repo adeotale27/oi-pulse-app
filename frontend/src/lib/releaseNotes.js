@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.10",
+    date: "2026-09-15",
+    user: [
+      "Mkt Intel and Overnight stay below the top bar when you drag them. They cannot hide under Kite API, and you can always grab them to move again.",
+    ],
+    admin: [
+      "Floating docks clamp below the header (including the Kite token banner). Overnight z-index is above the header so it does not paint underneath.",
+    ],
+  },
+  {
     version: "10.09",
     date: "2026-09-15",
     user: [
