@@ -35,7 +35,7 @@ export default function PositionsHedgeStatus({ hedge }) {
           <span className="truncate">{hedge.overallLabel}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-0" data-testid="positions-hedge-breakdown">
+      <PopoverContent align="start" className="w-72 max-w-[calc(100vw-1.5rem)] p-0" data-testid="positions-hedge-breakdown">
         <div className="border-b border-slate-100 px-3 py-2">
           <div className="text-xs font-semibold text-slate-900">Hedge status</div>
           <div className="text-[10px] text-slate-500 mt-0.5">

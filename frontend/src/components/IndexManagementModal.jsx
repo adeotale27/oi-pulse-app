@@ -143,7 +143,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0" data-testid="index-management-modal">
+      <DialogContent className="max-w-lg max-h-[90dvh] overflow-hidden flex flex-col p-0 gap-0 w-[calc(100vw-1.25rem)] sm:w-full" data-testid="index-management-modal">
         <DialogHeader className="px-4 py-3 border-b border-slate-200">
           <DialogTitle className="flex items-center gap-2 text-[15px]">
             <Layers className="w-4 h-4 text-emerald-600" />

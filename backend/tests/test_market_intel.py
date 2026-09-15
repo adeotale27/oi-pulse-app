@@ -10,6 +10,7 @@ from market_intel import (
     impact_score,
     india_relevance_score,
     map_records,
+    popup_allowed,
     retention_cutoff,
     similar_titles,
 )
@@ -94,6 +95,15 @@ def test_ranking_prefers_impact_not_only_time():
     ]
     ranked = cluster_rows(docs)
     assert ranked[0]["title"] == "old"
+
+
+def test_popup_allowed_independent_of_page_and_ingest():
+    prefs_off = {"page_enabled": False, "popup_enabled": False}
+    prefs_guest = {"page_enabled": False, "popup_enabled": True}
+    assert popup_allowed(False, prefs_guest, is_admin=True) is False
+    assert popup_allowed(True, prefs_off, is_admin=True) is True
+    assert popup_allowed(True, prefs_off, is_admin=False) is False
+    assert popup_allowed(True, prefs_guest, is_admin=False) is True
 
 
 def test_top_two_are_highest():

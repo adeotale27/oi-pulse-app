@@ -416,7 +416,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             {isHeader && (
               <div className="flex items-center gap-1 px-2 pb-1.5">
                 <span
-                  className={`inline-flex min-w-0 truncate rounded-sm border px-1 py-px text-[9px] font-semibold leading-tight ${tickerRegimeChipClass(regime.key, { onDark: isActive })}`}
+                  className={`inline-flex min-w-0 max-w-full whitespace-normal rounded-sm border px-1 py-px text-[9px] font-semibold leading-tight ${tickerRegimeChipClass(regime.key, { onDark: isActive })}`}
                   title={regime.why}
                   data-testid={`regime-chip-${t.index}`}
                 >

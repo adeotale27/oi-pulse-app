@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.04 — 2026-09-15
+
+Market Intelligence popup: left/right arrows when several high-impact stories are waiting; labels read **Impact 96** and **Indian market impact 70**. Desk ingest keeps pulling and storing even if the page or popups are off. The admin “Allow in-app popups” tick is the only desk-wide popup kill switch (off = nobody; on = admin always sees it). Admin tools, journal, and settings dialogs fit a phone.
+
 ## V10.03 — 2026-09-15
 
 Index chips: a normal trending-down day is **BEAR TREND**; RISK-OFF only for crash-size drops. Market Intelligence shows the impact score in a box beside CRITICAL/HIGH/MODERATE. Hedge popover states leftover **shorts vs longs** (lots) per CE/PE.

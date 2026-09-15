@@ -58,7 +58,7 @@ export default function DeskAiKeysModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="desk-ai-keys-modal" className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent data-testid="desk-ai-keys-modal" className="max-w-lg max-h-[90dvh] overflow-y-auto w-[calc(100vw-1.25rem)] sm:w-full">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-4 h-4" />
@@ -145,8 +145,8 @@ export function MarketIntelUserPrefs({ prefs, onChange }) {
     <div className="rounded-md border border-slate-200 p-3 space-y-2 text-xs" data-testid="mi-user-prefs">
       <div className="font-semibold text-slate-800">Your Market Intelligence</div>
       {[
-        ["page_enabled", "Show this page"],
-        ["popup_enabled", "Very important news popup"],
+        ["page_enabled", "Show this page (ingest still runs if off)"],
+        ["popup_enabled", "Very important news popup for me"],
         ["show_critical", "Show critical"],
         ["show_high", "Show high impact"],
         ["show_moderate", "Show moderate"],

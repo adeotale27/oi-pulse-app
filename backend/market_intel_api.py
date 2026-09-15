@@ -238,7 +238,9 @@ def mount(api_router, *, require_admin, require_desk_user):
         prefs = await _prefs(uid)
         s = _settings()
         global_on = s.get("market_intel_popup_enabled", True) is not False
-        items = await mi.popup_candidates(_db(), uid, prefs, global_on)
+        items = await mi.popup_candidates(
+            _db(), uid, prefs, global_on, is_admin=(role == "admin")
+        )
         return {"items": [{k: it.get(k) for k in (
             "title", "impact_score", "india_relevance_score", "event_type",
             "summary", "potential", "event_cluster_id", "source_name", "impact_band",

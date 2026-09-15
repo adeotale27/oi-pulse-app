@@ -57,7 +57,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | GET/POST/DELETE | `/desk-ai/providers` | Admin: vaulted OpenAI-compatible Desk AI keys |
 | GET | `/market-intel` | Ranked clustered events (desk user). Query `filter=` |
 | GET/POST | `/market-intel/prefs` | Per-user page/popup prefs |
-| GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app very-high-impact popup (top 2, once per cluster) |
+| GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app very-high-impact popup (up to 8 unseen clusters). Desk-wide popup tick off → empty for everyone; ingest is independent. Admin always receives items when the desk tick is on. |
 | GET/POST/DELETE | `/market-intel/sources` | Admin sources; `.../test` and `.../fetch` |
 | POST | `/market-intel/cleanup` | Admin retention cleanup now |
 | GET | `/market-intel/templates` | public-apis News/Finance catalog + RSS templates |

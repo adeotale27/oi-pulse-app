@@ -3115,7 +3115,7 @@ export default function Dashboard() {
       )}
 
       <MarketIntelPopup
-        enabled={!!(authState.is_admin || authState.is_guest) && miPageOn}
+        enabled={!!(authState.is_admin || authState.is_guest)}
         onOpenPage={() => {
           if (tabOn("market-intel")) setActiveTab("market-intel");
         }}
