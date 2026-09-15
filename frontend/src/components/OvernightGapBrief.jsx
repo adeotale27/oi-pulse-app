@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, AlignLeft, AlignCenter, AlignRight, Sparkles } from "lucide-react";
 import { api, fetchOIChange, fetchJournalPeriod, subscribeExtras } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import {
   CARRY_PANEL_WIDTH,
   clampCarryLeft,
+  clampDockBottom,
+  deskHeaderClearance,
   readCarryLeft,
   snapCarryLeft,
   snapDockFromClientX,
@@ -136,6 +138,7 @@ export default function OvernightGapBrief({
   const [guide, setGuide] = useState(null);
   const [carryAi, setCarryAi] = useState(() => readCarryAi());
   const dragRef = useRef(null);
+  const boxRef = useRef(null);
   const skipClickRef = useRef(false);
   const userPinnedRef = useRef(null);
   const packedBookRef = useRef({ book: null, adjust: null, journal: null, sells: [], memory: null });
@@ -173,13 +176,27 @@ export default function OvernightGapBrief({
   };
 
   const clampBottom = useCallback((raw) => {
-    const min = dockClearance();
-    const phone = isPhone();
-    const max = phone
-      ? Math.max(min, 120)
-      : Math.max(min, (typeof window !== "undefined" ? window.innerHeight : 800) - 72);
-    return Math.min(max, Math.max(min, raw));
-  }, []);
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const h = boxRef.current?.offsetHeight || (minimized ? 48 : 320);
+    return clampDockBottom(raw, vh, {
+      minBottom: dockClearance(),
+      headerClearance: deskHeaderClearance(),
+      panelHeight: h,
+    });
+  }, [minimized]);
+
+  useLayoutEffect(() => {
+    const apply = () => {
+      setBottomPx((prev) => {
+        const next = clampBottom(prev != null ? prev : dockClearance());
+        if (next !== prev) writeCarryBottom(next);
+        return next;
+      });
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [clampBottom]);
 
   const onCarryPointerDown = (e, kind = "mobile") => {
     const desktop = !isPhone();
@@ -202,9 +219,8 @@ export default function OvernightGapBrief({
       const w = typeof window !== "undefined" ? window.innerWidth : 1200;
       const panel = minimized || isPhone() ? 72 : CARRY_PANEL_WIDTH;
       setLeftPx(clampCarryLeft(dragRef.current.startLeft + (e.clientX - dragRef.current.startX), w, panel));
-      if (kind === "move") return;
     }
-    if (!minimized && isPhone()) return;
+    if (!minimized && isPhone() && kind !== "both") return;
     const dy = dragRef.current.startY - e.clientY;
     setBottomPx(clampBottom(dragRef.current.startBottom + dy));
   };
@@ -218,13 +234,8 @@ export default function OvernightGapBrief({
     const shouldExpand = minimized && !moved;
     if (kind === "move" || kind === "both") {
       if (moved && leftPx != null) writeCarryLeft(leftPx);
-      if (kind === "move") {
-        dragRef.current = null;
-        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
-        return;
-      }
     }
-    if (!minimized && isPhone()) {
+    if (!minimized && isPhone() && kind !== "both") {
       const swipeDown = e.clientY - startY;
       dragRef.current = null;
       try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
@@ -566,6 +577,7 @@ export default function OvernightGapBrief({
       <button
         type="button"
         data-testid="overnight-gap-brief-chip"
+        ref={boxRef}
         data-icon-only={iconOnly ? "1" : "0"}
         data-dock={dockHint}
         onClick={() => {
@@ -575,7 +587,7 @@ export default function OvernightGapBrief({
           }
           expand();
         }}
-        className={`fixed z-40 md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
+        className={`fixed z-[60] md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
           iconOnly ? "p-2.5" : "gap-2 px-3 py-2"
         } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
         style={carryPosStyle}
@@ -601,8 +613,9 @@ export default function OvernightGapBrief({
   return (
     <div
       data-testid="overnight-gap-brief"
+      ref={boxRef}
       data-dock={dockHint}
-      className={`fixed z-40 md:bottom-3 flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${
+      className={`fixed z-[60] md:bottom-3 flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{

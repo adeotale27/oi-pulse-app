@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, GripHorizontal, Maximize2, Minimize2, Newspaper, X } from "lucide-react";
 import { api } from "@/lib/api";
 import {
@@ -12,7 +12,7 @@ import {
   MI_POPUP_MIN_KEY,
   MI_RELOAD_EVENT,
 } from "@/lib/marketIntel";
-import { clampCarryLeft, snapCarryLeft } from "@/lib/carryDock";
+import { clampCarryLeft, clampDockBottom, deskHeaderClearance, snapCarryLeft } from "@/lib/carryDock";
 import { nextSessionOpenMs } from "@/lib/overnightBrief";
 
 const PANEL_W = 320;
@@ -76,6 +76,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const [bottomPx, setBottomPx] = useState(() => readNum(MI_POPUP_BOTTOM_KEY));
   const idxRef = useRef(0);
   const dragRef = useRef(null);
+  const boxRef = useRef(null);
   const skipClickRef = useRef(false);
   idxRef.current = idx;
 
@@ -87,13 +88,27 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   };
 
   const clampBottom = useCallback((raw) => {
-    const min = dockClearance();
-    const phone = isPhone();
-    const max = phone
-      ? Math.max(min, 160)
-      : Math.max(min, (typeof window !== "undefined" ? window.innerHeight : 800) - 72);
-    return Math.min(max, Math.max(min, raw));
-  }, []);
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const h = boxRef.current?.offsetHeight || (minimized ? 48 : 280);
+    return clampDockBottom(raw, vh, {
+      minBottom: dockClearance(),
+      headerClearance: deskHeaderClearance(),
+      panelHeight: h,
+    });
+  }, [minimized]);
+
+  useLayoutEffect(() => {
+    const apply = () => {
+      setBottomPx((prev) => {
+        const next = clampBottom(prev != null ? prev : dockClearance());
+        if (next !== prev) writeNum(MI_POPUP_BOTTOM_KEY, next);
+        return next;
+      });
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [clampBottom]);
 
   useEffect(() => {
     if (leftPx != null) return;
@@ -186,9 +201,8 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
       const w = typeof window !== "undefined" ? window.innerWidth : 1200;
       const panel = minimized || isPhone() ? 88 : PANEL_W;
       setLeftPx(clampCarryLeft(dragRef.current.startLeft + (e.clientX - dragRef.current.startX), w, panel));
-      if (kind === "move") return;
     }
-    if (!minimized && isPhone()) return;
+    if (!minimized && isPhone() && dragRef.current.kind !== "both") return;
     const dy = dragRef.current.startY - e.clientY;
     setBottomPx(clampBottom(dragRef.current.startBottom + dy));
   };
@@ -202,13 +216,8 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     const shouldExpand = minimized && !moved;
     if (kind === "move" || kind === "both") {
       if (moved && leftPx != null) writeNum(MI_POPUP_LEFT_KEY, leftPx);
-      if (kind === "move") {
-        dragRef.current = null;
-        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
-        return;
-      }
     }
-    if (!minimized && isPhone()) {
+    if (!minimized && isPhone() && kind !== "both") {
       const swipeDown = e.clientY - startY;
       dragRef.current = null;
       try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
@@ -261,6 +270,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
       <button
         type="button"
         data-testid="market-intel-popup-chip"
+        ref={boxRef}
         onClick={() => {
           if (skipClickRef.current) {
             skipClickRef.current = false;
@@ -302,6 +312,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
             }),
       }}
       data-testid="market-intel-popup"
+      ref={boxRef}
       role="dialog"
       aria-label="Market Intelligence"
     >
