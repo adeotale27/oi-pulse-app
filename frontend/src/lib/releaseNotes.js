@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.09",
+    date: "2026-09-15",
+    user: [
+      "Market Intelligence stays on the tab bar. The news popup comes back when you turn it on and does not vanish when you tap the Mkt Intel chip. Positions Warn @ sits on the right of the Kite Positions row.",
+    ],
+    admin: [
+      "Mkt Intel tab visibility is only Public/Admin page ticks — not the old personal hide-page pref. RSS dates parse so today’s feed is not empty. Ingest still stores articles in mi_articles for the retention window; settings show the stored count. Popup save reloads the in-app sheet immediately.",
+    ],
+  },
+  {
     version: "10.08",
     date: "2026-09-15",
     user: [

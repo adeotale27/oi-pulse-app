@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.09 — 2026-09-15
+
+Market Intelligence tab no longer vanishes after a few seconds (user `page_enabled` pref no longer hides the page). RSS `pubDate` values are parsed so today’s stories show and stay in Mongo `mi_articles` for the retention-days setting. Popup on/off reloads immediately; clicking the Mkt Intel chip no longer unmounts it. Positions **Warn @** sits on the Kite Positions / Unhedged Exposure row, far right.
+
 ## V10.08 — 2026-09-15
 
 Phone Admin configuration and Mkt Intel settings open as a real sheet (tools scrim no longer covers the dialog). Mkt Intel settings scroll inside the viewport. Event types on the Market Intelligence page render as bold caps (`INDIA MACRO`, `OIL`). After Kite login, Positions force-refreshes the book instead of waiting for a full app reload.

@@ -192,6 +192,22 @@ def mount(api_router, *, require_admin, require_desk_user):
         except Exception as e:
             return {"ok": False, "error": str(e)[:200], "deleted": 0}
 
+    @api_router.get("/market-intel/stats")
+    async def mi_stats(_admin: bool = Depends(require_admin)):
+        db = _db()
+        s = _settings()
+        stored = await db[mi.ART_COL].count_documents({}) if db is not None else 0
+        ret = int(s.get("market_intel_retention_days") or mi.DEFAULT_RETENTION_DAYS)
+        mn = int(s.get("market_intel_min_history_days") or mi.DEFAULT_MIN_HISTORY_DAYS)
+        cut = mi.retention_cutoff(mi.ist_today(), ret, mn)
+        return {
+            "stored": stored,
+            "retention_days": ret,
+            "min_history_days": mn,
+            "cutoff": cut.isoformat(),
+            "collection": mi.ART_COL,
+        }
+
     @api_router.get("/market-intel/prefs")
     async def mi_prefs_get(request: Request, role: str = Depends(require_desk_user)):
         from server import _ledger_owner
@@ -224,8 +240,6 @@ def mount(api_router, *, require_admin, require_desk_user):
         from server import _ledger_owner
         uid = await _ledger_owner(request, role)
         prefs = await _prefs(uid)
-        if not prefs.get("page_enabled", True):
-            return {"items": [], "disabled": True}
         items = await mi.feed_for_user(_db(), prefs, filt, 40)
         for it in items:
             it.pop("_id", None)

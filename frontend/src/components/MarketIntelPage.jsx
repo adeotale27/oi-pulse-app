@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
 import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
-import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel } from "@/lib/marketIntel";
+import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload } from "@/lib/marketIntel";
 
 export default function MarketIntelPage({ compact = false }) {
   const [filt, setFilt] = useState("all");
@@ -22,6 +22,11 @@ export default function MarketIntelPage({ compact = false }) {
 
   useEffect(() => { loadPrefs(); }, [loadPrefs]);
   useEffect(() => { loadFeed(); }, [loadFeed]);
+  useEffect(() => {
+    const onReload = () => loadFeed();
+    window.addEventListener(MI_RELOAD_EVENT, onReload);
+    return () => window.removeEventListener(MI_RELOAD_EVENT, onReload);
+  }, [loadFeed]);
 
   useEffect(() => {
     const sec = Math.max(60, Number(prefs?.ui_poll_seconds) || 120);
@@ -32,7 +37,9 @@ export default function MarketIntelPage({ compact = false }) {
   const patchPrefs = (patch) => {
     const next = { ...(prefs || {}), ...patch };
     setPrefs(next);
-    api.post("/market-intel/prefs", patch).catch(() => {});
+    api.post("/market-intel/prefs", patch).then(() => {
+      if ("popup_enabled" in patch) notifyMarketIntelReload();
+    }).catch(() => {});
   };
 
   return (

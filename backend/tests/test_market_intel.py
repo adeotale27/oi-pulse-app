@@ -12,6 +12,7 @@ from market_intel import (
     is_ist_today_item,
     item_ist_date,
     map_records,
+    parse_news_datetime,
     popup_allowed,
     retention_cutoff,
     similar_titles,
@@ -104,6 +105,15 @@ def test_item_ist_date_uses_published_prefix():
     assert is_ist_today_item({"published_at": "2026-09-14T08:19"}, today=date(2026, 9, 14)) is True
     assert is_ist_today_item({"published_at": "2026-09-14T08:19"}, today=date(2026, 9, 15)) is False
     assert is_ist_today_item({"published_at": "2026-09-15T04:00:00"}, today=date(2026, 9, 15)) is True
+
+
+def test_rss_rfc822_and_iso_published_are_today():
+    rss = "Tue, 15 Sep 2026 07:30:00 GMT"
+    dt = parse_news_datetime(rss)
+    assert dt is not None
+    assert item_ist_date({"published_at": rss}) == date(2026, 9, 15)
+    assert is_ist_today_item({"published_at": rss}, today=date(2026, 9, 15)) is True
+    assert parse_news_datetime("20260915T073000") is not None
 
 
 def test_popup_allowed_independent_of_page_and_ingest():

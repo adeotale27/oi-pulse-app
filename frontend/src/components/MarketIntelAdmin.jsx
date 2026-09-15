@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, apiDetail } from "@/lib/api";
+import { notifyMarketIntelReload } from "@/lib/marketIntel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -19,11 +20,13 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
     name: "", source_type: "RSS", endpoint: "", method: "GET", auth: "none", api_key: "",
     mapping: '{"list":"articles","title":"title","url":"url","description":"description","published_at":"publishedAt"}',
   });
+  const [storeStats, setStoreStats] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = () => {
     api.get("/market-intel/sources").then((r) => setSources(r.data?.sources || [])).catch(() => {});
     api.get("/market-intel/templates").then((r) => setTemplates(r.data || {})).catch(() => {});
+    api.get("/market-intel/stats").then((r) => setStoreStats(r.data || null)).catch(() => {});
     api.get("/settings").then((r) => {
       const d = r.data || {};
       setSettings({
@@ -68,6 +71,8 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
     try {
       await api.post("/settings", settings);
       toast.success("Mkt Intel settings saved");
+      notifyMarketIntelReload();
+      load();
     } catch (e) {
       toast.error(apiDetail(e, "Save failed"));
     } finally {
@@ -128,6 +133,12 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
               <input type="checkbox" className="mt-0.5" checked={settings.market_intel_popup_dock_until_next !== false} onChange={(e) => setSettings({ ...settings, market_intel_popup_dock_until_next: e.target.checked })} data-testid="mi-popup-dock-until-next" />
               <span>After close, keep a <b>Mkt Intel</b> chip until the next session (after day close / next open). Same idea as Overnight. Untick to hide it completely when dismissed.</span>
             </label>
+            {storeStats ? (
+              <div className="sm:col-span-2 text-[11px] text-slate-600" data-testid="mi-store-stats">
+                Stored in Mongo <code>{storeStats.collection || "mi_articles"}</code>: <b>{storeStats.stored ?? 0}</b> articles.
+                Retention {storeStats.retention_days} days (keep from {storeStats.cutoff}). Ingest writes every fetch; this window is what cleanup deletes against.
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-1">
             <Button size="sm" className="h-7" disabled={busy} onClick={saveDeskSettings}>Save interval</Button>
@@ -136,6 +147,7 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
               try {
                 const { data } = await api.post("/market-intel/cleanup");
                 toast.message(`Cleanup: deleted ${data.deleted ?? 0}, remaining ${data.remaining ?? "—"}`);
+                load();
               } catch (e) { toast.error(apiDetail(e, "Cleanup failed")); }
             }}>Cleanup now</Button>
           </div>

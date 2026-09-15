@@ -10,6 +10,7 @@ import {
   MI_POPUP_BOTTOM_KEY,
   MI_POPUP_LEFT_KEY,
   MI_POPUP_MIN_KEY,
+  MI_RELOAD_EVENT,
 } from "@/lib/marketIntel";
 import { clampCarryLeft, snapCarryLeft } from "@/lib/carryDock";
 import { nextSessionOpenMs } from "@/lib/overnightBrief";
@@ -69,6 +70,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const [items, setItems] = useState([]);
   const [idx, setIdx] = useState(0);
   const [minimized, setMinimized] = useState(() => readMinimized());
+  const [forceOpen, setForceOpen] = useState(false);
   const [dockUntilNext, setDockUntilNext] = useState(true);
   const [leftPx, setLeftPx] = useState(() => readNum(MI_POPUP_LEFT_KEY));
   const [bottomPx, setBottomPx] = useState(() => readNum(MI_POPUP_BOTTOM_KEY));
@@ -134,10 +136,13 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
       poll();
       timer = setInterval(poll, 180000);
     }, 2000);
+    const onReload = () => poll();
+    window.addEventListener(MI_RELOAD_EVENT, onReload);
     return () => {
       cancelled = true;
       clearTimeout(timer);
       clearInterval(timer);
+      window.removeEventListener(MI_RELOAD_EVENT, onReload);
     };
   }, [enabled]);
 
@@ -160,6 +165,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const expand = () => {
     clearMinimized();
     setMinimized(false);
+    setForceOpen(true);
   };
 
   const onPointerDown = (e, kind) => {
@@ -248,7 +254,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     if (next.length === 0) closeOrDock();
   };
 
-  if (!item && !minimized) return null;
+  if (!item && !minimized && !forceOpen) return null;
 
   if (minimized) {
     return (

@@ -36,6 +36,13 @@ export function formatEventTypeLabel(raw) {
   return t.replace(/[_-]+/g, " ").replace(/\s+/g, " ").toUpperCase();
 }
 
+export const MI_RELOAD_EVENT = "oi-market-intel-reload";
+
+export function notifyMarketIntelReload() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(MI_RELOAD_EVENT));
+}
+
 export const MI_POPUP_LEFT_KEY = "oiMiPopupLeftPx";
 export const MI_POPUP_BOTTOM_KEY = "oiMiPopupBottomPx";
 export const MI_POPUP_MIN_KEY = "oi_mi_popup_minimized";

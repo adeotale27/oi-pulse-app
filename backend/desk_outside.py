@@ -94,7 +94,7 @@ def parse_rss_items(xml_text: str, limit: int = 8) -> List[Dict[str, str]]:
             "source": _clip(item.findtext("source") or "", 40),
             "url": _clip(item.findtext("link") or "", 300),
             "summary": _clip(item.findtext("description") or "", 280),
-            "published": _clip(item.findtext("pubDate") or "", 40),
+            "published": (item.findtext("pubDate") or "").strip(),
         })
         if len(out) >= limit:
             break
