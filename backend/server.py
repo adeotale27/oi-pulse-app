@@ -4544,6 +4544,7 @@ async def get_positions(
     from kite_positions import (
         apply_live_ltp_to_open_rows,
         booked_today_from_row,
+        lot_sizes_by_tradingsymbol,
         merge_kite_net_day,
         settle_expiry_floor_hedges,
     )
@@ -4564,6 +4565,12 @@ async def get_positions(
             "transient": True,
             "token_issue": False,
         }
+
+    inst_df = getattr(tracker.kite_service, "instruments_df", None) if getattr(tracker, "kite_service", None) else None
+    lot_map = lot_sizes_by_tradingsymbol(
+        inst_df,
+        [p.get("tradingsymbol") for p in merged if isinstance(p, dict)],
+    )
 
     out = []
     for p in merged:
@@ -4639,6 +4646,7 @@ async def get_positions(
             "buy_value": buy_value or None,
             "sell_value": sell_value or None,
             "multiplier": multiplier,
+            "lot_size": lot_map.get(ts),
             "exited": exited,
             "is_exited": exited,
             "position_state": "closed" if exited else "open",

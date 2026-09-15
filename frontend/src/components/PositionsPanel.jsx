@@ -76,6 +76,8 @@ import TradeJournalModal from "@/components/TradeJournalModal";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip, { eventFromInfoTip } from "@/components/InfoTip";
 import PositionsBrainPanel from "@/components/PositionsBrainPanel";
+import PositionsHedgeStatus from "@/components/PositionsHedgeStatus";
+import { computePositionHedge } from "@/lib/positionHedge";
 import { fmtBookedPct } from "@/lib/journalPct";
 import { classifyDayCapital } from "@/lib/capitalGuard";
 import {
@@ -1049,6 +1051,7 @@ export default function PositionsPanel({
 
   const openRows = useMemo(() => rows.filter((r) => !r.exited), [rows]);
   const exitedRows = useMemo(() => rows.filter((r) => r.exited), [rows]);
+  const hedgeStatus = useMemo(() => computePositionHedge(rows), [rows]);
 
   const sellIdeas = useMemo(() => {
     if (!current?.strikes?.length) return null;
@@ -1286,6 +1289,7 @@ export default function PositionsPanel({
               {stats.exitedCount} exited
             </span>
           )}
+          <PositionsHedgeStatus hedge={hedgeStatus} />
           <InfoTip title="Positions · seller guide" testId="positions-guide-tip">
             {POSITIONS_GUIDE}
           </InfoTip>

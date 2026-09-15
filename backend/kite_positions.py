@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time as dtime, timedelta
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 
 def position_key(p: dict) -> tuple:
@@ -484,3 +484,39 @@ def settle_expiry_floor_hedges(
         row["partial"] = False
         n += 1
     return n
+
+
+def lot_sizes_by_tradingsymbol(instruments: Any, symbols: Iterable[str]) -> dict[str, int]:
+    """Lot size from the Kite instrument dump — not a hardcoded index table."""
+    want = {str(s) for s in symbols if s}
+    out: dict[str, int] = {}
+    if not want or instruments is None:
+        return out
+    rows: list = []
+    if hasattr(instruments, "to_dict"):
+        try:
+            if getattr(instruments, "empty", False):
+                return out
+            if "tradingsymbol" not in getattr(instruments, "columns", []):
+                return out
+            sub = instruments[instruments["tradingsymbol"].isin(want)]
+            rows = sub.to_dict("records")
+        except Exception:
+            return out
+    elif isinstance(instruments, list):
+        rows = instruments
+    else:
+        return out
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ts = str(row.get("tradingsymbol") or "")
+        if ts not in want:
+            continue
+        try:
+            ls = int(row.get("lot_size") or 0)
+        except (TypeError, ValueError):
+            continue
+        if ls > 0:
+            out[ts] = ls
+    return out

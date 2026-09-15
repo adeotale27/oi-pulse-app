@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "9.18",
+    date: "2026-09-15",
+    user: [
+      "Positions header now shows Hedge status for open options: fully hedged, leftover lots, or fully unhedged — per underlying and CE/PE. Tap the chip for the breakdown.",
+    ],
+    admin: [
+      "GET /positions includes instrument lot_size when the Kite dump is loaded. Hedge math is frontend, data-driven, no index name list.",
+    ],
+  },
+  {
     version: "9.17",
     date: "2026-09-02",
     user: [
