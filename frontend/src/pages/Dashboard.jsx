@@ -285,7 +285,6 @@ export default function Dashboard() {
   const [activity, setActivity] = useState([]);       // unusual activity feed events
   const [activityFilter, setActivityFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("oi-change");
-  const [miPageOn, setMiPageOn] = useState(true);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("darkMode") === "1"; } catch { return false; }
   });
@@ -614,27 +613,13 @@ export default function Dashboard() {
   }, [status]);
 
   const tabOn = useCallback(
-    (id) => {
-      const allowed = pageAllowed(id, {
-        isAdmin: !!authState.is_admin,
-        visiblePages,
-        adminPages: adminVisiblePages,
-      });
-      if (id === "market-intel" && miPageOn === false) return false;
-      return allowed;
-    },
-    [authState.is_admin, visiblePages, adminVisiblePages, miPageOn],
+    (id) => pageAllowed(id, {
+      isAdmin: !!authState.is_admin,
+      visiblePages,
+      adminPages: adminVisiblePages,
+    }),
+    [authState.is_admin, visiblePages, adminVisiblePages],
   );
-
-  useEffect(() => {
-    if (!authState.is_admin && !authState.is_guest) return undefined;
-    const t = setTimeout(() => {
-      api.get("/market-intel/prefs").then((r) => {
-        setMiPageOn(r.data?.prefs?.page_enabled !== false);
-      }).catch(() => {});
-    }, 5000);
-    return () => clearTimeout(t);
-  }, [authState.is_admin, authState.is_guest]);
 
   useEffect(() => {
     const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
@@ -3009,7 +2994,7 @@ export default function Dashboard() {
                       isAdmin={!!authState.is_admin}
                       visiblePages={visiblePages}
                       adminPages={adminVisiblePages}
-                      hideMarketIntel={!miPageOn}
+                      hideMarketIntel={!tabOn("market-intel")}
                       alerts={focusedAlerts}
                       onClearAlerts={handleClearAlerts}
                       canClearAlerts={authState.is_admin}

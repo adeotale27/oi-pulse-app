@@ -145,7 +145,6 @@ export function MarketIntelUserPrefs({ prefs, onChange }) {
     <div className="rounded-md border border-slate-200 p-3 space-y-2 text-xs" data-testid="mi-user-prefs">
       <div className="font-semibold text-slate-800">Your Market Intelligence</div>
       {[
-        ["page_enabled", "Show this page (ingest still runs if off)"],
         ["popup_enabled", "Very important news popup for me"],
         ["show_critical", "Show critical"],
         ["show_high", "Show high impact"],

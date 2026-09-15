@@ -173,14 +173,58 @@ def ist_today(now: Optional[datetime] = None) -> date:
     return n.astimezone(IST).date()
 
 
+def parse_news_datetime(raw: Any) -> Optional[datetime]:
+    """RSS RFC822, ISO-8601, unix seconds, or Alpha Vantage YYYYMMDDTHHMMSS → UTC."""
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        dt = raw
+    elif isinstance(raw, (int, float)):
+        try:
+            dt = datetime.fromtimestamp(float(raw), tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    else:
+        s = str(raw).strip()
+        if not s:
+            return None
+        if s.isdigit() and len(s) >= 10:
+            try:
+                return datetime.fromtimestamp(int(s[:10]), tz=timezone.utc)
+            except (OSError, OverflowError, ValueError):
+                pass
+        compact = re.match(r"^(\d{8})T(\d{6})", s)
+        if compact:
+            try:
+                return datetime.strptime(compact.group(1) + compact.group(2), "%Y%m%d%H%M%S").replace(
+                    tzinfo=timezone.utc
+                )
+            except ValueError:
+                pass
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                from email.utils import parsedate_to_datetime
+                dt = parsedate_to_datetime(s)
+            except (TypeError, ValueError, OverflowError, IndexError):
+                return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def item_ist_date(doc: Dict[str, Any]) -> Optional[date]:
-    """Calendar day shown on the desk: YYYY-MM-DD prefix of published/discovered."""
+    """Calendar day on the desk (IST). Naive YYYY-MM-DD keeps that date; RFC822/Z convert to IST."""
     raw = str(doc.get("published_at") or doc.get("discovered_at") or "").strip()
-    if len(raw) >= 10:
+    if re.match(r"^\d{4}-\d{2}-\d{2}", raw) and not re.search(r"Z|[+-]\d{2}:?\d{2}", raw):
         try:
             return date.fromisoformat(raw[:10])
         except ValueError:
             pass
+    dt = parse_news_datetime(doc.get("published_at")) or parse_news_datetime(doc.get("discovered_at"))
+    if dt:
+        return dt.astimezone(IST).date()
     return None
 
 
@@ -609,7 +653,9 @@ def enrich_item(raw: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
     impact = impact_score(title, summary)
     india = india_relevance_score(title, summary)
     et = classify_event_type(_blob(title, summary))
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    pub_dt = parse_news_datetime(raw.get("published_at")) or now_dt
     dhash = duplicate_hash(title, url)
     status = "noise" if impact < 35 else "ok"
     return {
@@ -621,7 +667,7 @@ def enrich_item(raw: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
         "article_url": url,
         "title": title[:400],
         "summary": summary[:2000],
-        "published_at": str(raw.get("published_at") or now)[:40],
+        "published_at": pub_dt.isoformat(),
         "discovered_at": now,
         "author": raw.get("author") or "",
         "event_type": et,
@@ -745,10 +791,8 @@ async def cleanup_old(db, settings: Dict[str, Any]) -> Dict[str, Any]:
     cursor = db[ART_COL].find({}, {"_id": 1, "published_at": 1, "discovered_at": 1})
     ids = []
     async for row in cursor:
-        raw = str(row.get("published_at") or row.get("discovered_at") or "")[:10]
-        try:
-            d = date.fromisoformat(raw)
-        except ValueError:
+        d = item_ist_date(row)
+        if d is None:
             continue
         if d < cut:
             ids.append(row["_id"])

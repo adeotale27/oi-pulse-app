@@ -1357,8 +1357,9 @@ export default function PositionsPanel({
 
   return (
     <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+      <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
           <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md shrink-0" pulse={false} />
           <div className="text-sm font-semibold text-slate-900 leading-tight">Kite Positions</div>
           <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
@@ -1374,26 +1375,27 @@ export default function PositionsPanel({
             {POSITIONS_GUIDE}
           </InfoTip>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1 text-[10px] text-slate-500">
-            <label title="How early to warn when market nears a sold strike">Warn @</label>
-            <input
-              type="number"
-              min={30} max={95} step={5}
-              value={adjustThreshPct}
-              onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
-              className="w-12 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
-              data-testid="adjust-threshold"
-            />
-            <span>% close</span>
-            <InfoTip title="When do we say “Too close”?" testId="adjust-threshold-tip">
-              <p>
-                Imagine a buffer of about <b>3%</b> from your sold strike toward the market.
-                When the market has eaten this much of that buffer (default <b>60%</b>), the row
-                flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
-              </p>
-            </InfoTip>
-          </div>
+        <div className="flex items-center gap-1 text-[10px] text-slate-500 shrink-0 ml-auto" data-testid="positions-warn-at">
+          <label title="How early to warn when market nears a sold strike">Warn @</label>
+          <input
+            type="number"
+            min={30} max={95} step={5}
+            value={adjustThreshPct}
+            onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
+            className="w-12 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
+            data-testid="adjust-threshold"
+          />
+          <span>% close</span>
+          <InfoTip title="When do we say “Too close”?" testId="adjust-threshold-tip">
+            <p>
+              Imagine a buffer of about <b>3%</b> from your sold strike toward the market.
+              When the market has eaten this much of that buffer (default <b>60%</b>), the row
+              flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
+            </p>
+          </InfoTip>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
           <Popover>
             <PopoverTrigger asChild>
               <button
