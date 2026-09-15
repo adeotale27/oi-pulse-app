@@ -48,7 +48,7 @@ assert.equal(inferLotSize([375]), null, "single qty is not lot size");
   assert.equal(g.sellLots, 4);
   assert.equal(g.netLots, 1);
   assert.equal(g.kind, "underhedged");
-  assert.match(g.label, /Underhedged by 1 lot/);
+  assert.match(g.label, /longs \+1 lot/i);
   assert.equal(h.overallKind, "issues");
   assert.match(h.overallLabel, /1 Hedge Issue/);
 }
@@ -122,7 +122,7 @@ assert.equal(inferLotSize([375]), null, "single qty is not lot size");
   assert.equal(g.sellLots, 10);
   assert.equal(g.netLots, 4);
   assert.equal(g.remainingSide, "SELL");
-  assert.match(g.label, /Underhedged by 4 lots/);
+  assert.match(g.label, /shorts \+4 lots/i);
 }
 
 // 9. BUY === SELL
@@ -141,7 +141,7 @@ assert.equal(inferLotSize([375]), null, "single qty is not lot size");
   assert.equal(g.kind, "unhedged");
   assert.equal(g.buyLots, 5);
   assert.equal(g.sellLots, 0);
-  assert.match(g.label, /Unhedged by 5 lots/);
+  assert.match(g.label, /longs \+5 lots/i);
 }
 
 // 11. Completely unhedged SELL

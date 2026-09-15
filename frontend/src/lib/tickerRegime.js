@@ -24,7 +24,7 @@ export const TICKER_REGIME_GUIDE = {
   },
   "risk-off": {
     label: "RISK-OFF",
-    text: "Strong downside continuation: near the day low, wide range, high efficiency. Not used for a mild red print.",
+    text: "Crash-style tape: very large one-way drop, price pinned to the low. A normal down-trend day is BEAR TREND, not this.",
   },
   range: {
     label: "RANGING",
@@ -101,17 +101,19 @@ export function classifyTickerRegime(snap) {
   const reversingDown = gap > 0.12 && intra < -0.25 && (loc == null || loc <= 0.5);
   if (recoveringUp) return "bull-trend";
 
-  const nearLow = loc != null && loc <= 0.28;
+  const nearLow = loc != null && loc <= 0.18;
   const nearHigh = loc != null && loc >= 0.72;
   const downCont = intra < -0.12 && (snap.price <= snap.open || !Number.isFinite(snap.open));
+  // RISK-OFF is a crash/air-pocket tape, not a normal one-way down day (~0.5–1.3%).
   const strongDown =
     downCont &&
     nearLow &&
-    eff >= 0.5 &&
-    span >= 0.4 &&
-    (absIntra >= 0.45 || absNet >= 0.7 || (gap <= -0.2 && intra < -0.2));
+    eff >= 0.7 &&
+    span >= 1.15 &&
+    absIntra >= 1.45 &&
+    absNet >= 1.45;
   if (strongDown && !recoveringUp) return "risk-off";
-  if (reversingDown && nearLow && span >= 0.5 && absIntra >= 0.55) return "risk-off";
+  if (reversingDown && nearLow && span >= 1.4 && absIntra >= 1.6 && absNet >= 1.2) return "risk-off";
 
   if (span >= 0.22 && absNet <= span * 0.42 && absIntra <= Math.max(0.35, span * 0.5) && loc != null && loc > 0.28 && loc < 0.72) {
     return "range";
@@ -158,7 +160,7 @@ export function tickerRegimeWhy(snap, key) {
   const why = {
     "bull-trend": "One-way bid from the open, or gap recovered into the upper range.",
     "bear-trend": "One-way offer from the open. Mild/moderate decline is trend, not risk-off.",
-    "risk-off": "Strong downside continuation near the session low with a wide range.",
+    "risk-off": "Crash-style drop pinned to the low. A normal trending-down session is BEAR TREND.",
     range: "Wide two-way range; net move is only a slice of the day’s travel.",
     steady: "Small net and small range — quiet tape.",
   }[key] || "";

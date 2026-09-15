@@ -74,19 +74,20 @@ function groupStatus(buyLots, sellLots) {
   return { kind, netLots, remainingSide };
 }
 
-export function formatHedgeGroupLabel({ kind, underlying, optionType, netLots }) {
+export function formatHedgeGroupLabel({ kind, underlying, optionType, netLots, remainingSide, buyLots, sellLots }) {
   const name = `${underlying} ${optionType}`;
   const unit = netLots === 1 ? "lot" : "lots";
-  if (kind === "hedged") return `${name} — Fully Hedged`;
-  if (kind === "unhedged") return `${name} — Unhedged by ${fmtLots(netLots)} ${unit}`;
-  return `${name} — Underhedged by ${fmtLots(netLots)} ${unit}`;
+  if (kind === "hedged") return `${name} — longs = shorts`;
+  const extra = remainingSide === "SELL" ? "shorts" : "longs";
+  const vs = remainingSide === "SELL" ? "longs" : "shorts";
+  return `${name} — ${extra} +${fmtLots(netLots)} ${unit} vs ${vs} (L ${fmtLots(buyLots || 0)} / S ${fmtLots(sellLots || 0)})`;
 }
 
-export function formatHedgeGroupShort({ kind, netLots }) {
+export function formatHedgeGroupShort({ kind, netLots, remainingSide, buyLots, sellLots }) {
   const unit = netLots === 1 ? "lot" : "lots";
-  if (kind === "hedged") return "Fully Hedged";
-  if (kind === "unhedged") return `Unhedged by ${fmtLots(netLots)} ${unit}`;
-  return `Underhedged by ${fmtLots(netLots)} ${unit}`;
+  if (kind === "hedged") return "Longs = shorts";
+  const extra = remainingSide === "SELL" ? "shorts" : "longs";
+  return `${extra} +${fmtLots(netLots)} ${unit} (L ${fmtLots(buyLots || 0)} / S ${fmtLots(sellLots || 0)})`;
 }
 
 /**
@@ -147,8 +148,17 @@ export function computePositionHedge(rows = []) {
         underlying: b.underlying,
         optionType: b.optionType,
         netLots: st.netLots,
+        remainingSide: st.remainingSide,
+        buyLots: b.buyLots,
+        sellLots: b.sellLots,
       }),
-      shortLabel: formatHedgeGroupShort(st),
+      shortLabel: formatHedgeGroupShort({
+        kind: st.kind,
+        netLots: st.netLots,
+        remainingSide: st.remainingSide,
+        buyLots: b.buyLots,
+        sellLots: b.sellLots,
+      }),
     });
   }
 

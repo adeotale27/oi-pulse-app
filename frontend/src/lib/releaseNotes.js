@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.03",
+    date: "2026-09-15",
+    user: [
+      "A down-trending session shows BEAR TREND, not RISK-OFF. News cards put the impact number beside CRITICAL/HIGH/MODERATE. Hedge status says whether leftover lots are extra shorts or extra longs.",
+    ],
+    admin: [
+      "RISK-OFF needs a crash-size % move near the day low. Hedge leftover copy is shorts vs longs for overnight flatten.",
+    ],
+  },
+  {
     version: "10.02",
     date: "2026-09-15",
     user: [
