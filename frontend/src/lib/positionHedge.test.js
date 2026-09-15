@@ -150,6 +150,7 @@ assert.equal(inferLotSize([375]), null, "single qty is not lot size");
   assert.equal(h.groups[0].kind, "unhedged");
   assert.equal(h.overallKind, "unhedged");
   assert.match(h.overallLabel, /1 Unhedged Exposure/);
+  assert.equal(h.overallCompactLabel, "1 unhedged");
 }
 
 // 12. Multiple strikes aggregate
@@ -246,6 +247,7 @@ assert.equal(inferLotSize([375]), null, "single qty is not lot size");
   assert.equal(m["A CE"].kind, "unhedged");
   assert.equal(h.unhedgedCount, 2);
   assert.match(h.overallLabel, /2 Unhedged Exposures/);
+  assert.equal(h.overallCompactLabel, "2 unhedged");
 }
 
 // 20. Unknown underlying from symbol, no catalog entry required

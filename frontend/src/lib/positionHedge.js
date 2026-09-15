@@ -170,18 +170,22 @@ export function computePositionHedge(rows = []) {
 
   let overallKind = "none";
   let overallLabel = "";
+  let overallCompactLabel = "";
   if (!groups.length) {
     overallKind = "none";
     overallLabel = "";
   } else if (unhedgedCount > 0) {
     overallKind = "unhedged";
     overallLabel = `${unhedgedCount} Unhedged Exposure${unhedgedCount === 1 ? "" : "s"}`;
+    overallCompactLabel = `${unhedgedCount} unhedged`;
   } else if (underhedgedCount > 0) {
     overallKind = "issues";
     overallLabel = `${underhedgedCount} Hedge Issue${underhedgedCount === 1 ? "" : "s"}`;
+    overallCompactLabel = `${underhedgedCount} hedge issue${underhedgedCount === 1 ? "" : "s"}`;
   } else {
     overallKind = "hedged";
     overallLabel = "All Positions Hedged";
+    overallCompactLabel = "Hedged";
   }
 
   const byUnderlying = [];
@@ -202,5 +206,6 @@ export function computePositionHedge(rows = []) {
     issueCount,
     overallKind,
     overallLabel,
+    overallCompactLabel,
   };
 }

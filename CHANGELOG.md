@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.05 — 2026-09-15
+
+Phone Admin configuration (and other dialogs) sit in the viewport above the header instead of a dark overlay with no sheet. Unhedged Exposure wraps on Positions. Market Intel news docks like Overnight: drag, close to a **Mkt Intel** chip until the next session, left/right arrows on the sheet.
+
 ## V10.04 — 2026-09-15
 
 Market Intelligence popup: left/right arrows when several high-impact stories are waiting; labels read **Impact 96** and **Indian market impact 70**. Desk ingest keeps pulling and storing even if the page or popups are off. The admin “Allow in-app popups” tick is the only desk-wide popup kill switch (off = nobody; on = admin always sees it). Admin tools, journal, and settings dialogs fit a phone.

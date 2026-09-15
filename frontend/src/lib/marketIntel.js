@@ -28,3 +28,11 @@ export function impactScoreLabel(score) {
 export function indiaImpactLabel(score) {
   return `Indian market impact ${score ?? "—"}`;
 }
+
+export const MI_POPUP_LEFT_KEY = "oiMiPopupLeftPx";
+export const MI_POPUP_BOTTOM_KEY = "oiMiPopupBottomPx";
+export const MI_POPUP_MIN_KEY = "oi_mi_popup_minimized";
+
+export function miMinimizeActive(nowMs, untilMs) {
+  return Number.isFinite(untilMs) && Number(nowMs) < Number(untilMs);
+}
