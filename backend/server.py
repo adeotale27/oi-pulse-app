@@ -877,6 +877,7 @@ class SettingsIn(BaseModel):
     market_intel_retention_days: Optional[int] = None
     market_intel_min_history_days: Optional[int] = None
     market_intel_popup_enabled: Optional[bool] = None
+    market_intel_popup_dock_until_next: Optional[bool] = None
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
     admin_visible_pages: Optional[List[str]] = None
@@ -2892,6 +2893,7 @@ async def get_config():
         "market_intel_retention_days": int(s.get("market_intel_retention_days") or 5),
         "market_intel_min_history_days": int(s.get("market_intel_min_history_days") or 2),
         "market_intel_popup_enabled": s.get("market_intel_popup_enabled", True) is not False,
+        "market_intel_popup_dock_until_next": s.get("market_intel_popup_dock_until_next", True) is not False,
         "enabled_indices": without_paused_mcx(raw_enabled, INDEX_CONFIG),
         "mcx_desk_on": bool(s.get("mcx_desk_on")),
         "straddle_enabled_indices": s.get("straddle_enabled_indices", STRADDLE_INDICES),

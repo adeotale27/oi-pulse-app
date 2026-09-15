@@ -13,6 +13,7 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
     market_intel_retention_days: 5,
     market_intel_min_history_days: 2,
     market_intel_popup_enabled: true,
+    market_intel_popup_dock_until_next: true,
   });
   const [form, setForm] = useState({
     name: "", source_type: "RSS", endpoint: "", method: "GET", auth: "none", api_key: "",
@@ -30,6 +31,7 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
         market_intel_retention_days: d.market_intel_retention_days ?? 5,
         market_intel_min_history_days: d.market_intel_min_history_days ?? 2,
         market_intel_popup_enabled: d.market_intel_popup_enabled !== false,
+        market_intel_popup_dock_until_next: d.market_intel_popup_dock_until_next !== false,
       });
     }).catch(() => {});
   };
@@ -118,9 +120,13 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
                 value={settings.market_intel_min_history_days ?? 2}
                 onChange={(e) => setSettings({ ...settings, market_intel_min_history_days: Number(e.target.value) })} />
             </label>
-            <label className="flex items-start gap-2 mt-1 sm:mt-5">
+            <label className="flex items-start gap-2 mt-1 sm:col-span-2">
               <input type="checkbox" className="mt-0.5" checked={settings.market_intel_popup_enabled !== false} onChange={(e) => setSettings({ ...settings, market_intel_popup_enabled: e.target.checked })} />
-              <span>Allow in-app popups for everyone. Off hides the popup for guests and admin. News ingest and storage keep running.</span>
+              <span>Show the in-app Mkt Intel popup. Off hides it for guests and admin. Ingest still stores news.</span>
+            </label>
+            <label className="flex items-start gap-2 sm:col-span-2">
+              <input type="checkbox" className="mt-0.5" checked={settings.market_intel_popup_dock_until_next !== false} onChange={(e) => setSettings({ ...settings, market_intel_popup_dock_until_next: e.target.checked })} data-testid="mi-popup-dock-until-next" />
+              <span>After close, keep a <b>Mkt Intel</b> chip until the next session (after day close / next open). Same idea as Overnight. Untick to hide it completely when dismissed.</span>
             </label>
           </div>
           <div className="flex flex-wrap gap-1">

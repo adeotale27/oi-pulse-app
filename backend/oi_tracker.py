@@ -215,6 +215,7 @@ DEFAULT_SETTINGS = {
     "market_intel_retention_days": 5,
     "market_intel_min_history_days": 2,
     "market_intel_popup_enabled": True,
+    "market_intel_popup_dock_until_next": True,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
     "show_chart_signals": False,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)

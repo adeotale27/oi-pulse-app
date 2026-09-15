@@ -68,6 +68,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const [items, setItems] = useState([]);
   const [idx, setIdx] = useState(0);
   const [minimized, setMinimized] = useState(() => readMinimized());
+  const [dockUntilNext, setDockUntilNext] = useState(true);
   const [leftPx, setLeftPx] = useState(() => readNum(MI_POPUP_LEFT_KEY));
   const [bottomPx, setBottomPx] = useState(() => readNum(MI_POPUP_BOTTOM_KEY));
   const idxRef = useRef(0);
@@ -118,6 +119,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
         .then((r) => {
           if (cancelled) return;
           const next = r.data?.items || [];
+          setDockUntilNext(r.data?.dock_until_next !== false);
           setItems((prev) => {
             const curId = prev[idxRef.current]?.event_cluster_id;
             const found = next.findIndex((x) => x.event_cluster_id === curId);
@@ -141,6 +143,17 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const minimizeUntilNext = () => {
     writeMinimized(nextSessionOpenMs(new Date()));
     setMinimized(true);
+  };
+
+  const hideCompletely = () => {
+    clearMinimized();
+    setMinimized(false);
+    setItems([]);
+  };
+
+  const closeOrDock = () => {
+    if (dockUntilNext) minimizeUntilNext();
+    else hideCompletely();
   };
 
   const expand = () => {
@@ -192,7 +205,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
       const swipeDown = e.clientY - startY;
       dragRef.current = null;
       try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
-      if (swipeDown > 36) minimizeUntilNext();
+      if (swipeDown > 36) closeOrDock();
       return;
     }
     dragRef.current = null;
@@ -218,7 +231,6 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   })();
 
   if (!enabled) return null;
-  if (!item && !minimized) return null;
 
   const step = (dir) => {
     if (n < 2) return;
@@ -232,7 +244,10 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     setItems(next);
     setIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
     if (cid) api.post("/market-intel/popup/ack", { event_cluster_id: cid }).catch(() => {});
+    if (next.length === 0) closeOrDock();
   };
+
+  if (!item && !minimized) return null;
 
   if (minimized) {
     return (
@@ -336,7 +351,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
         </div>
         <button
           type="button"
-          onClick={minimizeUntilNext}
+          onClick={closeOrDock}
           className="opacity-80 hover:opacity-100 h-8 w-8 inline-flex items-center justify-center rounded"
           aria-label="Minimize market news until next session"
           title="Minimize until next market open"
@@ -346,7 +361,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
         </button>
         <button
           type="button"
-          onClick={minimizeUntilNext}
+          onClick={closeOrDock}
           className="opacity-80 hover:opacity-100 h-8 w-8 inline-flex items-center justify-center rounded"
           aria-label="Close market news until next session"
           data-testid="mi-popup-dismiss"
