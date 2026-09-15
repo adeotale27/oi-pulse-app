@@ -53,6 +53,20 @@ export function subscribePositionsBook(fn) {
   return () => listeners.delete(fn);
 }
 
+export const KITE_CONNECTED_EVENT = "oi-kite-connected";
+
+export function notifyKiteConnected() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(KITE_CONNECTED_EVENT));
+}
+
+/** Force a /positions pull after Kite login (Header may already own the poller). */
+export function refreshPositionsBook() {
+  lastAt = 0;
+  if (inflight) return inflight.then(() => fetchPositionsBook({ force: true }));
+  return fetchPositionsBook({ force: true });
+}
+
 export async function fetchPositionsBook({ force = false, settleExpiry = false } = {}) {
   if (inflight && !settleExpiry) return inflight;
   if (!force && !settleExpiry && lastPayload && Date.now() - lastAt < 900) return lastPayload;

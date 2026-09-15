@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
 import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText, Newspaper } from "lucide-react";
@@ -350,8 +350,13 @@ export default function Header({
   const [refreshing, setRefreshing] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const openAdminSheet = (fn) => {
-    setMobileToolsOpen(false);
-    window.setTimeout(() => fn?.(), 80);
+    // Unmount the tools scrim (z-90) before the dialog (z-80) opens, otherwise
+    // the phone shows a blur with Admin tools still on top and no sheet.
+    flushSync(() => {
+      setMobileToolsOpen(false);
+      setAdminMenuOpen(false);
+    });
+    fn?.();
   };
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   useEffect(() => {
@@ -452,7 +457,7 @@ export default function Header({
           type="button"
           aria-label="Close admin tools"
           data-testid="admin-tools-scrim"
-          className="fixed inset-0 z-[90] bg-slate-900/45 backdrop-blur-[2px]"
+          className="fixed inset-0 z-[40] bg-slate-900/45 backdrop-blur-[2px]"
           onClick={() => {
             setAdminMenuOpen(false);
             setMobileToolsOpen(false);
@@ -586,7 +591,7 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="mobile-admin-tools"
-          className="relative z-[100] md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
+          className="relative z-[50] md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
         >
           <div className="w-full flex items-center justify-between gap-2 px-0.5">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
@@ -1106,7 +1111,7 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="tablet-admin-tools"
-          className="relative z-[100] hidden md:flex lg:hidden px-3 pb-3 flex-wrap gap-2 border-t border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
+          className="relative z-[50] hidden md:flex lg:hidden px-3 pb-3 flex-wrap gap-2 border-t border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
         >
           <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
             Admin tools

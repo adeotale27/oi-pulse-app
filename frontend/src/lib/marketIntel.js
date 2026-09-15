@@ -29,6 +29,13 @@ export function indiaImpactLabel(score) {
   return `Indian market impact ${score ?? "—"}`;
 }
 
+/** `india_macro` / `oil` → `INDIA MACRO` / `OIL` for the feed chip. */
+export function formatEventTypeLabel(raw) {
+  const t = String(raw || "").trim();
+  if (!t) return "";
+  return t.replace(/[_-]+/g, " ").replace(/\s+/g, " ").toUpperCase();
+}
+
 export const MI_POPUP_LEFT_KEY = "oiMiPopupLeftPx";
 export const MI_POPUP_BOTTOM_KEY = "oiMiPopupBottomPx";
 export const MI_POPUP_MIN_KEY = "oi_mi_popup_minimized";

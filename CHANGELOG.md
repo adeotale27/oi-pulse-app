@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.08 — 2026-09-15
+
+Phone Admin configuration and Mkt Intel settings open as a real sheet (tools scrim no longer covers the dialog). Mkt Intel settings scroll inside the viewport. Event types on the Market Intelligence page render as bold caps (`INDIA MACRO`, `OIL`). After Kite login, Positions force-refreshes the book instead of waiting for a full app reload.
+
 ## V10.07 — 2026-09-15
 
 Restored the original dialog overlay (Journal, Analyze, Admin configuration). Journal/Analyze sit above the dimmer so they are clickable. Mkt Intel close docks to a chip until the next session (configurable in Mkt Intel settings). Desk AI coach no longer warns on duplicate list keys.

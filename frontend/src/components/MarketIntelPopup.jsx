@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, GripHorizontal, Maximize2, Minimize2, Newspa
 import { api } from "@/lib/api";
 import {
   bandClass,
+  formatEventTypeLabel,
   impactScoreLabel,
   indiaImpactLabel,
   miMinimizeActive,
@@ -376,13 +377,16 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_band || "HIGH"}</span>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{impactScoreLabel(item.impact_score)}</span>
+              {item.event_type ? (
+                <span className="text-[10px] font-bold uppercase tracking-wide">{formatEventTypeLabel(item.event_type)}</span>
+              ) : null}
               <span className="text-[10px] font-semibold text-rose-900">{n} critical today</span>
             </div>
             <div className="text-sm font-semibold leading-snug">{item.title}</div>
             <div className="text-[11px] opacity-90">{indiaImpactLabel(item.india_relevance_score)}</div>
             {Array.isArray(item.potential) && (
               <ul className="text-[11px] list-disc pl-4">
-                {item.potential.slice(0, 4).map((p) => <li key={p}>{p}</li>)}
+                {item.potential.slice(0, 4).map((p, i) => <li key={`p-${i}`}>{p}</li>)}
               </ul>
             )}
             <div className="flex flex-wrap gap-2 items-center pt-1">

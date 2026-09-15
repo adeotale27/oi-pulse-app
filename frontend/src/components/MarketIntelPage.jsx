@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
 import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
-import { MI_FILTERS, bandClass, impactScoreLabel, indiaImpactLabel } from "@/lib/marketIntel";
+import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel } from "@/lib/marketIntel";
 
 export default function MarketIntelPage({ compact = false }) {
   const [filt, setFilt] = useState("all");
@@ -61,7 +61,7 @@ export default function MarketIntelPage({ compact = false }) {
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{it.impact_band || "—"}</span>
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{impactScoreLabel(it.impact_score)}</span>
-              <span className="text-[10px] text-slate-500">{it.event_type}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-800">{formatEventTypeLabel(it.event_type)}</span>
               <span className="text-[10px] text-slate-400 ml-auto">{it.source_name}{it.source_count > 1 ? ` · ${it.source_count} sources` : ""}</span>
             </div>
             <h3 className="text-sm font-semibold text-slate-900 leading-snug">{it.title}</h3>
