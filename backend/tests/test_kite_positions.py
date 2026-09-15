@@ -472,3 +472,16 @@ def test_settle_expiry_waits_until_after_close():
     assert n == 1
     assert row["exited"] is True
 
+
+def test_lot_sizes_from_instrument_dump_not_index_names():
+    from kite_positions import lot_sizes_by_tradingsymbol
+
+    dump = [
+        {"tradingsymbol": "FOO25AUG100CE", "lot_size": 75},
+        {"tradingsymbol": "BAR25AUG200PE", "lot_size": 20},
+        {"tradingsymbol": "SKIP", "lot_size": 0},
+    ]
+    got = lot_sizes_by_tradingsymbol(dump, ["FOO25AUG100CE", "BAR25AUG200PE", "MISSING"])
+    assert got == {"FOO25AUG100CE": 75, "BAR25AUG200PE": 20}
+    assert lot_sizes_by_tradingsymbol(None, ["FOO25AUG100CE"]) == {}
+

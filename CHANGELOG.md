@@ -1,5 +1,9 @@
 # Changelog
 
+## V9.18 — 2026-09-15
+
+Positions shows a compact **Hedge status** next to open/exited counts. Open option lots are grouped by underlying + CE/PE from the book (any index, no catalog). BUY vs SELL remaining quantity is converted with each contract’s Kite `lot_size`. Fully offset groups read as hedged; leftover long or short lots are underhedged or unhedged. Click the chip for the breakdown.
+
 ## V9.17 — 2026-09-02
 
 CAS 15:20 shows homepage **Indicative Close** (not leftover `closingValue` like 23,917 vs 23,914). Streaming last and previous close are on the same strip. Live is select-then-**Start**. Fetch uses `getIndexData` first with a short timeout. Admin recap states freeze vs indicative and why CE or PE.
