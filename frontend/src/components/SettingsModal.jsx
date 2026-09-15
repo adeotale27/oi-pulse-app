@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { Settings2 } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import InfoTip from "@/components/InfoTip";
+import DeskAiKeysAdmin from "@/components/DeskAiKeysAdmin";
+import MarketIntelAdmin from "@/components/MarketIntelAdmin";
 
 import { DESK_IDS, isMcxMajorId } from "@/lib/universe";
 
@@ -29,6 +31,7 @@ const DASHBOARD_PAGES = [
   { id: "straddle", label: "Straddle" },
   { id: "index-events", label: "Index Risk" },
   { id: "cas", label: "CAS Expiry" },
+  { id: "market-intel", label: "Market Intelligence" },
 ];
 const ALL_PAGE_IDS = DASHBOARD_PAGES.map((p) => p.id);
 
@@ -41,6 +44,9 @@ function normalizeLoadedSettings(d) {
     "oi_poll_interval_seconds",
     "straddle_poll_interval_seconds",
     "positions_poll_interval_seconds",
+    "market_intel_ingest_seconds",
+    "market_intel_retention_days",
+    "market_intel_min_history_days",
     "admin_session_ttl_minutes",
   ]) {
     if (next[key] == null || next[key] === "") continue;
@@ -204,6 +210,10 @@ export default function SettingsModal({
           show_writer_defense: settings.show_writer_defense,
           show_suggestion: settings.show_suggestion,
           show_chart_signals: settings.show_chart_signals,
+          market_intel_ingest_seconds: settings.market_intel_ingest_seconds,
+          market_intel_retention_days: settings.market_intel_retention_days,
+          market_intel_min_history_days: settings.market_intel_min_history_days,
+          market_intel_popup_enabled: settings.market_intel_popup_enabled !== false,
           visible_pages: Array.from(new Set(
             (Array.isArray(settings.visible_pages) ? settings.visible_pages : []).filter((id) => !HARD_ADMIN_PAGES.has(id)),
           )),
@@ -678,6 +688,9 @@ export default function SettingsModal({
                     );
                   })}
                 </div>
+
+                {isAdmin ? <DeskAiKeysAdmin /> : null}
+                {isAdmin ? <MarketIntelAdmin settings={settings} setSettings={setSettings} /> : null}
 
                 <label
                   className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"

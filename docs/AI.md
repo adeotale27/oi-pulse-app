@@ -13,7 +13,7 @@ Deterministic code scores:
 - **India VIX** when the poller has it
 - **Day capital** — Positions booked % of wallet (−3% caution, −5% stop adds, −8% defend). At stop/defend, Desk AI **What to do** leads with the capital line, hides sell ideas, and does not chase “prefer CE shorts”. Book score stays path-risk only.
 
-OpenAI is optional (`OPENAI_API_KEY` on the **server env**, never in git). Without a key you still get the heavyweight + news coach.
+OpenAI is optional. Prefer **Admin configuration → Desk AI keys** (OpenAI, DeepSeek, Grok, Groq, OpenRouter, or a custom OpenAI-compatible base URL). Keys are Fernet-encrypted in Mongo and never returned to the browser. Env `OPENAI_API_KEY` / `DESK_GUIDE_API_KEY` remains a fallback.
 
 ## Who sees what
 

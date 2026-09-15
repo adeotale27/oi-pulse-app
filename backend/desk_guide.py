@@ -24,9 +24,13 @@ _last: Dict[str, Dict[str, Any]] = {}
 
 
 def llm_configured() -> bool:
-    return bool(
-        (os.environ.get("OPENAI_API_KEY") or os.environ.get("DESK_GUIDE_API_KEY") or "").strip()
-    )
+    if (os.environ.get("OPENAI_API_KEY") or os.environ.get("DESK_GUIDE_API_KEY") or "").strip():
+        return True
+    try:
+        from desk_llm import cached_has_key
+        return cached_has_key()
+    except Exception:
+        return False
 
 
 def status() -> Dict[str, Any]:
@@ -1094,7 +1098,16 @@ async def maybe_guide(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     force = bool(body.get("force"))
     skip_llm = bool(body.get("skip_llm"))
     rules = compose_rules_guide(snap)
-    if skip_llm or not llm_configured():
+    has_llm = llm_configured()
+    if not has_llm:
+        try:
+            from desk_llm import resolve_llm
+            import server as _server
+            cfg = await resolve_llm(getattr(_server, "db", None))
+            has_llm = bool((cfg or {}).get("api_key"))
+        except Exception:
+            has_llm = False
+    if skip_llm or not has_llm:
         payload = {
             **status(),
             "source": "rules",
@@ -1147,10 +1160,19 @@ async def maybe_guide(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
 async def _call_llm(snap: Dict[str, Any]) -> str:
     import httpx
+    from desk_llm import env_llm, resolve_llm
 
-    key = (os.environ.get("OPENAI_API_KEY") or os.environ.get("DESK_GUIDE_API_KEY") or "").strip()
-    base = (os.environ.get("DESK_GUIDE_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
-    model = (os.environ.get("DESK_GUIDE_MODEL") or "gpt-4o-mini").strip()
+    cfg = env_llm()
+    try:
+        import server as _server
+        cfg = await resolve_llm(getattr(_server, "db", None))
+    except Exception:
+        pass
+    key = (cfg.get("api_key") or "").strip()
+    base = (cfg.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+    model = (cfg.get("model") or "gpt-4o-mini").strip()
+    if not key:
+        raise RuntimeError("no_llm_key")
     surface = str(snap.get("surface") or "desk")
     if surface == "carry":
         system = (

@@ -24,6 +24,8 @@ import GuestHolidayCalendarBanner from "@/components/GuestHolidayCalendarBanner"
 import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
 import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
+import MarketIntelPage from "@/components/MarketIntelPage";
+import MarketIntelPopup from "@/components/MarketIntelPopup";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
 import CredentialsModal from "@/components/CredentialsModal";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
@@ -97,6 +99,7 @@ const DASHBOARD_PAGES = [
   { v: "straddle", l: "Straddle" },
   { v: "index-events", l: "Index Risk" },
   { v: "cas", l: "CAS" },
+  { v: "market-intel", l: "Mkt Intel" },
 ];
 const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
   .filter((page) => !page.adminOnly && page.v !== "cas")
@@ -278,6 +281,7 @@ export default function Dashboard() {
   const [activity, setActivity] = useState([]);       // unusual activity feed events
   const [activityFilter, setActivityFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("oi-change");
+  const [miPageOn, setMiPageOn] = useState(true);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("darkMode") === "1"; } catch { return false; }
   });
@@ -603,13 +607,27 @@ export default function Dashboard() {
   }, [status]);
 
   const tabOn = useCallback(
-    (id) => pageAllowed(id, {
-      isAdmin: !!authState.is_admin,
-      visiblePages,
-      adminPages: adminVisiblePages,
-    }),
-    [authState.is_admin, visiblePages, adminVisiblePages],
+    (id) => {
+      const allowed = pageAllowed(id, {
+        isAdmin: !!authState.is_admin,
+        visiblePages,
+        adminPages: adminVisiblePages,
+      });
+      if (id === "market-intel" && miPageOn === false) return false;
+      return allowed;
+    },
+    [authState.is_admin, visiblePages, adminVisiblePages, miPageOn],
   );
+
+  useEffect(() => {
+    if (!authState.is_admin && !authState.is_guest) return undefined;
+    const t = setTimeout(() => {
+      api.get("/market-intel/prefs").then((r) => {
+        setMiPageOn(r.data?.prefs?.page_enabled !== false);
+      }).catch(() => {});
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [authState.is_admin, authState.is_guest]);
 
   useEffect(() => {
     const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
@@ -2918,6 +2936,12 @@ export default function Dashboard() {
                     </TabsContent>
                   )}
 
+                  {(tabOn("market-intel")) && (
+                    <TabsContent value="market-intel" className="mt-0">
+                      <MarketIntelPage />
+                    </TabsContent>
+                  )}
+
                 {(activeTab === "oi-change" || activeTab === "open-interest") && (
                 <div className="mt-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2 flex-wrap">
                   <div data-testid="footer-refresh">
@@ -2961,6 +2985,7 @@ export default function Dashboard() {
                       isAdmin={!!authState.is_admin}
                       visiblePages={visiblePages}
                       adminPages={adminVisiblePages}
+                      hideMarketIntel={!miPageOn}
                       alerts={focusedAlerts}
                       onClearAlerts={handleClearAlerts}
                       canClearAlerts={authState.is_admin}
@@ -3075,6 +3100,13 @@ export default function Dashboard() {
           onOpenChange={setTelegramPrefsOpen}
         />
       )}
+
+      <MarketIntelPopup
+        enabled={!!(authState.is_admin || authState.is_guest) && miPageOn}
+        onOpenPage={() => {
+          if (tabOn("market-intel")) setActiveTab("market-intel");
+        }}
+      />
 
       <DeskAiMobileSheet
         open={deskAiMobileOpen}

@@ -11,6 +11,7 @@ import {
   Shield,
   Settings2,
   LayoutGrid,
+  Radio,
 } from "lucide-react";
 import { DOCK_CATALOG, loadMobileDock, saveMobileDock } from "@/lib/mobileDock";
 
@@ -24,6 +25,7 @@ const ICONS = {
   "strike-table": ListOrdered,
   alerts: Bell,
   "open-interest": BarChart3,
+  "market-intel": Radio,
   desk: LayoutDashboard,
 };
 

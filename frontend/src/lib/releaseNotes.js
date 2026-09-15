@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.00",
+    date: "2026-09-15",
+    user: [
+      "New Market Intelligence tab: ranked market-moving news with impact and India relevance. Optional in-app popup for the top two very-high-impact events (not a phone notification). Turn the page or popup off in the page settings.",
+    ],
+    admin: [
+      "Admin configuration: Desk AI provider keys (OpenAI-compatible, including add DeepSeek). Market Intelligence sources (RSS/API/Firecrawl), ingest interval, retention, cleanup. Ingest is delayed after boot so OI start is not blocked.",
+    ],
+  },
+  {
     version: "9.18",
     date: "2026-09-15",
     user: [

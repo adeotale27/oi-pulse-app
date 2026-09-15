@@ -190,11 +190,11 @@ DEFAULT_SETTINGS = {
     "straddle_poll_interval_seconds": 15,  # Dense straddle chart samples (FinanceDeft-style)
     "positions_poll_interval_seconds": 30,  # Positions desk auto-refresh (admin)
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
-    "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "positions", "alerts", "activity", "holidays", "straddle", "index-events"],
+    "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "positions", "alerts", "activity", "holidays", "straddle", "index-events", "market-intel"],
     # Admin's own dashboard tabs (independent of guest visibility)
     "admin_visible_pages": [
         "oi-change", "open-interest", "strike-table", "sell-candidates", "buildup",
-        "positions", "alerts", "activity", "holidays", "straddle", "index-events", "cas",
+        "positions", "alerts", "activity", "holidays", "straddle", "index-events", "cas", "market-intel",
     ],
     # Sidebar Strike Range steppers — off by default (ATM quick-picks cover most use)
     "show_strike_range": False,
@@ -211,6 +211,10 @@ DEFAULT_SETTINGS = {
     "desk_ai_public": False,
     # MCX majors (GOLD/CRUDE/…) — off until Admin turns this on, then Enable per name.
     "mcx_desk_on": False,
+    "market_intel_ingest_seconds": 300,
+    "market_intel_retention_days": 5,
+    "market_intel_min_history_days": 2,
+    "market_intel_popup_enabled": True,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
     "show_chart_signals": False,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
@@ -230,6 +234,9 @@ _INT_SETTING_KEYS = (
     "oi_poll_interval_seconds",
     "straddle_poll_interval_seconds",
     "positions_poll_interval_seconds",
+    "market_intel_ingest_seconds",
+    "market_intel_retention_days",
+    "market_intel_min_history_days",
     "admin_session_ttl_minutes",
 )
 _FLOAT_SETTING_KEYS = ("threshold_pct",)
