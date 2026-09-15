@@ -861,7 +861,7 @@ class ModeIn(BaseModel):
 DASHBOARD_PAGE_KEYS = {
     "oi-change", "open-interest", "strike-table", "sell-candidates",
     "buildup", "positions", "alerts", "activity", "holidays",
-    "straddle", "index-events", "cas",
+    "straddle", "index-events", "cas", "market-intel",
 }
 
 class SettingsIn(BaseModel):
@@ -873,6 +873,10 @@ class SettingsIn(BaseModel):
     oi_poll_interval_seconds: Optional[int] = None  # OI data pull interval (15/30/60)
     straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
     positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (5–3600s)
+    market_intel_ingest_seconds: Optional[int] = None
+    market_intel_retention_days: Optional[int] = None
+    market_intel_min_history_days: Optional[int] = None
+    market_intel_popup_enabled: Optional[bool] = None
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
     admin_visible_pages: Optional[List[str]] = None
@@ -901,6 +905,9 @@ class SettingsIn(BaseModel):
         "oi_poll_interval_seconds",
         "straddle_poll_interval_seconds",
         "positions_poll_interval_seconds",
+        "market_intel_ingest_seconds",
+        "market_intel_retention_days",
+        "market_intel_min_history_days",
         "admin_session_ttl_minutes",
         mode="before",
     )
@@ -1559,6 +1566,23 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if v < 5 or v > 3600:
             raise HTTPException(400, "positions_poll_interval_seconds must be between 5 and 3600")
         patch["positions_poll_interval_seconds"] = v
+    if "market_intel_ingest_seconds" in patch:
+        v = int(patch["market_intel_ingest_seconds"])
+        if v < 60 or v > 3600:
+            raise HTTPException(400, "market_intel_ingest_seconds must be 60–3600")
+        patch["market_intel_ingest_seconds"] = v
+    if "market_intel_retention_days" in patch or "market_intel_min_history_days" in patch:
+        s = _live_settings()
+        ret = int(patch.get("market_intel_retention_days") or s.get("market_intel_retention_days") or 5)
+        mn = int(patch.get("market_intel_min_history_days") or s.get("market_intel_min_history_days") or 2)
+        if mn < 1 or mn > 30:
+            raise HTTPException(400, "market_intel_min_history_days must be 1–30")
+        if ret < 3 or ret > 90:
+            raise HTTPException(400, "market_intel_retention_days must be 3–90")
+        if ret < mn:
+            raise HTTPException(400, "News retention cannot be below minimum historical context days")
+        patch["market_intel_retention_days"] = ret
+        patch["market_intel_min_history_days"] = mn
     for key in ("market_open_ist", "market_close_ist", "second_session_ist"):
         if key in patch:
             try:
@@ -2864,6 +2888,10 @@ async def get_config():
         "oi_poll_interval_seconds": poll_interval_seconds,
         "straddle_poll_interval_seconds": straddle_poll,
         "positions_poll_interval_seconds": positions_poll,
+        "market_intel_ingest_seconds": int(s.get("market_intel_ingest_seconds") or 300),
+        "market_intel_retention_days": int(s.get("market_intel_retention_days") or 5),
+        "market_intel_min_history_days": int(s.get("market_intel_min_history_days") or 2),
+        "market_intel_popup_enabled": s.get("market_intel_popup_enabled", True) is not False,
         "enabled_indices": without_paused_mcx(raw_enabled, INDEX_CONFIG),
         "mcx_desk_on": bool(s.get("mcx_desk_on")),
         "straddle_enabled_indices": s.get("straddle_enabled_indices", STRADDLE_INDICES),
@@ -6266,6 +6294,8 @@ async def desk_memory(
 
 
 # ------------------- Lifecycle -------------------
+import market_intel_api
+market_intel_api.mount(api_router, require_admin=require_admin, require_desk_user=require_desk_user)
 app.include_router(api_router)
 
 
@@ -6396,6 +6426,8 @@ logger.propagate = False
 straddle_sampler_task = None
 poll_watchdog_task = None
 journal_eod_task = None
+market_intel_task = None
+market_intel_stop = None
 
 @app.on_event("startup")
 async def _startup():
@@ -6456,6 +6488,11 @@ async def _ensure_mongo_indexes():
         await db.blocked_ips.create_index("blocked_at")
         await db.user_kite.create_index("guest_token")
         await db.user_kite.create_index([("guest_name", 1), ("ip", 1)])
+        try:
+            import market_intel as _mi
+            await _mi.ensure_indexes(db)
+        except Exception as e:
+            logger.warning("market intel indexes: %s", e)
         await db.trade_journal.create_index("date", unique=True, name="uniq_journal_date")
         await db.cas_auto_log.create_index([("day", 1), ("at", -1)])
         await db.trade_cycles.create_index("cycle_id", unique=True, name="uniq_trade_cycle")
@@ -6509,7 +6546,7 @@ async def _seed_last_snapshots():
 
 
 async def _boot_rest():
-    global straddle_sampler_task, poll_watchdog_task, journal_eod_task
+    global straddle_sampler_task, poll_watchdog_task, journal_eod_task, market_intel_task, market_intel_stop
     await _ensure_mongo_indexes()
     try:
         await asyncio.wait_for(tracker.load_credentials(), timeout=20)
@@ -6537,6 +6574,14 @@ async def _boot_rest():
     straddle_sampler_task = asyncio.create_task(_straddle_sampler())
     poll_watchdog_task = asyncio.create_task(_market_day_poll_watchdog())
     journal_eod_task = asyncio.create_task(_journal_eod_lock_loop())
+    try:
+        import market_intel as _mi
+        market_intel_stop = asyncio.Event()
+        market_intel_task = asyncio.create_task(
+            _mi.ingest_loop(lambda: db, lambda: tracker.settings if tracker else {}, market_intel_stop)
+        )
+    except Exception as e:
+        logger.warning("market intel loop: %s", e)
     logger.info(
         "Started browser-independent OI/straddle writers + market-day poll watchdog"
     )
@@ -6561,7 +6606,9 @@ async def _shutdown():
         await fii_dii.stop()
     except Exception:
         pass
-    for task_name in ("straddle_sampler_task", "poll_watchdog_task", "journal_eod_task"):
+    for task_name in ("straddle_sampler_task", "poll_watchdog_task", "journal_eod_task", "market_intel_task"):
+        if task_name == "market_intel_task" and market_intel_stop:
+            market_intel_stop.set()
         task = globals().get(task_name)
         if task:
             task.cancel()

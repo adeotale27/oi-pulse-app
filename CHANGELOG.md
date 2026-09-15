@@ -1,5 +1,11 @@
 # Changelog
 
+## V10.00 — 2026-09-15
+
+**Market Intelligence** is a new dashboard page (Public/Admin ticks, side panel, phone dock). Admin adds RSS/API/Firecrawl/official feeds without a deploy; ingest starts ~90s after boot then on a configurable interval (default 5 minutes). News is scored for market impact and India relevance, clustered, ranked, and retained on a rolling calendar-day window (default 5, min history 2). Users set page/popup prefs; very-high-impact in-app popups are top-2 only and once per event cluster.
+
+**Desk AI keys** live in Admin configuration: pick OpenAI / DeepSeek / Grok / Groq / OpenRouter or add any OpenAI-compatible base URL and vault the key (env `OPENAI_API_KEY` remains fallback).
+
 ## V9.18 — 2026-09-15
 
 Positions shows a compact **Hedge status** next to open/exited counts. Open option lots are grouped by underlying + CE/PE from the book (any index, no catalog). BUY vs SELL remaining quantity is converted with each contract’s Kite `lot_size`. Fully offset groups read as hedged; leftover long or short lots are underhedged or unhedged. Click the chip for the breakdown.

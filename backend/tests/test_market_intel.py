@@ -1,0 +1,108 @@
+from datetime import date
+
+from market_intel import (
+    clamp_retention,
+    classify_event_type,
+    cluster_id_for,
+    cluster_rows,
+    duplicate_hash,
+    impact_band,
+    impact_score,
+    india_relevance_score,
+    map_records,
+    retention_cutoff,
+    similar_titles,
+)
+
+
+def test_us_cpi_high_india():
+    t = "US CPI comes in above expectations"
+    assert impact_score(t) >= 55
+    assert india_relevance_score(t) >= 40
+    assert classify_event_type(t) == "macro"
+
+
+def test_fed_decision():
+    t = "Federal Reserve cuts rates 50bp in emergency move"
+    assert impact_score(t) >= 90
+
+
+def test_oil_shock_not_routine():
+    shock = "OPEC production cut and major crude supply disruption"
+    chatter = "Analyst says oil could rise this week in a newsletter recap"
+    assert impact_score(shock) > impact_score(chatter)
+    assert impact_score(chatter) < 55
+    assert classify_event_type(shock) == "oil"
+
+
+def test_geopolitics_and_india_event():
+    geo = "Tariffs and sanctions escalate in the Middle East shipping lanes"
+    ind = "RBI holds repo rate; SEBI issues market circular"
+    assert classify_event_type(geo) == "geopolitics"
+    assert classify_event_type(ind) == "india_macro"
+    assert india_relevance_score(ind) >= 40
+
+
+def test_noise_deprioritized():
+    assert impact_band(impact_score("What to watch this week: opinion recap explained")) in ("NOISE", "LOW")
+
+
+def test_dedup_and_cluster():
+    a = "Fed cuts rates 50bps"
+    b = "Federal Reserve cuts rates"
+    c = "Fed announces 50bp cut"
+    assert similar_titles(a, c)
+    h = duplicate_hash(a)
+    assert duplicate_hash(a, "https://a.example/1") == h
+    cid = cluster_id_for(b, [{"title": a, "event_cluster_id": "x1"}])
+    assert cid == "x1"
+
+
+def test_underlyings_not_hardcoded_in_scoring():
+    t = "China PMI slump hits global liquidity and USD"
+    assert india_relevance_score(t) >= 30
+
+
+def test_api_field_mapping():
+    payload = {"results": [{"title": "Hello", "url": "https://x.test", "description": "d", "published_at": "2026-09-15"}]}
+    rows = map_records(payload, {"list": "results", "title": "title", "url": "url", "description": "description", "published_at": "published_at"})
+    assert rows[0]["title"] == "Hello"
+
+
+def test_retention_five_day_window():
+    cut = retention_cutoff(date(2026, 9, 15), 5, 2)
+    assert cut == date(2026, 9, 11)
+    # new day 16 drops day 11
+    assert retention_cutoff(date(2026, 9, 16), 5, 2) == date(2026, 9, 12)
+
+
+def test_min_history_validation():
+    ret, mn = clamp_retention(3, 5)
+    assert ret >= mn == 5
+
+
+def test_weekend_context_inside_five_days():
+    # Monday 15 Sep 2026 — 5 calendar days still include Sat/Sun
+    cut = retention_cutoff(date(2026, 9, 14), 5, 2)  # Monday
+    assert cut <= date(2026, 9, 12)
+
+
+def test_ranking_prefers_impact_not_only_time():
+    docs = [
+        {"title": "old", "impact_score": 95, "india_relevance_score": 90, "source_priority": 50, "published_at": "2026-01-01", "event_cluster_id": "a"},
+        {"title": "new noise", "impact_score": 20, "india_relevance_score": 10, "source_priority": 50, "published_at": "2026-09-15", "event_cluster_id": "b"},
+    ]
+    ranked = cluster_rows(docs)
+    assert ranked[0]["title"] == "old"
+
+
+def test_top_two_are_highest():
+    docs = [
+        {"title": "1", "impact_score": 98, "india_relevance_score": 94, "source_priority": 80, "published_at": "t", "event_cluster_id": "1"},
+        {"title": "2", "impact_score": 96, "india_relevance_score": 97, "source_priority": 80, "published_at": "t", "event_cluster_id": "2"},
+        {"title": "3", "impact_score": 91, "india_relevance_score": 80, "source_priority": 10, "published_at": "t", "event_cluster_id": "3"},
+    ]
+    ranked = cluster_rows(docs)
+    titles = {r["title"] for r in ranked[:2]}
+    assert "3" not in titles
+    assert "1" in titles and "2" in titles

@@ -54,6 +54,13 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | GET | `/desk-outside` | Heavyweight cash movers + news. Pass `?index=` when the selected name is an enabled MCX contract |
 | GET/POST | `/desk-guide` | Seller coach over that outside tape; optional GPT (see [AI.md](./AI.md)) |
 | POST | `/desk-ai` | Desk user: one `desk_ai_show` flag for the whole desk |
+| GET/POST/DELETE | `/desk-ai/providers` | Admin: vaulted OpenAI-compatible Desk AI keys |
+| GET | `/market-intel` | Ranked clustered events (desk user). Query `filter=` |
+| GET/POST | `/market-intel/prefs` | Per-user page/popup prefs |
+| GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app very-high-impact popup (top 2, once per cluster) |
+| GET/POST/DELETE | `/market-intel/sources` | Admin sources; `.../test` and `.../fetch` |
+| POST | `/market-intel/cleanup` | Admin retention cleanup now |
+| GET | `/market-intel/templates` | public-apis News/Finance catalog + RSS templates |
 | POST | `/admin/refresh-day` | **Fresh Pull** — wipe snapshots, live-pull all **enabled** indices |
 | POST | `/admin/upload/constituents` | CSV/XLSX constituents (replaces index bucket on success — see [UPLOAD.md](./UPLOAD.md)) |
 | POST | `/admin/upload/events` | Event calendar upload (full replace on success) |

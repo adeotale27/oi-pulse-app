@@ -7,6 +7,7 @@ import BuildupTable from "@/components/BuildupTable";
 import ActivityFeed from "@/components/ActivityFeed";
 import PositionsPanel from "@/components/PositionsPanel";
 import DeskAiBar from "@/components/DeskAiBar";
+import MarketIntelPage from "@/components/MarketIntelPage";
 import OIChart from "@/components/OIChart";
 import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
@@ -24,6 +25,7 @@ export const RIGHT_PANEL_VIEWS = [
   { key: "oi-change", label: "OI Change", pageId: "oi-change" },
   { key: "straddle", label: "Straddle", pageId: "straddle" },
   { key: "index-events", label: "Index Risk", pageId: "index-events" },
+  { key: "market-intel", label: "Mkt Intel", pageId: "market-intel" },
 ];
 
 export default function RightPanel({
@@ -33,6 +35,7 @@ export default function RightPanel({
   visiblePages = [],
   adminPages = null,
   isAdmin = false,
+  hideMarketIntel = false,
   // props for panel contents
   alerts,
   onClearAlerts,
@@ -78,6 +81,7 @@ export default function RightPanel({
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
       if (item.requiresDeskAi && !deskAiShow) return false;
+      if (item.pageId === "market-intel" && hideMarketIntel) return false;
       if (item.pageId == null) return true;
       if (isAdmin) {
         if (!Array.isArray(adminPages) || adminPages.length === 0) return true;
@@ -85,7 +89,7 @@ export default function RightPanel({
       }
       return Array.isArray(visiblePages) && visiblePages.includes(item.pageId);
     }),
-    [visiblePages, adminPages, isAdmin, deskAiShow]
+    [visiblePages, adminPages, isAdmin, deskAiShow, hideMarketIntel]
   );
 
   const selectedView = allowedViews.some((item) => item.key === view)
@@ -254,6 +258,9 @@ export default function RightPanel({
               refreshKey={uploadRefreshKey}
               isAdmin={isAdmin}
             />
+          )}
+          {selectedView === "market-intel" && (
+            <MarketIntelPage compact />
           )}
         </div>
 

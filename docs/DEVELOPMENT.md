@@ -46,6 +46,7 @@ node frontend/src/lib/journalPct.test.js
 node frontend/src/lib/capitalGuard.test.js
 node frontend/src/lib/positionsBrain.test.js
 node frontend/src/lib/positionHedge.test.js
+node frontend/src/lib/marketIntel.test.js
 node frontend/src/lib/tickerRegime.test.js
 ```
 
