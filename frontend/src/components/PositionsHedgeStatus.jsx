@@ -39,7 +39,7 @@ export default function PositionsHedgeStatus({ hedge }) {
         <div className="border-b border-slate-100 px-3 py-2">
           <div className="text-xs font-semibold text-slate-900">Hedge status</div>
           <div className="text-[10px] text-slate-500 mt-0.5">
-            Open options only. Same underlying + CE or PE; strikes net; indices stay separate.
+            Open options. Extra shorts vs extra longs per CE/PE — overnight leftover to flatten.
           </div>
         </div>
         <div className="px-3 py-2 max-h-72 overflow-y-auto space-y-2">

@@ -7,7 +7,13 @@ assert.equal(getTickerRegime(NaN, false, 25000, 25100, 24900, 25000, 25000), "ra
 assert.equal(getTickerRegime(0.9, false, 24000, 24250, 23950, 24216, 24020), "bull-trend");
 
 const riskOff = getTickerRegime(-1.2, false, 23500, 23320, 23140, 23150, 23300);
-assert.equal(riskOff, "risk-off");
+assert.equal(riskOff, "bear-trend", "~1% one-way down is trend not risk-off");
+
+assert.equal(
+  getTickerRegime(-2.4, false, 23500, 23440, 22880, 22920, 23400),
+  "risk-off",
+  "crash-size drop near the low",
+);
 
 assert.equal(getTickerRegime(0.3, false, 24000, 24100, 23980, 24072, 24005), "bull-trend");
 assert.equal(getTickerRegime(0.05, false, 24000, 24120, 23920, 24019, 24010), "range");
@@ -39,7 +45,7 @@ assert.equal(
 
 assert.equal(
   getTickerRegime(-0.4, false, 23500, 23720, 23380, 23400, 23700),
-  "risk-off",
+  "bear-trend",
 );
 
 const a = getTickerRegime(-0.4, false, 20000, 19950, 19880, 19900, 19940);

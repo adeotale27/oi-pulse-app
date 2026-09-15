@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { bandClass } from "@/lib/marketIntel";
 
 /** In-app alert only — not a browser/push notification. Delayed so boot is not blocked. */
 export default function MarketIntelPopup({ enabled, onOpenPage }) {
@@ -43,9 +44,12 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
       data-testid="market-intel-popup"
       role="alertdialog"
     >
-      <div className="text-[10px] font-bold text-rose-800">VERY HIGH IMPACT</div>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_band || "HIGH"}</span>
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_score ?? "—"}</span>
+      </div>
       <div className="text-sm font-semibold text-slate-900 leading-snug">{item.title}</div>
-      <div className="text-[11px] text-slate-600">India {item.india_relevance_score} · Impact {item.impact_score}</div>
+      <div className="text-[11px] text-slate-600">India {item.india_relevance_score}</div>
       {Array.isArray(item.potential) && (
         <ul className="text-[11px] text-slate-700 list-disc pl-4">
           {item.potential.slice(0, 4).map((p) => <li key={p}>{p}</li>)}

@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.03 — 2026-09-15
+
+Index chips: a normal trending-down day is **BEAR TREND**; RISK-OFF only for crash-size drops. Market Intelligence shows the impact score in a box beside CRITICAL/HIGH/MODERATE. Hedge popover states leftover **shorts vs longs** (lots) per CE/PE.
+
 ## V10.02 — 2026-09-15
 
 Index chips classify the **session** (open → path → high/low → now), not just red vs previous close. RISK-OFF is reserved for strong downside continuation. Strike Pressure uses multi-window distance, session location, and option LTP as confirmation so a move toward a strike is not stuck on NEUTRAL. Positions Analyze adds a Summary/Greeks column.

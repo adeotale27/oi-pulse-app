@@ -60,11 +60,12 @@ export default function MarketIntelPage({ compact = false }) {
           <article key={it.event_cluster_id || it.id} className="rounded-md border border-slate-200 bg-white p-3 space-y-1" data-testid="mi-event">
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{it.impact_band || "—"}</span>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{it.impact_score ?? "—"}</span>
               <span className="text-[10px] text-slate-500">{it.event_type}</span>
               <span className="text-[10px] text-slate-400 ml-auto">{it.source_name}{it.source_count > 1 ? ` · ${it.source_count} sources` : ""}</span>
             </div>
             <h3 className="text-sm font-semibold text-slate-900 leading-snug">{it.title}</h3>
-            <div className="text-[11px] text-slate-600">Impact {it.impact_score} · India {it.india_relevance_score} · {String(it.published_at || "").slice(0, 16)}</div>
+            <div className="text-[11px] text-slate-600">India {it.india_relevance_score} · {String(it.published_at || "").slice(0, 16)}</div>
             {it.summary ? <p className="text-xs text-slate-600 line-clamp-3">{it.summary}</p> : null}
             {Array.isArray(it.potential) && it.potential.length > 0 && (
               <ul className="text-[11px] text-slate-700 list-disc pl-4">
