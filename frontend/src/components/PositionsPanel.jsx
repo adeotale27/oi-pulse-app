@@ -92,6 +92,8 @@ import {
   subscribePositionsBook,
   openLiveCount,
   setPositionsBookPollMs,
+  KITE_CONNECTED_EVENT,
+  refreshPositionsBook,
 } from "@/lib/positionsBook";
 import { optionSide, optionSideLabel } from "@/lib/optionSide";
 
@@ -765,6 +767,22 @@ export default function PositionsPanel({
 
   const kiteReady = isGuest ? true : (isKiteMode || stickyKite);
   const catchupDoneRef = useRef(false);
+
+  useEffect(() => {
+    const pull = () => {
+      refreshPositionsBook().catch(() => {});
+      loadBrokerage();
+    };
+    window.addEventListener(KITE_CONNECTED_EVENT, pull);
+    return () => window.removeEventListener(KITE_CONNECTED_EVENT, pull);
+  }, [loadBrokerage]);
+
+  useEffect(() => {
+    if (!kiteReady) return undefined;
+    refreshPositionsBook().catch(() => {});
+    loadBrokerage();
+    return undefined;
+  }, [kiteReady, loadBrokerage]);
 
   useEffect(() => subscribePositionsBook((payload) => {
     applyBook(payload);

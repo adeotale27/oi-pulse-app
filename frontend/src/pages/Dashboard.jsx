@@ -68,7 +68,7 @@ import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTi
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
 import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
-import { setPositionsBookPollMs } from "@/lib/positionsBook";
+import { setPositionsBookPollMs, refreshPositionsBook, notifyKiteConnected } from "@/lib/positionsBook";
 import { connectSpotWS } from "@/lib/spotWs";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
@@ -531,6 +531,9 @@ export default function Dashboard() {
         const next = qs.toString();
         window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
         setActiveTab("positions");
+        notifyKiteConnected();
+        refreshPositionsBook().catch(() => {});
+        loadStatus();
       } catch (e) {
         if (!cancelled) toast.error(friendlyKiteConnectError(e?.response?.data?.detail || e.message || "Could not complete Kite login"));
       }
@@ -768,6 +771,20 @@ export default function Dashboard() {
     }
     // Auth state is owned by AuthGate / Header — do not re-fetch on every OI poll.
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get("kite") !== "connected") return undefined;
+    qs.delete("kite");
+    const next = qs.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+    setActiveTab("positions");
+    notifyKiteConnected();
+    refreshPositionsBook().catch(() => {});
+    loadStatus();
+    return undefined;
+  }, [loadStatus]);
 
   const [historyReady, setHistoryReady] = useState(true);
   const [availableHistoryMin, setAvailableHistoryMin] = useState(0);
@@ -3088,7 +3105,11 @@ export default function Dashboard() {
         <CredentialsModal
           open={credsOpen}
           onOpenChange={setCredsOpen}
-          onSaved={loadStatus}
+          onSaved={() => {
+            loadStatus();
+            notifyKiteConnected();
+            refreshPositionsBook().catch(() => {});
+          }}
         />
       )}
       {authState.is_admin && (

@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.08",
+    date: "2026-09-15",
+    user: [
+      "After you connect Zerodha, Positions loads the book immediately — no full page refresh.",
+    ],
+    admin: [
+      "Phone Admin configuration and Mkt Intel settings open as a sheet, not a blank blur. Mkt Intel sources scroll in the dialog. Event types on the Market Intelligence page are bold caps (INDIA MACRO, OIL).",
+    ],
+  },
+  {
     version: "10.07",
     date: "2026-09-15",
     user: [
