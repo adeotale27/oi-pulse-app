@@ -1,14 +1,109 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, GripHorizontal, Maximize2, Minimize2, Newspaper, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { bandClass, impactScoreLabel, indiaImpactLabel } from "@/lib/marketIntel";
+import {
+  bandClass,
+  impactScoreLabel,
+  indiaImpactLabel,
+  miMinimizeActive,
+  MI_POPUP_BOTTOM_KEY,
+  MI_POPUP_LEFT_KEY,
+  MI_POPUP_MIN_KEY,
+} from "@/lib/marketIntel";
+import { clampCarryLeft, snapCarryLeft } from "@/lib/carryDock";
+import { nextSessionOpenMs } from "@/lib/overnightBrief";
 
-/** In-app alert only — not a browser/push notification. Delayed so boot is not blocked. */
+const PANEL_W = 320;
+
+function isPhone() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
+
+function dockClearance() {
+  if (typeof window === "undefined") return 12;
+  const mobile = window.matchMedia("(max-width: 767px)").matches;
+  const safe = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("env(safe-area-inset-bottom)")) || 0;
+  return mobile ? 52 + (Number.isFinite(safe) ? safe : 0) : 12;
+}
+
+function readNum(key) {
+  try {
+    const n = Number(localStorage.getItem(key));
+    if (Number.isFinite(n) && n >= 8 && n <= 4000) return n;
+  } catch { /* noop */ }
+  return null;
+}
+
+function writeNum(key, n) {
+  try { localStorage.setItem(key, String(Math.round(n))); } catch { /* noop */ }
+}
+
+function readMinimized() {
+  try {
+    const raw = localStorage.getItem(MI_POPUP_MIN_KEY);
+    if (!raw) return false;
+    const until = Number(JSON.parse(raw)?.until);
+    if (!miMinimizeActive(Date.now(), until)) {
+      localStorage.removeItem(MI_POPUP_MIN_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function writeMinimized(untilMs) {
+  try {
+    localStorage.setItem(MI_POPUP_MIN_KEY, JSON.stringify({ until: untilMs }));
+  } catch { /* noop */ }
+}
+
+function clearMinimized() {
+  try { localStorage.removeItem(MI_POPUP_MIN_KEY); } catch { /* noop */ }
+}
+
+/** In-app Market Intel sheet — same dock/minimize pattern as the overnight carry brief. */
 export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const [items, setItems] = useState([]);
   const [idx, setIdx] = useState(0);
+  const [minimized, setMinimized] = useState(() => readMinimized());
+  const [leftPx, setLeftPx] = useState(() => readNum(MI_POPUP_LEFT_KEY));
+  const [bottomPx, setBottomPx] = useState(() => readNum(MI_POPUP_BOTTOM_KEY));
   const idxRef = useRef(0);
+  const dragRef = useRef(null);
+  const skipClickRef = useRef(false);
   idxRef.current = idx;
+
+  const setLeft = (px) => {
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const next = clampCarryLeft(px, w, isPhone() ? 280 : PANEL_W);
+    setLeftPx(next);
+    writeNum(MI_POPUP_LEFT_KEY, next);
+  };
+
+  const clampBottom = useCallback((raw) => {
+    const min = dockClearance();
+    const phone = isPhone();
+    const max = phone
+      ? Math.max(min, 160)
+      : Math.max(min, (typeof window !== "undefined" ? window.innerHeight : 800) - 72);
+    return Math.min(max, Math.max(min, raw));
+  }, []);
+
+  useEffect(() => {
+    if (leftPx != null) return;
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    setLeft(snapCarryLeft("right", w, PANEL_W));
+  }, [leftPx]);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const id = setInterval(() => {
+      if (!readMinimized()) setMinimized(false);
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
@@ -35,7 +130,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     timer = setTimeout(() => {
       poll();
       timer = setInterval(poll, 180000);
-    }, 25000);
+    }, 8000);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -43,11 +138,95 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     };
   }, [enabled]);
 
+  const minimizeUntilNext = () => {
+    writeMinimized(nextSessionOpenMs(new Date()));
+    setMinimized(true);
+  };
+
+  const expand = () => {
+    clearMinimized();
+    setMinimized(false);
+  };
+
+  const onPointerDown = (e, kind) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const startBottom = bottomPx != null ? bottomPx : dockClearance();
+    const startLeft = leftPx != null ? leftPx : 12;
+    dragRef.current = { kind, startY: e.clientY, startX: e.clientX, startBottom, startLeft, moved: false };
+  };
+
+  const onPointerMove = (e) => {
+    if (!dragRef.current) return;
+    if (Math.abs(e.clientY - dragRef.current.startY) > 6 || Math.abs(e.clientX - dragRef.current.startX) > 6) {
+      dragRef.current.moved = true;
+    }
+    const kind = dragRef.current.kind;
+    if (kind === "move" || kind === "both") {
+      const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const panel = minimized || isPhone() ? 88 : PANEL_W;
+      setLeftPx(clampCarryLeft(dragRef.current.startLeft + (e.clientX - dragRef.current.startX), w, panel));
+      if (kind === "move") return;
+    }
+    if (!minimized && isPhone()) return;
+    const dy = dragRef.current.startY - e.clientY;
+    setBottomPx(clampBottom(dragRef.current.startBottom + dy));
+  };
+
+  const onPointerUp = (e) => {
+    if (!dragRef.current) return;
+    skipClickRef.current = !!dragRef.current.moved;
+    const kind = dragRef.current.kind;
+    const moved = dragRef.current.moved;
+    const startY = dragRef.current.startY;
+    const shouldExpand = minimized && !moved;
+    if (kind === "move" || kind === "both") {
+      if (moved && leftPx != null) writeNum(MI_POPUP_LEFT_KEY, leftPx);
+      if (kind === "move") {
+        dragRef.current = null;
+        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+        return;
+      }
+    }
+    if (!minimized && isPhone()) {
+      const swipeDown = e.clientY - startY;
+      dragRef.current = null;
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+      if (swipeDown > 36) minimizeUntilNext();
+      return;
+    }
+    dragRef.current = null;
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+    setBottomPx((prev) => {
+      const next = clampBottom(prev != null ? prev : dockClearance());
+      writeNum(MI_POPUP_BOTTOM_KEY, next);
+      return next;
+    });
+    if (shouldExpand) expand();
+  };
+
   const n = items.length;
   const item = n ? items[Math.min(idx, n - 1)] : null;
-  if (!enabled || !item) return null;
+  const phoneOpen = typeof window !== "undefined" && isPhone();
+  const posStyle = (() => {
+    const bottom = phoneOpen && !minimized
+      ? `${dockClearance()}px`
+      : (bottomPx != null ? `${bottomPx}px` : undefined);
+    if (phoneOpen && !minimized) return { bottom };
+    const left = leftPx != null ? `${leftPx}px` : undefined;
+    return { bottom, left, right: left ? "auto" : 12 };
+  })();
 
-  const dismiss = () => {
+  if (!enabled) return null;
+  if (!item && !minimized) return null;
+
+  const step = (dir) => {
+    if (n < 2) return;
+    setIdx((i) => (i + dir + n) % n);
+  };
+
+  const dismissCurrent = () => {
+    if (!item) return;
     const cid = item.event_cluster_id;
     const next = items.filter((x) => x.event_cluster_id !== cid);
     setItems(next);
@@ -55,29 +234,88 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     if (cid) api.post("/market-intel/popup/ack", { event_cluster_id: cid }).catch(() => {});
   };
 
-  const step = (dir) => {
-    if (n < 2) return;
-    setIdx((i) => (i + dir + n) % n);
-  };
+  if (minimized) {
+    return (
+      <button
+        type="button"
+        data-testid="market-intel-popup-chip"
+        onClick={() => {
+          if (skipClickRef.current) {
+            skipClickRef.current = false;
+            return;
+          }
+          expand();
+        }}
+        className={`fixed z-40 md:bottom-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-2 px-3 py-2 ${
+          bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
+        }`}
+        style={posStyle}
+        onPointerDown={(e) => onPointerDown(e, "both")}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        title="Open market news · drag to move"
+        aria-label="Mkt Intel"
+      >
+        <Newspaper className="w-3.5 h-3.5" />
+        <span>Mkt Intel</span>
+        {n > 0 ? <span className="opacity-70 font-mono-data">{n}</span> : null}
+        <Maximize2 className="w-3.5 h-3.5 opacity-70" />
+      </button>
+    );
+  }
 
   return (
     <div
-      className="fixed z-[60] bottom-16 md:bottom-6 right-3 left-3 md:left-auto md:w-80 max-h-[min(52vh,24rem)] overflow-y-auto rounded-lg border border-rose-300 bg-white shadow-lg p-3 space-y-2 pointer-events-auto"
+      className={`fixed z-40 md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto ${
+        phoneOpen ? "left-3 right-3" : ""
+      } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
+      style={{
+        ...posStyle,
+        ...(phoneOpen
+          ? {}
+          : {
+              width: `min(${PANEL_W}px, calc(100vw - 16px))`,
+              maxHeight: "min(28rem, calc(100vh - 20px))",
+            }),
+      }}
       data-testid="market-intel-popup"
-      role="alertdialog"
+      role="dialog"
+      aria-label="Market Intelligence"
     >
-      <div className="flex items-start gap-1">
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_band || "HIGH"}</span>
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{impactScoreLabel(item.impact_score)}</span>
-          {n > 1 ? <span className="text-[10px] text-slate-500">{Math.min(idx, n - 1) + 1} / {n}</span> : null}
+      <div className="flex items-center gap-1 px-2 py-1.5 shrink-0 border-b border-rose-200">
+        <button
+          type="button"
+          className="md:hidden p-1 opacity-70 touch-none min-h-11 min-w-11 inline-flex items-center justify-center"
+          aria-label="Swipe down to minimize market news"
+          data-testid="mi-popup-drag"
+          onPointerDown={(e) => onPointerDown(e, "mobile")}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <GripHorizontal className="w-4 h-4" />
+        </button>
+        <div
+          className="hidden md:flex items-center gap-1.5 min-w-0 flex-1 cursor-grab active:cursor-grabbing touch-none"
+          data-testid="mi-popup-dock-drag"
+          onPointerDown={(e) => onPointerDown(e, "move")}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          title="Drag to move"
+        >
+          <Newspaper className="w-4 h-4 shrink-0 opacity-80" />
+          <div className="min-w-0 text-sm font-semibold leading-tight">Mkt Intel</div>
         </div>
+        <div className="md:hidden min-w-0 flex-1 text-sm font-semibold leading-tight">Mkt Intel</div>
         {n > 1 ? (
-          <div className="flex shrink-0 -mr-1">
+          <div className="ml-auto flex items-center shrink-0">
+            <span className="text-[10px] text-rose-800/80 mr-0.5 font-mono-data">{Math.min(idx, n - 1) + 1}/{n}</span>
             <button
               type="button"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100 touch-manipulation"
-              aria-label="Previous impacting news"
+              className="inline-flex min-h-11 min-w-9 items-center justify-center rounded-md hover:bg-white/60 touch-manipulation"
+              aria-label="Previous news"
               data-testid="mi-popup-prev"
               onClick={() => step(-1)}
             >
@@ -85,26 +323,58 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
             </button>
             <button
               type="button"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100 touch-manipulation"
-              aria-label="Next impacting news"
+              className="inline-flex min-h-11 min-w-9 items-center justify-center rounded-md hover:bg-white/60 touch-manipulation"
+              aria-label="Next news"
               data-testid="mi-popup-next"
               onClick={() => step(1)}
             >
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
-        ) : null}
+        ) : <div className="ml-auto" />}
+        <button
+          type="button"
+          onClick={minimizeUntilNext}
+          className="opacity-80 hover:opacity-100 h-8 w-8 inline-flex items-center justify-center rounded"
+          aria-label="Minimize market news until next session"
+          title="Minimize until next market open"
+          data-testid="mi-popup-minimize"
+        >
+          <Minimize2 className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={minimizeUntilNext}
+          className="opacity-80 hover:opacity-100 h-8 w-8 inline-flex items-center justify-center rounded"
+          aria-label="Close market news until next session"
+          data-testid="mi-popup-dismiss"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
-      <div className="text-sm font-semibold text-slate-900 leading-snug">{item.title}</div>
-      <div className="text-[11px] text-slate-600">{indiaImpactLabel(item.india_relevance_score)}</div>
-      {Array.isArray(item.potential) && (
-        <ul className="text-[11px] text-slate-700 list-disc pl-4">
-          {item.potential.slice(0, 4).map((p) => <li key={p}>{p}</li>)}
-        </ul>
-      )}
-      <div className="flex flex-wrap gap-2 items-center">
-        <button type="button" className="text-[11px] font-semibold text-emerald-800 min-h-11" onClick={() => { dismiss(); onOpenPage?.(); }}>View Market Intelligence</button>
-        <button type="button" className="text-[11px] text-slate-500 ml-auto min-h-11" onClick={dismiss}>Dismiss</button>
+
+      <div className="px-2.5 pb-2.5 pt-1.5 space-y-1.5 text-xs overflow-y-auto max-h-[min(46vh,20rem)]">
+        {item ? (
+          <>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_band || "HIGH"}</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{impactScoreLabel(item.impact_score)}</span>
+            </div>
+            <div className="text-sm font-semibold leading-snug">{item.title}</div>
+            <div className="text-[11px] opacity-90">{indiaImpactLabel(item.india_relevance_score)}</div>
+            {Array.isArray(item.potential) && (
+              <ul className="text-[11px] list-disc pl-4">
+                {item.potential.slice(0, 4).map((p) => <li key={p}>{p}</li>)}
+              </ul>
+            )}
+            <div className="flex flex-wrap gap-2 items-center pt-1">
+              <button type="button" className="text-[11px] font-semibold min-h-11" onClick={() => onOpenPage?.()}>View Market Intelligence</button>
+              <button type="button" className="text-[11px] opacity-70 ml-auto min-h-11" onClick={dismissCurrent}>This story done</button>
+            </div>
+          </>
+        ) : (
+          <p className="text-[11px] opacity-80">No high-impact stories right now.</p>
+        )}
       </div>
     </div>
   );

@@ -90,7 +90,7 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="market-intel-settings-modal" className="max-w-lg max-h-[90dvh] overflow-y-auto w-[calc(100vw-1.25rem)] sm:w-full">
+      <DialogContent data-testid="market-intel-settings-modal" className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Newspaper className="w-4 h-4" />

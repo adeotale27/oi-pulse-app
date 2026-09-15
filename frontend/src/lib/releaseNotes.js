@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.05",
+    date: "2026-09-15",
+    user: [
+      "Market news on the phone docks like Overnight: close it to a Mkt Intel chip until the next session, drag it, and use arrows when several stories are waiting. Unhedged Exposure on Positions fits the row.",
+    ],
+    admin: [
+      "Admin configuration and the other settings sheets open on-screen on a phone (no empty blur overlay). Dialogs sit above the mobile tools bar.",
+    ],
+  },
+  {
     version: "10.04",
     date: "2026-09-15",
     user: [
