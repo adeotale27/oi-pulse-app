@@ -439,6 +439,19 @@ async def ensure_indexes(db) -> None:
     await db[PREF_COL].create_index("user_id", unique=True)
 
 
+def popup_allowed(global_on: bool, prefs: Dict[str, Any], *, is_admin: bool) -> bool:
+    """In-app popup only. Ingest always runs independently of these ticks.
+
+    Global desk tick off → nobody. Global on → admin always sees it (page hide
+    does not suppress). Guests need their own popup tick; page tick is unrelated.
+    """
+    if not global_on:
+        return False
+    if is_admin:
+        return True
+    return bool((prefs or {}).get("popup_enabled", True))
+
+
 def default_user_prefs() -> Dict[str, Any]:
     return {
         "page_enabled": True,
@@ -826,14 +839,16 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
     return cluster_rows(kept)[:limit]
 
 
-async def popup_candidates(db, user_id: str, prefs: Dict[str, Any], global_on: bool) -> List[Dict[str, Any]]:
-    if not global_on or not prefs.get("popup_enabled") or not prefs.get("page_enabled"):
+async def popup_candidates(
+    db, user_id: str, prefs: Dict[str, Any], global_on: bool, *, is_admin: bool = False
+) -> List[Dict[str, Any]]:
+    if not popup_allowed(global_on, prefs, is_admin=is_admin):
         return []
-    rows = await feed_for_user(db, prefs, "all", 12)
+    rows = await feed_for_user(db, prefs, "all", 24)
     min_i = int(prefs.get("popup_min_impact") or 90)
     min_in = int(prefs.get("popup_min_india") or 70)
     top = [r for r in rows if int(r.get("impact_score") or 0) >= min_i and int(r.get("india_relevance_score") or 0) >= min_in]
-    top = top[:2]
+    top = top[:8]
     unseen = []
     for r in top:
         cid = r.get("event_cluster_id")
@@ -857,7 +872,7 @@ def new_source_id() -> str:
 
 
 async def ingest_loop(get_db, get_settings, stop_event) -> None:
-    """Start late so app boot / OI poller are not starved."""
+    """Pull and store news on the admin interval. Page/popup ticks never stop this."""
     import asyncio
     await asyncio.sleep(BOOT_DELAY_S)
     while not stop_event.is_set():

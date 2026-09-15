@@ -598,7 +598,7 @@ export default function Header({
               <X className="w-4 h-4" />
             </button>
           </div>
-          <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenSettings?.(); }}>
+          <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenSettings?.(); }}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
           </Button>
@@ -606,23 +606,23 @@ export default function Header({
             data-testid="btn-mobile-index-manager"
             variant="outline"
             size="sm"
-            className="rounded-sm"
+            className="rounded-sm min-h-11"
             onClick={() => { setMobileToolsOpen(false); onOpenIndexManager?.(); }}
           >
             <Layers className="w-4 h-4 mr-1.5" />
             Index management
           </Button>
-          <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={onOpenCreds} title={kiteBtnTitle}>
+          <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className={`${kiteBtnCls} min-h-11`} onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
             <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
               {kiteBtnLabel}
             </span>
           </Button>
-          <Button data-testid="btn-mobile-desk-ai-keys" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenDeskAiKeys?.(); }}>
+          <Button data-testid="btn-mobile-desk-ai-keys" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenDeskAiKeys?.(); }}>
             <Sparkles className="w-4 h-4 mr-1.5" />
             Desk AI keys
           </Button>
-          <Button data-testid="btn-mobile-mi-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenMiSettings?.(); }}>
+          <Button data-testid="btn-mobile-mi-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenMiSettings?.(); }}>
             <Newspaper className="w-4 h-4 mr-1.5" />
             Mkt Intel settings
           </Button>
@@ -631,34 +631,38 @@ export default function Header({
             size="sm"
             onClick={onRefreshDay}
             disabled={refreshing}
-            className="rounded-sm bg-rose-600 hover:bg-rose-700 text-white"
+            className="rounded-sm min-h-11 bg-rose-600 hover:bg-rose-700 text-white"
           >
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh Pull"}
           </Button>
-          <Button data-testid="btn-mobile-upload" size="sm" onClick={onOpenUpload} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
+          <Button data-testid="btn-mobile-upload" size="sm" onClick={onOpenUpload} className="rounded-sm min-h-11 bg-sky-600 hover:bg-sky-700 text-white">
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button data-testid="btn-mobile-telegram" variant="outline" size="sm" className="rounded-sm" onClick={onOpenTelegramPrefs}>
+          <Button data-testid="btn-mobile-telegram" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={onOpenTelegramPrefs}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
+          </Button>
+          <Button data-testid="btn-mobile-journal" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenJournal?.(); }}>
+            <BookOpen className="w-4 h-4 mr-1.5" />
+            Trade journal
           </Button>
           <Button
             data-testid="btn-mobile-error-log"
             variant="outline"
             size="sm"
-            className="rounded-sm"
+            className="rounded-sm min-h-11"
             onClick={() => { setMobileToolsOpen(false); onOpenErrorLog?.(); }}
           >
             <ScrollText className="w-4 h-4 mr-1.5" />
             Error log
           </Button>
-          <Button data-testid="btn-mobile-sounds" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
+          <Button data-testid="btn-mobile-sounds" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />
             Sounds
           </Button>
-          <Button data-testid="btn-mobile-csv" variant="outline" size="sm" className="rounded-sm" onClick={onDownloadCsv}>
+          <Button data-testid="btn-mobile-csv" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={onDownloadCsv}>
             <Download className="w-4 h-4 mr-1.5" />
             CSV
           </Button>
@@ -1145,9 +1149,13 @@ export default function Header({
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenTelegramPrefs?.(); }}>
+          <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenTelegramPrefs?.(); }}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
+          </Button>
+          <Button data-testid="btn-tablet-journal" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenJournal?.(); }}>
+            <BookOpen className="w-4 h-4 mr-1.5" />
+            Trade journal
           </Button>
           <Button
             data-testid="btn-tablet-error-log"

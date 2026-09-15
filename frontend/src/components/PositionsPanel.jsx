@@ -425,11 +425,11 @@ function StrikePressureCell({ result }) {
     c.impact === "CAUTION" ? "⚠" :
     c.impact === "FAVOURABLE" ? "✓" : "";
   return (
-    <span className="inline-flex items-center gap-0.5" data-testid="strike-pressure-cell">
-      <span className="font-semibold text-slate-800 whitespace-nowrap">
+    <span className="inline-flex flex-wrap items-center gap-0.5 max-w-full" data-testid="strike-pressure-cell">
+      <span className="font-semibold text-slate-800">
         {c.arrow} {c.pressure === PRESSURE_LABELS.unavailable ? "N/A" : c.pressure.replace("STRONG ", "STR ")}
       </span>
-      <span className={`text-[10px] whitespace-nowrap ${impactTone}`}>{impactMark} {c.impact === "NEUTRAL" ? "" : c.impact}</span>
+      <span className={`text-[10px] ${impactTone}`}>{impactMark} {c.impact === "NEUTRAL" ? "" : c.impact}</span>
       <InfoTip title="Strike pressure" size="xs" testId="strike-pressure-tip">
         <p><b>STRIKE PRESSURE:</b> {result.label}</p>
         {result.spot != null && <p>Underlying: {Math.round(result.spot)}</p>}

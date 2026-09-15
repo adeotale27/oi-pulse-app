@@ -20,3 +20,11 @@ export function bandClass(band) {
   if (band === "MODERATE") return "bg-sky-50 text-sky-900 border-sky-200";
   return "bg-slate-100 text-slate-600 border-slate-200";
 }
+
+export function impactScoreLabel(score) {
+  return `Impact ${score ?? "—"}`;
+}
+
+export function indiaImpactLabel(score) {
+  return `Indian market impact ${score ?? "—"}`;
+}

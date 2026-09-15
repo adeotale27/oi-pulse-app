@@ -90,18 +90,18 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="market-intel-settings-modal" className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent data-testid="market-intel-settings-modal" className="max-w-lg max-h-[90dvh] overflow-y-auto w-[calc(100vw-1.25rem)] sm:w-full">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Newspaper className="w-4 h-4" />
             Mkt Intel settings
           </DialogTitle>
           <DialogDescription>
-            Public market-news RSS is on by default. Keyed APIs run only when a key is saved. Untick to skip a source.
+            Public market-news RSS is on by default. Keyed APIs run only when a key is saved. Untick a source to skip it. Ingest always stores news on the interval below — hiding the page or popups does not stop that.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3" data-testid="market-intel-admin">
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <label>Ingest interval (sec)
               <input type="number" min={60} max={3600} className="w-full h-8 border rounded-sm px-2 mt-0.5"
                 value={settings.market_intel_ingest_seconds ?? 300}
@@ -118,9 +118,9 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
                 value={settings.market_intel_min_history_days ?? 2}
                 onChange={(e) => setSettings({ ...settings, market_intel_min_history_days: Number(e.target.value) })} />
             </label>
-            <label className="flex items-center gap-2 mt-5">
-              <input type="checkbox" checked={settings.market_intel_popup_enabled !== false} onChange={(e) => setSettings({ ...settings, market_intel_popup_enabled: e.target.checked })} />
-              Allow in-app popups
+            <label className="flex items-start gap-2 mt-1 sm:mt-5">
+              <input type="checkbox" className="mt-0.5" checked={settings.market_intel_popup_enabled !== false} onChange={(e) => setSettings({ ...settings, market_intel_popup_enabled: e.target.checked })} />
+              <span>Allow in-app popups for everyone. Off hides the popup for guests and admin. News ingest and storage keep running.</span>
             </label>
           </div>
           <div className="flex flex-wrap gap-1">

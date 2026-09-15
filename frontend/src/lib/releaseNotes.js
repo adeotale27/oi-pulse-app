@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.04",
+    date: "2026-09-15",
+    user: [
+      "When several important stories hit, the news popup has left/right arrows. Scores read Impact 96 and Indian market impact 70, not a bare number.",
+    ],
+    admin: [
+      "Turning off Market Intelligence popups (or hiding the page) does not stop ingest. News is still stored. Desk-wide popup off hides the alert for guests and admin; popup on always shows it to admin. Admin settings and journal are on the phone tools bar.",
+    ],
+  },
+  {
     version: "10.03",
     date: "2026-09-15",
     user: [
