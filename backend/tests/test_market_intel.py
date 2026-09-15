@@ -106,3 +106,34 @@ def test_top_two_are_highest():
     titles = {r["title"] for r in ranked[:2]}
     assert "3" not in titles
     assert "1" in titles and "2" in titles
+
+
+def test_ensure_default_sources_seeds_rss_without_overwrite():
+    import asyncio
+    from market_intel import ensure_default_sources, RSS_TEMPLATES, PUBLIC_API_CATALOG
+
+    class Col:
+        def __init__(self):
+            self.docs = {}
+        async def find_one(self, q):
+            return self.docs.get(q.get("id"))
+        async def update_one(self, q, upd, upsert=False):
+            sid = q["id"]
+            if sid in self.docs:
+                self.docs[sid].update(upd.get("$set") or {})
+            elif upsert:
+                self.docs[sid] = {**(upd.get("$set") or {}), "id": sid}
+
+    class Db:
+        def __init__(self):
+            self.c = Col()
+        def __getitem__(self, _k):
+            return self.c
+
+    db = Db()
+    asyncio.run(ensure_default_sources(db))
+    assert db.c.docs["google-news-in"]["enabled"] is True
+    db.c.docs["google-news-in"]["enabled"] = False
+    asyncio.run(ensure_default_sources(db))
+    assert db.c.docs["google-news-in"]["enabled"] is False
+    assert len(db.c.docs) >= len(RSS_TEMPLATES) + len(PUBLIC_API_CATALOG)

@@ -83,10 +83,10 @@ export function formatHedgeGroupLabel({ kind, underlying, optionType, netLots })
 }
 
 export function formatHedgeGroupShort({ kind, netLots }) {
-  const unit = "L";
+  const unit = netLots === 1 ? "lot" : "lots";
   if (kind === "hedged") return "Fully Hedged";
-  if (kind === "unhedged") return `Unhedged by ${fmtLots(netLots)}${unit}`;
-  return `Underhedged by ${fmtLots(netLots)}${unit}`;
+  if (kind === "unhedged") return `Unhedged by ${fmtLots(netLots)} ${unit}`;
+  return `Underhedged by ${fmtLots(netLots)} ${unit}`;
 }
 
 /**

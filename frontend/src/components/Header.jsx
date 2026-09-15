@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText, Newspaper } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import DeskAiConfigMenu from "@/components/DeskAiConfigMenu";
@@ -170,6 +170,8 @@ export default function Header({
   positionsPollMs = 30_000,
   /** Guests only see header P&L when Positions is a public page. */
   positionsPublic = true,
+  onOpenDeskAiKeys,
+  onOpenMiSettings,
   showDeskAi = false,
   onDeskAiChange,
   onOpenDeskAiPanel,
@@ -616,6 +618,14 @@ export default function Header({
               {kiteBtnLabel}
             </span>
           </Button>
+          <Button data-testid="btn-mobile-desk-ai-keys" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenDeskAiKeys?.(); }}>
+            <Sparkles className="w-4 h-4 mr-1.5" />
+            Desk AI keys
+          </Button>
+          <Button data-testid="btn-mobile-mi-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenMiSettings?.(); }}>
+            <Newspaper className="w-4 h-4 mr-1.5" />
+            Mkt Intel settings
+          </Button>
           <Button
             data-testid="btn-mobile-fresh-pull"
             size="sm"
@@ -951,6 +961,20 @@ export default function Header({
                   <Layers className="w-4 h-4" />
                   Index management
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-desk-ai-keys"
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenDeskAiKeys?.(); }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Desk AI keys
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-mi-settings"
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenMiSettings?.(); }}
+                >
+                  <Newspaper className="w-4 h-4" />
+                  Mkt Intel settings
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
                   Account
@@ -1098,6 +1122,14 @@ export default function Header({
             <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
               {kiteBtnLabel}
             </span>
+          </Button>
+          <Button data-testid="btn-tablet-desk-ai-keys" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenDeskAiKeys?.(); }}>
+            <Sparkles className="w-4 h-4 mr-1.5" />
+            Desk AI keys
+          </Button>
+          <Button data-testid="btn-tablet-mi-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenMiSettings?.(); }}>
+            <Newspaper className="w-4 h-4 mr-1.5" />
+            Mkt Intel settings
           </Button>
           <Button
             data-testid="btn-tablet-fresh-pull"

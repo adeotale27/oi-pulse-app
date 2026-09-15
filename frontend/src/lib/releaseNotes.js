@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.01",
+    date: "2026-09-15",
+    user: [
+      "Live Positions: Strike Pressure shows whether the market is moving toward or away from your strike, plus whether that is favourable or high risk for your long/short. Hedge leftover is shown in lots.",
+    ],
+    admin: [
+      "Admin menu: Desk AI keys and Mkt Intel settings are separate popups. Public RSS feeds start on; catalog APIs need a key. Cannot mark a provider Active without a key (env OpenAI still counts).",
+    ],
+  },
+  {
     version: "10.00",
     date: "2026-09-15",
     user: [

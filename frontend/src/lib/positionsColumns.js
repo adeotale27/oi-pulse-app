@@ -17,6 +17,7 @@ export const POSITIONS_COLUMN_DEFS = [
   { id: "dte", label: "Days left", defaultOn: true },
   { id: "status", label: "Status", defaultOn: true },
   { id: "atmDist", label: "ATM Dist", defaultOn: true },
+  { id: "strikePressure", label: "Strike Pressure", defaultOn: true },
 ];
 
 export function defaultColumnVisibility() {
