@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.06 — 2026-09-15
+
+Phone Admin configuration is forced into the screen (12px inset, above the tools bar) so it is not a blank dim overlay. Market Intel page and popup show **today’s** stories only. The popup lists today’s critical count and always has left/right arrows to step through them.
+
 ## V10.05 — 2026-09-15
 
 Phone Admin configuration (and other dialogs) sit in the viewport above the header instead of a dark overlay with no sheet. Unhedged Exposure wraps on Positions. Market Intel news docks like Overnight: drag, close to a **Mkt Intel** chip until the next session, left/right arrows on the sheet.

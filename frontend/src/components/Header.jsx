@@ -349,6 +349,10 @@ export default function Header({
   // Refresh DB action (admin only)
   const [refreshing, setRefreshing] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const openAdminSheet = (fn) => {
+    setMobileToolsOpen(false);
+    window.setTimeout(() => fn?.(), 80);
+  };
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   useEffect(() => {
     if (!mobileToolsOpen) return undefined;
@@ -598,7 +602,7 @@ export default function Header({
               <X className="w-4 h-4" />
             </button>
           </div>
-          <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenSettings?.(); }}>
+          <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
           </Button>
@@ -607,7 +611,7 @@ export default function Header({
             variant="outline"
             size="sm"
             className="rounded-sm min-h-11"
-            onClick={() => { setMobileToolsOpen(false); onOpenIndexManager?.(); }}
+            onClick={() => openAdminSheet(onOpenIndexManager)}
           >
             <Layers className="w-4 h-4 mr-1.5" />
             Index management
@@ -618,11 +622,11 @@ export default function Header({
               {kiteBtnLabel}
             </span>
           </Button>
-          <Button data-testid="btn-mobile-desk-ai-keys" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenDeskAiKeys?.(); }}>
+          <Button data-testid="btn-mobile-desk-ai-keys" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenDeskAiKeys)}>
             <Sparkles className="w-4 h-4 mr-1.5" />
             Desk AI keys
           </Button>
-          <Button data-testid="btn-mobile-mi-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenMiSettings?.(); }}>
+          <Button data-testid="btn-mobile-mi-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenMiSettings)}>
             <Newspaper className="w-4 h-4 mr-1.5" />
             Mkt Intel settings
           </Button>
@@ -644,7 +648,7 @@ export default function Header({
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>
-          <Button data-testid="btn-mobile-journal" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenJournal?.(); }}>
+          <Button data-testid="btn-mobile-journal" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenJournal)}>
             <BookOpen className="w-4 h-4 mr-1.5" />
             Trade journal
           </Button>
@@ -653,7 +657,7 @@ export default function Header({
             variant="outline"
             size="sm"
             className="rounded-sm min-h-11"
-            onClick={() => { setMobileToolsOpen(false); onOpenErrorLog?.(); }}
+            onClick={() => openAdminSheet(onOpenErrorLog)}
           >
             <ScrollText className="w-4 h-4 mr-1.5" />
             Error log
@@ -1107,7 +1111,7 @@ export default function Header({
           <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
             Admin tools
           </div>
-          <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenSettings?.(); }}>
+          <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
           </Button>
@@ -1116,22 +1120,22 @@ export default function Header({
             variant="outline"
             size="sm"
             className="rounded-sm"
-            onClick={() => { setMobileToolsOpen(false); onOpenIndexManager?.(); }}
+            onClick={() => openAdminSheet(onOpenIndexManager)}
           >
             <Layers className="w-4 h-4 mr-1.5" />
             Index management
           </Button>
-          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={() => { setMobileToolsOpen(false); onOpenCreds?.(); }} title={kiteBtnTitle}>
+          <Button data-testid="btn-tablet-kite" variant="outline" size="sm" className={kiteBtnCls} onClick={() => openAdminSheet(onOpenCreds)} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
             <span className={kiteUserId ? "text-emerald-700 dark:text-emerald-400 font-semibold" : undefined}>
               {kiteBtnLabel}
             </span>
           </Button>
-          <Button data-testid="btn-tablet-desk-ai-keys" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenDeskAiKeys?.(); }}>
+          <Button data-testid="btn-tablet-desk-ai-keys" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenDeskAiKeys)}>
             <Sparkles className="w-4 h-4 mr-1.5" />
             Desk AI keys
           </Button>
-          <Button data-testid="btn-tablet-mi-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => { setMobileToolsOpen(false); onOpenMiSettings?.(); }}>
+          <Button data-testid="btn-tablet-mi-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenMiSettings)}>
             <Newspaper className="w-4 h-4 mr-1.5" />
             Mkt Intel settings
           </Button>
@@ -1145,15 +1149,15 @@ export default function Header({
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh Pull"}
           </Button>
-          <Button data-testid="btn-tablet-upload" size="sm" onClick={() => { setMobileToolsOpen(false); onOpenUpload?.(); }} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
+          <Button data-testid="btn-tablet-upload" size="sm" onClick={() => openAdminSheet(onOpenUpload)} className="rounded-sm bg-sky-600 hover:bg-sky-700 text-white">
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenTelegramPrefs?.(); }}>
+          <Button data-testid="btn-tablet-telegram" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenTelegramPrefs)}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>
-          <Button data-testid="btn-tablet-journal" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => { setMobileToolsOpen(false); onOpenJournal?.(); }}>
+          <Button data-testid="btn-tablet-journal" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenJournal)}>
             <BookOpen className="w-4 h-4 mr-1.5" />
             Trade journal
           </Button>
@@ -1162,7 +1166,7 @@ export default function Header({
             variant="outline"
             size="sm"
             className="rounded-sm"
-            onClick={() => { setMobileToolsOpen(false); onOpenErrorLog?.(); }}
+            onClick={() => openAdminSheet(onOpenErrorLog)}
           >
             <ScrollText className="w-4 h-4 mr-1.5" />
             Error log

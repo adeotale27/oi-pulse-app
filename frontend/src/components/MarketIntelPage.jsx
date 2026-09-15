@@ -54,7 +54,7 @@ export default function MarketIntelPage({ compact = false }) {
       {err && <div className="text-xs text-rose-700">Showing last stored items if any. ({err})</div>}
       <div className="space-y-2">
         {items.length === 0 && (
-          <div className="text-xs text-slate-500 border rounded-md p-4">No ranked events yet. Admin can add RSS/API/Firecrawl sources. Ingest waits ~90s after boot, then runs on the admin interval.</div>
+          <div className="text-xs text-slate-500 border rounded-md p-4">No ranked events for <b>today</b> yet. Older days stay in storage but are not shown here. Admin can add RSS/API sources. Ingest waits ~90s after boot, then runs on the admin interval.</div>
         )}
         {items.map((it) => (
           <article key={it.event_cluster_id || it.id} className="rounded-md border border-slate-200 bg-white p-3 space-y-1" data-testid="mi-event">

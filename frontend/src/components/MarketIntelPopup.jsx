@@ -130,7 +130,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     timer = setTimeout(() => {
       poll();
       timer = setInterval(poll, 180000);
-    }, 8000);
+    }, 2000);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -246,7 +246,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
           }
           expand();
         }}
-        className={`fixed z-40 md:bottom-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-2 px-3 py-2 ${
+        className={`fixed z-[70] md:bottom-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-2 px-3 py-2 ${
           bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
         }`}
         style={posStyle}
@@ -267,7 +267,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
 
   return (
     <div
-      className={`fixed z-40 md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto ${
+      className={`fixed z-[70] md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
@@ -309,29 +309,31 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
           <div className="min-w-0 text-sm font-semibold leading-tight">Mkt Intel</div>
         </div>
         <div className="md:hidden min-w-0 flex-1 text-sm font-semibold leading-tight">Mkt Intel</div>
-        {n > 1 ? (
-          <div className="ml-auto flex items-center shrink-0">
-            <span className="text-[10px] text-rose-800/80 mr-0.5 font-mono-data">{Math.min(idx, n - 1) + 1}/{n}</span>
-            <button
-              type="button"
-              className="inline-flex min-h-11 min-w-9 items-center justify-center rounded-md hover:bg-white/60 touch-manipulation"
-              aria-label="Previous news"
-              data-testid="mi-popup-prev"
-              onClick={() => step(-1)}
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex min-h-11 min-w-9 items-center justify-center rounded-md hover:bg-white/60 touch-manipulation"
-              aria-label="Next news"
-              data-testid="mi-popup-next"
-              onClick={() => step(1)}
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-        ) : <div className="ml-auto" />}
+        <div className="ml-auto flex items-center shrink-0" data-testid="mi-popup-pager">
+          <span className="text-[10px] text-rose-800/80 mr-0.5 font-mono-data whitespace-nowrap">
+            {n ? `${Math.min(idx, Math.max(n, 1) - 1) + 1} / ${n}` : "0 / 0"}
+          </span>
+          <button
+            type="button"
+            className="inline-flex min-h-11 min-w-10 items-center justify-center rounded-md hover:bg-white/60 touch-manipulation disabled:opacity-30"
+            aria-label="Previous news"
+            data-testid="mi-popup-prev"
+            disabled={n < 2}
+            onClick={() => step(-1)}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            className="inline-flex min-h-11 min-w-10 items-center justify-center rounded-md hover:bg-white/60 touch-manipulation disabled:opacity-30"
+            aria-label="Next news"
+            data-testid="mi-popup-next"
+            disabled={n < 2}
+            onClick={() => step(1)}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={minimizeUntilNext}
@@ -359,6 +361,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_band || "HIGH"}</span>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{impactScoreLabel(item.impact_score)}</span>
+              <span className="text-[10px] font-semibold text-rose-900">{n} critical today</span>
             </div>
             <div className="text-sm font-semibold leading-snug">{item.title}</div>
             <div className="text-[11px] opacity-90">{indiaImpactLabel(item.india_relevance_score)}</div>

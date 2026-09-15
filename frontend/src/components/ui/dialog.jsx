@@ -16,7 +16,7 @@ const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-[120] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-[200] bg-black/80 desk-dialog-overlay data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props} />
@@ -29,11 +29,9 @@ const DialogContent = React.forwardRef(({ className, children, hideClose = false
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-[130] grid gap-4 border bg-background p-4 shadow-lg sm:p-6 sm:rounded-lg duration-200 min-h-0",
-        "left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top))] w-auto max-w-none max-h-[calc(100dvh-1.5rem)] overflow-y-auto translate-x-0 translate-y-0",
-        "md:left-[50%] md:right-auto md:top-[50%] md:w-full md:max-w-lg md:max-h-[90vh] md:translate-x-[-50%] md:translate-y-[-50%]",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-        "md:data-[state=closed]:zoom-out-95 md:data-[state=open]:zoom-in-95 md:data-[state=closed]:slide-out-to-left-1/2 md:data-[state=closed]:slide-out-to-top-[48%] md:data-[state=open]:slide-in-from-left-1/2 md:data-[state=open]:slide-in-from-top-[48%]",
+        "fixed z-[210] grid gap-4 border bg-background p-4 shadow-lg rounded-lg duration-200 min-h-0 overflow-y-auto desk-dialog-sheet",
+        "inset-3 w-auto max-w-none max-h-none h-auto translate-x-0 translate-y-0",
+        "lg:inset-auto lg:left-1/2 lg:top-1/2 lg:right-auto lg:bottom-auto lg:w-full lg:max-w-lg lg:max-h-[85vh] lg:-translate-x-1/2 lg:-translate-y-1/2",
         className
       )}
       {...props}>

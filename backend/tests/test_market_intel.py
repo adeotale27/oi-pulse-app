@@ -9,6 +9,8 @@ from market_intel import (
     impact_band,
     impact_score,
     india_relevance_score,
+    is_ist_today_item,
+    item_ist_date,
     map_records,
     popup_allowed,
     retention_cutoff,
@@ -95,6 +97,13 @@ def test_ranking_prefers_impact_not_only_time():
     ]
     ranked = cluster_rows(docs)
     assert ranked[0]["title"] == "old"
+
+
+def test_item_ist_date_uses_published_prefix():
+    assert item_ist_date({"published_at": "2026-09-14T18:53"}) == date(2026, 9, 14)
+    assert is_ist_today_item({"published_at": "2026-09-14T08:19"}, today=date(2026, 9, 14)) is True
+    assert is_ist_today_item({"published_at": "2026-09-14T08:19"}, today=date(2026, 9, 15)) is False
+    assert is_ist_today_item({"published_at": "2026-09-15T04:00:00"}, today=date(2026, 9, 15)) is True
 
 
 def test_popup_allowed_independent_of_page_and_ingest():
