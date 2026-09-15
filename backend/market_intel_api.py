@@ -250,6 +250,7 @@ def mount(api_router, *, require_admin, require_desk_user):
             "items": [{k: it.get(k) for k in keys} for it in items],
             "critical_count": len(items),
             "day": mi.ist_today().isoformat(),
+            "dock_until_next": s.get("market_intel_popup_dock_until_next", True) is not False,
         }
 
     @api_router.post("/market-intel/popup/ack")

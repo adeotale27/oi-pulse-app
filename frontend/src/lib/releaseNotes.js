@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.07",
+    date: "2026-09-15",
+    user: [
+      "Journal and Analyze are clickable again (no dead dim overlay). Closing Market Intel leaves a Mkt Intel chip until the next session, like Overnight.",
+    ],
+    admin: [
+      "Admin configuration uses the original dialog again (phone). Mkt Intel settings: show popup, and optionally keep the chip until next session after close.",
+    ],
+  },
+  {
     version: "10.06",
     date: "2026-09-15",
     user: [

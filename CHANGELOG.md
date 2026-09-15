@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.07 — 2026-09-15
+
+Restored the original dialog overlay (Journal, Analyze, Admin configuration). Journal/Analyze sit above the dimmer so they are clickable. Mkt Intel close docks to a chip until the next session (configurable in Mkt Intel settings). Desk AI coach no longer warns on duplicate list keys.
+
 ## V10.06 — 2026-09-15
 
 Phone Admin configuration is forced into the screen (12px inset, above the tools bar) so it is not a blank dim overlay. Market Intel page and popup show **today’s** stories only. The popup lists today’s critical count and always has left/right arrows to step through them.

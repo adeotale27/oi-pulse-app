@@ -234,7 +234,7 @@ export default function MarketIntelCard({
               <ol className="space-y-1.5 list-decimal pl-4">
                 {sections.do
                   .filter((s, i) => !(i === 0 && /^Capital/i.test(s)))
-                  .map((s) => <li key={s}>{s}</li>)}
+                  .map((s, i) => <li key={`do-${i}`}>{s}</li>)}
               </ol>
               {!sections.do.filter((s, i) => !(i === 0 && /^Capital/i.test(s))).length ? (
                 <p className="text-slate-500">Only the capital line above — no extra adds.</p>
@@ -243,7 +243,7 @@ export default function MarketIntelCard({
             <div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-rose-700 mb-1">Don&apos;t</div>
               <ul className="space-y-1.5 list-disc pl-4">
-                {sections.dont.map((s) => <li key={s}>{s}</li>)}
+                {sections.dont.map((s, i) => <li key={`dont-${i}`}>{s}</li>)}
               </ul>
             </div>
           </div>
