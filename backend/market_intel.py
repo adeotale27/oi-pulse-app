@@ -101,6 +101,34 @@ RSS_TEMPLATES = [
         "endpoint": "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
         "note": "Public RSS already used on the desk tape.",
     },
+    {
+        "id": "bbc-business",
+        "name": "BBC Business",
+        "source_type": "RSS",
+        "endpoint": "https://feeds.bbci.co.uk/news/business/rss.xml",
+        "note": "Public RSS. Global business headlines.",
+    },
+    {
+        "id": "mint-markets",
+        "name": "Mint markets",
+        "source_type": "RSS",
+        "endpoint": "https://www.livemint.com/rss/markets",
+        "note": "Public RSS. India markets.",
+    },
+    {
+        "id": "hindu-bl-markets",
+        "name": "Business Line markets",
+        "source_type": "RSS",
+        "endpoint": "https://www.thehindubusinessline.com/markets/feeder/default.rss",
+        "note": "Public RSS. India markets.",
+    },
+    {
+        "id": "moneycontrol-markets",
+        "name": "Moneycontrol market reports",
+        "source_type": "RSS",
+        "endpoint": "https://www.moneycontrol.com/rss/marketreports.xml",
+        "note": "Public RSS. India market reports.",
+    },
 ]
 
 # --- scoring (data-driven keywords, not a fixed index catalog) ---
@@ -342,6 +370,9 @@ def map_records(payload: Any, mapping: Optional[Dict[str, str]]) -> List[Dict[st
 def public_source(doc: Dict[str, Any]) -> Dict[str, Any]:
     d = {k: v for k, v in (doc or {}).items() if k not in ("api_key_enc", "headers_secret", "bearer_enc")}
     d["has_secret"] = bool(doc.get("api_key_enc") or doc.get("bearer_enc"))
+    st = str(doc.get("source_type") or "").upper()
+    auth = str(doc.get("auth") or "none").lower()
+    d["needs_key"] = st == "FIRECRAWL" or auth not in ("none", "")
     d.pop("_id", None)
     return d
 
@@ -355,6 +386,43 @@ def source_health_status(doc: Dict[str, Any]) -> str:
     if fails >= 1:
         return "WARNING"
     return "HEALTHY"
+
+
+def _catalog_source_doc(t: Dict[str, Any], *, enabled: bool, priority: int) -> Dict[str, Any]:
+    st = str(t.get("source_type") or "RSS").upper()
+    return {
+        "id": t["id"],
+        "name": t.get("name") or t["id"],
+        "source_type": st,
+        "endpoint": t.get("endpoint") or t.get("url") or "",
+        "method": str(t.get("method") or "GET").upper(),
+        "query": dict(t.get("query") or {}),
+        "headers": dict(t.get("headers") or {}),
+        "auth": t.get("auth") or "none",
+        "auth_key": t.get("auth_key"),
+        "auth_header": t.get("auth_header"),
+        "mapping": dict(t.get("mapping") or {}),
+        "enabled": enabled,
+        "priority": int(t.get("priority") or priority),
+        "max_items": int(t.get("max_items") or 30),
+        "category": t.get("category"),
+        "region": t.get("region"),
+        "is_catalog": True,
+    }
+
+
+async def ensure_default_sources(db) -> None:
+    """Seed public market-news RSS (on) and catalog APIs (on, skipped until a key is stored). Never overwrite enabled."""
+    if db is None:
+        return
+    for t in RSS_TEMPLATES:
+        if await db[SRC_COL].find_one({"id": t["id"]}):
+            continue
+        await db[SRC_COL].update_one({"id": t["id"]}, {"$set": _catalog_source_doc(t, enabled=True, priority=20)}, upsert=True)
+    for t in PUBLIC_API_CATALOG:
+        if await db[SRC_COL].find_one({"id": t["id"]}):
+            continue
+        await db[SRC_COL].update_one({"id": t["id"]}, {"$set": _catalog_source_doc(t, enabled=True, priority=40)}, upsert=True)
 
 
 async def ensure_indexes(db) -> None:
@@ -480,6 +548,10 @@ async def fetch_source_raw(src: Dict[str, Any], *, test: bool = False) -> Tuple[
             return mapped, meta
 
         # API
+        auth = str(src.get("auth") or "none").lower()
+        if auth not in ("none", "") and not _secret_from_source(src):
+            meta["error"] = "missing_api_key"
+            return [], meta
         headers, params = _auth_headers_params(src)
         method = str(src.get("method") or "GET").upper()
         r = await _http_json(method, url, headers=headers, params=params, json_body=src.get("body") if method != "GET" else None)
@@ -583,6 +655,9 @@ async def update_source_health(db, src_id: str, stats: Dict[str, Any]) -> None:
         "last_noise": stats.get("noise") or 0,
         "last_error": err,
     }
+    if err in ("missing_api_key", "missing_firecrawl_key", "disabled"):
+        await db[SRC_COL].update_one({"id": src_id}, {"$set": patch})
+        return
     if err:
         patch["last_error_at"] = now
         await db[SRC_COL].update_one({"id": src_id}, {"$set": patch, "$inc": {"consecutive_failures": 1}})
@@ -602,7 +677,9 @@ async def run_all_sources(db, settings: Optional[Dict[str, Any]] = None) -> Dict
         try:
             stats = await ingest_one(db, src, test=False)
             await update_source_health(db, src["id"], stats)
-            if stats.get("error"):
+            if stats.get("error") in ("missing_api_key", "missing_firecrawl_key", "disabled"):
+                pass
+            elif stats.get("error"):
                 summary["failed"] += 1
                 await record_error(
                     source="market_intel",
@@ -790,6 +867,7 @@ async def ingest_loop(get_db, get_settings, stop_event) -> None:
         interval = max(60, min(3600, interval))
         try:
             if db is not None:
+                await ensure_default_sources(db)
                 await run_all_sources(db, settings)
         except Exception as e:
             logger.warning("mi loop: %s", redact(e))

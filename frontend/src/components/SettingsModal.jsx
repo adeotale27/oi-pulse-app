@@ -11,8 +11,6 @@ import { toast } from "sonner";
 import { Settings2 } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import InfoTip from "@/components/InfoTip";
-import DeskAiKeysAdmin from "@/components/DeskAiKeysAdmin";
-import MarketIntelAdmin from "@/components/MarketIntelAdmin";
 
 import { DESK_IDS, isMcxMajorId } from "@/lib/universe";
 
@@ -688,9 +686,6 @@ export default function SettingsModal({
                     );
                   })}
                 </div>
-
-                {isAdmin ? <DeskAiKeysAdmin /> : null}
-                {isAdmin ? <MarketIntelAdmin settings={settings} setSettings={setSettings} /> : null}
 
                 <label
                   className="flex items-start gap-2 py-2 px-3 rounded-sm hover:bg-slate-50 cursor-pointer border border-slate-200"

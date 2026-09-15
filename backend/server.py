@@ -4821,6 +4821,8 @@ async def get_positions(
                         "strike": s.get("strike"),
                         "ce_oi": s.get("ce_oi") or 0,
                         "pe_oi": s.get("pe_oi") or 0,
+                        "ce_ltp": s.get("ce_ltp"),
+                        "pe_ltp": s.get("pe_ltp"),
                     }
                     for s in strikes
                     if s.get("strike") is not None

@@ -87,13 +87,14 @@ async def list_providers(db) -> List[Dict[str, Any]]:
     for p in BUILTIN:
         row = {**p, **(stored.get(p["id"]) or {}), "is_custom": False}
         row["id"] = p["id"]
-        row["selected"] = row["id"] == active_id
+        row["selected"] = row["id"] == active_id and (bool(row.get("key_enc")) or (row["id"] == "openai" and bool(env_llm().get("api_key"))))
         out.append(public_row(row))
         seen.add(p["id"])
     for pid, doc in stored.items():
         if pid in seen:
             continue
-        doc = {**doc, "is_custom": True, "selected": pid == active_id}
+        has_key = bool(doc.get("key_enc"))
+        doc = {**doc, "is_custom": True, "selected": pid == active_id and has_key}
         out.append(public_row(doc))
     return out
 
@@ -135,6 +136,12 @@ async def upsert_provider(db, payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def set_active(db, provider_id: str) -> None:
+    env = env_llm()
+    doc = await db[COL].find_one({"id": provider_id}) if db is not None else None
+    has_vault = bool(doc and doc.get("key_enc"))
+    env_ok = bool(env.get("api_key")) and provider_id == "openai"
+    if not has_vault and not env_ok:
+        raise ValueError("Add an API key for this provider (or set OPENAI_API_KEY for OpenAI) before making it Active.")
     await db[COL].update_one(
         {"id": ACTIVE_ID},
         {"$set": {"id": ACTIVE_ID, "provider_id": provider_id}},

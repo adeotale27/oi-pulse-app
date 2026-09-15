@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.01 — 2026-09-15
+
+Desk AI keys and Market Intelligence settings are their own Admin-menu dialogs (like Kite login), not stuffed into Admin configuration. Active requires a vaulted key (or env `OPENAI_API_KEY` for OpenAI). Public market-news RSS is seeded on by default; keyed catalog APIs stay ticked but wait for a key. Positions Live table adds **Strike Pressure** (toward/away vs position impact). Hedge leftover uses lots, not L.
+
 ## V10.00 — 2026-09-15
 
 **Market Intelligence** is a new dashboard page (Public/Admin ticks, side panel, phone dock). Admin adds RSS/API/Firecrawl/official feeds without a deploy; ingest starts ~90s after boot then on a configurable interval (default 5 minutes). News is scored for market impact and India relevance, clustered, ranked, and retained on a rolling calendar-day window (default 5, min history 2). Users set page/popup prefs; very-high-impact in-app popups are top-2 only and once per event cluster.

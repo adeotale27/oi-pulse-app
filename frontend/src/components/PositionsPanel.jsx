@@ -78,6 +78,11 @@ import InfoTip, { eventFromInfoTip } from "@/components/InfoTip";
 import PositionsBrainPanel from "@/components/PositionsBrainPanel";
 import PositionsHedgeStatus from "@/components/PositionsHedgeStatus";
 import { computePositionHedge } from "@/lib/positionHedge";
+import {
+  computeAllStrikePressure,
+  formatPressureCompact,
+  PRESSURE_LABELS,
+} from "@/lib/strikePressure";
 import { fmtBookedPct } from "@/lib/journalPct";
 import { classifyDayCapital } from "@/lib/capitalGuard";
 import {
@@ -406,6 +411,36 @@ function StatusChip({ breached, isShortOpt, exited }) {
     );
   }
   return null;
+}
+
+function StrikePressureCell({ result }) {
+  if (!result) return <span className="text-slate-400">—</span>;
+  const c = formatPressureCompact(result);
+  const impactTone =
+    c.impact === "HIGH RISK" ? "text-rose-700" :
+    c.impact === "CAUTION" ? "text-amber-800" :
+    c.impact === "FAVOURABLE" ? "text-emerald-700" : "text-slate-500";
+  const impactMark =
+    c.impact === "HIGH RISK" ? "🔴" :
+    c.impact === "CAUTION" ? "⚠" :
+    c.impact === "FAVOURABLE" ? "✓" : "";
+  return (
+    <span className="inline-flex items-center gap-0.5" data-testid="strike-pressure-cell">
+      <span className="font-semibold text-slate-800 whitespace-nowrap">
+        {c.arrow} {c.pressure === PRESSURE_LABELS.unavailable ? "N/A" : c.pressure.replace("STRONG ", "STR ")}
+      </span>
+      <span className={`text-[10px] whitespace-nowrap ${impactTone}`}>{impactMark} {c.impact === "NEUTRAL" ? "" : c.impact}</span>
+      <InfoTip title="Strike pressure" size="xs" testId="strike-pressure-tip">
+        <p><b>STRIKE PRESSURE:</b> {result.label}</p>
+        {result.spot != null && <p>Underlying: {Math.round(result.spot)}</p>}
+        {result.strike != null && <p>Strike: {result.strike}</p>}
+        {result.dist != null && <p>Distance: {Math.round(result.dist)} pts</p>}
+        {(result.reasons || []).slice(0, 6).map((x) => <p key={x}>{x}</p>)}
+        <p>Position: {result.isShort ? "SHORT" : "LONG"} {result.optionType || ""}</p>
+        <p><b>Impact:</b> {result.impact}</p>
+      </InfoTip>
+    </span>
+  );
 }
 
 /** How far ATM/spot is from this strike (points + %). */
@@ -900,6 +935,7 @@ export default function PositionsPanel({
         onExpiryDay: exited ? false : onExpiryDay,
         spotUsed: S,
         greeksHealth: exited ? null : greeksHealth,
+        expiryIso: isOpt ? positionExpiryISO(p, activeExp) : null,
       };
     });
 
@@ -1052,6 +1088,28 @@ export default function PositionsPanel({
   const openRows = useMemo(() => rows.filter((r) => !r.exited), [rows]);
   const exitedRows = useMemo(() => rows.filter((r) => r.exited), [rows]);
   const hedgeStatus = useMemo(() => computePositionHedge(rows), [rows]);
+  const prevOiRef = useRef({});
+  const prevDistRef = useRef(new Map());
+  const oiMerged = useMemo(() => ({
+    ...oiByIndex,
+    ...(current ? { [activeIndex]: { ...(oiByIndex[activeIndex] || {}), ...current, strikes: current.strikes || oiByIndex[activeIndex]?.strikes, expiry: current.expiry || oiByIndex[activeIndex]?.expiry } } : {}),
+  }), [oiByIndex, current, activeIndex]);
+  const strikePressureBySymbol = useMemo(() => {
+    try {
+      const { bySymbol, nextDistMap } = computeAllStrikePressure(rows, {
+        oiByIndex: oiMerged,
+        prevOiByIndex: prevOiRef.current,
+        prevDistMap: prevDistRef.current,
+      });
+      prevDistRef.current = nextDistMap;
+      return bySymbol;
+    } catch {
+      return {};
+    }
+  }, [rows, oiMerged]);
+  useEffect(() => {
+    prevOiRef.current = oiMerged;
+  }, [oiMerged]);
 
   const sellIdeas = useMemo(() => {
     if (!current?.strikes?.length) return null;
@@ -1209,6 +1267,7 @@ export default function PositionsPanel({
     { key: "expiryDayMode", label: "Expiry day" },
     { key: "deltaHedge", label: "Flatten tilt" },
     { key: "assignmentWatch", label: "Exercise risk" },
+    { key: "strikePressure", label: "Strike Pressure" },
   ];
 
   if (!isGuest && !kiteReady) {
@@ -1933,6 +1992,12 @@ export default function PositionsPanel({
                   <div className="text-[9px] uppercase text-slate-400">ATM dist</div>
                   <div><AtmDistanceCell row={r} /></div>
                 </div>
+                {toggles.strikePressure !== false && r.isOpt && !r.exited && (
+                  <div className="col-span-3">
+                    <div className="text-[9px] uppercase text-slate-400">Strike pressure</div>
+                    <StrikePressureCell result={strikePressureBySymbol[r.tradingsymbol]} />
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -2065,9 +2130,18 @@ export default function PositionsPanel({
                 <th className="text-right px-2.5 py-1.5 font-semibold">
                   <span className="inline-flex items-center gap-1">
                     ATM Dist
-                    <InfoTip title="ATM Distance" size="xs" testId="atm-dist-col-tip">
-                      <p>How far the market (ATM) is from <b>this strike</b>.</p>
-                      <p className="mt-1"><b>+</b> above ATM · <b>−</b> below. Green on sold options usually means still OTM.</p>
+                    <InfoTip title="Distance from ATM" size="xs" testId="atm-col-tip">
+                      <p>How far this strike is from ATM. <b>+</b> above ATM · <b>−</b> below. Green on sold options usually means still OTM.</p>
+                    </InfoTip>
+                  </span>
+                </th>
+              )}
+              {colOn("strikePressure") && toggles.strikePressure && (
+                <th className="text-left px-2.5 py-1.5 font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    Strike P
+                    <InfoTip title="Strike pressure" size="xs" testId="strike-pressure-col-tip">
+                      Market moving toward or away from this strike (not a prediction). Impact is separate: toward is risk for shorts, favourable for longs.
                     </InfoTip>
                   </span>
                 </th>
@@ -2218,6 +2292,11 @@ export default function PositionsPanel({
                 {colOn("atmDist") && (
                   <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
                     {r.exited ? "—" : <AtmDistanceCell row={r} />}
+                  </td>
+                )}
+                {colOn("strikePressure") && toggles.strikePressure && (
+                  <td className="px-2 py-1">
+                    {r.exited || !r.isOpt ? "—" : <StrikePressureCell result={strikePressureBySymbol[r.tradingsymbol]} />}
                   </td>
                 )}
               </tr>

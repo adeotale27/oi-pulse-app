@@ -28,6 +28,8 @@ import MarketIntelPage from "@/components/MarketIntelPage";
 import MarketIntelPopup from "@/components/MarketIntelPopup";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
 import CredentialsModal from "@/components/CredentialsModal";
+import DeskAiKeysModal from "@/components/DeskAiKeysAdmin";
+import MarketIntelSettingsModal from "@/components/MarketIntelAdmin";
 import MorningRefreshModal from "@/components/MorningRefreshModal";
 import TelegramPrefsModal from "@/components/TelegramPrefsModal";
 import SettingsModal from "@/components/SettingsModal";
@@ -248,6 +250,8 @@ export default function Dashboard() {
   const [strikesAround, setStrikesAround] = useState(loadStrikesAround);
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
   const [credsOpen, setCredsOpen] = useState(false);
+  const [deskAiKeysOpen, setDeskAiKeysOpen] = useState(false);
+  const [miSettingsOpen, setMiSettingsOpen] = useState(false);
   const [morningRefreshOpen, setMorningRefreshOpen] = useState(false);
   const [telegramPrefsOpen, setTelegramPrefsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2157,6 +2161,8 @@ export default function Dashboard() {
         assumedAdmin={!!authState.is_admin}
         publicAccessOpen={!!authState.public_access_open}
         onOpenCreds={() => { if (authState.is_admin) setCredsOpen(true); }}
+        onOpenDeskAiKeys={() => { if (authState.is_admin) setDeskAiKeysOpen(true); }}
+        onOpenMiSettings={() => { if (authState.is_admin) setMiSettingsOpen(true); }}
         onOpenMorningRefresh={() => { if (authState.is_admin) setMorningRefreshOpen(true); }}
         onOpenTelegramPrefs={() => { if (authState.is_admin) setTelegramPrefsOpen(true); }}
         onOpenSettings={() => { if (authState.is_admin) setSettingsOpen(true); }}
@@ -3083,6 +3089,12 @@ export default function Dashboard() {
           onOpenChange={setCredsOpen}
           onSaved={loadStatus}
         />
+      )}
+      {authState.is_admin && (
+        <DeskAiKeysModal open={deskAiKeysOpen} onOpenChange={setDeskAiKeysOpen} />
+      )}
+      {authState.is_admin && (
+        <MarketIntelSettingsModal open={miSettingsOpen} onOpenChange={setMiSettingsOpen} />
       )}
 
       {authState.is_admin && (

@@ -10,7 +10,7 @@ export const DEFAULT_POSITIONS_TOGGLES = {
   decayBook: true,
   expiryDayMode: true,
   deltaHedge: true,
-  assignmentWatch: true,
+    strikePressure: true,
 };
 
 export function loadPositionsToggles() {

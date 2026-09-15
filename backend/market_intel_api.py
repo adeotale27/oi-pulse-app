@@ -100,7 +100,10 @@ def mount(api_router, *, require_admin, require_desk_user):
 
     @api_router.post("/desk-ai/providers/{provider_id}/select")
     async def desk_ai_provider_select(provider_id: str, _admin: bool = Depends(require_admin)):
-        await desk_llm.set_active(_db(), provider_id)
+        try:
+            await desk_llm.set_active(_db(), provider_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         return {"ok": True, "providers": await desk_llm.list_providers(_db())}
 
     @api_router.delete("/desk-ai/providers/{provider_id}")
@@ -117,6 +120,7 @@ def mount(api_router, *, require_admin, require_desk_user):
         db = _db()
         if db is None:
             return {"sources": []}
+        await mi.ensure_default_sources(db)
         rows = [mi.public_source(d) async for d in db[mi.SRC_COL].find({}, {"_id": 0})]
         for r in rows:
             r["status"] = mi.source_health_status(r)
