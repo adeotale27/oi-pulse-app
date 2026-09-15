@@ -259,7 +259,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
           const shortLabel = s.short;
           const ltpLabel = fmtLtp(t.ltp, 2);
           const Arrow = flat ? Minus : up ? TrendingUp : TrendingDown;
-          const regime = describeTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
+          const regime = describeTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp, t.day_open);
           const Tag = selectable ? "button" : "div";
           return (
             <div
@@ -356,7 +356,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         const useCompact = dense || isHeader;
         const ltpLabel = fmtLtp(t.ltp, 2);
         const selectable = indexSelectable(t.index);
-        const regime = describeTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp);
+        const regime = describeTickerRegime(t.change_pct, flat, t.prev_close, t.day_high, t.day_low, t.ltp, t.day_open);
         const regimeLabel = regime.label;
         const TileTag = selectable ? "button" : "div";
         return (
@@ -433,9 +433,9 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                     <div>{regime.why}</div>
                     <div>{regime.text}</div>
                     <div className="mt-1 pt-1 border-t border-slate-200 space-y-0.5">
-                      <div><b>Ranging:</b> high–low wider than net from prev close.</div>
-                      <div><b>Trend:</b> most of the day’s range is one-way.</div>
-                      <div><b>Bullish / risk-off:</b> strong net %.</div>
+                      <div><b>BULL / BEAR TREND:</b> one-way from today’s open, using range location and efficiency.</div>
+                      <div><b>RISK-OFF:</b> strong downside continuation near the low — not a mild red vs prev close.</div>
+                      <div><b>Ranging:</b> wide high–low, small net.</div>
                       <div><b>Quiet:</b> net and range both small.</div>
                       <div className="text-slate-500">Index tape, not Positions Brains.</div>
                     </div>

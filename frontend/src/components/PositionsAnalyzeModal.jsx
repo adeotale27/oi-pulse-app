@@ -606,6 +606,55 @@ export default function PositionsAnalyzeModal({
     }));
   }, [spot, payoff, targetPnl, expiryPnl]);
 
+  const beLines = (payoff.summary.breakevens || []).map((b) => {
+    const pct = spot ? (((b - spot) / spot) * 100).toFixed(1) : null;
+    return { level: Math.round(b), pct };
+  });
+
+  const summaryPanel = (
+    <div className="flex flex-col h-full min-h-0 bg-white overflow-auto" data-testid="analyze-summary-panel">
+      <div className="px-3 py-2 border-b border-slate-100 text-[10px] uppercase tracking-widest font-semibold text-slate-500">
+        Summary
+      </div>
+      <div className="p-3 space-y-3">
+        <div className="grid grid-cols-2 gap-2 text-[12px]">
+          <div>
+            <div className="text-[9px] uppercase text-slate-400 font-semibold">Max profit</div>
+            <div className="font-mono-data font-semibold text-emerald-700">{money(payoff.summary.maxProfit, 0)}</div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase text-slate-400 font-semibold">Max loss</div>
+            <div className="font-mono-data font-semibold text-rose-600">{payoff.summary.unlimitedLoss ? "Unlimited" : money(payoff.summary.maxLoss, 0)}</div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase text-slate-400 font-semibold">Chance in band</div>
+            <div className="font-mono-data font-semibold">{payoff.summary.popHint ?? "—"}%</div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase text-slate-400 font-semibold">At target</div>
+            <div className={`font-mono-data font-semibold ${projected >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{projected == null ? "—" : money(projected, 0)}</div>
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] uppercase text-slate-400 font-semibold mb-1">Greeks (selected)</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] font-mono-data">
+            <div>Δ {payoff.greeks.delta?.toFixed?.(2) ?? "—"}</div>
+            <div>Θ {bookThetaInr != null ? money(bookThetaInr, 0) : (payoff.greeks.theta?.toFixed?.(2) ?? "—")}</div>
+            <div>Γ {payoff.greeks.gamma?.toFixed?.(3) ?? "—"}</div>
+            <div>ν {payoff.greeks.vega?.toFixed?.(2) ?? "—"}</div>
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] uppercase text-slate-400 font-semibold mb-1">Breakevens</div>
+          <div className="text-[12px] font-mono-data text-slate-800">{beLines.length ? beLines.map((b) => `${b.level}${b.pct != null ? ` (${b.pct}%)` : ""}`).join(" · ") : "—"}</div>
+        </div>
+        <p className="text-[10px] leading-relaxed text-slate-500">
+          Left: same book as Kite, B buy / S sell. Centre: P&amp;L now (blue) vs expiry (green); bars are Call/Put OI already on the desk. Target = what-if spot. Date = time left, not a prediction.
+        </p>
+      </div>
+    </div>
+  );
+
   if (!open) return null;
 
   const toggle = (sym) => {
@@ -646,11 +695,6 @@ export default function PositionsAnalyzeModal({
     if (spot != null) setTargetSpot(spot);
     setTargetFrac(0);
   };
-
-  const beLines = (payoff.summary.breakevens || []).map((b) => {
-    const pct = spot ? (((b - spot) / spot) * 100).toFixed(1) : null;
-    return { level: Math.round(b), pct };
-  });
 
   const tabBtn = (id, label, testId) => (
     <button
@@ -931,7 +975,10 @@ export default function PositionsAnalyzeModal({
         <div className="bg-[#f7f8fa] w-full h-full min-h-0 overflow-hidden flex flex-col">
           <header className="shrink-0 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)]">
             <div className="flex items-center gap-2 px-2 sm:px-3 h-11">
-              <div className="flex-1 text-left text-[15px] font-semibold text-slate-900 pl-1">Analyze</div>
+              <div className="flex-1 text-left pl-1">
+                <div className="text-[15px] font-semibold text-slate-900">Analyze</div>
+                <div className="text-[10px] text-slate-500 font-normal">P&amp;L vs spot · tick legs · drag target</div>
+              </div>
               <Button size="sm" variant="ghost" className="h-8 text-[11px]" onClick={resetScenario} data-testid="analyze-reset-scenario">
                 <RotateCcw className="w-3.5 h-3.5 mr-1" />
                 Reset
@@ -978,6 +1025,7 @@ export default function PositionsAnalyzeModal({
               <div className="flex gap-1 md:hidden">
                 {tabBtn("chart", "Chart", "analyze-tab-chart")}
                 {tabBtn("legs", "Legs", "analyze-tab-legs")}
+                {tabBtn("summary", "Greeks", "analyze-tab-summary")}
               </div>
               <label className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600" title="Add realised P&L from closed legs on this index to the curve and totals">
                 Add booked P&amp;L
@@ -986,12 +1034,15 @@ export default function PositionsAnalyzeModal({
             </div>
           </header>
 
-          <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[min(18rem,38%)_minmax(0,1fr)]">
+          <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[min(18rem,38%)_minmax(0,1fr)] lg:grid-cols-[16.5rem_minmax(0,1fr)_15.25rem]">
             <div className={`${pane === "legs" ? "flex" : "hidden"} md:flex min-h-0 border-r border-slate-200`}>
               {legsPanel}
             </div>
             <div className={`${pane === "chart" ? "block" : "hidden"} md:block overflow-auto p-3 sm:p-4`}>
               {chartBlock}
+            </div>
+            <div className={`${pane === "summary" ? "flex" : "hidden"} lg:flex min-h-0 border-l border-slate-200`}>
+              {summaryPanel}
             </div>
           </div>
         </div>

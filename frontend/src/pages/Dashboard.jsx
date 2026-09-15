@@ -2859,6 +2859,7 @@ export default function Dashboard() {
                       canConfigureDeskAi={!!authState.is_admin}
                       onDeskAiPositions={(on) => patchDeskAi({ desk_ai_positions: !!on })}
                       onDeskAiRadar={(on) => patchDeskAi({ desk_ai_radar: !!on })}
+                      tickerByIndex={tickerQuotes}
                       onOpenTelegramPrefs={authState.is_admin ? () => setTelegramPrefsOpen(true) : undefined}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({

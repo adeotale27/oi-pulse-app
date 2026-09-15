@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.02",
+    date: "2026-09-15",
+    user: [
+      "Index chips: BULL TREND / BEAR TREND / RANGING / QUIET / RISK-OFF from today’s open and range, not merely down vs yesterday. Strike Pressure follows the path toward your strike. Analyze shows a Summary/Greeks column next to the payoff chart.",
+    ],
+    admin: [
+      "Regime engine uses existing ticker OHLC (prev close, open, high, low, LTP). No new poller.",
+    ],
+  },
+  {
     version: "10.01",
     date: "2026-09-15",
     user: [
