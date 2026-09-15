@@ -435,9 +435,10 @@ function StrikePressureCell({ result }) {
         {result.spot != null && <p>Underlying: {Math.round(result.spot)}</p>}
         {result.strike != null && <p>Strike: {result.strike}</p>}
         {result.dist != null && <p>Distance: {Math.round(result.dist)} pts</p>}
-        {(result.reasons || []).slice(0, 6).map((x) => <p key={x}>{x}</p>)}
+        {(result.reasons || []).slice(0, 8).map((x) => <p key={x}>{x}</p>)}
         <p>Position: {result.isShort ? "SHORT" : "LONG"} {result.optionType || ""}</p>
         <p><b>Impact:</b> {result.impact}</p>
+        <p className="text-slate-500">Underlying path is primary. OI/volume confirm.</p>
       </InfoTip>
     </span>
   );
@@ -502,6 +503,7 @@ export default function PositionsPanel({
   canConfigureDeskAi = false,
   onDeskAiPositions,
   onDeskAiRadar,
+  tickerByIndex = null,
 }) {
   const [positions, setPositions] = useState([]);
   const [spotByIndex, setSpotByIndex] = useState({});
@@ -1100,13 +1102,14 @@ export default function PositionsPanel({
         oiByIndex: oiMerged,
         prevOiByIndex: prevOiRef.current,
         prevDistMap: prevDistRef.current,
+        tickerByIndex: tickerByIndex || undefined,
       });
       prevDistRef.current = nextDistMap;
       return bySymbol;
     } catch {
       return {};
     }
-  }, [rows, oiMerged]);
+  }, [rows, oiMerged, tickerByIndex]);
   useEffect(() => {
     prevOiRef.current = oiMerged;
   }, [oiMerged]);

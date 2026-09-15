@@ -1,5 +1,4 @@
-// Strike Pressure: toward/away of underlying vs live option strike.
-// Reuses existing buildup classification and compact OI already on Positions.
+// Strike Pressure: underlying path vs strike dominates; OI/premium confirm.
 
 import { classifyBuildups } from "./buildup.js";
 
@@ -11,6 +10,16 @@ export const PRESSURE_LABELS = {
   strongAway: "STRONG AWAY",
   unavailable: "DATA UNAVAILABLE",
 };
+
+const RING = new Map();
+const LAST = new Map();
+const MAX_AGE_MS = 12 * 60 * 1000;
+const WINDOWS = [60_000, 180_000, 300_000, 600_000];
+
+export function resetStrikePressureState() {
+  RING.clear();
+  LAST.clear();
+}
 
 export function labelFromScore(score) {
   if (!Number.isFinite(score)) return PRESSURE_LABELS.unavailable;
@@ -28,7 +37,6 @@ export function pressureDir(label) {
   return "neutral";
 }
 
-/** Separate from market pressure: toward is risk for shorts, favourable for longs. */
 export function positionImpact({ isShort, label }) {
   const dir = pressureDir(label);
   if (dir === "unavailable" || dir === "neutral") return "NEUTRAL";
@@ -70,38 +78,66 @@ function nearestStrikeRow(strikes, strike) {
   return best;
 }
 
-function oiChangePct(cur, prev, side) {
-  const key = side === "PE" ? "pe_oi" : "ce_oi";
-  const a = Number(cur?.[key]);
-  const b = Number(prev?.[key]);
-  if (!(b > 0) || !Number.isFinite(a)) return null;
-  return ((a - b) / b) * 100;
+function sampleAt(history, ageMs, now) {
+  if (!history?.length) return null;
+  const target = now - ageMs;
+  let best = history[0];
+  let bestErr = Math.abs(best.ts - target);
+  for (const s of history) {
+    const e = Math.abs(s.ts - target);
+    if (e < bestErr) {
+      best = s;
+      bestErr = e;
+    }
+  }
+  if (best.ts > now - ageMs * 0.35 && ageMs >= 60_000) return history[0];
+  return best;
 }
 
-function confirmFromBuildup(code, toward) {
-  if (!code || code === "FLAT") return 0;
-  if (toward > 0) {
-    if (code === "SHORT_BUILD" || code === "LONG_BUILD") return 1;
-    if (code === "SHORT_COVER" || code === "LONG_UNWIND") return -1;
+export function recordDistSample(key, sample) {
+  if (!key) return [];
+  const now = sample.ts || Date.now();
+  let arr = RING.get(key) || [];
+  const last = arr[arr.length - 1];
+  if (last && now - last.ts < 700 && Math.abs((last.dist ?? 0) - (sample.dist ?? 0)) < 0.05) {
+    return arr;
   }
-  if (toward < 0) {
-    if (code === "LONG_UNWIND" || code === "SHORT_COVER") return 1;
-    if (code === "SHORT_BUILD" || code === "LONG_BUILD") return -1;
+  arr = [...arr, { ...sample, ts: now }].filter((s) => now - s.ts <= MAX_AGE_MS);
+  if (arr.length > 90) arr = arr.slice(-90);
+  RING.set(key, arr);
+  return arr;
+}
+
+function hysteresis(key, score) {
+  const prev = LAST.get(key);
+  let next = score;
+  if (Number.isFinite(prev)) {
+    if (Math.abs(score - prev) < 10) next = prev;
+    else if (prev >= 35 && score >= 22 && score < 35) next = 35;
+    else if (prev <= -35 && score <= -22 && score > -35) next = -35;
   }
-  return 0;
+  LAST.set(key, next);
+  return next;
 }
 
 /**
- * Pure score. prevAbsDistance: previous |spot-strike|.
- * buildupCode: existing classifyStrike side code (LONG_BUILD, …).
+ * Underlying path is primary. Confirmation cannot cancel a clear approach.
  */
 export function scoreStrikePressure({
   spot,
   strike,
+  optionType = "CE",
   prevAbsDistance,
+  history = [],
   oiChangePct: dOi,
   buildupCode,
   nearbyOiChangePct,
+  optLtp,
+  volume,
+  dayHigh,
+  dayLow,
+  dayOpen,
+  hysteresisKey,
 } = {}) {
   const S = Number(spot);
   const K = Number(strike);
@@ -109,54 +145,140 @@ export function scoreStrikePressure({
     return { score: null, label: PRESSURE_LABELS.unavailable, reasons: ["No spot or strike"] };
   }
   const dist = Math.abs(S - K);
+  const side = optionType === "PE" ? "PE" : "CE";
+  const now = Date.now();
+  const scale = Math.max(S * 0.0025, 8);
   const reasons = [`Distance: ${Math.round(dist)} pts`];
-  let score = 0;
-  let towardSign = 0;
-  if (Number.isFinite(prevAbsDistance)) {
-    const delta = prevAbsDistance - dist;
-    if (delta > 2) {
-      score += 50;
-      towardSign = 1;
-      reasons.push("Recent distance: decreasing");
-    } else if (delta < -2) {
-      score -= 50;
-      towardSign = -1;
-      reasons.push("Recent distance: increasing");
+  let towardPts = 0;
+  let votes = 0;
+  let agree = 0;
+
+  const consider = (oldDist, label) => {
+    if (!Number.isFinite(oldDist)) return;
+    const delta = oldDist - dist;
+    towardPts += delta;
+    votes += 1;
+    if (delta > scale * 0.15) agree += 1;
+    else if (delta < -scale * 0.15) agree -= 1;
+    if (label && Math.abs(delta) >= 1) reasons.push(`${label}: ${delta > 0 ? "↓ toward" : "↑ away"} ${Math.round(Math.abs(delta))} pts`);
+  };
+
+  consider(Number(prevAbsDistance), "Last tick");
+  for (const w of WINDOWS) {
+    const s = sampleAt(history, w, now);
+    if (s && Number.isFinite(s.dist) && now - s.ts >= w * 0.4) consider(s.dist, `${Math.round(w / 60000)}m`);
+  }
+  if (history.length >= 2) consider(history[0].dist, "Session sample");
+
+  const hi = Number(dayHigh);
+  const lo = Number(dayLow);
+  const open = Number(dayOpen);
+  let sessionToward = 0;
+  if (hi > lo && hi > 0 && lo > 0) {
+    const loc = (S - lo) / (hi - lo);
+    reasons.push(`Range pos: ${Math.round(loc * 100)}%`);
+    if (side === "PE") {
+      if (loc <= 0.42) sessionToward += 1;
+      if (loc <= 0.22) sessionToward += 1;
+      if (Number.isFinite(open) && S < open) sessionToward += 1;
     } else {
-      reasons.push("Recent distance: little change");
+      if (loc >= 0.58) sessionToward += 1;
+      if (loc >= 0.78) sessionToward += 1;
+      if (Number.isFinite(open) && S > open) sessionToward += 1;
     }
-  } else {
-    reasons.push("Recent distance: waiting for next tick");
+  }
+
+  const crossed = (side === "PE" && S <= K) || (side === "CE" && S >= K);
+  const prox = Math.max(0, 1 - dist / (scale * 8));
+
+  let score = 0;
+  const netToward = towardPts;
+  const dirSign = netToward > scale * 0.2 ? 1 : netToward < -scale * 0.2 ? -1 : sessionToward >= 2 ? 1 : sessionToward <= -1 ? -1 : 0;
+
+  if (dirSign !== 0) {
+    const mag = Math.min(50, 18 + (Math.abs(netToward) / scale) * 12 + (history.length >= 3 ? 8 : 0));
+    score += dirSign * mag;
+  } else if (sessionToward >= 2) {
+    score += 38;
+    reasons.push("Session path toward strike (high/low)");
+  } else if (sessionToward <= -1) {
+    score -= 38;
+    reasons.push("Session path away from strike");
+  }
+
+  score += (dirSign || (score > 0 ? 1 : score < 0 ? -1 : 0)) * Math.round(prox * 15);
+  if (crossed && (dirSign >= 0 || sessionToward >= 1)) {
+    score = Math.max(score, 78);
+    reasons.push("Underlying at/through strike");
+  }
+
+  if (history.length >= 3) {
+    const a = history[history.length - 1];
+    const b = history[Math.max(0, history.length - 3)];
+    const dt = Math.max(1, (a.ts - b.ts) / 60000);
+    const vel = (b.dist - a.dist) / dt;
+    if (Math.abs(vel) >= scale * 0.08) {
+      score += Math.max(-18, Math.min(18, vel > 0 ? 10 : -10));
+      reasons.push(`Speed: ${vel > 0 ? "toward" : "away"} ${Math.round(Math.abs(vel))} pts/min`);
+    }
+  }
+
+  const firstLtp = history.find((h) => Number(h.optLtp) > 0)?.optLtp;
+  const ltp = Number(optLtp);
+  if (ltp > 0 && Number(firstLtp) > 0) {
+    const pch = (ltp - firstLtp) / firstLtp;
+    const premToward = pch > 0.08;
+    const premAway = pch < -0.08;
+    if (premToward && score >= 0) {
+      score += Math.min(15, Math.round(pch * 40));
+      reasons.push(`Option LTP rising`);
+    } else if (premAway && score <= 0) {
+      score -= Math.min(15, Math.round(Math.abs(pch) * 40));
+      reasons.push(`Option LTP falling`);
+    }
+  }
+
+  const vols = history.map((h) => Number(h.volume)).filter((v) => v > 0);
+  if (vols.length >= 2 && Number(volume) > 0) {
+    const avg = vols.reduce((a, b) => a + b, 0) / vols.length;
+    if (volume > avg * 1.6 && Math.abs(score) >= 20) {
+      score += score > 0 ? 6 : -6;
+      reasons.push("Volume: HIGH");
+    }
   }
 
   const oiN = Number(dOi);
-  if (Number.isFinite(oiN) && Math.abs(oiN) >= 0.5) {
-    reasons.push(`OI Change: ${oiN >= 0 ? "+" : ""}${Math.round(oiN * 10) / 10}%`);
+  if (Number.isFinite(oiN) && Math.abs(oiN) >= 0.5) reasons.push(`OI Change: ${oiN >= 0 ? "+" : ""}${Math.round(oiN * 10) / 10}%`);
+  if (buildupCode && buildupCode !== "FLAT") reasons.push(`Build-up: ${buildupCode.replace(/_/g, " ")}`);
+  if (buildupCode && buildupCode !== "FLAT" && Math.abs(score) >= 20) {
+    score += score > 0 ? 4 : -4;
   }
-  if (buildupCode && buildupCode !== "FLAT") {
-    reasons.push(`Build-up: ${buildupCode.replace(/_/g, " ")}`);
+  if (Number.isFinite(nearbyOiChangePct) && Math.abs(nearbyOiChangePct) >= 1 && Math.abs(score) >= 20) {
+    score += score > 0 ? 3 : -3;
   }
 
-  if (towardSign !== 0) {
-    const c = confirmFromBuildup(buildupCode, towardSign);
-    if (c > 0) {
-      score += towardSign > 0 ? 30 : -30;
-      reasons.push("OI/activity confirms pressure");
-    } else if (c < 0) {
-      score = Math.round(score * 0.25);
-      reasons.push("OI/activity conflicts — confidence reduced");
-    }
-    if (Number.isFinite(nearbyOiChangePct) && Math.abs(nearbyOiChangePct) >= 1) {
-      const nearWith = (towardSign > 0 && nearbyOiChangePct > 0) || (towardSign < 0 && nearbyOiChangePct < 0);
-      if (nearWith) score += towardSign > 0 ? 10 : -10;
-    }
-  } else if (buildupCode && buildupCode !== "FLAT") {
-    score = 0;
-    reasons.push("No clear distance move — NEUTRAL");
+  if (dirSign > 0 && score < 35 && (Math.abs(netToward) >= scale * 0.35 || sessionToward >= 2 || crossed)) {
+    score = 38;
+    reasons.push("Underlying approach kept (OI optional)");
+  }
+  if (dirSign < 0 && score > -35 && Math.abs(netToward) >= scale * 0.35) {
+    score = -38;
   }
 
   score = Math.max(-100, Math.min(100, score));
-  return { score, label: labelFromScore(score), reasons, dist, spot: S, strike: K };
+  if (hysteresisKey) score = hysteresis(hysteresisKey, score);
+  if (!votes && sessionToward === 0 && !crossed && history.length < 2) {
+    reasons.push("Waiting for path — using live distance only");
+  }
+  return {
+    score,
+    label: labelFromScore(score),
+    reasons,
+    dist,
+    spot: S,
+    strike: K,
+    optionType: side,
+  };
 }
 
 export function formatPressureCompact(result) {
@@ -168,7 +290,7 @@ export function formatPressureCompact(result) {
   return { arrow: "→", pressure: label, impact };
 }
 
-export function computeStrikePressureForRow(row, { oiByIndex, prevOiByIndex, prevAbsDistance } = {}) {
+export function computeStrikePressureForRow(row, ctx = {}) {
   try {
     if (!row || row.exited || !row.isOpt) {
       return { label: PRESSURE_LABELS.neutral, impact: "NEUTRAL", score: 0, reasons: ["Not an open option"] };
@@ -176,8 +298,19 @@ export function computeStrikePressureForRow(row, { oiByIndex, prevOiByIndex, pre
     const spot = Number(row.spotUsed);
     const strike = Number(row.strike);
     const side = row.side === "PE" ? "PE" : "CE";
-    const snap = snapForPosition(oiByIndex, row);
-    const prevSnap = snapForPosition(prevOiByIndex, row);
+    const key = row.tradingsymbol;
+    const dist = spot > 0 && strike > 0 ? Math.abs(spot - strike) : null;
+    const tape = (ctx.tickerByIndex && row.index && ctx.tickerByIndex[row.index]) || {};
+    const history = dist != null
+      ? recordDistSample(key, {
+        dist,
+        spot,
+        optLtp: Number(row.last_price),
+        volume: Number(row.volume ?? row.day_volume),
+      })
+      : (RING.get(key) || []);
+    const snap = snapForPosition(ctx.oiByIndex, row);
+    const prevSnap = snapForPosition(ctx.prevOiByIndex, row);
     let buildupCode = null;
     let dOi = null;
     let nearby = null;
@@ -190,27 +323,30 @@ export function computeStrikePressureForRow(row, { oiByIndex, prevOiByIndex, pre
       }
       const neighbors = rows.filter((x) => Math.abs(Number(x.strike) - strike) > 0 && Math.abs(Number(x.strike) - strike) <= (Number(snap.step) || 100) * 2);
       if (neighbors.length) {
-        const pcts = neighbors.map((n) => (side === "PE" ? n.pe_oi_pct : n.ce_oi_pct)).filter((n) => Number.isFinite(n));
+        const pcts = neighbors.map((n) => (side === "PE" ? n.pe_oi_pct : n.ce_oi_pct)).filter((x) => Number.isFinite(x));
         if (pcts.length) nearby = pcts.reduce((a, b) => a + b, 0) / pcts.length;
       }
-    } else if (snap?.strikes?.length && prevSnap?.strikes?.length === undefined) {
-      const cur = nearestStrikeRow(snap.strikes, strike);
-      const prev = nearestStrikeRow(prevSnap?.strikes, strike);
-      dOi = oiChangePct(cur, prev, side);
     }
     const scored = scoreStrikePressure({
       spot,
       strike,
-      prevAbsDistance,
+      optionType: side,
+      prevAbsDistance: ctx.prevAbsDistance,
+      history,
       oiChangePct: dOi,
       buildupCode,
       nearbyOiChangePct: nearby,
+      optLtp: Number(row.last_price),
+      volume: Number(row.volume ?? row.day_volume),
+      dayHigh: tape.day_high,
+      dayLow: tape.day_low,
+      dayOpen: tape.day_open,
+      hysteresisKey: key,
     });
     const impact = positionImpact({ isShort: !!row.isShort, label: scored.label });
     return {
       ...scored,
       impact,
-      optionType: side,
       isShort: !!row.isShort,
       underlying: row.index || "",
       buildupCode,

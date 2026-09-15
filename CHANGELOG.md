@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.02 — 2026-09-15
+
+Index chips classify the **session** (open → path → high/low → now), not just red vs previous close. RISK-OFF is reserved for strong downside continuation. Strike Pressure uses multi-window distance, session location, and option LTP as confirmation so a move toward a strike is not stuck on NEUTRAL. Positions Analyze adds a Summary/Greeks column.
+
 ## V10.01 — 2026-09-15
 
 Desk AI keys and Market Intelligence settings are their own Admin-menu dialogs (like Kite login), not stuffed into Admin configuration. Active requires a vaulted key (or env `OPENAI_API_KEY` for OpenAI). Public market-news RSS is seeded on by default; keyed catalog APIs stay ticked but wait for a key. Positions Live table adds **Strike Pressure** (toward/away vs position impact). Hedge leftover uses lots, not L.
