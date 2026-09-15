@@ -173,6 +173,22 @@ def ist_today(now: Optional[datetime] = None) -> date:
     return n.astimezone(IST).date()
 
 
+def item_ist_date(doc: Dict[str, Any]) -> Optional[date]:
+    """Calendar day shown on the desk: YYYY-MM-DD prefix of published/discovered."""
+    raw = str(doc.get("published_at") or doc.get("discovered_at") or "").strip()
+    if len(raw) >= 10:
+        try:
+            return date.fromisoformat(raw[:10])
+        except ValueError:
+            pass
+    return None
+
+
+def is_ist_today_item(doc: Dict[str, Any], today: Optional[date] = None) -> bool:
+    d = item_ist_date(doc)
+    return d is not None and d == (today or ist_today())
+
+
 def clamp_retention(retention_days: int, min_history_days: int) -> Tuple[int, int]:
     mn = max(1, min(30, int(min_history_days or DEFAULT_MIN_HISTORY_DAYS)))
     ret = max(mn, min(90, int(retention_days or DEFAULT_RETENTION_DAYS)))
@@ -823,6 +839,8 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
             continue
         if not passes_filter(d, filt):
             continue
+        if not is_ist_today_item(d):
+            continue
         if cat_filter:
             et = str(d.get("event_type") or "")
             ok = (
@@ -844,19 +862,20 @@ async def popup_candidates(
 ) -> List[Dict[str, Any]]:
     if not popup_allowed(global_on, prefs, is_admin=is_admin):
         return []
-    rows = await feed_for_user(db, prefs, "all", 24)
-    min_i = int(prefs.get("popup_min_impact") or 90)
-    min_in = int(prefs.get("popup_min_india") or 70)
-    top = [r for r in rows if int(r.get("impact_score") or 0) >= min_i and int(r.get("india_relevance_score") or 0) >= min_in]
-    top = top[:8]
-    unseen = []
-    for r in top:
-        cid = r.get("event_cluster_id")
-        seen = await db[SEEN_COL].find_one({"user_id": user_id, "event_cluster_id": cid})
-        if seen:
-            continue
-        unseen.append(r)
-    return unseen
+    p = {
+        **(prefs or {}),
+        "min_impact": 0,
+        "min_india": 0,
+        "show_critical": True,
+        "show_high": True,
+        "show_moderate": False,
+    }
+    rows = await feed_for_user(db, p, "all", 80)
+    crit = [
+        r for r in rows
+        if str(r.get("impact_band") or "") == "CRITICAL" or int(r.get("impact_score") or 0) >= 90
+    ]
+    return crit[:12]
 
 
 async def mark_popup_shown(db, user_id: str, cluster_id: str) -> None:

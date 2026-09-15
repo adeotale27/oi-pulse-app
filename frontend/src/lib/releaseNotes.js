@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.06",
+    date: "2026-09-15",
+    user: [
+      "Market Intel shows today’s stories only. The news popup has left/right arrows and how many critical stories there are today.",
+    ],
+    admin: [
+      "Phone Admin configuration (and other sheets) pin to the screen with a CSS inset so they cannot open as a blank overlay.",
+    ],
+  },
+  {
     version: "10.05",
     date: "2026-09-15",
     user: [

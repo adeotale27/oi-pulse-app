@@ -241,10 +241,16 @@ def mount(api_router, *, require_admin, require_desk_user):
         items = await mi.popup_candidates(
             _db(), uid, prefs, global_on, is_admin=(role == "admin")
         )
-        return {"items": [{k: it.get(k) for k in (
+        keys = (
             "title", "impact_score", "india_relevance_score", "event_type",
             "summary", "potential", "event_cluster_id", "source_name", "impact_band",
-        )} for it in items]}
+            "published_at",
+        )
+        return {
+            "items": [{k: it.get(k) for k in keys} for it in items],
+            "critical_count": len(items),
+            "day": mi.ist_today().isoformat(),
+        }
 
     @api_router.post("/market-intel/popup/ack")
     async def mi_popup_ack(payload: AckIn, request: Request, role: str = Depends(require_desk_user)):
