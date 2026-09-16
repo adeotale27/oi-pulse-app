@@ -29,7 +29,8 @@ uvicorn server:app --reload --host 0.0.0.0 --port 8000
 cd frontend && yarn install && yarn start
 
 # Tests (from backend/)
-python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_expiry_kind.py tests/test_trade_ledger.py tests/test_market_hours.py tests/test_event_risk.py tests/test_holiday_calendar.py tests/test_guest_access.py tests/test_app_brand.py tests/test_oi_change_lookback.py tests/test_oi_lookup.py tests/test_cas_auto_trade.py -q
+# Tests (from backend/)
+python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_expiry_kind.py tests/test_trade_ledger.py tests/test_market_hours.py tests/test_event_risk.py tests/test_holiday_calendar.py tests/test_guest_access.py tests/test_app_brand.py tests/test_oi_change_lookback.py tests/test_cas_auto_trade.py -q
 
 # Frontend unit (Node can run assert files)
 node frontend/src/lib/universe.test.js
@@ -45,7 +46,6 @@ node frontend/src/lib/journalPct.test.js
 node frontend/src/lib/capitalGuard.test.js
 node frontend/src/lib/positionsBrain.test.js
 node frontend/src/lib/positionHedge.test.js
-node frontend/src/lib/strikeRange.test.js
 node frontend/src/lib/marketIntel.test.js
 node frontend/src/lib/tickerRegime.test.js
 ```
@@ -100,7 +100,7 @@ Until Enable, the live desk stays NIFTY / SENSEX / BANKNIFTY. Catalog rows are d
 
 Every finished change: bump version → PR → **merge to `main`**. Do not leave work only on `cursor/…` branches. This is also in [ENGINEERING_RULES.md](./ENGINEERING_RULES.md) and [AGENTS.md](../AGENTS.md).
 
-Public vs desk book: guests never see publisher positions, journal, or header Today P&L. Public Positions (if ticked) is the guest’s own Kite login only. `/config` stays secret-free; `/settings` is admin-only. `/status` strips `kite_user_id` for non-admin. Guest CAS status must not include fills. Never put Kite secrets in `REACT_APP_*`.
+Public vs desk book: guests never see publisher positions, journal, or header Today P&L. Public Positions (if ticked) is the guest’s own Kite login only. `/config` stays secret-free; `/status` strips `kite_user_id` for non-admin.
 
 ## Add an API
 

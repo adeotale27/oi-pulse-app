@@ -87,7 +87,6 @@ If a value is on the Admin configuration form (`DEFAULT_SETTINGS` / `POST /setti
 - Maintain `backend/.env.example` and `frontend/.env.example` (gitignored pattern except those two).
 - CORS from `CORS_ORIGINS`. Do not widen to `*` in production.
 - Guest cannot see publisher positions.
-- GET `/settings` is admin-only. GET `/config` is the public allowlist. Never put Kite/Telegram/LLM keys in settings docs.
 
 ## Tests
 
