@@ -13,6 +13,11 @@ export function publishTodayPnl(payload) {
   window.dispatchEvent(new CustomEvent(TODAY_PNL_EVENT, { detail: next }));
 }
 
+export function clearTodayPnlCache() {
+  if (typeof window === "undefined") return;
+  try { delete window.__oiTodayPnl; } catch { window.__oiTodayPnl = null; }
+}
+
 export function readTodayPnlCache() {
   if (typeof window === "undefined") return null;
   const cached = window.__oiTodayPnl;

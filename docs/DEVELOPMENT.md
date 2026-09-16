@@ -100,6 +100,8 @@ Until Enable, the live desk stays NIFTY / SENSEX / BANKNIFTY. Catalog rows are d
 
 Every finished change: bump version → PR → **merge to `main`**. Do not leave work only on `cursor/…` branches. This is also in [ENGINEERING_RULES.md](./ENGINEERING_RULES.md) and [AGENTS.md](../AGENTS.md).
 
+Public vs desk book: guests never see publisher positions, journal, or header Today P&L. Public Positions (if ticked) is the guest’s own Kite login only. `/config` stays secret-free; `/status` strips `kite_user_id` for non-admin.
+
 ## Add an API
 
 - New router function in `server.py` (or extract a router if the file is already being touched).

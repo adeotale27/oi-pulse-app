@@ -84,6 +84,7 @@ import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
 import { pickIndexLtp, indexDayMove } from "@/lib/indexQuotes";
 import { annotateExpiries } from "@/lib/expiryKind";
+import { atmWindow } from "@/lib/strikeRange";
 
 const INDICES = DESK_IDS;
 const POLL_OPTIONS = [15000, 30000, 60000];
@@ -249,6 +250,8 @@ export default function Dashboard() {
   const [dataStatus, setDataStatus] = useState(null);
   const [strikesAround, setStrikesAround] = useState(loadStrikesAround);
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
+  /** ±N chips keep ATM centered as spot moves. Manual min/max turns this off until a chip is picked again. */
+  const [followAtm, setFollowAtm] = useState(true);
   const [credsOpen, setCredsOpen] = useState(false);
   const [deskAiKeysOpen, setDeskAiKeysOpen] = useState(false);
   const [miSettingsOpen, setMiSettingsOpen] = useState(false);
@@ -1432,39 +1435,30 @@ export default function Dashboard() {
     }
   }, [enabledIndices, activeIndex]);
 
-  // Once fresh snapshot arrives, initialise strike range to ATM±strikesAround
-  // (or full chain). Strike Range alone drives the chart window.
+  // ATM ± N recenters whenever spot/ATM moves. "all" always uses the full chain.
   useEffect(() => {
     if (!current?.strikes?.length) return;
-    if (strikeRange.min != null && strikeRange.max != null) return;
-    const sorted = [...current.strikes].sort((a, b) => a.strike - b.strike);
-    if (strikesAround === "all") {
-      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
-      return;
-    }
-    const atm = current.atm;
-    const atmIdx = sorted.findIndex((s) => s.strike === atm);
-    if (atmIdx < 0) {
-      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
-      return;
-    }
-    const n = Number(strikesAround) || 5;
-    const lo = Math.max(0, atmIdx - n);
-    const hi = Math.min(sorted.length - 1, atmIdx + n);
-    setStrikeRange({ min: sorted[lo].strike, max: sorted[hi].strike });
-  }, [current, strikeRange.min, strikeRange.max, strikesAround]);
+    if (!followAtm && strikesAround !== "all") return;
+    const nums = current.strikes.map((s) => s.strike);
+    const win = atmWindow(nums, current.atm, strikesAround);
+    setStrikeRange((prev) => (prev.min === win.min && prev.max === win.max ? prev : win));
+  }, [current, followAtm, strikesAround]);
 
-  // Chart window = Strike Range only (ATM quick-picks rewrite min/max).
+  // Chart window = live ATM ± N (or manual min/max when followAtm is off).
   const filteredCurrent = useMemo(() => {
     if (!current) return null;
     let strikes = [...current.strikes].sort((a, b) => a.strike - b.strike);
-    if (strikeRange.min != null && strikeRange.max != null && strikeRange.min !== "" && strikeRange.max !== "") {
-      const lo = Math.min(Number(strikeRange.min), Number(strikeRange.max));
-      const hi = Math.max(Number(strikeRange.min), Number(strikeRange.max));
+    const nums = strikes.map((s) => s.strike);
+    const win = followAtm || strikesAround === "all"
+      ? atmWindow(nums, current.atm, strikesAround)
+      : strikeRange;
+    if (win.min != null && win.max != null && win.min !== "" && win.max !== "") {
+      const lo = Math.min(Number(win.min), Number(win.max));
+      const hi = Math.max(Number(win.min), Number(win.max));
       strikes = strikes.filter((s) => s.strike >= lo && s.strike <= hi);
     }
     return { ...current, strikes };
-  }, [current, strikeRange]);
+  }, [current, strikeRange, strikesAround, followAtm]);
 
   const handleToggleNotif = async () => {
     await unlockSounds();
@@ -1502,31 +1496,18 @@ export default function Dashboard() {
   };
 
   const applyStrikesAround = useCallback((n) => {
+    setFollowAtm(true);
     setStrikesAround(n);
     try {
       localStorage.setItem(STRIKES_AROUND_KEY, String(n));
     } catch { /* noop */ }
     if (!current?.strikes?.length) return;
-    const sorted = [...current.strikes].sort((a, b) => a.strike - b.strike);
-    if (n === "all") {
-      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
-      return;
-    }
-    const atm = current.atm;
-    const atmIdx = sorted.findIndex((s) => s.strike === atm);
-    if (atmIdx < 0) {
-      setStrikeRange({ min: sorted[0].strike, max: sorted[sorted.length - 1].strike });
-      return;
-    }
-    const count = Number(n) || 5;
-    const lo = Math.max(0, atmIdx - count);
-    const hi = Math.min(sorted.length - 1, atmIdx + count);
-    setStrikeRange({ min: sorted[lo].strike, max: sorted[hi].strike });
+    setStrikeRange(atmWindow(current.strikes.map((s) => s.strike), current.atm, n));
   }, [current]);
 
   const handleStrikeRangeChange = useCallback((next) => {
+    setFollowAtm(false);
     setStrikeRange(next);
-    // Manual range edit → leave ATM pill highlighting alone but chart follows range.
   }, []);
 
   const handleReset = () => {
@@ -2152,6 +2133,7 @@ export default function Dashboard() {
         />
       )}
       <OvernightGapBrief
+        isAdmin={!!authState.is_admin}
         indices={enabledIndices.length ? enabledIndices : INDICES}
         vix={current?.vix || status?.vix}
         activeIndex={activeIndex}
@@ -2384,7 +2366,7 @@ export default function Dashboard() {
                   }}
                 >
                 {(dayBiasSummary || changeSummary) && (
-                  <div className={!showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""}>
+                  <div className={`sticky top-0 z-30 ${!showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""}`}>
                   <SentimentBar
                     ceDelta={dayBiasSummary?.ce ?? changeSummary?.ce ?? 0}
                     peDelta={dayBiasSummary?.pe ?? changeSummary?.pe ?? 0}
@@ -2587,7 +2569,7 @@ export default function Dashboard() {
                     />
                     {marketIntel && (
                       <div
-                        className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px] font-mono-data"
+                        className="relative z-0 mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px] font-mono-data"
                         data-testid="market-intel"
                       >
                         <div
@@ -3131,6 +3113,7 @@ export default function Dashboard() {
         open={deskAiMobileOpen}
         onOpenChange={setDeskAiMobileOpen}
         activeIndex={activeIndex}
+        isAdmin={!!authState.is_admin}
         showDeskAi={deskAiShow}
         onDeskAiChange={(next) => {
           if (typeof next?.show === "boolean") patchDeskAi({ desk_ai_show: next.show });

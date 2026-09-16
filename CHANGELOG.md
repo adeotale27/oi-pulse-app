@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.11 — 2026-09-16
+
+OI Change tooltip stacks above Bias/PCR tiles and the Increase/Decrease legend. Session bias bar stays sticky at the top of the dashboard scroller (all tabs, phone included). ATM ± N recenters on live ATM as spot moves. Header Today P&L and Overnight/Desk AI book fetches are admin-only so a public desk does not show our trades.
+
 ## V10.10 — 2026-09-15
 
 Mkt Intel and Overnight docks cannot sit under the ticker / Kite API header. Dragging them up keeps the handle on screen so they stay movable. Overnight sits above the header stacking order.

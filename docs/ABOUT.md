@@ -49,7 +49,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | POST | `/cas/auto-trade/inject` | Admin Paper: fake first indicative (rehearsal before 15:20). Runbook: [CAS_AUTO_TRADE_15_20.md](./CAS_AUTO_TRADE_15_20.md) |
 | GET | `/vrp/{index}` | Volatility risk premium (EOD-ish) |
 | GET | `/straddle/{index}` (+ `/history`) | ATM straddle series |
-| GET | `/positions` | Open F&O from Kite (admin / guest book). Also upserts `trade_cycles`. |
+| GET | `/positions` | Open F&O from Kite (admin publisher book / guest own book). Anonymous 401. Header Today P&L is admin-only. |
 | GET | `/trades/export` | Excel of stored cycles (`from`/`to` IST dates, optional `index`). Desk user. Entry + exit clocks; second sheet is fills/partials. |
 | GET | `/desk-outside` | Heavyweight cash movers + news. Pass `?index=` when the selected name is an enabled MCX contract |
 | GET/POST | `/desk-guide` | Seller coach over that outside tape; optional GPT (see [AI.md](./AI.md)) |
@@ -101,7 +101,7 @@ No synthetic OI backfill in production Fresh Pull — only real Kite ticks (or e
 
 ## UI surfaces
 
-- **Header** — LIVE/OFFLINE, tickers, Fresh Pull (admin), Kite API, Public toggle
+- **Header** — LIVE/OFFLINE, tickers, Fresh Pull (admin), Kite API, Public toggle. Today P&L is **admin-only** (never on the public header).
 - **Sidebar** — index chips with last-pull times (stale flash if inactive & >2 min behind), expiries, strike range
 - **Main tabs** — OI Change chart, Strike Table, Sell Candidates, Build-up, Positions, Alerts, Holidays
 - **Right panel** — Alerts / Suggestions / Activity (hidden on phones; use Alerts tab / FAB)
