@@ -1,13 +1,5 @@
 # Changelog
 
-## V10.13 — 2026-09-16
-
-OI `/change` no longer 503s when the UI still asks for yesterday’s weekly expiry — it serves the latest chain. 503s are swallowed in the client so the red overlay does not cover the desk. Recharts no longer measures a -1×-1 chart box. Kite `generate_session` and `profile` run off the event loop with timeouts.
-
-## V10.12 — 2026-09-16
-
-OI Change JSON can send ATM ± N strikes (`around`) so live charts parse less. Bar animation is off so 15s polls do not re-tween. Duplicate `/change` calls share one in-flight request. GET `/settings` is admin-only and drops secret-shaped keys. Guest CAS status no longer includes fills or auto-trade legs.
-
 ## V10.11 — 2026-09-16
 
 OI Change tooltip stacks above Bias/PCR tiles and the Increase/Decrease legend. Session bias bar stays sticky at the top of the dashboard scroller (all tabs, phone included). ATM ± N recenters on live ATM as spot moves. Header Today P&L and Overnight/Desk AI book fetches are admin-only so a public desk does not show our trades.

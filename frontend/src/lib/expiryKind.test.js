@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { annotateExpiries, expiryTag, isMonthlyExpiry, lastWeekdayOfMonthUtc, liveExpiryParam } from "./expiryKind.js";
+import { annotateExpiries, expiryTag, isMonthlyExpiry, lastWeekdayOfMonthUtc } from "./expiryKind.js";
 
 assert.equal(lastWeekdayOfMonthUtc(2026, 8, 2), "2026-08-25");
 assert.equal(isMonthlyExpiry("2026-08-25", "NIFTY"), true);
@@ -18,9 +18,5 @@ assert.deepEqual(nifty.map((m) => m.tag), ["M", "W", "W"]);
 
 const sensex = annotateExpiries(["2026-08-25", "2026-08-27"], "SENSEX", "2026-08-25");
 assert.deepEqual(sensex.map((m) => m.tag), ["W", "M"]);
-
-assert.equal(liveExpiryParam("2026-09-15", "2026-09-16"), undefined);
-assert.equal(liveExpiryParam("2026-09-22", "2026-09-16"), "2026-09-22");
-assert.equal(liveExpiryParam("", "2026-09-16"), undefined);
 
 console.log("expiryKind.test.js: ok");
