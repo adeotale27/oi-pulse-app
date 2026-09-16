@@ -564,7 +564,7 @@ export default function SettingsModal({
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
                     Positions Auto-Refresh (seconds)
                     <InfoTip title="Positions Poll Interval">
-                      How often the Positions desk (and header Today P&L) reloads the live Kite book. Saved to the database; opening this panel always reloads that value. Whole seconds, 5–3600. Default 30.
+                      How often the Positions desk reloads the live Kite book. Header Today P&L (admin only) uses the same poll. Saved to the database; opening this panel always reloads that value. Whole seconds, 5–3600. Default 30.
                     </InfoTip>
                   </Label>
                   <div className="flex items-center gap-2">
@@ -642,7 +642,7 @@ export default function SettingsModal({
                     const hint = page.id === "index-events"
                       ? "Same Public / Admin ticks as every other page. Untick Admin to hide it on your desk; untick Public (or the header Public menu) to hide it from guests. Last-upload stamps stay admin-only."
                       : page.id === "positions"
-                        ? "Guests see Connect Zerodha for their own book. Charts stay on your publisher token."
+                        ? "Guests see Connect Zerodha for their own book. Charts stay on your publisher token. Header Today P&L stays admin-only."
                         : page.id === "sell-candidates"
                           ? "Optional for guests — also on the Public icon menu."
                           : page.id === "cas"

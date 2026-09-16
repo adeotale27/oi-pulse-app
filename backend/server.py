@@ -4430,6 +4430,8 @@ async def get_positions(
                 }
         kite = tracker.kite_service.kite
 
+    logger.info("positions book role=%s", role)
+
     try:
         raw = await asyncio.wait_for(asyncio.to_thread(kite.positions), timeout=10)
         net = raw.get("net", []) if isinstance(raw, dict) else (raw or [])

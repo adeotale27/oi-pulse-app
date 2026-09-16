@@ -111,9 +111,9 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   };
 
   return (
-    <div className="w-full" data-testid="oi-chart">
+    <div className="w-full relative z-20 isolate overflow-visible" data-testid="oi-chart">
       <div
-        className={`w-full ${chartH} touch-manipulation`}
+        className={`w-full ${chartH} touch-manipulation relative overflow-visible`}
         onPointerDown={onChartPointerDown}
         onPointerMove={onChartPointerMove}
         onPointerUp={endPressHold}
@@ -170,7 +170,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
               cursor={compact ? false : { fill: "rgba(148,163,184,0.12)" }}
               allowEscapeViewBox={{ x: true, y: true }}
               offset={compact ? 8 : 10}
-              wrapperStyle={{ pointerEvents: "none", outline: "none", background: "transparent", border: "none", boxShadow: "none" }}
+              wrapperStyle={{ pointerEvents: "none", outline: "none", background: "transparent", border: "none", boxShadow: "none", zIndex: 50 }}
               isAnimationActive={false}
               active={touchTooltip ? pressHold : undefined}
               content={
@@ -186,6 +186,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
             />
             <Legend
               verticalAlign="bottom"
+              wrapperStyle={{ zIndex: 0 }}
               content={<CustomLegend showOI={showOI} compact={compact} />}
             />
             {atm && (

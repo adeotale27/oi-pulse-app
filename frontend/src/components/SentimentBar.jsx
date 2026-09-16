@@ -25,7 +25,7 @@ export default function SentimentBar({
 
   return (
     <div
-      className="rounded-md border border-slate-200 bg-white overflow-hidden"
+      className="rounded-md border border-slate-200 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm overflow-hidden shadow-sm"
       data-testid="sentiment-bar"
       data-market={marketOpen ? "open" : "closed"}
       data-scope="session"

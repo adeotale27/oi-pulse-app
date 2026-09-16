@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.11",
+    date: "2026-09-16",
+    user: [
+      "OI Change strike tooltip stays above the Bias / PCR tiles and the Increase / Decrease legend. The session bias bar stays at the top while you scroll any dashboard tab, including on a phone. ATM ± N recenters when spot moves so ATM stays in the middle of the candles you asked for.",
+    ],
+    admin: [
+      "Header Today P&L is admin-only even if Positions is a public page. Overnight and Desk AI do not pull the publisher book for guests. GET /positions remains desk-user (publisher vs guest Kite).",
+    ],
+  },
+  {
     version: "10.10",
     date: "2026-09-15",
     user: [

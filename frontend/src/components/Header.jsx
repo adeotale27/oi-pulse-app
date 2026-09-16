@@ -25,7 +25,7 @@ import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
 import { isTradingDayIST, todayIST } from "@/lib/holidays";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { kiteModeBadge, kiteModeBadgeClass } from "@/lib/kiteModeLabel";
-import { readTodayPnlCache, TODAY_PNL_EVENT } from "@/lib/todayPnl";
+import { readTodayPnlCache, clearTodayPnlCache, TODAY_PNL_EVENT } from "@/lib/todayPnl";
 import {
   startPositionsBookPolling,
   stopPositionsBookPolling,
@@ -37,7 +37,7 @@ const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_EVENT = "oi-positions-privacy";
 const PRIVACY_MASK = "••••";
 
-/** Admin/guest Today P&L chip for the header (beside the clock). */
+/** Admin Today P&L chip for the header (beside the clock). Never shown to guests. */
 function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 30_000, className, compact = false }) {
   const cached = readTodayPnlCache();
   const [pnl, setPnl] = useState(() => cached?.total ?? null);
@@ -168,8 +168,8 @@ export default function Header({
   slimStatusRail = false,
   /** Positions book poll interval (ms) — keeps header Today P&L fresh in background. */
   positionsPollMs = 30_000,
-  /** Guests only see header P&L when Positions is a public page. */
-  positionsPublic = true,
+  /** Unused: header P&L is admin-only so guests never see the desk book. */
+  positionsPublic: _positionsPublic = true,
   onOpenDeskAiKeys,
   onOpenMiSettings,
   showDeskAi = false,
@@ -238,13 +238,16 @@ export default function Header({
   // Guests never see Admin/Kite. Prefer Dashboard's assumedAdmin; never promote guests.
   const isGuestUser = !!authState.is_guest && !assumedAdmin;
   const isAdmin = !isGuestUser && (devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest));
-  const showHeaderPnl = isAdmin || (isGuestUser && positionsPublic);
+  const showHeaderPnl = isAdmin;
 
   useEffect(() => {
-    if (!(isAdmin || isGuestUser)) return undefined;
+    if (!isAdmin) {
+      clearTodayPnlCache();
+      return undefined;
+    }
     startPositionsBookPolling();
     return () => stopPositionsBookPolling();
-  }, [isAdmin, isGuestUser]);
+  }, [isAdmin]);
   if (devForce) {
     try { console.warn("[Header] devForce admin UI enabled via oi_dev_force_admin"); } catch (_) {}
   }

@@ -118,6 +118,7 @@ function fmtDelta(v) {
  * Phone: chip by default; expanded sheet is full-width at the dock (not over the chart).
  */
 export default function OvernightGapBrief({
+  isAdmin = false,
   indices = DESK_IDS,
   vix = null,
   activeIndex = null,
@@ -387,7 +388,7 @@ export default function OvernightGapBrief({
   }, [loadIndexImpacts]);
 
   const loadBook = useCallback(async () => {
-    if (!active || minimized) return;
+    if (!isAdmin || !active || minimized) return;
     try {
       const [{ data }, journalRes, memRes] = await Promise.all([
         api.get("/positions"),
@@ -406,13 +407,13 @@ export default function OvernightGapBrief({
     } catch {
       setBook(null);
     }
-  }, [active, minimized]);
+  }, [isAdmin, active, minimized]);
 
   useEffect(() => {
-    if (!active || minimized) return undefined;
+    if (!isAdmin || !active || minimized) return undefined;
     const t = setTimeout(loadBook, 20000);
     return () => clearTimeout(t);
-  }, [loadBook, active, minimized]);
+  }, [loadBook, isAdmin, active, minimized]);
 
   useEffect(() => {
     if (!active || minimized) return undefined;
