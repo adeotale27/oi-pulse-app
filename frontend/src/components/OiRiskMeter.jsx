@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchOIChange } from "@/lib/api";
-import { todayIST } from "@/lib/holidays";
-import { liveExpiryParam } from "@/lib/expiryKind";
 import { computeOiRisk, oiChangePctFromSnapshots } from "@/lib/oiRiskMeter";
 import InfoTip from "@/components/InfoTip";
 
@@ -22,10 +20,7 @@ export default function OiRiskMeter({
     let alive = true;
     (async () => {
       try {
-        const data = await fetchOIChange(activeIndex, 15, {
-          expiry: liveExpiryParam(expiry, todayIST()),
-        });
-        if (!data) return;
+        const data = await fetchOIChange(activeIndex, 15, { expiry });
         const next = oiChangePctFromSnapshots(data?.current, data?.previous);
         if (alive) setPct(next);
       } catch {

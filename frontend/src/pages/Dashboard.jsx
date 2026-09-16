@@ -83,7 +83,7 @@ import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from 
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
 import { pickIndexLtp, indexDayMove } from "@/lib/indexQuotes";
-import { annotateExpiries, liveExpiryParam } from "@/lib/expiryKind";
+import { annotateExpiries } from "@/lib/expiryKind";
 import { atmWindow } from "@/lib/strikeRange";
 
 const INDICES = DESK_IDS;
@@ -958,19 +958,16 @@ export default function Dashboard() {
 
     try {
       const fetchOne = async (idx, { withAlso } = {}) => {
-        const exp = liveExpiryParam(
+        const exp =
           idx === active
-            ? (selectedExpiryRef.current || expiryByIndexRef.current[idx]?.selected)
-            : expiryByIndexRef.current[idx]?.selected,
-          istToday(),
-        );
+            ? (selectedExpiryRef.current || expiryByIndexRef.current[idx]?.selected || undefined)
+            : (expiryByIndexRef.current[idx]?.selected || undefined);
         try {
           const data = await fetchOIChange(idx, minutes, {
-            expiry: exp,
+            expiry: exp || undefined,
             also: withAlso ? alsoFull : undefined,
             timeout: 20000,
           });
-          if (!data) return { idx, ok: false };
           oiCacheRef.current[idx] = {
             current: data.current,
             previous: data.previous,
@@ -1022,10 +1019,7 @@ export default function Dashboard() {
                 list: dates,
                 meta,
                 note: cachedExp?.note || null,
-                selected:
-                  liveExpiryParam(cachedExp?.selected, istToday()) && merged.includes(cachedExp.selected)
-                    ? cachedExp.selected
-                    : iso,
+                selected: cachedExp?.selected && merged.includes(cachedExp.selected) ? cachedExp.selected : iso,
                 fetched: !!cachedExp?.fetched,
                 asOf: istToday(),
               };
@@ -1044,10 +1038,7 @@ export default function Dashboard() {
         if (bootLite && first.ok) {
           window.setTimeout(() => {
             fetchOIChange(active, minutes, {
-              expiry: liveExpiryParam(
-                selectedExpiryRef.current || expiryByIndexRef.current[active]?.selected,
-                istToday(),
-              ),
+              expiry: selectedExpiryRef.current || expiryByIndexRef.current[active]?.selected || undefined,
               also: alsoFull,
               timeout: 20000,
             }).then((data) => {

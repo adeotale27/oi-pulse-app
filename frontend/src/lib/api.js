@@ -314,21 +314,7 @@ export const fetchOIChange = (idx, minutes, opts = {}) => {
   if (opts.expiry) params.expiry = opts.expiry;
   if (opts.also) params.also = Array.isArray(opts.also) ? opts.also.join(",") : opts.also;
   const timeout = opts.timeout;
-  const key = `${idx}|${minutes}|${params.expiry || ""}|${params.also || ""}|${params.around || ""}`;
-  if (__oiChangeInflight.has(key)) return __oiChangeInflight.get(key);
-  const req = api
-    .get(`/oi/${idx}/change`, timeout ? { params, timeout } : { params })
-    .then((r) => r.data)
-    .catch((e) => {
-      if (e?.response?.status === 503) {
-        try { console.warn("[fetchOIChange] no snapshot yet", idx, e?.response?.data?.detail || "503"); } catch { /* noop */ }
-        return null;
-      }
-      throw e;
-    });
-  __oiChangeInflight.set(key, req);
-  req.finally(() => { __oiChangeInflight.delete(key); });
-  return req;
+  return api.get(`/oi/${idx}/change`, timeout ? { params, timeout } : { params }).then((r) => r.data);
 };
 export const fetchAlerts = () => api.get("/alerts").then((r) => r.data);
 export const fetchTickers = () => api.get("/tickers").then((r) => r.data);

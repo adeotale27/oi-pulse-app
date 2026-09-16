@@ -111,9 +111,9 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   };
 
   return (
-    <div className="w-full relative z-20" data-testid="oi-chart">
+    <div className="w-full relative z-20 isolate overflow-visible" data-testid="oi-chart">
       <div
-        className={`w-full ${chartH} min-w-0 touch-manipulation relative`}
+        className={`w-full ${chartH} touch-manipulation relative overflow-visible`}
         onPointerDown={onChartPointerDown}
         onPointerMove={onChartPointerMove}
         onPointerUp={endPressHold}
@@ -121,7 +121,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
         onPointerLeave={endPressHold}
         onLostPointerCapture={endPressHold}
       >
-        <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
+        <ResponsiveContainer width="100%" height="100%">
           <BarChart
             key={chartKey || undefined}
             data={data}
