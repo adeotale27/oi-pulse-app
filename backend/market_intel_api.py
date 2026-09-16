@@ -276,5 +276,20 @@ def mount(api_router, *, require_admin, require_desk_user):
         if cid:
             await mi.mark_popup_shown(_db(), uid, cid)
         return {"ok": True}
+    @api_router.get("/market-intel/config")
+    async def mi_config_get(request: Request, role: str = Depends(require_desk_user)):
+        s = _settings()
+        # Use market_intel_retention_days as max_days_back, fallback to 5
+        max_days_back = s.get("market_intel_retention_days") or 5
+        config = {
+            "max_days_back": int(max_days_back),
+            # Optionally include other settings
+            "popup_enabled": s.get("market_intel_popup_enabled", True) is not False,
+            "popup_dock_until_next": s.get("market_intel_popup_dock_until_next", True) is not False,
+            "ingest_seconds": s.get("market_intel_ingest_seconds") or 300,
+            "retention_days": s.get("market_intel_retention_days") or 5,
+            "min_history_days": s.get("market_intel_min_history_days") or 2,
+        }
+        return {"config": config}
 
     return api_router
