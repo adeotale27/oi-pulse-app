@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.13",
+    date: "2026-09-16",
+    user: [
+      "Switching index after weekly expiry no longer throws a red overlay. Charts keep last OI when Kite is reconnecting. The bar chart no longer logs a width/height -1 warning.",
+    ],
+    admin: [
+      "GET /oi/{index}/change ignores a rolled-off expiry and falls back to the latest snapshot. Client 503s return null instead of an uncaught Axios error. Kite generate_session and profile use asyncio.to_thread with timeouts.",
+    ],
+  },
+  {
     version: "10.12",
     date: "2026-09-16",
     user: [

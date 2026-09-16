@@ -40,6 +40,14 @@ export function expiryTag(iso, index = "NIFTY") {
   return isMonthlyExpiry(iso, index) ? "M" : "W";
 }
 
+export function liveExpiryParam(exp, todayIso) {
+  const d = String(exp || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return undefined;
+  const today = String(todayIso || "").slice(0, 10);
+  if (today && d < today) return undefined;
+  return d;
+}
+
 export function annotateExpiries(dates, index = "NIFTY", todayIso) {
   const today = ymdParts(todayIso) || ymdParts(new Date().toISOString());
   const t = today ? Date.UTC(today.y, today.m - 1, today.d) : Date.now();

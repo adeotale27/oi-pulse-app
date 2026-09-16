@@ -1066,11 +1066,18 @@ async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(requ
     try:
         from kiteconnect import KiteConnect
         kc = KiteConnect(api_key=payload.api_key)
-        data = kc.generate_session(payload.request_token, api_secret=payload.api_secret)
+        data = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: kc.generate_session(payload.request_token, api_secret=payload.api_secret)
+            ),
+            timeout=20,
+        )
         access_token = data.get("access_token")
         if not access_token:
             raise RuntimeError("No access_token returned by Kite")
+        logger.info("kite generate_session ok user_id=%s", data.get("user_id"))
     except Exception as e:
+        logger.warning("kite generate_session failed: %s", e)
         raise HTTPException(400, f"{type(e).__name__}: {e}")
     try:
         await _require_tracker().set_credentials(payload.api_key, access_token)
@@ -1876,6 +1883,19 @@ async def _latest_oi_snapshot(idx: str, expiry: Optional[str] = None) -> Optiona
         return None
 
 
+def _live_expiry_query(expiry: Optional[str]) -> Optional[str]:
+    """Drop rolled-off expiries so /change does not 503 on yesterday's weekly."""
+    if not expiry:
+        return None
+    day = str(expiry)[:10]
+    try:
+        if day < now_ist().date().isoformat():
+            return None
+    except Exception:
+        return day
+    return day
+
+
 async def _oi_snapshot_find_one(filt: dict, sort_dir: int):
     """One oi_snapshots row. sort_dir: 1 oldest, -1 newest. Never hits Kite."""
     if db is None:
@@ -2038,8 +2058,14 @@ async def get_oi_change(
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
 
+    requested_expiry = expiry
+    expiry = _live_expiry_query(expiry)
+    if requested_expiry and not expiry:
+        logger.info("oi change %s ignoring expired expiry=%s", idx, requested_expiry)
+
     market_is_open = tracker.oi_session_open() if tracker else is_market_open()
-    current = tracker.last_snapshot.get(idx) if tracker else None
+    memory = tracker.last_snapshot.get(idx) if tracker else None
+    current = memory
 
     # Expiry filter only — never call set_expiry from GET.
     if current and expiry and current.get("expiry") != expiry:
@@ -2057,6 +2083,15 @@ async def get_oi_change(
 
     if needs_db:
         doc = await _latest_oi_snapshot(idx, expiry)
+        if not doc and expiry:
+            doc = await _latest_oi_snapshot(idx, None)
+            if doc:
+                logger.info(
+                    "oi change %s no snapshot for expiry=%s; serving latest expiry=%s",
+                    idx,
+                    expiry,
+                    doc.get("expiry"),
+                )
         if doc:
             current = prefer_newer_snapshot(current, doc)
             if tracker and current is doc and (
@@ -2068,6 +2103,9 @@ async def get_oi_change(
             if tracker and current and hasattr(tracker, "snapshot_age_seconds"):
                 age = tracker.snapshot_age_seconds(current)
 
+    if not current and memory:
+        current = memory
+        logger.info("oi change %s using in-memory snapshot expiry=%s", idx, memory.get("expiry"))
     if not current:
         raise HTTPException(
             503,
