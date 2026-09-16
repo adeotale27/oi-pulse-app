@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.12",
+    date: "2026-09-16",
+    user: [
+      "OI Change and Open Interest charts update faster: the feed only sends the ±N strikes you selected, and the bars no longer replay a 520ms animation on every pull.",
+    ],
+    admin: [
+      "GET /settings is admin-only (guests use /config). Secret-shaped keys are stripped if they ever land in settings. Guest CAS status hides fills and auto-trade legs. /oi/{index}/change?around=N trims snapshots; identical in-flight /change calls are coalesced.",
+    ],
+  },
+  {
     version: "10.11",
     date: "2026-09-16",
     user: [
