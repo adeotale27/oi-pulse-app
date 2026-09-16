@@ -4,6 +4,26 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.13",
+    date: "2026-09-16",
+    user: [
+      "Switching index after weekly expiry no longer throws a red overlay. Charts keep last OI when Kite is reconnecting. The bar chart no longer logs a width/height -1 warning.",
+    ],
+    admin: [
+      "GET /oi/{index}/change ignores a rolled-off expiry and falls back to the latest snapshot. Client 503s return null instead of an uncaught Axios error. Kite generate_session and profile use asyncio.to_thread with timeouts.",
+    ],
+  },
+  {
+    version: "10.12",
+    date: "2026-09-16",
+    user: [
+      "OI Change and Open Interest charts update faster: the feed only sends the ±N strikes you selected, and the bars no longer replay a 520ms animation on every pull.",
+    ],
+    admin: [
+      "GET /settings is admin-only (guests use /config). Secret-shaped keys are stripped if they ever land in settings. Guest CAS status hides fills and auto-trade legs. /oi/{index}/change?around=N trims snapshots; identical in-flight /change calls are coalesced.",
+    ],
+  },
+  {
     version: "10.11",
     date: "2026-09-16",
     user: [

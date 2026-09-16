@@ -773,8 +773,8 @@ class OITracker:
         except Exception as e:
             raise RuntimeError(f"Kite SDK init failed: {type(e).__name__}: {e}")
         try:
-            profile = svc.kite.profile()
-            logger.info(f"Kite profile loaded for user: {profile.get('user_id')}")
+            profile = await asyncio.wait_for(asyncio.to_thread(svc.kite.profile), timeout=12)
+            logger.info("Kite profile loaded for user: %s", profile.get("user_id") if isinstance(profile, dict) else None)
         except Exception as e:
             # Common causes: expired access_token (daily), wrong api_key, wrong secret used to compute token
             hint = ""
