@@ -309,16 +309,10 @@ export function fetchConfig() {
     });
   return __configInflight;
 }
-/** One in-flight /oi/{idx}/change per key so Desk AI + chart do not stampede. */
-const __oiChangeInflight = new Map();
-
 export const fetchOIChange = (idx, minutes, opts = {}) => {
   const params = { minutes };
   if (opts.expiry) params.expiry = opts.expiry;
   if (opts.also) params.also = Array.isArray(opts.also) ? opts.also.join(",") : opts.also;
-  if (Number.isFinite(Number(opts.around)) && Number(opts.around) > 0) {
-    params.around = Math.min(40, Math.round(Number(opts.around)));
-  }
   const timeout = opts.timeout;
   const key = `${idx}|${minutes}|${params.expiry || ""}|${params.also || ""}|${params.around || ""}`;
   if (__oiChangeInflight.has(key)) return __oiChangeInflight.get(key);

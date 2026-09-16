@@ -252,8 +252,6 @@ export default function Dashboard() {
   const [strikeRange, setStrikeRange] = useState({ min: null, max: null });
   /** ±N chips keep ATM centered as spot moves. Manual min/max turns this off until a chip is picked again. */
   const [followAtm, setFollowAtm] = useState(true);
-  const strikesAroundRef = useRef(strikesAround);
-  strikesAroundRef.current = strikesAround;
   const [credsOpen, setCredsOpen] = useState(false);
   const [deskAiKeysOpen, setDeskAiKeysOpen] = useState(false);
   const [miSettingsOpen, setMiSettingsOpen] = useState(false);
@@ -970,7 +968,6 @@ export default function Dashboard() {
           const data = await fetchOIChange(idx, minutes, {
             expiry: exp,
             also: withAlso ? alsoFull : undefined,
-            around: typeof strikesAroundRef.current === "number" ? strikesAroundRef.current : undefined,
             timeout: 20000,
           });
           if (!data) return { idx, ok: false };
@@ -1052,7 +1049,6 @@ export default function Dashboard() {
                 istToday(),
               ),
               also: alsoFull,
-              around: typeof strikesAroundRef.current === "number" ? strikesAroundRef.current : undefined,
               timeout: 20000,
             }).then((data) => {
               if (!data) return;

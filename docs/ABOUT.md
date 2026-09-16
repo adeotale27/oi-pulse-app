@@ -34,9 +34,9 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | GET | `/status` | Mode (`kite`/`offline`), market hours, tracker health, `app_version` |
 | GET | `/admin/indices` `/search` `/inspect` | Admin: registry + Kite discovery |
 | POST | `/admin/indices/sync` `{name}/enable` `{name}/disable` | Admin: dump refresh + toggle (keeps history) |
-| GET | `/settings` | **Admin.** Enabled indices, poll seconds, page ticks. Secret-shaped keys stripped. Guests use `/config`. |
+| GET | `/settings` / POST `/settings` | Admin settings (enabled indices, alert windows, market close, etc.) |
 | GET | `/oi/{index}` | Latest snapshot |
-| GET | `/oi/{index}/change` | Current vs N-minutes-ago + multi-window deltas. Optional `around=` ATM ± N strikes. |
+| GET | `/oi/{index}/change` | Current vs N-minutes-ago + multi-window deltas |
 | GET | `/history/{index}` | Snapshot timeline for Replay |
 | GET | `/expiries/{index}` / POST | Expiry list + selection |
 | GET | `/alerts` / DELETE | Reversal alerts (session-scoped; prior days purged at new open) |

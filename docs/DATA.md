@@ -77,7 +77,7 @@ Refused on weekends/holidays so Friday’s last session is not wiped. Use when t
 |---------|-------|----------|
 | Active index / expiry | `Dashboard.jsx` | Drives chart + table; cache hydrated in `oiCacheRef` |
 | Timeframe pills | Client | Re-request change window; does not re-fetch Kite |
-| Strike filter | Sidebar min/max or ATM ± N | `atmWindow` client-side; live `/change?around=N` also trims JSON so ATM stays centered without shipping the full chain. |
+| Strike filter | Sidebar min/max or ATM ± N | `atmWindow` in `strikeRange.js`: ±N recenters on live ATM as spot moves; `"all"` is the full chain. Manual min/max stops follow until a ±N chip is picked. |
 | Compact mode | `localStorage.compact` | Default **on** for viewports ≤1280px (more chart, less chrome) |
 | Right panel | Hidden on ≤768px | Phones use full-width chart + Alerts tab/FAB |
 | Replay | `/history` + scrubber | Optional `jumpToTs` seeks closest snapshot (huge-shift bookmark in `localStorage`) |
