@@ -368,7 +368,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                 : dense
                   ? "px-1.5 py-1.5"
                   : "px-3 py-2 w-full md:w-auto md:min-w-[140px] md:flex-none"
-            } ${isActive && selectable ? "shadow-md" : ""} ${isHeader ? "rounded-full" : "rounded-md"}`}
+            } ${isActive && selectable ? "shadow-md" : ""} ${isHeader ? "rounded-xl" : "rounded-lg"}`}
           >
           <TileTag
             type={selectable ? "button" : undefined}

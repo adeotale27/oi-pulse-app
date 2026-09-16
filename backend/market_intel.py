@@ -853,7 +853,7 @@ def cluster_rows(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int = 40) -> List[Dict[str, Any]]:
+async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int = 40, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
     if db is None:
         return []
     docs = await db[ART_COL].find({"status": {"$ne": "gone"}}, {"_id": 0}).sort("discovered_at", -1).to_list(300)
@@ -865,6 +865,18 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
     cats = {str(c).lower() for c in (prefs.get("categories") or [])}
     all_cats = {"india", "macro", "fed", "oil", "geopolitics", "corporate"}
     cat_filter = bool(cats) and not all_cats.issubset(cats) and len(cats) < 6
+
+    # Parse the date parameter if provided, otherwise use today
+    target_date = None
+    if date_str:
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            # If date parsing fails, default to today
+            target_date = ist_today()
+    else:
+        target_date = ist_today()
+
     kept = []
     for d in docs:
         sc = int(d.get("impact_score") or 0)
@@ -883,7 +895,8 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
             continue
         if not passes_filter(d, filt):
             continue
-        if not is_ist_today_item(d):
+        # Check if item matches the target date (instead of hardcoded today)
+        if not is_ist_today_item(d, target_date):
             continue
         if cat_filter:
             et = str(d.get("event_type") or "")

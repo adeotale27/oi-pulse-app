@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
 import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload } from "@/lib/marketIntel";
 
@@ -9,19 +10,95 @@ export default function MarketIntelPage({ compact = false }) {
   const [items, setItems] = useState([]);
   const [prefs, setPrefs] = useState(null);
   const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // Default to today
+    const today = new Date();
+    // Get YYYY-MM-DD string in local timezone (avoiding UTC conversion issues)
+    return today.toLocaleDateString('en-CA');
+  });
+  const [config, setConfig] = useState(null);
+  const [minDate, setMinDate] = useState(null);
+  const [maxDate, setMaxDate] = useState(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   const loadPrefs = useCallback(() => {
     api.get("/market-intel/prefs").then((r) => setPrefs(r.data?.prefs || null)).catch(() => {});
   }, []);
 
+  const loadConfig = useCallback(() => {
+    api.get("/market-intel/config").then((r) => {
+      setConfig(r.data?.config || null);
+      // Extract date limits from config
+      const config = r.data?.config || {};
+      const maxDaysBack = config.max_days_back || 5; // Default to 5 days if not specified
+      const today = new Date();
+      // Get YYYY-MM-DD string in local timezone (avoiding UTC conversion issues)
+      const todayString = today.toLocaleDateString('en-CA');
+      const minDate = new Date(today);
+      minDate.setDate(today.getDate() - maxDaysBack);
+      const minDateString = minDate.toLocaleDateString('en-CA');
+      setMinDate(minDateString);
+      setMaxDate(todayString); // Only allow up to today
+      setConfigLoaded(true);
+    }).catch(() => {
+      // Even if config fails, set defaults and mark as loaded
+      const today = new Date();
+      // Get YYYY-MM-DD string in local timezone (avoiding UTC conversion issues)
+      const todayString = today.toLocaleDateString('en-CA');
+      const minDate = new Date(today);
+      minDate.setDate(today.getDate() - 5); // Default 5 days back
+      const minDateString = minDate.toLocaleDateString('en-CA');
+      setMinDate(minDateString);
+      setMaxDate(todayString);
+      setConfigLoaded(true);
+    });
+  }, []);
+
+  // Load config on mount to set date boundaries
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
+
   const loadFeed = useCallback(() => {
-    api.get("/market-intel", { params: { filter: filt }, timeout: 20000 })
+    // If config hasn't loaded yet, wait for it
+    if (!configLoaded) {
+      return;
+    }
+
+    // Validate date is within allowed range
+    if (minDate && selectedDate < minDate) {
+      setItems([]);
+      setErr(`No data available for dates before ${minDate}`);
+      return;
+    }
+    if (maxDate && selectedDate > maxDate) {
+      setItems([]);
+      setErr(`No data available for dates after ${maxDate}`);
+      return;
+    }
+
+    api.get("/market-intel", { params: { filter: filt, date: selectedDate }, timeout: 10000 }) // Reduced from 20s to 10s
       .then((r) => { setItems(r.data?.items || []); setErr(null); })
       .catch((e) => setErr(e?.message || "feed failed"));
-  }, [filt]);
+  }, [filt, selectedDate, minDate, maxDate, configLoaded]);
 
-  useEffect(() => { loadPrefs(); }, [loadPrefs]);
-  useEffect(() => { loadFeed(); }, [loadFeed]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadBoth = async () => {
+      if (cancelled) return;
+      setLoading(true);
+      try {
+        await loadPrefs();
+        await loadFeed();
+        if (!cancelled) setLoading(false);
+      } catch (e) {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    loadBoth();
+    return () => { cancelled = true; };
+  }, [loadPrefs, loadFeed, loadConfig]);
   useEffect(() => {
     const onReload = () => loadFeed();
     window.addEventListener(MI_RELOAD_EVENT, onReload);
@@ -47,7 +124,7 @@ export default function MarketIntelPage({ compact = false }) {
       {!compact && (
         <PageBrandTitle kicker="Desk" title="Market Intelligence" testId="market-intel-title" />
       )}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {MI_FILTERS.map((f) => (
           <button
             key={f.id}
@@ -57,32 +134,106 @@ export default function MarketIntelPage({ compact = false }) {
             data-testid={`mi-filter-${f.id}`}
           >{f.label}</button>
         ))}
+        <div className="flex items-center gap-3 ml-auto">
+          <button
+            type="button"
+            onClick={() => {
+              // Parse YYYY-MM-DD as local time
+              const [year, month, day] = selectedDate.split('-').map(Number);
+              const date = new Date(year, month - 1, day);
+              date.setDate(date.getDate() - 1);
+              // Format back to YYYY-MM-DD in local time
+              const newYear = date.getFullYear();
+              const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+              const newDay = String(date.getDate()).padStart(2, '0');
+              const newDate = `${newYear}-${newMonth}-${newDay}`;
+              // Clamp to minDate
+              if (minDate && newDate < minDate) {
+                setSelectedDate(minDate);
+              } else {
+                setSelectedDate(newDate);
+              }
+            }}
+            disabled={minDate && selectedDate <= minDate}
+            className="text-[10px] px-2 py-1 rounded-sm border border-slate-200 hover:bg-slate-50"
+            data-testid="mi-prev-date"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="text-[10px] font-mono-data">{selectedDate}</div>
+          <button
+            type="button"
+            onClick={() => {
+              // Parse YYYY-MM-DD as local time
+              const [year, month, day] = selectedDate.split('-').map(Number);
+              const date = new Date(year, month - 1, day);
+              date.setDate(date.getDate() + 1);
+              // Format back to YYYY-MM-DD in local time
+              const newYear = date.getFullYear();
+              const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+              const newDay = String(date.getDate()).padStart(2, '0');
+              const newDate = `${newYear}-${newMonth}-${newDay}`;
+              // Clamp to maxDate
+              if (maxDate && newDate > maxDate) {
+                setSelectedDate(maxDate);
+              } else {
+                setSelectedDate(newDate);
+              }
+            }}
+            disabled={maxDate && selectedDate >= maxDate}
+            className="text-[10px] px-2 py-1 rounded-sm border border-slate-200 hover:bg-slate-50"
+            data-testid="mi-next-date"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
-      {err && <div className="text-xs text-rose-700">Showing last stored items if any. ({err})</div>}
-      <div className="space-y-2">
-        {items.length === 0 && (
-          <div className="text-xs text-slate-500 border rounded-md p-4">No ranked events for <b>today</b> yet. Older days stay in storage but are not shown here. Admin can add RSS/API sources. Ingest waits ~90s after boot, then runs on the admin interval.</div>
-        )}
-        {items.map((it) => (
-          <article key={it.event_cluster_id || it.id} className="rounded-md border border-slate-200 bg-white p-3 space-y-1" data-testid="mi-event">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{it.impact_band || "—"}</span>
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{impactScoreLabel(it.impact_score)}</span>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-800">{formatEventTypeLabel(it.event_type)}</span>
-              <span className="text-[10px] text-slate-400 ml-auto">{it.source_name}{it.source_count > 1 ? ` · ${it.source_count} sources` : ""}</span>
+      {loading && !err && (
+        <div className="text-xs text-slate-500 text-center py-8">
+          Loading market intelligence...
+        </div>
+      )}
+      {err && !loading && (
+        <div className="text-xs text-rose-700 text-center py-8">
+          Showing last stored items if any. ({err})
+        </div>
+      )}
+      {!loading && !err && (
+        <div className="space-y-2">
+          {items.length === 0 && (
+            <div className="text-xs text-slate-500 border rounded-md p-4 text-center py-8">
+              No ranked events for <b>{selectedDate}</b> yet.
+              {selectedDate === maxDate ?
+                'Older days stay in storage but are not shown here.' :
+                'No news data exist for the selected date kindly change the date.'}
+              Admin can add RSS/API sources. Ingest waits ~90s after boot, then runs on the admin interval.
             </div>
-            <h3 className="text-sm font-semibold text-slate-900 leading-snug">{it.title}</h3>
-            <div className="text-[11px] text-slate-600">{indiaImpactLabel(it.india_relevance_score)} · {String(it.published_at || "").slice(0, 16)}</div>
-            {it.summary ? <p className="text-xs text-slate-600 line-clamp-3">{it.summary}</p> : null}
-            {Array.isArray(it.potential) && it.potential.length > 0 && (
-              <ul className="text-[11px] text-slate-700 list-disc pl-4">
-                {it.potential.map((p) => <li key={p}>{p}</li>)}
-              </ul>
-            )}
-            {it.article_url ? <a className="text-[11px] text-emerald-800 underline" href={it.article_url} target="_blank" rel="noreferrer">Open source</a> : null}
-          </article>
-        ))}
-      </div>
+          )}
+          {items.length > 0 && (
+            <>
+              {items.map((it) => (
+                <article key={it.event_cluster_id || it.id} className="rounded-md border border-slate-200 bg-white p-3 space-y-1" data-testid="mi-event">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{it.impact_band || "—"}</span>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{impactScoreLabel(it.impact_score)}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-800">{formatEventTypeLabel(it.event_type)}</span>
+                    <span className="text-[10px] text-slate-400 ml-auto">{it.source_name}{it.source_count > 1 ? ` · ${it.source_count} sources` : ""}</span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900 leading-snug">{it.title}</h3>
+                  <div className="text-[11px] text-slate-600">{indiaImpactLabel(it.india_relevance_score)} · {String(it.published_at || "").slice(0, 16)}</div>
+                  {it.summary ? <p className="text-xs text-slate-600 line-clamp-3">{it.summary}</p> : null}
+                  {Array.isArray(it.potential) && it.potential.length > 0 && (
+                    <ul className="text-[11px] text-slate-700 list-disc pl-4">
+                      {it.potential.map((p) => <li key={p}>{p}</li>)}
+                    </ul>
+                  )}
+                  {it.article_url ? <a className="text-[11px] text-emerald-800 underline" href={it.article_url} target="_blank" rel="noreferrer">Open source</a> : null}
+                </article>
+              ))}
+            </>
+          )}
+        </div>
+      )}
       <MarketIntelUserPrefs prefs={prefs} onChange={patchPrefs} />
     </div>
   );

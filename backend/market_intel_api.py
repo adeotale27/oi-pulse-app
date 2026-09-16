@@ -236,11 +236,12 @@ def mount(api_router, *, require_admin, require_desk_user):
         request: Request,
         role: str = Depends(require_desk_user),
         filt: str = Query("all", alias="filter"),
+        date: Optional[str] = Query(None, alias="date"),
     ):
         from server import _ledger_owner
         uid = await _ledger_owner(request, role)
         prefs = await _prefs(uid)
-        items = await mi.feed_for_user(_db(), prefs, filt, 40)
+        items = await mi.feed_for_user(_db(), prefs, filt, 40, date_str=date)
         for it in items:
             it.pop("_id", None)
         return {"items": items}
