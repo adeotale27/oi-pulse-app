@@ -23,7 +23,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 from ws_close import close_ws_quietly, ws_client_gone
 from error_log import bind as bind_error_log, install_logging_handler, record_error
-from oi_lookup import prefer_newer_snapshot
+from oi_lookup import prefer_newer_snapshot, trim_snapshot_around
+from public_json import strip_secret_settings
 from oi_tracker import OITracker, INDICES, JsonLogFormatter, resolve_desk_ai, DEFAULT_SETTINGS
 from poll_intervals import (
     clamp_straddle_poll_seconds,
@@ -1479,11 +1480,8 @@ async def set_expiry(index_name: str, payload: ExpiryIn, _admin: bool = Depends(
 
 
 @api_router.get("/settings")
-async def get_settings(reload: bool = Query(False)):
-    # Keep weekday alert focus in sync (same as /config) so the desk never
-    # reads a stale/null alert_enabled_indices and suppresses toasts.
-    # Mongo reload only when Admin configuration asks (?reload=true). The
-    # public Dashboard used to hit this every 60s and pin the origin.
+async def get_settings(reload: bool = Query(False), _admin: bool = Depends(require_admin)):
+    # Admin configuration only — guests use GET /config (no secret-shaped keys).
     if tracker and reload:
         try:
             await tracker.reload_settings_from_db()
@@ -1505,7 +1503,10 @@ async def get_settings(reload: bool = Query(False)):
             data["enabled_indices"] = without_paused_mcx(data["enabled_indices"], INDEX_CONFIG)
     except Exception:
         data["known_indices"] = list(INDEX_CONFIG.keys())
-    return data
+    cleaned, dropped = strip_secret_settings(data)
+    if dropped:
+        logger.warning("GET /settings stripped secret-shaped keys: %s", dropped)
+    return cleaned
 
 
 @api_router.post("/settings")
@@ -2019,6 +2020,7 @@ async def get_oi_change(
     minutes: int = Query(15, ge=1, le=1440),
     expiry: Optional[str] = None,
     also: Optional[str] = Query(None, description="Comma-separated extra windows e.g. 1,3,5"),
+    around: Optional[int] = Query(None, ge=1, le=40, description="ATM ± N strikes in the JSON (chart window)"),
 ):
     """Return current snapshot plus a time-based baseline snapshot for diffing.
 
@@ -2148,6 +2150,14 @@ async def get_oi_change(
             "available_history_minutes": available_min,
             "label": "session",
         }
+
+    if around:
+        current = trim_snapshot_around(current, around)
+        prev_doc = trim_snapshot_around(prev_doc, around)
+        for key, payload in list(also_windows.items()):
+            prev = payload.get("previous") if isinstance(payload, dict) else None
+            if prev:
+                also_windows[key] = {**payload, "previous": trim_snapshot_around(prev, around)}
 
     return {
         "index": idx,
@@ -5856,7 +5866,10 @@ async def cas_status(role: str = Depends(require_desk_user)):
                 "auto_bullish_pts": (status.get("settings") or {}).get("auto_bullish_pts"),
                 "auto_bearish_pts": (status.get("settings") or {}).get("auto_bearish_pts"),
             },
-            "auto_trade": status.get("auto_trade") or {},
+            "auto_trade": {
+                "enabled": (status.get("auto_trade") or {}).get("enabled"),
+                "mode": (status.get("auto_trade") or {}).get("mode"),
+            },
             "config": {
                 "lots": (status.get("config") or {}).get("lots"),
                 "live_trading": (status.get("config") or {}).get("live_trading"),
@@ -5872,8 +5885,8 @@ async def cas_status(role: str = Depends(require_desk_user)):
             "state": {
                 "activated": state.get("activated"),
                 "fired_indexes": state.get("fired_indexes"),
-                "fills": state.get("fills") or [],
-                "timings": state.get("timings") or [],
+                "fills": [],
+                "timings": [],
                 "last_ltp": state.get("last_ltp") or {},
                 "baseline_close": state.get("baseline_close") or {},
                 "last_index_move_at": state.get("last_index_move_at") or {},

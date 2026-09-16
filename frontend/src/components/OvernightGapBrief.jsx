@@ -416,7 +416,7 @@ export default function OvernightGapBrief({
   }, [loadBook, isAdmin, active, minimized]);
 
   useEffect(() => {
-    if (!active || minimized) return undefined;
+    if (!isAdmin || !active || minimized) return undefined;
     let cancelled = false;
     const t = setTimeout(() => {
       api.get("/settings")
@@ -428,7 +428,7 @@ export default function OvernightGapBrief({
         .catch(() => { /* keep local */ });
     }, 20000);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [active, minimized]);
+  }, [active, minimized, isAdmin]);
 
   const toggleCarryAi = (on) => {
     setCarryAi(!!on);
