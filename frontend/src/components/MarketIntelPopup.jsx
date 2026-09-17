@@ -186,6 +186,17 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     clearMinimized();
     setMinimized(false);
     setForceOpen(true);
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const h = typeof window !== "undefined" ? window.innerHeight : 800;
+    const width = isPhone() ? 280 : PANEL_W;
+    setLeft(snapCarryLeft("right", w, width));
+    const nextBottom = clampDockBottom(dockClearance(), h, {
+      minBottom: dockClearance(),
+      headerClearance: deskHeaderClearance(),
+      panelHeight: isPhone() ? 320 : 280,
+    });
+    setBottomPx(nextBottom);
+    writeNum(MI_POPUP_BOTTOM_KEY, nextBottom);
   };
 
   const onPointerDown = (e, kind) => {

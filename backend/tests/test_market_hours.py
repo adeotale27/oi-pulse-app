@@ -180,3 +180,9 @@ def test_cas_iep_admin_window_can_be_disabled():
     assert is_cas_iep_window(fri(15, 30)) is True
     assert is_cas_iep_window(fri(15, 31)) is False
     configure_cas_iep(True, "15:20", "15:35", 5)
+    assert is_cas_iep_window(fri(10, 0)) is False
+    configure_cas_iep(True, "15:20", "15:35", 5, True)
+    assert is_cas_iep_window(fri(10, 0)) is True
+    configure_cas_iep(False, "15:20", "15:35", 5, True)
+    assert is_cas_iep_window(fri(10, 0)) is False
+    configure_cas_iep(True, "15:20", "15:35", 5, False)

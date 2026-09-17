@@ -47,7 +47,7 @@ import {
   minutesToCloseIST,
 } from "@/lib/blackScholes";
 import { computeSellCandidates } from "@/lib/sellCandidates";
-import { compactTopSells, summarizeIndexTape } from "@/lib/deskAiTape";
+import { compactTopSells, compactBookFromPositions, summarizeIndexTape } from "@/lib/deskAiTape";
 import {
   loadPositionsToggles,
   savePositionsToggles,
@@ -63,7 +63,11 @@ import {
   POSITIONS_COLUMN_DEFS,
   loadColumnVisibility,
   saveColumnVisibility,
+  loadColumnOrder,
+  saveColumnOrder,
+  moveColumn,
   visibleColumnIds,
+  columnAlign,
 } from "@/lib/positionsColumns";
 import { resolvePositionSpot, positionExpiryISO } from "@/lib/positionPayoff";
 import OvernightRiskScore from "@/components/OvernightRiskScore";
@@ -525,6 +529,7 @@ export default function PositionsPanel({
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [secsLeft, setSecsLeft] = useState(() => Math.max(1, Math.round(positionsPollMs / 1000)));
   const [colVis, setColVis] = useState(() => loadColumnVisibility());
+  const [colOrder, setColOrder] = useState(() => loadColumnOrder());
   const [privacyMode, setPrivacyMode] = useState(() => loadPrivacyMode());
   const [colsOpen, setColsOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
@@ -630,9 +635,18 @@ export default function PositionsPanel({
     });
   }, []);
 
-  const shownCols = useMemo(() => visibleColumnIds(colVis), [colVis]);
+  const shownCols = useMemo(() => {
+    const ids = visibleColumnIds(colVis, colOrder);
+    return toggles.strikePressure ? ids : ids.filter((id) => id !== "strikePressure");
+  }, [colVis, colOrder, toggles.strikePressure]);
   const closeRadar = useCallback(() => setOiRiskOpen(false), []);
-  const colOn = useCallback((id) => shownCols.includes(id), [shownCols]);
+  const onColDrop = useCallback((fromId, toId) => {
+    setColOrder((prev) => {
+      const next = moveColumn(prev, fromId, toId);
+      saveColumnOrder(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 30_000);
@@ -1246,13 +1260,15 @@ export default function PositionsPanel({
         if (!cancelled) setOutside(out.data || null);
         const mem = await api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null }));
         const oiTape = summarizeIndexTape(current, previous);
+        const packed = compactBookFromPositions({ positions: rows });
         const { data } = await api.post("/desk-guide", {
           surface: "positions",
           skip_llm: !deskAiAsk,
           index: activeIndex || undefined,
           session_focus: activeIndex || undefined,
           band: bookVerdict?.band || null,
-          adjust: adjustRef.current,
+          book: packed.book,
+          adjust: packed.adjust || adjustRef.current,
           oi: oiTape ? [oiTape] : undefined,
           sells: sellsSnap,
           journal: {
@@ -1277,7 +1293,7 @@ export default function PositionsPanel({
       cancelled = true;
       clearInterval(id);
     };
-  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex, sellsSnap, current, previous, stats.dayBookedPct, stats.leftover, stats.wallet]);
+  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex, sellsSnap, current, previous, stats.dayBookedPct, stats.leftover, stats.wallet, rows]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 
@@ -2089,86 +2105,51 @@ export default function PositionsPanel({
         <table className="w-full text-sm font-mono-data">
           <thead className="bg-slate-50/90 text-slate-500 uppercase tracking-wider text-xs sticky top-0 z-10">
             <tr className="border-b border-slate-200/80">
-              {colOn("product") && <th className="text-left px-2.5 py-1.5 font-semibold">Product</th>}
-              {colOn("instrument") && <th className="text-left px-2.5 py-1.5 font-semibold">Instrument</th>}
-              {colOn("qty") && <th className="text-right px-2.5 py-1.5 font-semibold">Qty</th>}
-              {colOn("avg") && <th className="text-right px-2.5 py-1.5 font-semibold">Avg</th>}
-              {colOn("ltp") && <th className="text-right px-2.5 py-1.5 font-semibold">LTP</th>}
-              {colOn("pnl") && <th className="text-right px-2.5 py-1.5 font-semibold">P&amp;L</th>}
-              {colOn("tilt") && (
-                <th className="text-right px-2.5 py-1.5 font-semibold">
-                  <span className="inline-flex items-center gap-1">
-                    Tilt
-                    <InfoTip title="Direction tilt" size="xs" testId="delta-col-tip">
-                      Does this leg push you to bet up or down? Near 0 is calmer for sellers.
-                    </InfoTip>
-                  </span>
-                </th>
-              )}
-              {colOn("theta") && (
-                <th className="text-right px-2.5 py-1.5 font-semibold">
-                  <span className="inline-flex items-center gap-1">
-                    ₹/day
-                    <InfoTip title="Daily time money (not P&L)" size="xs" testId="theta-col-tip">
-                      Estimate of ₹ this leg earns or costs from time passing — capped to premium
-                      left so expiry-day maths cannot invent huge fake losses. Your real P&amp;L is
-                      the P&amp;L column (matches Kite).
-                    </InfoTip>
-                  </span>
-                </th>
-              )}
-              {colOn("stillEarn") && (
-                <th className="text-right px-2.5 py-1.5 font-semibold">
-                  <span className="inline-flex items-center gap-1">
-                    Still earn
-                    <InfoTip title="Still to earn" size="xs" testId="prem-left-col-tip">
-                      Premium left on a sold option that can still decay into your pocket if the market stays away.
-                    </InfoTip>
-                  </span>
-                </th>
-              )}
-              {colOn("iv") && <th className="text-right px-2.5 py-1.5 font-semibold">IV</th>}
-              {colOn("dte") && (
-                <th className="text-right px-2.5 py-1.5 font-semibold">
-                  <span className="inline-flex items-center gap-1">
-                    Days left
-                    <InfoTip title="Days left" size="xs" testId="dte-col-tip">
-                      How many days until this option expires (rough).
-                    </InfoTip>
-                  </span>
-                </th>
-              )}
-              {colOn("status") && (
-                <th className="text-left px-2.5 py-1.5 font-semibold">
-                  <span className="inline-flex items-center gap-1">
-                    Status
-                    <InfoTip title="OK vs Too close" size="xs" testId="signal-col-tip">
-                      <p><b>OK</b> — market still away from your sold strike. Hold for now.</p>
-                      <p className="mt-1"><b>Too close</b> — market walked near that strike. Hedge, roll, or exit.</p>
-                    </InfoTip>
-                  </span>
-                </th>
-              )}
-              {colOn("atmDist") && (
-                <th className="text-right px-2.5 py-1.5 font-semibold">
-                  <span className="inline-flex items-center gap-1">
-                    ATM Dist
-                    <InfoTip title="Distance from ATM" size="xs" testId="atm-col-tip">
-                      <p>How far this strike is from ATM. <b>+</b> above ATM · <b>−</b> below. Green on sold options usually means still OTM.</p>
-                    </InfoTip>
-                  </span>
-                </th>
-              )}
-              {colOn("strikePressure") && toggles.strikePressure && (
-                <th className="text-left px-2.5 py-1.5 font-semibold">
-                  <span className="inline-flex items-center gap-1">
-                    Strike P
-                    <InfoTip title="Strike pressure" size="xs" testId="strike-pressure-col-tip">
-                      Market moving toward or away from this strike (not a prediction). Impact is separate: toward is risk for shorts, favourable for longs.
-                    </InfoTip>
-                  </span>
-                </th>
-              )}
+              {shownCols.map((id) => {
+                const align = columnAlign(id);
+                const def = POSITIONS_COLUMN_DEFS.find((c) => c.id === id);
+                const label = id === "theta" ? "₹/day" : id === "strikePressure" ? "Strike P" : (def?.label || id);
+                const tip = id === "tilt" ? (
+                  <InfoTip title="Direction tilt" size="xs" testId="delta-col-tip">Does this leg push you to bet up or down? Near 0 is calmer for sellers.</InfoTip>
+                ) : id === "theta" ? (
+                  <InfoTip title="Daily time money (not P&L)" size="xs" testId="theta-col-tip">Estimate of ₹ this leg earns or costs from time passing — capped to premium left so expiry-day maths cannot invent huge fake losses. Your real P&amp;L is the P&amp;L column (matches Kite).</InfoTip>
+                ) : id === "stillEarn" ? (
+                  <InfoTip title="Still to earn" size="xs" testId="prem-left-col-tip">Premium left on a sold option that can still decay into your pocket if the market stays away.</InfoTip>
+                ) : id === "dte" ? (
+                  <InfoTip title="Days left" size="xs" testId="dte-col-tip">How many days until this option expires (rough).</InfoTip>
+                ) : id === "status" ? (
+                  <InfoTip title="OK vs Too close" size="xs" testId="signal-col-tip"><p><b>OK</b> — market still away from your sold strike. Hold for now.</p><p className="mt-1"><b>Too close</b> — market walked near that strike. Hedge, roll, or exit.</p></InfoTip>
+                ) : id === "atmDist" ? (
+                  <InfoTip title="Distance from ATM" size="xs" testId="atm-col-tip"><p>How far this strike is from ATM. <b>+</b> above ATM · <b>−</b> below. Green on sold options usually means still OTM.</p></InfoTip>
+                ) : id === "strikePressure" ? (
+                  <InfoTip title="Strike pressure" size="xs" testId="strike-pressure-col-tip">Market moving toward or away from this strike (not a prediction). Impact is separate: toward is risk for shorts, favourable for longs.</InfoTip>
+                ) : null;
+                return (
+                  <th
+                    key={id}
+                    draggable
+                    data-testid={`positions-col-head-${id}`}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/col", id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = e.dataTransfer.getData("text/col");
+                      if (from) onColDrop(from, id);
+                    }}
+                    className={`${align === "right" ? "text-right" : "text-left"} px-2.5 py-1.5 font-semibold cursor-grab active:cursor-grabbing select-none`}
+                    title="Drag to reorder"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <GripVertical className="w-3 h-3 opacity-40 shrink-0" />
+                      {label}
+                      {tip}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -2238,90 +2219,123 @@ export default function PositionsPanel({
                         : "bg-emerald-50/25"
                 }`}
               >
-                {colOn("product") && (
-                  <td className="px-2 py-1 min-w-[7.25rem]">
-                    <ProductSidePair row={r} exited={r.exited} />
-                  </td>
-                )}
-                {colOn("instrument") && (
-                  <td className="px-2 py-1">
-                    <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
-                      {positionLabel(r)}
-                    </div>
-                    <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
-                      {r.exchange}
-                      {r.exited ? " · exited" : ""}
-                    </div>
-                  </td>
-                )}
-                {colOn("qty") && (
-                  <td className={`text-right px-2 py-1 font-semibold ${r.exited ? "text-slate-400" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
-                    {privacyMode ? PRIVACY_MASK : (r.exited ? 0 : r.quantity)}
-                  </td>
-                )}
-                {colOn("avg") && (
-                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-400" : ""}`}>
-                    <AvgCell row={r} privacy={privacyMode} />
-                  </td>
-                )}
-                {colOn("ltp") && (
-                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
-                )}
-                {colOn("pnl") && (
-                  <td className={`text-right px-2 py-1 font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
-                    {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
-                  </td>
-                )}
-                {colOn("tilt") && (
-                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
-                    {Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}
-                  </td>
-                )}
-                {colOn("theta") && (
-                  <td className={`text-right px-2 py-1 font-semibold ${privacyMode || thetaInr == null ? (r.exited ? "text-slate-300" : "") : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-50" : ""}`}>
-                    {privacyMode ? PRIVACY_MASK : (thetaInr != null ? fmt(thetaInr, 0) : "—")}
-                  </td>
-                )}
-                {colOn("stillEarn") && (
-                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : "text-slate-700"}`}>
-                    {privacyMode
-                      ? PRIVACY_MASK
-                      : (!r.exited && r.isShort && r.extrinsicLeft != null ? (
-                        <span title={r.onExpiryDay ? `Expiry day — extrinsic left to ${getMarketCloseHm()}` : "Extrinsic left"}>
-                          ₹{fmt(r.extrinsicLeft, 0)}
-                        </span>
-                      ) : "—")}
-                  </td>
-                )}
-                {colOn("iv") && (
-                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
-                    {Number.isFinite(r.iv) ? `${r.iv.toFixed(1)}%` : "—"}
-                  </td>
-                )}
-                {colOn("dte") && (
-                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
-                    {r.dte != null ? `${r.dte.toFixed(1)}d` : "—"}
-                  </td>
-                )}
-                {colOn("status") && (
-                  <td className="px-2 py-1">
-                    <div className="flex flex-wrap items-center gap-1">
-                      <GreeksHealthChip health={r.greeksHealth} />
-                      <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
-                      {!r.exited && !r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
-                    </div>
-                  </td>
-                )}
-                {colOn("atmDist") && (
-                  <td className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
-                    {r.exited ? "—" : <AtmDistanceCell row={r} />}
-                  </td>
-                )}
-                {colOn("strikePressure") && toggles.strikePressure && (
-                  <td className="px-2 py-1">
-                    {r.exited || !r.isOpt ? "—" : <StrikePressureCell result={strikePressureBySymbol[r.tradingsymbol]} />}
-                  </td>
-                )}
+                {shownCols.map((id) => {
+                  const align = columnAlign(id);
+                  const tdAlign = align === "right" ? "text-right" : "";
+                  if (id === "product") {
+                    return (
+                      <td key={id} className="px-2 py-1 min-w-[7.25rem]">
+                        <ProductSidePair row={r} exited={r.exited} />
+                      </td>
+                    );
+                  }
+                  if (id === "instrument") {
+                    return (
+                      <td key={id} className="px-2 py-1">
+                        <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
+                          {positionLabel(r)}
+                        </div>
+                        <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
+                          {r.exchange}
+                          {r.exited ? " · exited" : ""}
+                        </div>
+                      </td>
+                    );
+                  }
+                  if (id === "qty") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 font-semibold ${r.exited ? "text-slate-400" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
+                        {privacyMode ? PRIVACY_MASK : (r.exited ? 0 : r.quantity)}
+                      </td>
+                    );
+                  }
+                  if (id === "avg") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 ${r.exited ? "text-slate-400" : ""}`}>
+                        <AvgCell row={r} privacy={privacyMode} />
+                      </td>
+                    );
+                  }
+                  if (id === "ltp") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 ${r.exited ? "text-slate-400" : ""}`}>{fmt(r.last_price)}</td>
+                    );
+                  }
+                  if (id === "pnl") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
+                        {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
+                      </td>
+                    );
+                  }
+                  if (id === "tilt") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
+                        {Number.isFinite(r.delta) ? r.delta.toFixed(2) : "—"}
+                      </td>
+                    );
+                  }
+                  if (id === "theta") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 font-semibold ${privacyMode || thetaInr == null ? (r.exited ? "text-slate-300" : "") : thetaInr >= 0 ? "text-emerald-700" : "text-rose-700"} ${r.exited ? "opacity-50" : ""}`}>
+                        {privacyMode ? PRIVACY_MASK : (thetaInr != null ? fmt(thetaInr, 0) : "—")}
+                      </td>
+                    );
+                  }
+                  if (id === "stillEarn") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : "text-slate-700"}`}>
+                        {privacyMode
+                          ? PRIVACY_MASK
+                          : (!r.exited && r.isShort && r.extrinsicLeft != null ? (
+                            <span title={r.onExpiryDay ? `Expiry day — extrinsic left to ${getMarketCloseHm()}` : "Extrinsic left"}>
+                              ₹{fmt(r.extrinsicLeft, 0)}
+                            </span>
+                          ) : "—")}
+                      </td>
+                    );
+                  }
+                  if (id === "iv") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
+                        {Number.isFinite(r.iv) ? `${r.iv.toFixed(1)}%` : "—"}
+                      </td>
+                    );
+                  }
+                  if (id === "dte") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
+                        {r.dte != null ? `${r.dte.toFixed(1)}d` : "—"}
+                      </td>
+                    );
+                  }
+                  if (id === "status") {
+                    return (
+                      <td key={id} className="px-2 py-1">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <GreeksHealthChip health={r.greeksHealth} />
+                          <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
+                          {!r.exited && !r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
+                        </div>
+                      </td>
+                    );
+                  }
+                  if (id === "atmDist") {
+                    return (
+                      <td key={id} className={`text-right px-2 py-1 ${r.exited ? "text-slate-300" : ""}`}>
+                        {r.exited ? "—" : <AtmDistanceCell row={r} />}
+                      </td>
+                    );
+                  }
+                  if (id === "strikePressure") {
+                    return (
+                      <td key={id} className="px-2 py-1">
+                        {r.exited || !r.isOpt ? "—" : <StrikePressureCell result={strikePressureBySymbol[r.tradingsymbol]} />}
+                      </td>
+                    );
+                  }
+                  return <td key={id} className={`px-2 py-1 ${tdAlign}`}>—</td>;
+                })}
               </tr>
               {idx === shownOpen.length - 1 && shownOpen.length > 0 && bookSlot === "after-live" && (
                 <tr data-testid="book-verdict-table-slot">
@@ -2724,7 +2738,20 @@ export default function PositionsPanel({
               data-testid="radar-market-intel"
             >
               <div className="overflow-y-auto" style={{ height: radarAiH }}>
-                <MarketIntelCard outside={outside} guide={deskGuide} compact layoutKey={RADAR_AI_LAYOUT_KEY} />
+                <MarketIntelCard
+                  outside={outside}
+                  guide={deskGuide}
+                  compact
+                  layoutKey={RADAR_AI_LAYOUT_KEY}
+                  oi={summarizeIndexTape(current, previous) ? [summarizeIndexTape(current, previous)] : []}
+                  book={compactBookFromPositions({ positions: rows }).book}
+                  adjust={compactBookFromPositions({ positions: rows }).adjust}
+                  journal={{
+                    day_booked_pct: stats.dayBookedPct,
+                    leftover: stats.leftover,
+                    wallet: stats.wallet,
+                  }}
+                />
               </div>
               <button
                 type="button"

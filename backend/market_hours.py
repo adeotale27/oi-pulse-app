@@ -27,6 +27,7 @@ _CAS_IEP_START = dtime(15, 20)
 _CAS_IEP_END = dtime(15, 35)
 _CAS_IEP_ENABLED = True
 _CAS_IEP_INTERVAL = 5
+_CAS_IEP_FORCE = False
 
 # Back-compat aliases used across the codebase
 MARKET_OPEN = _POLL_OPEN
@@ -330,9 +331,10 @@ def configure_cas_iep(
     start_ist: Optional[str] = None,
     end_ist: Optional[str] = None,
     interval_seconds: Optional[int] = None,
+    force: Optional[bool] = None,
 ) -> dict:
     """Admin CAS IEP Quote window. Disabled → no Quote overlay for IEP."""
-    global _CAS_IEP_ENABLED, _CAS_IEP_START, _CAS_IEP_END, _CAS_IEP_INTERVAL
+    global _CAS_IEP_ENABLED, _CAS_IEP_START, _CAS_IEP_END, _CAS_IEP_INTERVAL, _CAS_IEP_FORCE
     if enabled is not None:
         _CAS_IEP_ENABLED = bool(enabled)
     if start_ist:
@@ -345,6 +347,8 @@ def configure_cas_iep(
             _CAS_IEP_INTERVAL = max(5, min(60, n))
         except (TypeError, ValueError):
             pass
+    if force is not None:
+        _CAS_IEP_FORCE = bool(force)
     return cas_iep_config()
 
 
@@ -354,6 +358,7 @@ def cas_iep_config() -> dict:
         "cas_iep_start_ist": f"{_CAS_IEP_START.hour:02d}:{_CAS_IEP_START.minute:02d}",
         "cas_iep_end_ist": f"{_CAS_IEP_END.hour:02d}:{_CAS_IEP_END.minute:02d}",
         "cas_iep_interval_seconds": _CAS_IEP_INTERVAL,
+        "cas_iep_force": _CAS_IEP_FORCE,
     }
 
 
@@ -365,6 +370,8 @@ def is_cas_iep_window(dt: datetime = None) -> bool:
     """Kite Quote indicative_close_price window (admin start/end IST)."""
     if not _CAS_IEP_ENABLED:
         return False
+    if _CAS_IEP_FORCE:
+        return True
     dt = dt or now_ist()
     if is_special_session_day(dt):
         return False

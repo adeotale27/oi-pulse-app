@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.15",
+    date: "2026-09-17",
+    user: [
+      "LIVE and Market Open · Next Pull stay on the left of the top rail; only the index quotes loop. Trade journal keeps a standard desktop window. Mkt Intel opens in the bottom-right corner. Positions table columns drag left or right. Book radar AI uses your live book.",
+    ],
+    admin: [
+      "Admin configuration is tiles: Alerts, Market timing, Data collection, Dashboard pages, Chart signals. CAS IEP still shows under header LTP and as Indicative Close in the sidebar. Market timing → Preview IEP UI now turns that on at the current clock so you can test without waiting for 15:20 IST.",
+    ],
+  },
+  {
     version: "10.14",
     date: "2026-09-17",
     user: [

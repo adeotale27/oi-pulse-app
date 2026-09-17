@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
 import { api, subscribeExtras, unsubscribeExtras } from "@/lib/api";
 import { GIFT_SESSION_WINDOWS } from "@/lib/marketTimes";
@@ -17,9 +17,35 @@ function pctCls(p) {
   return "text-white/70";
 }
 
+function QuoteChip({ it, copy, testId }) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
+      className={`inline-flex items-center gap-1 shrink-0 whitespace-nowrap text-[11px] tabular-nums ${
+        it.active ? "text-white font-bold" : "text-white/95"
+      } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
+    >
+      <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
+      {it.price != null && it.price !== "" ? (
+        <span className="font-semibold tabular-nums">{it.price}</span>
+      ) : null}
+      {it.pct != null && Number.isFinite(it.pct) && (
+        <span className={pctCls(it.pct)}>
+          {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}
+        </span>
+      )}
+      <span className="text-white/30 pl-2" aria-hidden>
+        ·
+      </span>
+    </button>
+  );
+}
+
 /**
- * Phone-only marquee for VIX / GIFT / NIFTY / SENSEX / BNF.
- * Sits inside the top LIVE status bar so quote cards do not eat chart space.
+ * Quote marquee inside the LIVE rail. LIVE / Next Pull stay outside this track.
+ * Two identical copies; CSS translates -50% so items exit left and re-enter right.
  */
 export default function MobileIndexTicker({
   activeIndex,
@@ -27,11 +53,13 @@ export default function MobileIndexTicker({
   spotPrices = {},
   tickers: tickersProp = null,
   indices = DESK_IDS,
-  leadItems = [],
 }) {
   const [tickersLocal, setTickersLocal] = useState([]);
   const [extras, setExtras] = useState({ vix: null, gift_nifty: null, windows: {} });
   const [giftOpen, setGiftOpen] = useState(false);
+  const [pad, setPad] = useState(1);
+  const wrapRef = useRef(null);
+  const setRef = useRef(null);
   const tickers = tickersProp != null ? (Array.isArray(tickersProp) ? tickersProp : []) : tickersLocal;
 
   useEffect(() => {
@@ -101,14 +129,37 @@ export default function MobileIndexTicker({
         active: idx === activeIndex,
       });
     }
-    return [...(Array.isArray(leadItems) ? leadItems : []), ...out];
-  }, [extras, tickers, spotPrices, activeIndex, onSelectIndex, indices, leadItems]);
+    return out;
+  }, [extras, tickers, spotPrices, activeIndex, onSelectIndex, indices]);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const wrap = wrapRef.current;
+      const setEl = setRef.current;
+      if (!wrap || !setEl || !items.length) return;
+      const one = setEl.scrollWidth / Math.max(pad, 1);
+      if (!one) return;
+      const need = Math.max(1, Math.ceil(wrap.clientWidth / one));
+      if (need !== pad) setPad(need);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [items, pad]);
 
   const giftSessions = extras?.windows?.gift?.sessions || GIFT_SESSION_WINDOWS;
-  const copies = items.length ? [0, 1] : [0];
+  const loopItems = useMemo(() => {
+    if (!items.length) return [];
+    const n = Math.max(1, pad);
+    const out = [];
+    for (let i = 0; i < n; i += 1) {
+      for (const it of items) out.push(it);
+    }
+    return out;
+  }, [items, pad]);
 
   return (
-    <div className="min-w-0 overflow-hidden" data-testid="mobile-index-ticker">
+    <div ref={wrapRef} className="min-w-0 w-full overflow-hidden" data-testid="mobile-index-ticker">
       <GiftSessionsModal
         open={giftOpen}
         onOpenChange={setGiftOpen}
@@ -116,31 +167,20 @@ export default function MobileIndexTicker({
         serverIst={extras?.server_time_ist}
       />
       <div className="oi-mobile-ticker-track">
-        {copies.map((copy) => (
-          <div key={copy} className="oi-mobile-ticker-copy" aria-hidden={copy > 0}>
-            {items.map((it) => (
-              <button
-                key={`${copy}-${it.key}`}
-                type="button"
-                data-testid={copy === 0 ? `mobile-ticker-${it.key}` : undefined}
-                onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
-                className={`inline-flex items-center gap-1 shrink-0 whitespace-nowrap text-[11px] tabular-nums ${
-                  it.active ? "text-white font-bold" : "text-white/95"
-                } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
-              >
-                <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
-                {it.price != null && it.price !== "" ? (
-                  <span className="font-semibold tabular-nums">{it.price}</span>
-                ) : null}
-                {it.pct != null && Number.isFinite(it.pct) && (
-                  <span className={pctCls(it.pct)}>
-                    {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}
-                  </span>
-                )}
-                <span className="text-white/30 pl-2" aria-hidden>
-                  ·
-                </span>
-              </button>
+        {[0, 1].map((copy) => (
+          <div
+            key={copy}
+            ref={copy === 0 ? setRef : undefined}
+            className="oi-mobile-ticker-copy"
+            aria-hidden={copy > 0}
+          >
+            {loopItems.map((it, i) => (
+              <QuoteChip
+                key={`${copy}-${it.key}-${i}`}
+                it={it}
+                copy={copy}
+                testId={copy === 0 && i < items.length ? `mobile-ticker-${it.key}` : undefined}
+              />
             ))}
           </div>
         ))}

@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.15 — 2026-09-17
+
+Journal modal is a fixed desktop size with inner scroll (phone still fills the viewport). LIVE + Market Open · Next Pull stay pinned on the left of the status rail; only index quotes marquee end-to-end. Mkt Intel expands docked bottom-right. Admin configuration is tile panes (Alerts, Market timing, Data collection, Dashboard pages, Chart signals). CAS IEP still draws under header LTP and sidebar Indicative Close; Admin → Market timing has Preview IEP UI now. Book radar AI gets the live book + OI tape. Positions column headers drag left/right (order persisted).
+
 ## V10.14 — 2026-09-17
 
 Telegram token and chat ID live in Admin → Telegram (Fernet vault + BotFather help), not Admin configuration. Market Intel chip stays one line on the right with unseen CRITICAL count; popup is on by default and after 14:00 IST includes the prior session until the next open. Error log Src chips come from stored sources. Live strip is one RTL CSS marquee (LIVE + Next Pull + quotes). VIX uses the same portal hover as GIFT. Journal Previous/Next skip weekends and holidays. CAS IEP Quote window is admin-configurable (default 15:20–15:35 IST, 5s).

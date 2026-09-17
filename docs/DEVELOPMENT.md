@@ -48,6 +48,7 @@ node frontend/src/lib/positionsBrain.test.js
 node frontend/src/lib/positionHedge.test.js
 node frontend/src/lib/marketIntel.test.js
 node frontend/src/lib/tickerRegime.test.js
+node frontend/src/lib/positionsColumns.test.js
 ```
 
 Health: `http://localhost:8000/api/status`. UI talks to `REACT_APP_BACKEND_URL`.
