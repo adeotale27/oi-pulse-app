@@ -20,7 +20,8 @@ export const ADR_COLUMNS = [
   { id: "week52_low", label: "52W Low", defaultVisible: false, sortable: true, numeric: true, kind: "usd" },
   { id: "week52_high", label: "52W High", defaultVisible: false, sortable: true, numeric: true, kind: "usd" },
   { id: "market_status", label: "Market Status", defaultVisible: true, sortable: false, numeric: false },
-  { id: "updated", label: "Updated", defaultVisible: true, sortable: true, numeric: false, kind: "time" },
+  { id: "session_clock", label: "Clock", defaultVisible: true, sortable: false, numeric: false, help: "Green = listing session open, red = closed" },
+  { id: "updated", label: "Last updated", defaultVisible: true, sortable: true, numeric: false, kind: "time" },
 ];
 
 export const ADR_COL_IDS = ADR_COLUMNS.map((c) => c.id);
@@ -34,7 +35,7 @@ export const ADR_FILTERS = [
   { id: "IT", label: "IT" },
 ];
 
-const PREF_KEY = "oiAdrColumns.v1";
+const PREF_KEY = "oiAdrColumns.v2";
 
 export function usdPrice(v) {
   if (v == null || !Number.isFinite(Number(v))) return "—";
@@ -83,6 +84,43 @@ export function toneClass(tone) {
   return "text-slate-500 dark:text-slate-400";
 }
 
+export function listingCountryCode(exchange) {
+  const e = String(exchange || "").trim().toUpperCase();
+  if (["FRA", "XETRA", "FWB", "FSE", "XETR", "FRANKFURT"].includes(e)) return "DE";
+  if (["LSE", "LON", "LONDON"].includes(e)) return "GB";
+  return "US";
+}
+
+export function listingFlag(exchangeOrRow) {
+  if (exchangeOrRow && typeof exchangeOrRow === "object") {
+    if (exchangeOrRow.listing_flag) return exchangeOrRow.listing_flag;
+    return listingFlag(exchangeOrRow.exchange);
+  }
+  const code = listingCountryCode(exchangeOrRow);
+  if (code === "DE") return "🇩🇪";
+  if (code === "GB") return "🇬🇧";
+  return "🇺🇸";
+}
+
+export function listingMarketName(exchangeOrRow) {
+  if (exchangeOrRow && typeof exchangeOrRow === "object" && exchangeOrRow.market_label) {
+    return exchangeOrRow.market_label;
+  }
+  const exch = exchangeOrRow && typeof exchangeOrRow === "object" ? exchangeOrRow.exchange : exchangeOrRow;
+  const code = listingCountryCode(exch);
+  if (code === "DE") return "German Market";
+  if (code === "GB") return "UK Market";
+  return "US Market";
+}
+
+export function isAdrSessionOpen(row) {
+  if (!row) return false;
+  if (row.listing_open === true || row.is_market_open === true) return true;
+  if (row.listing_open === false || row.is_market_open === false) return false;
+  if (row.display_status === "CURRENT" && !row.stale) return true;
+  return false;
+}
+
 export function formatAdrCell(col, row) {
   const id = col.id;
   if (id === "company") return row.company_name || "—";
@@ -90,13 +128,15 @@ export function formatAdrCell(col, row) {
   if (id === "adr_symbol") return row.adr_symbol || "—";
   if (id === "exchange") return row.exchange || "—";
   if (id === "sector") return row.sector || "—";
+  if (id === "session_clock") return isAdrSessionOpen(row) ? "open" : "closed";
   if (id === "market_status") {
-    if (row.display_status === "CURRENT" && row.is_market_open) return "US Market Open";
+    const venue = listingMarketName(row);
+    if (row.display_status === "CURRENT" && isAdrSessionOpen(row)) return `${venue} Open`;
     if (row.display_status === "LAST_KNOWN") return "Using Last Successful Data";
-    if (row.stale) return "US Market Closed";
-    return row.is_market_open ? "US Market Open" : "US Market Closed";
+    if (row.stale) return `${venue} Closed`;
+    return isAdrSessionOpen(row) ? `${venue} Open` : `${venue} Closed`;
   }
-  if (id === "updated") return row.fetched_at || "";
+  if (id === "updated") return formatIstStamp(row.fetched_at);
   const v = row[id];
   if (col.kind === "usd") return usdPrice(v);
   if (col.kind === "usdSigned") return usdSigned(v);

@@ -5,10 +5,14 @@ from adr import (
     SEED_ADRS,
     et_date_iso,
     is_banking_sector,
+    is_de_equity_session,
     is_indian_adr_listing,
+    is_listing_session_open,
     is_nyse_holiday,
     is_us_equity_session,
     large_move,
+    listing_flag,
+    listing_country_code,
     meaningful_new_move,
     normalize_quote,
     now_et,
@@ -76,7 +80,8 @@ def test_public_prefs_never_leaks_key():
 def test_indian_adr_filter_excludes_generic_listings():
     assert is_indian_adr_listing({"symbol": "INFY", "exchange": "NYSE", "type": "American Depositary Receipt", "name": "Infosys Limited ADR"})
     assert is_indian_adr_listing({"symbol": "HDB", "exchange": "NYSE", "name": "HDFC Bank"})
-    assert not is_indian_adr_listing({"symbol": "RELIANCE", "exchange": "XETRA", "name": "Reliance Industries Ltd", "country": "Germany"})
+    assert is_indian_adr_listing({"symbol": "RIL", "exchange": "XETRA", "name": "Reliance Industries Ltd", "country": "Germany"})
+    assert not is_indian_adr_listing({"symbol": "SAP", "exchange": "XETRA", "name": "SAP SE", "country": "Germany"})
     assert not is_indian_adr_listing({"symbol": "AAPL", "exchange": "NASDAQ", "type": "Common Stock", "country": "United States", "name": "Apple Inc"})
 
 
@@ -106,6 +111,12 @@ def test_us_session_dst_holidays_and_close():
     assert is_nyse_holiday("2026-04-03")
     assert not is_us_equity_session(datetime(2026, 4, 3, 15, 0, tzinfo=timezone.utc))
     assert now_et(datetime(2026, 7, 10, 13, 30, tzinfo=timezone.utc)).hour == 9
+    assert listing_country_code("XETRA") == "DE"
+    assert listing_flag("NYSE") == "🇺🇸"
+    assert listing_flag("XETRA") == "🇩🇪"
+    assert is_de_equity_session(datetime(2026, 7, 10, 11, 0, tzinfo=timezone.utc))
+    assert is_listing_session_open("XETRA", datetime(2026, 7, 10, 11, 0, tzinfo=timezone.utc))
+    assert not is_listing_session_open("NYSE", datetime(2026, 7, 10, 11, 0, tzinfo=timezone.utc))
 
 
 def test_should_poll_us_open_interval_and_close():
@@ -122,6 +133,9 @@ def test_should_poll_us_open_interval_and_close():
     closed = datetime(2026, 7, 10, 20, 5, tzinfo=timezone.utc)
     go, reason = should_poll_now({**state, "last_ok_at": later.isoformat(), "last_us_open_day": et_date_iso(open_dt)}, prefs, closed)
     assert not go and reason == "us_closed"
+    de_hours = datetime(2026, 7, 10, 11, 0, tzinfo=timezone.utc)
+    go, reason = should_poll_now({"last_us_open_day": "x"}, prefs, de_hours)
+    assert go and reason == "de_open"
 
 
 def test_ist_open_refresh_once():

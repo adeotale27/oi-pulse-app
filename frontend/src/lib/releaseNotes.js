@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.05",
+    date: "2026-09-17",
+    user: [
+      "ADRs show listing flags and a green/red clock for open vs closed. Last updated is the timestamp only. During the closing auction, a dock popup shows Indicative price for NIFTY 50 and SENSEX together; the sidebar prints Indicative price in bold.",
+    ],
+    admin: [
+      "Admin menu has an Indicative price popup toggle. IEP is kept when live ticks omit the field. Indian names on XETRA/FRA are valid listings (e.g. Reliance) with a German flag.",
+    ],
+  },
+  {
     version: "11.04",
     date: "2026-09-17",
     user: [

@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.05 — 2026-09-17
+
+ADRs: Last updated column (timestamp only), listing-country flags, Market Status text kept plus a red/green session clock. German (XETRA/FRA) Indian names are allowed and polled in Frankfurt hours. Indicative price stays on sparse WS ticks; sidebar label is Indicative price with a bold print. CAS dock popup shows NIFTY 50 + SENSEX from 15:19 IST through IEP end; Admin dropdown toggles it.
+
 ## V11.04 — 2026-09-17
 
 ADRs page imports `formatIstStamp` (and `formatAdrCell` / `ADR_FILTERS`) from `@/lib/adr`.
