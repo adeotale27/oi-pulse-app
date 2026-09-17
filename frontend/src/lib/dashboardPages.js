@@ -2,6 +2,8 @@
 
 export const HOME_PAGE = "oi-change";
 export const BOOT_VISIBLE_PAGES = [HOME_PAGE];
+/** NSE holidays + index impact — always on for guests and admin after /config. */
+export const ALWAYS_ON_PAGES = ["holidays"];
 
 /**
  * Before pagesReady, only HOME_PAGE is allowed so a reload cannot flash
@@ -9,6 +11,7 @@ export const BOOT_VISIBLE_PAGES = [HOME_PAGE];
  */
 export function pageAllowed(id, { isAdmin, visiblePages, adminPages, pagesReady = true } = {}) {
   if (pagesReady === false) return id === HOME_PAGE;
+  if (ALWAYS_ON_PAGES.includes(id)) return true;
   if (isAdmin) {
     if (!Array.isArray(adminPages) || adminPages.length === 0) return true;
     return adminPages.includes(id);

@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.08",
+    date: "2026-09-17",
+    user: [
+      "Events (NSE holidays, economic calendar, and index impact) stay on the desk even if Index Risk is turned off. Market Intel shows a real timeout if the news feed is slow — it is stored news, not a Kite dump.",
+    ],
+    admin: [
+      "GET /market-intel queries mi_articles for the IST date instead of scanning the latest 300 rows. ADR poll spends 1 Twelve Data credit per symbol, paced to Basic 8 (8/min, 800/day); 429 backs off 90s and keeps last quotes.",
+    ],
+  },
+  {
     version: "11.07",
     date: "2026-09-17",
     user: [

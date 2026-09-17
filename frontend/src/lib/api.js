@@ -1,6 +1,8 @@
 import axios from "axios";
 import { shouldWipeTokensOn401 } from "@/lib/authBoot";
 
+export { apiDetail } from "@/lib/apiErrors";
+
 // Backend URL resolution:
 // 1. Use REACT_APP_BACKEND_URL if provided at build time (Emergent preview).
 // 2. Otherwise fall back to the current window origin. This lets the app work
@@ -19,22 +21,6 @@ export const API = `${BACKEND_URL}/api`;
 // headers (see the request interceptor below) — no cookies are used — so
 // disabling withCredentials is safe.
 export const api = axios.create({ baseURL: API, timeout: 12000, withCredentials: false });
-
-/** FastAPI `detail` can be a string, list of objects, or missing on timeout. */
-export function apiDetail(e, fallback = "Request failed") {
-  const code = e?.code;
-  if (code === "ECONNABORTED" || /timeout/i.test(String(e?.message || ""))) {
-    return "Kite dump took too long — tap Refresh, wait, then Enable again (first load can take a minute)";
-  }
-  const d = e?.response?.data?.detail;
-  if (typeof d === "string" && d.trim()) return d;
-  if (Array.isArray(d)) {
-    const bits = d.map((x) => (typeof x === "string" ? x : x?.msg || x?.detail)).filter(Boolean);
-    if (bits.length) return bits.join("; ");
-  }
-  if (d && typeof d === "object" && d.msg) return String(d.msg);
-  return e?.message || fallback;
-}
 
 export const INDEX_ADMIN_TIMEOUT_MS = 90000;
 

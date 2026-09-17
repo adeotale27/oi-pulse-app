@@ -17,6 +17,7 @@ from adr import (
     normalize_quote,
     now_et,
     public_prefs,
+    quote_credit_wait_s,
     should_poll_now,
     universe_doc,
     validate_universe_row,
@@ -136,6 +137,24 @@ def test_should_poll_us_open_interval_and_close():
     de_hours = datetime(2026, 7, 10, 11, 0, tzinfo=timezone.utc)
     go, reason = should_poll_now({"last_us_open_day": "x"}, prefs, de_hours)
     assert go and reason == "de_open"
+    go, reason = should_poll_now(
+        {"last_us_open_day": "x", "last_attempt_at": de_hours.isoformat(), "rate_limit_backoff_s": 90},
+        prefs,
+        de_hours,
+    )
+    assert not go and reason == "wait"
+    go, reason = should_poll_now(
+        {"last_us_open_day": "x", "last_attempt_at": de_hours.isoformat()},
+        prefs,
+        de_hours,
+    )
+    assert not go and reason == "wait"
+
+
+def test_twelve_data_credit_gap():
+    assert quote_credit_wait_s(0, 100) == 0
+    assert quote_credit_wait_s(100.0, 100.0) == 7.5
+    assert quote_credit_wait_s(100.0, 108.0) == 0.0
 
 
 def test_ist_open_refresh_once():

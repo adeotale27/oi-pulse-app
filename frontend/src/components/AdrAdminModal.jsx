@@ -95,7 +95,8 @@ export default function AdrAdminModal({ open, onOpenChange }) {
           </div>
           <div>
             <Label className="text-xs">Polling interval (seconds)</Label>
-            <Input type="number" min={60} max={3600} className="h-8 mt-1" value={prefs?.poll_interval_seconds ?? 300} onChange={(e) => setPrefs({ ...prefs, poll_interval_seconds: Number(e.target.value) })} />
+            <Input type="number" min={120} max={3600} className="h-8 mt-1" value={prefs?.poll_interval_seconds ?? 300} onChange={(e) => setPrefs({ ...prefs, poll_interval_seconds: Number(e.target.value) })} />
+            <p className="text-[10px] text-slate-500 mt-1">Twelve Data Basic 8 is 8 credits/min and 800/day. Each ADR quote is 1 credit, paced 7.5s apart. Default 300s stays under the daily cap.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => {

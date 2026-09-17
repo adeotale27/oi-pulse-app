@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -33,6 +34,11 @@ STOCKS_URL = "https://api.twelvedata.com/stocks"
 TIME_SERIES_URL = "https://api.twelvedata.com/time_series"
 
 DEFAULT_POLL_SECONDS = 300
+# Twelve Data Basic 8: 8 API credits / minute, 800 / day. /quote is 1 credit per symbol.
+# A comma-batch of 8 symbols still spends 8 credits in one second (dashboard "minutely max").
+TD_CREDITS_PER_MINUTE = 8
+TD_CREDIT_GAP_S = 60.0 / TD_CREDITS_PER_MINUTE
+TD_RATE_LIMIT_BACKOFF_S = 90
 DEFAULT_LARGE_MOVE = 5.0
 DEFAULT_BANKING_MOVE = 5.0
 US_OPEN = dtime(9, 30)
@@ -74,6 +80,8 @@ _INDIAN_NAME_RE = re.compile(
 
 _stop = None
 _task = None
+_last_quote_credit_at = 0.0
+_rate_limited_until = 0.0
 
 
 def _now_utc() -> datetime:
@@ -514,6 +522,34 @@ async def _http_get(url: str, params: Dict[str, Any], timeout: float = 18.0):
         return await client.get(url, params=params)
 
 
+def quote_credit_wait_s(last_credit_at: float, now_mono: float, gap_s: float = TD_CREDIT_GAP_S) -> float:
+    """Seconds to sleep so we never spend more than 8 Twelve Data credits per minute."""
+    if last_credit_at <= 0:
+        return 0.0
+    return max(0.0, float(gap_s) - (now_mono - last_credit_at))
+
+
+def rate_limit_wait_s(until_mono: float, now_mono: float) -> float:
+    return max(0.0, until_mono - now_mono)
+
+
+async def _consume_td_credit() -> None:
+    """Serialize Twelve Data calls to Basic-8 (8 credits/min)."""
+    global _last_quote_credit_at, _rate_limited_until
+    now = time.monotonic()
+    extra = rate_limit_wait_s(_rate_limited_until, now)
+    gap = quote_credit_wait_s(_last_quote_credit_at, now + extra)
+    wait = extra + gap
+    if wait > 0:
+        await asyncio.sleep(wait)
+    _last_quote_credit_at = time.monotonic()
+
+
+def mark_twelve_data_rate_limited(seconds: float = TD_RATE_LIMIT_BACKOFF_S) -> None:
+    global _rate_limited_until
+    _rate_limited_until = time.monotonic() + max(30.0, float(seconds))
+
+
 async def fetch_quotes(api_key: str, symbols: List[str]) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
     if not api_key:
         return {}, "not_configured"
@@ -521,10 +557,15 @@ async def fetch_quotes(api_key: str, symbols: List[str]) -> Tuple[Dict[str, Dict
         return {}, None
     out: Dict[str, Dict[str, Any]] = {}
     err = None
-    for i in range(0, len(symbols), 8):
-        chunk = symbols[i:i + 8]
+    seen = []
+    for raw_sym in symbols:
+        sym = str(raw_sym or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.append(sym)
+        await _consume_td_credit()
         try:
-            r = await _http_get(QUOTE_URL, {"symbol": ",".join(chunk), "apikey": api_key})
+            r = await _http_get(QUOTE_URL, {"symbol": sym, "apikey": api_key})
         except Exception as e:
             import httpx
             kind = "Timeout" if isinstance(e, httpx.TimeoutException) else type(e).__name__
@@ -535,6 +576,7 @@ async def fetch_quotes(api_key: str, symbols: List[str]) -> Tuple[Dict[str, Dict
             await record_error(source="adr", message=f"Client error {r.status_code} Unauthorized", path="/quote", kind="AuthError")
             return out, "unauthorized"
         if r.status_code == 429:
+            mark_twelve_data_rate_limited()
             await record_error(source="adr", message="Client error 429 Too Many Requests", path="/quote", kind="RateLimit")
             return out, "rate_limited"
         if r.status_code >= 500:
@@ -547,22 +589,22 @@ async def fetch_quotes(api_key: str, symbols: List[str]) -> Tuple[Dict[str, Dict
             err = "bad_payload"
             continue
         if isinstance(payload, dict) and payload.get("status") == "error":
-            await record_error(source="adr", message=redact(str(payload.get("message") or "quote error"))[:400], path="/quote", kind="ProviderError")
+            msg = str(payload.get("message") or "quote error")
+            if "rate" in msg.lower() or "limit" in msg.lower():
+                mark_twelve_data_rate_limited()
+                await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="RateLimit")
+                return out, "rate_limited"
+            await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="ProviderError")
             err = "provider_error"
             continue
-        rows = payload
-        if isinstance(payload, dict) and "symbol" in payload:
-            rows = {payload.get("symbol"): payload}
-        elif isinstance(payload, dict):
-            rows = payload
-        else:
-            rows = {}
-        for sym, raw in (rows or {}).items():
-            if not isinstance(raw, dict):
-                continue
-            norm = normalize_quote(raw, symbol=str(sym))
-            if norm:
-                out[norm["symbol"]] = norm
+        raw = payload
+        if isinstance(payload, dict) and isinstance(payload.get(sym), dict):
+            raw = payload[sym]
+        if not isinstance(raw, dict):
+            continue
+        norm = normalize_quote(raw, symbol=sym)
+        if norm:
+            out[norm["symbol"]] = norm
     return out, err
 
 
@@ -581,6 +623,7 @@ async def discover_and_seed(db, api_key: str) -> int:
     if not api_key or db is None:
         return added
     try:
+        await _consume_td_credit()
         r = await _http_get(STOCKS_URL, {"type": "American Depositary Receipt", "apikey": api_key}, timeout=25.0)
         if r.status_code != 200:
             return added
@@ -844,7 +887,7 @@ async def poll_once(db, *, reason: str = "interval") -> Dict[str, Any]:
             path="/adr/poll",
             kind="PollFailed",
         )
-        if db is not None:
+        if err != "rate_limited" and db is not None:
             await db[LATEST_COL].update_many({}, {"$set": {"poll_status": "failed"}})
         return {"ok": False, "reason": err, "stored": 0, "failed": failed}
     if db is not None:
@@ -857,6 +900,18 @@ async def poll_once(db, *, reason: str = "interval") -> Dict[str, Any]:
     return {"ok": True, "reason": reason, "stored": stored, "failed": failed, "error": err}
 
 
+def _seconds_since(iso_ts: Any, dt: datetime) -> Optional[float]:
+    if not iso_ts:
+        return None
+    try:
+        prev = datetime.fromisoformat(str(iso_ts).replace("Z", "+00:00"))
+        if prev.tzinfo is None:
+            prev = prev.replace(tzinfo=UTC)
+        return (dt - prev).total_seconds()
+    except Exception:
+        return None
+
+
 def should_poll_now(state: Dict[str, Any], prefs: Dict[str, Any], now: Optional[datetime] = None) -> Tuple[bool, str]:
     """Return (poll?, reason). Immediate on US open; stop after US close; one IST 09:15 refresh."""
     dt = now or _now_utc()
@@ -864,12 +919,19 @@ def should_poll_now(state: Dict[str, Any], prefs: Dict[str, Any], now: Optional[
     ist = now_ist(dt)
     interval = max(60, int(prefs.get("poll_interval_seconds") or DEFAULT_POLL_SECONDS))
     last_ok = state.get("last_ok_at")
+    last_attempt = state.get("last_attempt_at") or last_ok
+    backoff = max(0, int(state.get("rate_limit_backoff_s") or 0))
+    min_gap = max(interval, backoff)
     last_open_day = state.get("last_us_open_day")
     last_ist_day = state.get("last_ist_refresh_day")
     us_open = is_us_equity_session(dt)
     de_open = is_de_equity_session(dt)
     today_et = et.date().isoformat()
     today_ist = ist.date().isoformat()
+
+    age = _seconds_since(last_attempt, dt)
+    if age is not None and age < min_gap and backoff:
+        return False, "wait"
 
     if us_open and last_open_day != today_et:
         return True, "us_open"
@@ -886,6 +948,8 @@ def should_poll_now(state: Dict[str, Any], prefs: Dict[str, Any], now: Optional[
             return True, "ist_open"
     if not us_open and not de_open:
         return False, "us_closed"
+    if age is not None and age < min_gap:
+        return False, "wait"
     if de_open and not us_open and not last_ok:
         return True, "de_open"
     if not last_ok:
@@ -913,7 +977,13 @@ async def loop(db_fn, stop: asyncio.Event) -> None:
             go, reason = should_poll_now(state, prefs)
             if go and prefs.get("enabled") is not False:
                 result = await poll_once(db, reason=reason)
-                patch = {"last_reason": reason}
+                patch = {"last_reason": reason, "last_attempt_at": _now_utc().isoformat()}
+                if result.get("reason") == "rate_limited":
+                    patch["rate_limit_backoff_s"] = TD_RATE_LIMIT_BACKOFF_S
+                elif result.get("ok"):
+                    patch["rate_limit_backoff_s"] = 0
+                else:
+                    patch["rate_limit_backoff_s"] = 45
                 if reason == "us_open":
                     patch["last_us_open_day"] = et_date_iso()
                 if reason == "ist_open":

@@ -779,12 +779,13 @@ export default function Dashboard() {
   }, []);
 
   const openHolidaysTab = useCallback(() => {
-    if (tabOn("holidays")) setActiveTab("holidays");
-  }, [tabOn]);
+    setActiveTab("holidays");
+  }, []);
   const openIndexEventsTab = useCallback(() => {
     if (tabOn("index-events")) setActiveTab("index-events");
+    else setActiveTab("holidays");
   }, [tabOn]);
-  const showImpactTile = tabOn("index-events");
+  const showImpactTile = true;
 
   // Dark mode -> toggle html.dark class + persist
   useEffect(() => {
@@ -2989,7 +2990,11 @@ export default function Dashboard() {
 
                   {(tabOn("holidays")) && (
                     <TabsContent value="holidays" className="mt-0">
-                    <HolidaysTab />
+                    <HolidaysTab
+                      activeIndex={activeIndex}
+                      isAdmin={!!authState.is_admin}
+                      refreshKey={uploadRefreshKey}
+                    />
                   </TabsContent>
                   )}
 

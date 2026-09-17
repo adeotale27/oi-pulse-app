@@ -913,10 +913,28 @@ def cluster_rows(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+def articles_window_query(target_date: date) -> Dict[str, Any]:
+    """Mongo filter for one IST calendar day (plus TZ slack). Python still applies IST date."""
+    start_ist = datetime.combine(target_date, datetime.min.time(), tzinfo=IST)
+    end_ist = start_ist + timedelta(days=1)
+    start_utc = (start_ist - timedelta(hours=14)).astimezone(timezone.utc)
+    end_utc = (end_ist + timedelta(hours=14)).astimezone(timezone.utc)
+    iso = target_date.isoformat()
+    return {
+        "status": {"$ne": "gone"},
+        "$or": [
+            {"published_at": {"$regex": f"^{iso}"}},
+            {"discovered_at": {"$gte": start_utc, "$lt": end_utc}},
+            {"discovered_at": {"$gte": start_utc.isoformat(), "$lt": end_utc.isoformat()}},
+        ],
+    }
+
+
 async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int = 40, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
     if db is None:
         return []
-    docs = await db[ART_COL].find({"status": {"$ne": "gone"}}, {"_id": 0}).sort("discovered_at", -1).to_list(300)
+    target_date = parse_feed_date(date_str) or ist_today()
+    docs = await db[ART_COL].find(articles_window_query(target_date), {"_id": 0}).sort("discovered_at", -1).to_list(400)
     min_i = _safe_int(prefs.get("min_impact"), 0)
     min_in = _safe_int(prefs.get("min_india"), 0)
     show_mod = bool(prefs.get("show_moderate", False))
@@ -925,8 +943,6 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
     cats = {str(c).lower() for c in (prefs.get("categories") or [])}
     all_cats = {"india", "macro", "fed", "oil", "geopolitics", "corporate"}
     cat_filter = bool(cats) and not all_cats.issubset(cats) and len(cats) < 6
-
-    target_date = parse_feed_date(date_str) or ist_today()
 
     kept = []
     for d in docs:
