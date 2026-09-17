@@ -211,7 +211,7 @@ export default function SettingsModal({
           second_session_ist: settings.second_session_ist,
           cas_iep_enabled: settings.cas_iep_enabled !== false,
           cas_iep_start_ist: settings.cas_iep_start_ist || "15:20",
-          cas_iep_end_ist: settings.cas_iep_end_ist || "15:35",
+          cas_iep_end_ist: settings.cas_iep_end_ist || "15:30",
           cas_iep_interval_seconds: settings.cas_iep_interval_seconds ?? 5,
           cas_iep_force: !!settings.cas_iep_force,
           expire_admin_on_market_close: settings.expire_admin_on_market_close,
@@ -525,7 +525,7 @@ export default function SettingsModal({
                   <p className="text-[10px] text-slate-500">
                     IEP is the Kite Quote <code>indicative_close_price</code> under LTP on header index tiles
                     (<code>ticker-*-iep</code>) and as Indicative Close on the sidebar spot. It never replaces LTP.
-                    Default window 15:20–15:35 IST. Off = no extra Quote calls. Preview now shows that UI at the current time so you can test without waiting for CAS.
+                    Default window 15:20–15:30 IST (Kite IEP stops when the cash close settles). Off = no extra Quote calls. Preview now shows that UI at the current time so you can test without waiting for CAS.
                   </p>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -534,7 +534,7 @@ export default function SettingsModal({
                     </div>
                     <div>
                       <Label className="text-[10px] uppercase text-slate-500">IEP end</Label>
-                      <Input type="time" data-testid="cas-iep-end" className="h-8" value={settings.cas_iep_end_ist || "15:35"} onChange={(e) => setSettings({ ...settings, cas_iep_end_ist: e.target.value })} />
+                      <Input type="time" data-testid="cas-iep-end" className="h-8" value={settings.cas_iep_end_ist || "15:30"} onChange={(e) => setSettings({ ...settings, cas_iep_end_ist: e.target.value })} />
                     </div>
                     <div>
                       <Label className="text-[10px] uppercase text-slate-500">Quote interval (s)</Label>

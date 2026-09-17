@@ -3,6 +3,7 @@ import { Line, LineChart, ResponsiveContainer, Tooltip as ReTooltip, XAxis, YAxi
 import { Columns3, Search, SlidersHorizontal, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
+import ListingFlag from "@/components/ListingFlag";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import {
-  ADR_COLUMNS, ADR_FILTERS, filterAdrRows, formatAdrCell, formatIstStamp, isAdrSessionOpen, listingFlag, loadAdrColumns, moveTone, resetAdrColumns, saveAdrColumns, sortAdrRows, toneClass, usdPrice, usdSigned, pctSigned, fmtVolume,
+  ADR_COLUMNS, ADR_FILTERS, filterAdrRows, formatAdrCell, formatIstStamp, isAdrSessionOpen, listingCountryCode, loadAdrColumns, moveTone, resetAdrColumns, saveAdrColumns, sortAdrRows, toneClass, usdPrice, usdSigned, pctSigned, fmtVolume,
 } from "@/lib/adr";
 
 export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin }) {
@@ -192,6 +193,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
                     {c.label}{sortKey === c.id ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                 ))}
+                <th className="w-8 px-1.5 py-1.5" aria-hidden />
               </tr>
             </thead>
             <tbody>
@@ -205,31 +207,32 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
                   {visibleCols.map((c) => {
                     const tone = (c.kind === "pct" || c.kind === "usdSigned") ? toneClass(moveTone(row[c.id])) : "";
                     const text = formatAdrCell(c, row);
-                    const open = isAdrSessionOpen(row);
                     return (
                       <td
                         key={c.id}
                         className={`px-2 py-1.5 whitespace-nowrap font-mono-data ${c.sticky ? "sticky left-0 bg-white dark:bg-slate-900 font-sans font-semibold text-slate-900 dark:text-slate-100" : ""} ${tone}`}
                       >
                         {c.id === "company" ? (
-                          <span className="font-sans inline-flex items-center gap-1.5">
-                            <span className="text-sm leading-none" aria-hidden>{listingFlag(row)}</span>
-                            <span className="font-semibold">{row.company_name}</span>
+                          <span className="font-sans inline-flex items-center gap-1.5 min-w-0">
+                            <ListingFlag country={listingCountryCode(row)} />
+                            <span className="font-semibold truncate">{row.company_name}</span>
                             {row.large_move ? <Badge className="ml-1 rounded-sm text-[9px] px-1 py-0 bg-rose-600">LARGE MOVE</Badge> : null}
                           </span>
                         ) : c.id === "adr_symbol" ? (
                           <span className="font-semibold tracking-wide">{row.adr_symbol}</span>
-                        ) : c.id === "session_clock" ? (
-                          <Clock
-                            className={`w-3.5 h-3.5 ${open ? "text-emerald-600" : "text-rose-500"}`}
-                            strokeWidth={2.25}
-                            aria-label={open ? "Market open" : "Market closed"}
-                            data-testid={`adr-clock-${row.adr_symbol}`}
-                          />
                         ) : text}
                       </td>
                     );
                   })}
+                  <td className="px-1.5 py-1.5 w-8 text-center">
+                    <Clock
+                      className={`w-3.5 h-3.5 inline-block ${isAdrSessionOpen(row) ? "text-emerald-600" : "text-rose-500"}`}
+                      strokeWidth={2.25}
+                      aria-label={isAdrSessionOpen(row) ? "Market open" : "Market closed"}
+                      title={isAdrSessionOpen(row) ? "Market open" : "Market closed"}
+                      data-testid={`adr-clock-${row.adr_symbol}`}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -241,7 +244,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
         <SheetContent className="w-full sm:max-w-md overflow-y-auto" data-testid="adr-detail">
           <SheetHeader>
             <SheetTitle>
-              <span className="mr-1" aria-hidden>{listingFlag(detail)}</span>
+              <span className="mr-1.5 inline-flex align-middle"><ListingFlag country={listingCountryCode(detail)} /></span>
               {detail?.company_name} · {detail?.adr_symbol}
             </SheetTitle>
           </SheetHeader>

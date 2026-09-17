@@ -2766,7 +2766,6 @@ async def ws_spot(websocket: WebSocket):
                     row = {
                         "index": t.get("index"),
                         "price": round(float(ltp), 2),
-                        "atm": int(t.get("atm") or 0),
                         "timestamp": t.get("as_of") or pack.get("fetched_at"),
                         "mode": t.get("source") or "kite",
                         "prev_close": t.get("prev_close"),
@@ -2774,8 +2773,17 @@ async def ws_spot(websocket: WebSocket):
                         "change": t.get("change"),
                         "change_pct": t.get("change_pct"),
                     }
+                    atm = int(t.get("atm") or 0)
+                    if atm > 0:
+                        row["atm"] = atm
                     if t.get("indicative_close_price"):
                         row["indicative_close_price"] = t["indicative_close_price"]
+                        if t.get("indicative_change") is not None:
+                            row["indicative_change"] = t["indicative_change"]
+                        if t.get("indicative_change_pct") is not None:
+                            row["indicative_change_pct"] = t["indicative_change_pct"]
+                    elif t.get("indicative_close_price") == 0:
+                        row["indicative_close_price"] = 0
                     if t.get("final_close"):
                         row["final_close"] = t["final_close"]
                     payload["tickers"].append(row)
@@ -4084,7 +4092,14 @@ async def _desk_ticker_payload():
     for internal, symbol, label in symbols:
         snap = await _snap_for(internal)
         blob = pick_quote_blob(kite_data, symbol) if kite_data else {}
-        result.append(merge_ticker_row(internal, label, kite_blob=blob, snap=snap, include_iep=include_iep))
+        result.append(merge_ticker_row(
+            internal,
+            label,
+            kite_blob=blob,
+            snap=snap,
+            include_iep=include_iep,
+            step=int((INDEX_CONFIG.get(internal) or {}).get("step") or 50) or 50,
+        ))
     return {"mode": tracker.mode if tracker else "offline", "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
 
 
