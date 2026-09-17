@@ -539,9 +539,24 @@ async def ensure_indexes(db) -> None:
     await db[ART_COL].create_index("event_cluster_id")
     await db[ART_COL].create_index("source_id")
     await db[ART_COL].create_index([("status", 1), ("published_at", -1)])
+    await db[ART_COL].create_index([("status", 1), ("impact_score", -1), ("discovered_at", -1)])
     await db[SRC_COL].create_index("enabled")
     await db[SEEN_COL].create_index([("user_id", 1), ("event_cluster_id", 1)], unique=True)
     await db[PREF_COL].create_index("user_id", unique=True)
+
+
+def popup_feed_dates(dt=None):
+    """IST dates the in-app popup may show: after 14:00 through next open → today + prior session."""
+    from datetime import time as dtime
+    from market_hours import is_display_session_open, now_ist, previous_trading_day
+
+    dt = dt or now_ist()
+    today = ist_today(dt)
+    overnight = (not is_display_session_open(dt)) or (dt.time() >= dtime(14, 0))
+    dates = {today}
+    if overnight:
+        dates.add(previous_trading_day(dt))
+    return dates
 
 
 def popup_allowed(global_on: bool, prefs: Dict[str, Any], *, is_admin: bool) -> bool:
@@ -956,20 +971,34 @@ async def popup_candidates(
 ) -> List[Dict[str, Any]]:
     if not popup_allowed(global_on, prefs, is_admin=is_admin):
         return []
-    p = {
-        **(prefs or {}),
-        "min_impact": 0,
-        "min_india": 0,
-        "show_critical": True,
-        "show_high": True,
-        "show_moderate": False,
+    if db is None:
+        return []
+    from market_hours import now_ist
+
+    dt = now_ist()
+    dates = popup_feed_dates(dt)
+    seen_ids = set()
+    try:
+        async for row in db[SEEN_COL].find({"user_id": user_id}, {"event_cluster_id": 1}):
+            if row.get("event_cluster_id"):
+                seen_ids.add(str(row["event_cluster_id"]))
+    except Exception:
+        pass
+    q = {
+        "status": {"$ne": "gone"},
+        "$or": [{"impact_band": "CRITICAL"}, {"impact_score": {"$gte": 90}}],
     }
-    rows = await feed_for_user(db, p, "all", 80)
-    crit = [
-        r for r in rows
-        if str(r.get("impact_band") or "") == "CRITICAL" or int(r.get("impact_score") or 0) >= 90
-    ]
-    return crit[:12]
+    docs = await db[ART_COL].find(q, {"_id": 0}).sort("discovered_at", -1).to_list(80)
+    kept = []
+    for d in docs:
+        if not item_ist_date(d) or item_ist_date(d) not in dates:
+            continue
+        cid = str(d.get("event_cluster_id") or d.get("id") or "")
+        if cid and cid in seen_ids:
+            continue
+        kept.append(d)
+    ranked = cluster_rows(kept)[:12]
+    return [public_article(r) or r for r in ranked]
 
 
 async def mark_popup_shown(db, user_id: str, cluster_id: str) -> None:

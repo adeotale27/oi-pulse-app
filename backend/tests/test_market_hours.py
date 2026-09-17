@@ -162,3 +162,21 @@ def test_pre_market_cas_and_display_open_are_distinct():
     sat = _d(2026, 8, 15, 10, 0)
     assert is_pre_market(sat) is False
     assert market_status(sat)["phase"] == "weekend"
+
+
+def test_cas_iep_admin_window_can_be_disabled():
+    from market_hours import configure_cas_iep, is_cas_iep_window, cas_iep_interval_seconds
+
+    fri = lambda hh, mm: _d(2026, 8, 14, hh, mm)
+    configure_cas_iep(True, "15:20", "15:35", 5)
+    assert is_cas_iep_window(fri(15, 25)) is True
+    assert cas_iep_interval_seconds() == 5
+    configure_cas_iep(False, "15:20", "15:35", 8)
+    assert is_cas_iep_window(fri(15, 25)) is False
+    assert cas_iep_interval_seconds() == 8
+    configure_cas_iep(True, "15:22", "15:30", 5)
+    assert is_cas_iep_window(fri(15, 21)) is False
+    assert is_cas_iep_window(fri(15, 22)) is True
+    assert is_cas_iep_window(fri(15, 30)) is True
+    assert is_cas_iep_window(fri(15, 31)) is False
+    configure_cas_iep(True, "15:20", "15:35", 5)

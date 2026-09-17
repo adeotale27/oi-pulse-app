@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { nextTradingDayIST, previousTradingDayIST } from "./holidays.js";
 
 function weekdayIST(iso) {
   const [y, m, d] = iso.split("-").map(Number);
@@ -102,5 +103,10 @@ const merged = mergeYears(RAW, [
 assert.equal(merged.find((h) => h.date === "2027-01-26")?.name, "Republic Day");
 assert.ok(merged.find((h) => h.date === "2026-05-01"), "other years stay");
 assert.equal(mergeYears(RAW, []).find((h) => h.date === "2027-01-26"), undefined);
+
+assert.equal(previousTradingDayIST("2026-08-17"), "2026-08-14");
+assert.equal(nextTradingDayIST("2026-08-14"), "2026-08-17");
+assert.equal(previousTradingDayIST("2026-01-27"), "2026-01-23");
+assert.equal(nextTradingDayIST("2026-01-23"), "2026-01-27");
 
 console.log("holidays.test.js ok");

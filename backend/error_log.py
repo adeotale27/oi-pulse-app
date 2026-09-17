@@ -32,10 +32,14 @@ def bind(db) -> None:
     _db = db
 
 
+_TG_TOKEN_RE = re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{20,}\b")
+
+
 def redact(text: Any) -> str:
     s = str(text or "")
     s = _BEARER_RE.sub("Bearer <redacted>", s)
     s = _SECRET_RE.sub(r"\1=<redacted>", s)
+    s = _TG_TOKEN_RE.sub("<redacted>", s)
     return s
 
 

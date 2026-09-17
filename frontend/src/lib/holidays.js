@@ -197,6 +197,22 @@ export function previousTradingDayIST(iso = todayIST()) {
 }
 
 /**
+ * Next NSE trading day strictly after `iso`. Walks forward up to 15 calendar days.
+ */
+export function nextTradingDayIST(iso = todayIST()) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  let probe = new Date(Date.UTC(y, m - 1, d));
+  for (let i = 0; i < 15; i++) {
+    probe = new Date(probe.getTime() + 24 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    const candidate = `${probe.getUTCFullYear()}-${pad(probe.getUTCMonth() + 1)}-${pad(probe.getUTCDate())}`;
+    if (isTradingDayIST(candidate)) return candidate;
+  }
+  return iso;
+}
+
+/**
  * Trading date whose straddle/OI session should be shown right now (IST).
  * • Open / post-close on a trading day → that day
  * • Pre-open / weekend / holiday → previous trading day

@@ -39,7 +39,7 @@ from market_hours import (
     session_anchor_date, session_window_utc, previous_trading_day, now_ist,
     is_special_session_day, is_full_holiday, session_poll_bounds,
     index_in_session, any_index_in_session,
-    is_cas_iep_window, needs_index_quote_overlay,
+    is_cas_iep_window, needs_index_quote_overlay, cas_iep_interval_seconds, configure_cas_iep, cas_iep_config,
 )
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
@@ -879,6 +879,10 @@ class SettingsIn(BaseModel):
     market_intel_min_history_days: Optional[int] = None
     market_intel_popup_enabled: Optional[bool] = None
     market_intel_popup_dock_until_next: Optional[bool] = None
+    cas_iep_enabled: Optional[bool] = None
+    cas_iep_start_ist: Optional[str] = None
+    cas_iep_end_ist: Optional[str] = None
+    cas_iep_interval_seconds: Optional[int] = None
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
     admin_visible_pages: Optional[List[str]] = None
@@ -911,6 +915,7 @@ class SettingsIn(BaseModel):
         "market_intel_retention_days",
         "market_intel_min_history_days",
         "admin_session_ttl_minutes",
+        "cas_iep_interval_seconds",
         mode="before",
     )
     @classmethod
@@ -1585,7 +1590,7 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             raise HTTPException(400, "News retention cannot be below minimum historical context days")
         patch["market_intel_retention_days"] = ret
         patch["market_intel_min_history_days"] = mn
-    for key in ("market_open_ist", "market_close_ist", "second_session_ist"):
+    for key in ("market_open_ist", "market_close_ist", "second_session_ist", "cas_iep_start_ist", "cas_iep_end_ist"):
         if key in patch:
             try:
                 hh, mm = [int(x) for x in str(patch[key]).split(":")[:2]]
@@ -1599,6 +1604,11 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if v < 30 or v > 24 * 60:
             raise HTTPException(400, "admin_session_ttl_minutes must be between 30 and 1440")
         patch["admin_session_ttl_minutes"] = v
+    if "cas_iep_interval_seconds" in patch:
+        v = int(patch["cas_iep_interval_seconds"])
+        if v < 5 or v > 60:
+            raise HTTPException(400, "cas_iep_interval_seconds must be 5–60")
+        patch["cas_iep_interval_seconds"] = v
     out = await tracker.save_settings(patch)
     if "enabled_indices" in patch:
         try:
@@ -2793,7 +2803,9 @@ async def ws_spot(websocket: WebSocket):
                 await websocket.send_json(payload)
             elif not live_any and not quote_overlay:
                 await websocket.send_json({"type": "status", "status": "market_closed"})
-            await asyncio.sleep(2 if (live_any or quote_overlay) else 8)
+            await asyncio.sleep(
+                cas_iep_interval_seconds() if is_cas_iep_window() else (2 if (live_any or quote_overlay) else 8)
+            )
     except BaseException as exc:
         if ws_client_gone(exc):
             await close_ws_quietly(websocket)
@@ -2889,7 +2901,11 @@ async def list_error_log(
     if source:
         query["source"] = str(source)[:32]
     docs = await db.error_logs.find(query, {"_id": 0}).sort("ts", -1).to_list(length=limit)
-    return {"count": len(docs), "errors": docs}
+    try:
+        sources = sorted(s for s in (await db.error_logs.distinct("source")) if s)
+    except Exception:
+        sources = sorted({str(d.get("source") or "") for d in docs if d.get("source")})
+    return {"count": len(docs), "errors": docs, "sources": sources}
 
 
 @api_router.get("/errors/unseen-count")
@@ -2940,6 +2956,7 @@ async def get_config():
         "market_intel_min_history_days": int(s.get("market_intel_min_history_days") or 2),
         "market_intel_popup_enabled": s.get("market_intel_popup_enabled", True) is not False,
         "market_intel_popup_dock_until_next": s.get("market_intel_popup_dock_until_next", True) is not False,
+        **cas_iep_config(),
         "enabled_indices": without_paused_mcx(raw_enabled, INDEX_CONFIG),
         "mcx_desk_on": bool(s.get("mcx_desk_on")),
         "straddle_enabled_indices": s.get("straddle_enabled_indices", STRADDLE_INDICES),

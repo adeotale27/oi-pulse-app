@@ -22,8 +22,11 @@ _POLL_OPEN = dtime(9, 14)
 _POLL_CLOSE = dtime(15, 41)  # Index F&O closes 15:40; keep one tick after
 _PRE_MARKET_OPEN = dtime(9, 0)
 _CAS_PHASE_START = dtime(15, 15)
+_CAS_PHASE_END = dtime(15, 35)
 _CAS_IEP_START = dtime(15, 20)
 _CAS_IEP_END = dtime(15, 35)
+_CAS_IEP_ENABLED = True
+_CAS_IEP_INTERVAL = 5
 
 # Back-compat aliases used across the codebase
 MARKET_OPEN = _POLL_OPEN
@@ -322,15 +325,56 @@ def is_pre_market(dt: datetime = None) -> bool:
     return _PRE_MARKET_OPEN <= t < disp_open
 
 
+def configure_cas_iep(
+    enabled: Optional[bool] = None,
+    start_ist: Optional[str] = None,
+    end_ist: Optional[str] = None,
+    interval_seconds: Optional[int] = None,
+) -> dict:
+    """Admin CAS IEP Quote window. Disabled → no Quote overlay for IEP."""
+    global _CAS_IEP_ENABLED, _CAS_IEP_START, _CAS_IEP_END, _CAS_IEP_INTERVAL
+    if enabled is not None:
+        _CAS_IEP_ENABLED = bool(enabled)
+    if start_ist:
+        _CAS_IEP_START = _parse_hm(start_ist, _CAS_IEP_START)
+    if end_ist:
+        _CAS_IEP_END = _parse_hm(end_ist, _CAS_IEP_END)
+    if interval_seconds is not None:
+        try:
+            n = int(interval_seconds)
+            _CAS_IEP_INTERVAL = max(5, min(60, n))
+        except (TypeError, ValueError):
+            pass
+    return cas_iep_config()
+
+
+def cas_iep_config() -> dict:
+    return {
+        "cas_iep_enabled": _CAS_IEP_ENABLED,
+        "cas_iep_start_ist": f"{_CAS_IEP_START.hour:02d}:{_CAS_IEP_START.minute:02d}",
+        "cas_iep_end_ist": f"{_CAS_IEP_END.hour:02d}:{_CAS_IEP_END.minute:02d}",
+        "cas_iep_interval_seconds": _CAS_IEP_INTERVAL,
+    }
+
+
+def cas_iep_interval_seconds() -> int:
+    return max(5, int(_CAS_IEP_INTERVAL or 5))
+
+
 def is_cas_iep_window(dt: datetime = None) -> bool:
-    """Kite Quote indicative_close_price window: 15:20–15:35 IST."""
+    """Kite Quote indicative_close_price window (admin start/end IST)."""
+    if not _CAS_IEP_ENABLED:
+        return False
     dt = dt or now_ist()
     if is_special_session_day(dt):
         return False
     if not is_nse_cash_trading_day(dt):
         return False
     t = dt.time()
-    return _CAS_IEP_START <= t <= _CAS_IEP_END
+    start, end = _CAS_IEP_START, _CAS_IEP_END
+    if start <= end:
+        return start <= t <= end
+    return t >= start or t <= end
 
 
 def is_cas_phase(dt: datetime = None) -> bool:
@@ -341,7 +385,7 @@ def is_cas_phase(dt: datetime = None) -> bool:
     if not is_nse_cash_trading_day(dt):
         return False
     t = dt.time()
-    return _CAS_PHASE_START <= t <= _CAS_IEP_END
+    return _CAS_PHASE_START <= t <= _CAS_PHASE_END
 
 
 def is_display_session_open(dt: datetime = None) -> bool:
