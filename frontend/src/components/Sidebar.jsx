@@ -163,6 +163,7 @@ export default function Sidebar({
   lastUpdatedByIndex = {},
   marketOpen = true,
   indicativeClose = null,
+  indicativeChangePct = null,
   onCollapse,
   layoutNonce = 0,
 }) {
@@ -506,6 +507,11 @@ export default function Sidebar({
                 <div className="text-[10px] uppercase tracking-wide text-slate-500">Indicative price</div>
                 <div className="font-mono-data text-sm font-bold text-slate-900 dark:text-slate-100">
                   ₹{Number(indicativeClose).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  {indicativeChangePct != null && Number.isFinite(Number(indicativeChangePct)) ? (
+                    <span className={`ml-1.5 text-xs font-semibold ${Number(indicativeChangePct) > 0 ? "text-emerald-600" : Number(indicativeChangePct) < 0 ? "text-rose-600" : "text-slate-500"}`}>
+                      {Number(indicativeChangePct) > 0 ? "+" : ""}{Number(indicativeChangePct).toFixed(2)}%
+                    </span>
+                  ) : null}
                 </div>
               </div>
             ) : null}

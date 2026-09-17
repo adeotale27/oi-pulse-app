@@ -20,7 +20,6 @@ export const ADR_COLUMNS = [
   { id: "week52_low", label: "52W Low", defaultVisible: false, sortable: true, numeric: true, kind: "usd" },
   { id: "week52_high", label: "52W High", defaultVisible: false, sortable: true, numeric: true, kind: "usd" },
   { id: "market_status", label: "Market Status", defaultVisible: true, sortable: false, numeric: false },
-  { id: "session_clock", label: "Clock", defaultVisible: true, sortable: false, numeric: false, help: "Green = listing session open, red = closed" },
   { id: "updated", label: "Last updated", defaultVisible: true, sortable: true, numeric: false, kind: "time" },
 ];
 
@@ -35,7 +34,7 @@ export const ADR_FILTERS = [
   { id: "IT", label: "IT" },
 ];
 
-const PREF_KEY = "oiAdrColumns.v2";
+const PREF_KEY = "oiAdrColumns.v3";
 
 export function usdPrice(v) {
   if (v == null || !Number.isFinite(Number(v))) return "—";
@@ -84,8 +83,12 @@ export function toneClass(tone) {
   return "text-slate-500 dark:text-slate-400";
 }
 
-export function listingCountryCode(exchange) {
-  const e = String(exchange || "").trim().toUpperCase();
+export function listingCountryCode(exchangeOrRow) {
+  if (exchangeOrRow && typeof exchangeOrRow === "object") {
+    if (exchangeOrRow.listing_country) return String(exchangeOrRow.listing_country).toUpperCase();
+    return listingCountryCode(exchangeOrRow.exchange);
+  }
+  const e = String(exchangeOrRow || "").trim().toUpperCase();
   if (["FRA", "XETRA", "FWB", "FSE", "XETR", "FRANKFURT"].includes(e)) return "DE";
   if (["LSE", "LON", "LONDON"].includes(e)) return "GB";
   return "US";
@@ -128,7 +131,6 @@ export function formatAdrCell(col, row) {
   if (id === "adr_symbol") return row.adr_symbol || "—";
   if (id === "exchange") return row.exchange || "—";
   if (id === "sector") return row.sector || "—";
-  if (id === "session_clock") return isAdrSessionOpen(row) ? "open" : "closed";
   if (id === "market_status") {
     const venue = listingMarketName(row);
     if (row.display_status === "CURRENT" && isAdrSessionOpen(row)) return `${venue} Open`;

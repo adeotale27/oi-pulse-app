@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.06",
+    date: "2026-09-17",
+    user: [
+      "Indicative price on the sidebar and the CAS popup go away when the close settles at 15:30 IST, with change % while they are live. ATM stays on last price during the auction, then becomes the indicative ATM after settle. ADR rows show a real USA/Germany flag and a clock at the end of the row (green open / red closed).",
+    ],
+    admin: [
+      "Default CAS IEP Quote window is 15:20–15:30 IST (Kite IEP). ATM on the live spot tick is rounded from LTP, never 0, never IEP until the window ends.",
+    ],
+  },
+  {
     version: "11.05",
     date: "2026-09-17",
     user: [

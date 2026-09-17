@@ -40,6 +40,26 @@ def pick_quote_blob(data: Optional[dict], symbol: str) -> dict:
     return direct if isinstance(direct, dict) else {}
 
 
+def round_atm(spot: float, step: int = 50) -> int:
+    try:
+        s = float(spot or 0)
+        g = int(step or 50) or 50
+    except (TypeError, ValueError):
+        return 0
+    if s <= 0 or g <= 0:
+        return 0
+    return int(round(s / g) * g)
+
+
+def indicative_change(iep: Optional[float], prev_close: float) -> Tuple[Optional[float], Optional[float]]:
+    """IEP vs previous close — Kite has no separate indicative % field."""
+    if iep is None or not prev_close:
+        return None, None
+    chg = round(float(iep) - float(prev_close), 2)
+    pct = round(chg / float(prev_close) * 100, 3)
+    return chg, pct
+
+
 def indicative_close_price(blob: Optional[dict]) -> Optional[float]:
     """Kite Quote CAS IEP. Never coerce missing/zero to 0 for callers."""
     if not isinstance(blob, dict):
@@ -57,10 +77,12 @@ def merge_ticker_row(
     kite_blob: Optional[dict] = None,
     snap: Optional[dict] = None,
     include_iep: bool = False,
+    step: int = 50,
 ) -> Dict[str, Any]:
     """Prefer live Kite LTP; if missing/zero, keep last snapshot price. Keep OHLC close for change.
 
     Does not overwrite last_price / ltp with indicative_close_price.
+    ATM is always rounded from LTP (never from IEP).
     """
     blob = kite_blob or {}
     snap = snap or {}
@@ -78,6 +100,7 @@ def merge_ticker_row(
     change_pct = (change / prev * 100) if prev else 0.0
     source = "kite" if kite_ltp else ("snapshot" if snap_ltp else "none")
     ohlc_close = _f(ohlc.get("close"))
+    atm = round_atm(ltp, step)
     row: Dict[str, Any] = {
         "index": internal,
         "label": label,
@@ -91,12 +114,20 @@ def merge_ticker_row(
         "source": source,
         "as_of": snap.get("timestamp"),
     }
+    if atm > 0:
+        row["atm"] = atm
     if ohlc_close > 0:
         row["final_close"] = round(ohlc_close, 2)
     if include_iep:
         iep = indicative_close_price(blob)
         if iep is not None:
             row["indicative_close_price"] = iep
+            chg, pct = indicative_change(iep, prev)
+            if chg is not None:
+                row["indicative_change"] = chg
+                row["indicative_change_pct"] = pct
+        else:
+            row["indicative_close_price"] = 0
     return row
 
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.06 — 2026-09-17
+
+CAS IEP UI hides when Kite settles (cash close 15:30 IST, or when Quote sends 0). Sidebar and popup show IEP change % vs previous close. ATM stays on LTP during the auction and snaps to the IEP strike after settle. ADRs use SVG USA/Germany flags (not “US” letters) and a nameless last-column clock with Market open / Market closed hover.
+
 ## V11.05 — 2026-09-17
 
 ADRs: Last updated column (timestamp only), listing-country flags, Market Status text kept plus a red/green session clock. German (XETRA/FRA) Indian names are allowed and polled in Frankfurt hours. Indicative price stays on sparse WS ticks; sidebar label is Indicative price with a bold print. CAS dock popup shows NIFTY 50 + SENSEX from 15:19 IST through IEP end; Admin dropdown toggles it.

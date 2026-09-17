@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { GripHorizontal, Maximize2, Minimize2, X } from "lucide-react";
 import { clampCarryLeft, clampDockBottom, deskHeaderClearance, snapCarryLeft } from "@/lib/carryDock";
-import { CAS_IEP_POPUP_INDICES } from "@/lib/casIepPopup";
+import { CAS_IEP_POPUP_INDICES, indicativeChangePct } from "@/lib/casIepPopup";
 
 const PANEL_W = 300;
 const LEFT_KEY = "oiCasIepPopupLeftPx";
@@ -31,13 +31,20 @@ function writeNum(key, n) {
   try { localStorage.setItem(key, String(Math.round(n))); } catch { /* noop */ }
 }
 
+function fmtPct(v) {
+  if (v == null || !Number.isFinite(Number(v))) return null;
+  const n = Number(v);
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+}
+
 function fmtPx(v) {
   if (v == null || !Number.isFinite(Number(v)) || Number(v) <= 0) return "—";
   return Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 /** Docked NIFTY 50 + SENSEX indicative prices during the CAS IEP window. */
-export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:35" }) {
+export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }) {
   const [minimized, setMinimized] = useState(() => {
     try { return localStorage.getItem(MIN_KEY) === "1"; } catch { return false; }
   });
@@ -232,7 +239,14 @@ export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:35" }
           return (
             <div key={index} className="flex items-baseline justify-between gap-3" data-testid={`cas-iep-row-${index}`}>
               <span className="text-xs font-semibold">{label}</span>
-              <span className="font-mono-data text-base font-bold tabular-nums">{fmtPx(px)}</span>
+              <span className="text-right">
+                <span className="font-mono-data text-base font-bold tabular-nums">{fmtPx(px)}</span>
+                {fmtPct(indicativeChangePct(q)) ? (
+                  <span className={`ml-1.5 text-[11px] font-semibold ${Number(indicativeChangePct(q)) > 0 ? "text-emerald-700" : Number(indicativeChangePct(q)) < 0 ? "text-rose-700" : "text-emerald-800/70"}`}>
+                    {fmtPct(indicativeChangePct(q))}
+                  </span>
+                ) : null}
+              </span>
             </div>
           );
         })}

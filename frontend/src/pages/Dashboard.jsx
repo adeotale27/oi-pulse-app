@@ -73,7 +73,7 @@ import { safeHttpUrl } from "@/lib/safeUrl";
 import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE, istMinutesOfDay } from "@/lib/marketTimes";
 import { setPositionsBookPollMs, refreshPositionsBook, notifyKiteConnected } from "@/lib/positionsBook";
 import { connectSpotWS } from "@/lib/spotWs";
-import { casIepPopupActive, mergeIndicativeClose, readCasIepPopupPref, writeCasIepPopupPref } from "@/lib/casIepPopup";
+import { casIepPopupActive, mergeIndicativeClose, readCasIepPopupPref, writeCasIepPopupPref, indicativeChangePct, roundAtm } from "@/lib/casIepPopup";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
@@ -362,7 +362,7 @@ export default function Dashboard() {
     enabled: true,
     force: false,
     startIst: "15:20",
-    endIst: "15:35",
+    endIst: "15:30",
   });
   const [iepClockMin, setIepClockMin] = useState(() => istMinutesOfDay());
   const iepKeepRef = useRef(false);
@@ -397,6 +397,35 @@ export default function Dashboard() {
     tradingDay: isTradingDayIST(),
   });
   useEffect(() => { iepKeepRef.current = iepWindowOn; }, [iepWindowOn]);
+  const wasIepRef = useRef(false);
+  useEffect(() => {
+    const was = wasIepRef.current;
+    wasIepRef.current = iepWindowOn;
+    if (!was || iepWindowOn) return;
+    const quotes = tickerQuotesRef.current || {};
+    setCurrent((prev) => {
+      if (!prev) return prev;
+      const iep = Number(quotes[prev.index]?.indicative_close_price);
+      if (!(iep > 0)) return prev;
+      const step = INDEX_STEP[prev.index] || 50;
+      return { ...prev, atm: roundAtm(iep, step) };
+    });
+    setTickerQuotes((prev) => {
+      let changed = false;
+      const out = { ...prev };
+      for (const [idx, row] of Object.entries(out)) {
+        if (row && row.indicative_close_price != null) {
+          const next = { ...row };
+          delete next.indicative_close_price;
+          delete next.indicative_change;
+          delete next.indicative_change_pct;
+          out[idx] = next;
+          changed = true;
+        }
+      }
+      return changed ? out : prev;
+    });
+  }, [iepWindowOn]);
 
   // Force Sell Candidates panel to recompute every minute so scores stay fresh
   // even if the underlying OI snapshot only ticks every 30s.
@@ -616,8 +645,16 @@ export default function Dashboard() {
           if (ticker.change != null) next.change = ticker.change;
           if (ticker.change_pct != null) next.change_pct = ticker.change_pct;
           const iep = mergeIndicativeClose(cur, ticker, { keepLast: iepKeepRef.current });
-          if (iep != null) next.indicative_close_price = iep;
-          else delete next.indicative_close_price;
+          if (iep != null) {
+            next.indicative_close_price = iep;
+            if (ticker.indicative_change_pct != null) next.indicative_change_pct = ticker.indicative_change_pct;
+            else if (ticker.indicative_change != null) next.indicative_change = ticker.indicative_change;
+            else if (next.prev_close) next.indicative_change_pct = ((iep - Number(next.prev_close)) / Number(next.prev_close)) * 100;
+          } else {
+            delete next.indicative_close_price;
+            delete next.indicative_change;
+            delete next.indicative_change_pct;
+          }
           if (ticker.final_close) next.final_close = ticker.final_close;
           out[idx] = next;
           changed = true;
@@ -628,10 +665,16 @@ export default function Dashboard() {
       if (!match) return;
       setCurrent((prevCurrent) => {
         if (!prevCurrent || prevCurrent.index !== match.index) return prevCurrent;
+        const ltp = match.price != null ? match.price : prevCurrent.price;
+        const step = INDEX_STEP[match.index] || 50;
+        const fromLtp = roundAtm(ltp, step) || prevCurrent.atm;
+        const atm = iepKeepRef.current
+          ? fromLtp
+          : (Number(match.atm) > 0 ? match.atm : fromLtp);
         return {
           ...prevCurrent,
           price: match.price != null ? match.price : prevCurrent.price,
-          atm: match.atm != null ? match.atm : prevCurrent.atm,
+          atm,
         };
       });
     },
@@ -1257,8 +1300,14 @@ export default function Dashboard() {
           const cur = out[t.index] || {};
           const merged = { ...cur, ...t, ltp: liveSpotPricesRef.current?.[t.index] ?? t.ltp ?? cur.ltp };
           const iep = mergeIndicativeClose(cur, t, { keepLast: iepKeepRef.current });
-          if (iep != null) merged.indicative_close_price = iep;
-          else delete merged.indicative_close_price;
+          if (iep != null) {
+            merged.indicative_close_price = iep;
+            if (t.indicative_change_pct != null) merged.indicative_change_pct = t.indicative_change_pct;
+          } else {
+            delete merged.indicative_close_price;
+            delete merged.indicative_change_pct;
+            delete merged.indicative_change;
+          }
           out[t.index] = merged;
         }
         return out;
@@ -2288,6 +2337,7 @@ export default function Dashboard() {
                 lastUpdatedByIndex={lastUpdatedByIndex}
                 marketOpen={!(status?.market && status.market.is_market_open === false)}
                 indicativeClose={tickerQuotes?.[activeIndex]?.indicative_close_price}
+                indicativeChangePct={indicativeChangePct(tickerQuotes?.[activeIndex])}
                 onCollapse={() => setCompact(true)}
                 layoutNonce={layoutNonce}
               />

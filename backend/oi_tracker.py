@@ -218,7 +218,7 @@ DEFAULT_SETTINGS = {
     "market_intel_popup_dock_until_next": True,
     "cas_iep_enabled": True,
     "cas_iep_start_ist": "15:20",
-    "cas_iep_end_ist": "15:35",
+    "cas_iep_end_ist": "15:30",
     "cas_iep_interval_seconds": 5,
     "cas_iep_force": False,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
@@ -455,7 +455,7 @@ class OITracker:
             configure_cas_iep(
                 self.settings.get("cas_iep_enabled", True),
                 self.settings.get("cas_iep_start_ist", "15:20"),
-                self.settings.get("cas_iep_end_ist", "15:35"),
+                self.settings.get("cas_iep_end_ist", "15:30"),
                 self.settings.get("cas_iep_interval_seconds", 5),
                 self.settings.get("cas_iep_force", False),
             )

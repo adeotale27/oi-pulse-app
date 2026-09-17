@@ -150,8 +150,8 @@ def test_pre_market_cas_and_display_open_are_distinct():
     assert is_cas_phase(fri(15, 15)) is True
     assert is_cas_iep_window(fri(15, 19)) is False
     assert is_cas_iep_window(fri(15, 20)) is True
-    assert is_cas_iep_window(fri(15, 35)) is True
-    assert is_cas_iep_window(fri(15, 36)) is False
+    assert is_cas_iep_window(fri(15, 30)) is True
+    assert is_cas_iep_window(fri(15, 31)) is False
     assert needs_index_quote_overlay(fri(15, 25)) is True
     assert needs_index_quote_overlay(fri(15, 50)) is False
     assert market_status(fri(15, 20))["phase"] == "cas"
@@ -179,10 +179,10 @@ def test_cas_iep_admin_window_can_be_disabled():
     assert is_cas_iep_window(fri(15, 22)) is True
     assert is_cas_iep_window(fri(15, 30)) is True
     assert is_cas_iep_window(fri(15, 31)) is False
-    configure_cas_iep(True, "15:20", "15:35", 5)
+    configure_cas_iep(True, "15:20", "15:30", 5)
     assert is_cas_iep_window(fri(10, 0)) is False
-    configure_cas_iep(True, "15:20", "15:35", 5, True)
+    configure_cas_iep(True, "15:20", "15:30", 5, True)
     assert is_cas_iep_window(fri(10, 0)) is True
-    configure_cas_iep(False, "15:20", "15:35", 5, True)
+    configure_cas_iep(False, "15:20", "15:30", 5, True)
     assert is_cas_iep_window(fri(10, 0)) is False
-    configure_cas_iep(True, "15:20", "15:35", 5, False)
+    configure_cas_iep(True, "15:20", "15:30", 5, False)

@@ -57,6 +57,6 @@ assert.equal(isAdrSessionOpen({ listing_open: false }), false);
 assert.equal(formatAdrCell({ id: "updated" }, { fetched_at: "2026-09-16T10:30:00.000Z" }), "16:00:00 IST");
 assert.equal(formatAdrCell({ id: "market_status" }, { exchange: "NYSE", stale: true }), "US Market Closed");
 assert.equal(formatAdrCell({ id: "market_status" }, { exchange: "XETRA", listing_open: true, display_status: "CURRENT" }), "German Market Open");
-assert.ok(ADR_DEFAULT_VISIBLE.includes("session_clock"));
+assert.ok(!ADR_DEFAULT_VISIBLE.includes("session_clock"));
 
 console.log("adr.test.js ok");
