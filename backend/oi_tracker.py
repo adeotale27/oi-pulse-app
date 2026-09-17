@@ -216,6 +216,10 @@ DEFAULT_SETTINGS = {
     "market_intel_min_history_days": 2,
     "market_intel_popup_enabled": True,
     "market_intel_popup_dock_until_next": True,
+    "cas_iep_enabled": True,
+    "cas_iep_start_ist": "15:20",
+    "cas_iep_end_ist": "15:35",
+    "cas_iep_interval_seconds": 5,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
     "show_chart_signals": False,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
@@ -239,6 +243,7 @@ _INT_SETTING_KEYS = (
     "market_intel_retention_days",
     "market_intel_min_history_days",
     "admin_session_ttl_minutes",
+    "cas_iep_interval_seconds",
 )
 _FLOAT_SETTING_KEYS = ("threshold_pct",)
 
@@ -445,6 +450,13 @@ class OITracker:
                 self.settings.get("market_open_ist", "09:15"),
                 self.settings.get("market_close_ist", "15:40"),
             )
+            from market_hours import configure_cas_iep
+            configure_cas_iep(
+                self.settings.get("cas_iep_enabled", True),
+                self.settings.get("cas_iep_start_ist", "15:20"),
+                self.settings.get("cas_iep_end_ist", "15:35"),
+                self.settings.get("cas_iep_interval_seconds", 5),
+            )
         except Exception as e:
             logger.warning("configure_hours failed: %s", e)
 
@@ -492,6 +504,11 @@ class OITracker:
             "desk_ai_carry",
             "desk_ai_admin", "desk_ai_public",
             "mcx_desk_on",
+            "market_intel_ingest_seconds", "market_intel_retention_days",
+            "market_intel_min_history_days", "market_intel_popup_enabled",
+            "market_intel_popup_dock_until_next",
+            "cas_iep_enabled", "cas_iep_start_ist", "cas_iep_end_ist",
+            "cas_iep_interval_seconds",
         }
         clean = {k: v for k, v in patch.items() if k in allowed}
         coerce_settings_types(clean)
@@ -508,7 +525,7 @@ class OITracker:
         await self.db.settings.update_one(
             {"_id": "alerts"}, {"$set": clean}, upsert=True
         )
-        if "market_open_ist" in clean or "market_close_ist" in clean:
+        if "market_open_ist" in clean or "market_close_ist" in clean or "cas_iep_enabled" in clean or "cas_iep_start_ist" in clean or "cas_iep_end_ist" in clean or "cas_iep_interval_seconds" in clean:
             self._apply_market_hours()
         if "mcx_desk_on" in clean:
             self._apply_mcx_desk_flag()

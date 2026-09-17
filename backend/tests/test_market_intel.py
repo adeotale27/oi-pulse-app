@@ -251,3 +251,17 @@ def test_feed_for_user_date_filter_empty_and_populated():
 
     asyncio.run(run())
 
+
+def test_popup_feed_dates_overnight_vs_session():
+    from datetime import datetime, timezone, timedelta
+    from market_intel import popup_feed_dates, ist_today
+
+    IST = timezone(timedelta(hours=5, minutes=30))
+    fri_am = datetime(2026, 8, 14, 10, 0, tzinfo=IST)
+    fri_pm = datetime(2026, 8, 14, 14, 0, tzinfo=IST)
+    pre = datetime(2026, 8, 14, 9, 7, tzinfo=IST)
+    assert popup_feed_dates(fri_am) == {ist_today(fri_am)}
+    assert len(popup_feed_dates(fri_pm)) == 2
+    assert ist_today(fri_pm) in popup_feed_dates(fri_pm)
+    assert len(popup_feed_dates(pre)) == 2
+

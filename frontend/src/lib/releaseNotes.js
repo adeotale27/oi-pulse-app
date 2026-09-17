@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.14",
+    date: "2026-09-17",
+    user: [
+      "The live strip scrolls LIVE, Market Open · Next Pull (Xs), and index quotes as one loop. Hover VIX for the 30-day volatility note (same popover style as GIFT). Journal Previous Day / Next Day skip weekends and holidays. Market Intel chip stays one line on the right and shows unseen critical stories only.",
+    ],
+    admin: [
+      "Telegram bot token and chat ID stay in Admin → Telegram (encrypted; never returned in plaintext). Error log Src chips are the sources already stored, plus All. CAS IEP Quote overlay is on/off with start, end, and 5–60s interval in Admin configuration (defaults 15:20–15:35 IST, 5s).",
+    ],
+  },
+  {
     version: "10.13",
     date: "2026-09-17",
     user: [

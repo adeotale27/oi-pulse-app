@@ -59,6 +59,22 @@ export function reportDeskError({ message, stack, source = "ui", path } = {}) {
 
 export const ERROR_LOG_UNSEEN_EVENT = "oi-error-log-unseen";
 
+export function errorSourceLabel(src) {
+  const raw = String(src || "").trim();
+  if (!raw) return "";
+  const known = {
+    market_intel: "Mkt Intel",
+    straddle: "Straddle",
+    kite: "Kite",
+    telegram: "Telegram",
+    ui: "UI",
+    api: "API",
+    ws: "WS",
+    boundary: "UI",
+  };
+  return known[raw] || raw;
+}
+
 export function notifyErrorLogUnseenChanged(unseen) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(ERROR_LOG_UNSEEN_EVENT, { detail: { unseen } }));

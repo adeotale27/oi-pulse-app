@@ -10,6 +10,11 @@ def test_redact_tokens():
     assert "<redacted>" in s
 
 
+def test_redact_telegram_bot_token():
+    s = redact("Client error for url https://api.telegram.org/bot123456:AAThisIsAFakeTelegramTokenValueXX/sendMessage")
+    assert "AAThisIsAFakeTelegramTokenValueXX" not in s
+
+
 def test_fingerprint_stable():
     a = fingerprint("api", "/api/oi/NIFTY", "ValueError", "bad atm")
     b = fingerprint("api", "/api/oi/NIFTY", "ValueError", "bad atm")

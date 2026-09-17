@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { notifyErrorLogUnseenChanged } from "@/lib/errorLog";
+import { errorSourceLabel, notifyErrorLogUnseenChanged } from "@/lib/errorLog";
 
 function fmtTs(iso) {
   if (!iso) return "—";
@@ -12,15 +12,22 @@ function fmtTs(iso) {
 
 export default function ErrorLogModal({ open, onOpenChange }) {
   const [rows, setRows] = useState([]);
+  const [sources, setSources] = useState([]);
+  const [srcFilter, setSrcFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  const load = async () => {
+  const load = async (source = srcFilter) => {
     setLoading(true);
     setErr("");
     try {
-      const r = await api.get("/errors", { params: { limit: 80 }, timeout: 8000 });
+      const params = { limit: 80 };
+      if (source) params.source = source;
+      const r = await api.get("/errors", { params, timeout: 8000 });
       setRows(r.data?.errors || []);
+      const nextSrc = Array.isArray(r.data?.sources) ? r.data.sources.filter(Boolean) : [];
+      setSources(nextSrc);
+      if (source && nextSrc.length && !nextSrc.includes(source)) setSrcFilter("");
       try {
         const seen = await api.post("/errors/mark-seen", {}, { timeout: 8000 });
         notifyErrorLogUnseenChanged(seen.data?.unseen ?? 0);
@@ -36,8 +43,13 @@ export default function ErrorLogModal({ open, onOpenChange }) {
   };
 
   useEffect(() => {
-    if (open) load();
+    if (open) load(srcFilter);
   }, [open]);
+
+  const pickSrc = (src) => {
+    setSrcFilter(src);
+    load(src);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -48,11 +60,34 @@ export default function ErrorLogModal({ open, onOpenChange }) {
             API, desk UI, and logger errors. Tokens are stripped. Same fingerprint within 5 minutes is counted, not duplicated.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading}>
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          <Button type="button" size="sm" variant="outline" onClick={() => load(srcFilter)} disabled={loading}>
             {loading ? "Loading…" : "Refresh"}
           </Button>
           <span className="text-[11px] text-slate-500">{rows.length} shown</span>
+          <Button
+            type="button"
+            size="sm"
+            variant={srcFilter ? "outline" : "default"}
+            className="h-7 px-2 text-[11px]"
+            data-testid="error-src-all"
+            onClick={() => pickSrc("")}
+          >
+            All
+          </Button>
+          {sources.map((src) => (
+            <Button
+              key={src}
+              type="button"
+              size="sm"
+              variant={srcFilter === src ? "default" : "outline"}
+              className="h-7 px-2 text-[11px]"
+              data-testid={`error-src-${src}`}
+              onClick={() => pickSrc(src)}
+            >
+              {errorSourceLabel(src)}
+            </Button>
+          ))}
         </div>
         {err ? <p className="text-[12px] text-rose-600">{err}</p> : null}
         <div className="overflow-auto rounded-md border border-slate-100 text-[11px]">

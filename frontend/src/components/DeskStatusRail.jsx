@@ -2,7 +2,7 @@ import { KeyRound, AlertTriangle, Clock, CalendarOff, Moon, Sunrise } from "luci
 import { Button } from "@/components/ui/button";
 import { buildDataTruth, formatIstClock } from "@/lib/dataTruth";
 import { isKiteCredentialProblem, kiteCredentialTitle } from "@/lib/kiteCredentialHealth";
-import { useEffect, useMemo, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useState } from "react";
 
 const TRUTH_TONE = {
   live: { bar: "bg-emerald-600/95 text-white border-emerald-700", badge: "bg-white text-emerald-800", pulse: "bg-emerald-600" },
@@ -85,7 +85,7 @@ export default function DeskStatusRail({
     >
       <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll px-1.5">
         <span
-          className={`hidden md:inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 rounded-sm px-1.5 py-0.5 ${tone.badge}`}
+          className={`hidden md:inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 rounded-sm px-1.5 py-0.5 ${tone.badge} ${mobileTicker ? "md:hidden" : ""}`}
           data-testid="data-truth-badge"
         >
           {(truth.mode === "LIVE" || truth.mode === "STALE") && (
@@ -94,21 +94,33 @@ export default function DeskStatusRail({
           {truth.badge}
         </span>
         <span
-          className={`hidden md:inline font-mono-data font-semibold tracking-tight shrink-0 ${truth.mode === "LIVE" ? "md:hidden" : ""}`}
+          className={`hidden md:inline font-mono-data font-semibold tracking-tight shrink-0 ${truth.mode === "LIVE" ? "md:hidden" : ""} ${mobileTicker ? "md:hidden" : ""}`}
           data-testid="data-truth-asof"
         >
           {truth.mode === "LAST_SESSION"
             ? (sessionDate || truth.asOfLabel)
             : (asOfLive ? `Live data as of ${asOfLive} IST` : truth.asOfLabel)}
         </span>
-        {truth.mode !== "LAST_SESSION" && truth.detail ? (
+        {truth.mode !== "LAST_SESSION" && truth.detail && !mobileTicker ? (
           <span className="opacity-90 shrink-0 whitespace-nowrap pr-3 hidden md:inline" data-testid="data-truth-detail">
             {truth.detail}
           </span>
         ) : null}
         {mobileTicker ? (
           <div className="min-w-0 flex-1 overflow-hidden" data-testid="desk-index-ticker">
-            {mobileTicker}
+            {isValidElement(mobileTicker)
+              ? cloneElement(mobileTicker, {
+                  leadItems: [
+                    {
+                      key: "LIVE",
+                      label: truth.badge,
+                      price: truth.detail || (truth.mode === "LAST_SESSION" ? (sessionDate || truth.asOfLabel) : truth.asOfLabel),
+                      pct: null,
+                      onClick: null,
+                    },
+                  ],
+                })
+              : mobileTicker}
           </div>
         ) : null}
 

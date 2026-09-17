@@ -1256,6 +1256,8 @@ export default function Header({
 
 function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   // Compact tile: top-right % change, big price below — like the ticker tiles.
+  const [hover, setHover] = useState(false);
+  const [tipPos, setTipPos] = useState({ top: 0, left: 0 });
   const v = liveVix?.last != null && liveVix.last > 0 ? liveVix.last : (value ?? 0);
   const pct = liveVix && liveVix.change_pct != null ? Number(liveVix.change_pct) : (sessionOpen && v ? ((v - sessionOpen) / sessionOpen) * 100 : 0);
   const pts = liveVix && liveVix.change != null
@@ -1264,13 +1266,38 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   const tone = pct > 0.05 ? "rose" : pct < -0.05 ? "emerald" : "slate";
   const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-slate-500 dark:text-slate-400";
   const hasData = v != null && v > 0;
-  const VIX_TIP = "VIX measures expected market volatility. Higher VIX = more expected movement; lower VIX = calmer markets.";
+  const VIX_TIP = "VIX measures expected market volatility over the next 30 calendar days.";
+  const showTip = (el) => {
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = 272;
+    const left = Math.min(
+      Math.max(8, r.left + r.width / 2 - width / 2),
+      window.innerWidth - width - 8
+    );
+    setTipPos({ top: r.bottom + 8, left });
+    setHover(true);
+  };
+  const tip = hover && typeof document !== "undefined" && createPortal(
+    <div
+      data-testid="vix-hover-tip"
+      className="fixed z-[200] w-[17rem] max-w-[min(92vw,17rem)] rounded-md border border-slate-200 bg-white p-2.5 text-xs text-slate-900 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+      style={{ top: tipPos.top, left: tipPos.left }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div className="mb-1 font-semibold text-slate-900 dark:text-slate-100">INDIA VIX</div>
+      <div className="text-slate-700 dark:text-slate-200">{VIX_TIP}</div>
+    </div>,
+    document.body
+  );
   if (inline) {
     return (
       <div
         className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm text-[11px] tabular-nums"
         data-testid="vix-metric"
-        title={VIX_TIP}
+        onMouseEnter={(e) => showTip(e.currentTarget)}
+        onMouseLeave={() => setHover(false)}
       >
         <span className="uppercase tracking-wider text-slate-400 font-semibold">VIX</span>
         <span className={`font-semibold ${hasData ? "text-slate-900 dark:text-slate-100" : "text-slate-400"}`} data-testid="vix-value">
@@ -1282,11 +1309,17 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
           </span>
         )}
         <span className={toneCls}>{hasData ? `(${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)` : ""}</span>
+        {tip}
       </div>
     );
   }
   return (
-    <div className="flex flex-col min-w-[5.5rem]" data-testid="vix-metric" title={VIX_TIP}>
+    <div
+      className="flex flex-col min-w-[5.5rem]"
+      data-testid="vix-metric"
+      onMouseEnter={(e) => showTip(e.currentTarget)}
+      onMouseLeave={() => setHover(false)}
+    >
       <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-800 dark:text-slate-200 font-bold">
         <div className="flex items-center gap-1.5">INDIA VIX</div>
         <div className={`text-[11px] font-mono-data ${toneCls}`}>{hasData ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—"}</div>
@@ -1297,6 +1330,7 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
           <div className={`text-xs font-mono-data ${toneCls}`} data-testid="vix-change">{pts >= 0 ? "+" : ""}{Number(pts).toFixed(2)}</div>
         )}
       </div>
+      {tip}
     </div>
   );
 }
