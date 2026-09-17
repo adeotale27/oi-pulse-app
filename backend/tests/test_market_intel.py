@@ -1,11 +1,13 @@
 from datetime import date
 
 from market_intel import (
+    STORE_MIN_IMPACT,
     articles_window_query,
     clamp_retention,
     classify_event_type,
     cluster_id_for,
     cluster_rows,
+    constituent_boost,
     duplicate_hash,
     impact_band,
     impact_score,
@@ -16,6 +18,7 @@ from market_intel import (
     parse_news_datetime,
     popup_allowed,
     retention_cutoff,
+    should_store_article,
     similar_titles,
 )
 
@@ -38,6 +41,15 @@ def test_oil_shock_not_routine():
     assert impact_score(shock) > impact_score(chatter)
     assert impact_score(chatter) < 55
     assert classify_event_type(shock) == "oil"
+
+
+def test_should_store_skips_low_impact():
+    assert STORE_MIN_IMPACT == 50
+    assert not should_store_article(22)
+    assert not should_store_article(49)
+    assert should_store_article(50)
+    hit, extra = constituent_boost("HDFC Bank results miss estimates", [("hdfc bank", 11.2)])
+    assert hit and extra >= 14
 
 
 def test_geopolitics_and_india_event():

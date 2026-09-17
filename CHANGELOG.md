@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.09 — 2026-09-17
+
+Phone dashboard keeps page tabs while scrolling so you can scroll back up. NIFTY/SENSEX mobile tiles show IEP in-tile. Market Intel popup is a fixed height. Events page ticks are admin-configurable again; the four info tiles stay on. News below impact 50 is not stored; same-story duplicates are dropped; heavy index constituents boost ingest. Tata Motors ADR quotes TATAY (OTC). Straddle history prefetches in the background.
+
 ## V11.08 — 2026-09-17
 
 Market Intel timeouts no longer pretend to be a Kite dump; GET `/market-intel` filters Mongo to the selected IST day so the feed can return before the client aborts. Events (holidays, economic calendar, index impact) stay public even when Index Risk is unticked. ADR quotes follow Twelve Data Basic 8 (8 credits/min, one symbol per call, 7.5s spacing, 90s backoff on 429) and keep the last good prints.

@@ -67,8 +67,8 @@ SEED_ADRS: List[Dict[str, Any]] = [
     {"company_name": "Wipro", "indian_symbol": "WIPRO", "adr_symbol": "WIT", "exchange": "NYSE", "sector": "IT", "adr_ratio": "1:1"},
     {"company_name": "Dr. Reddy's Laboratories", "indian_symbol": "DRREDDY", "adr_symbol": "RDY", "exchange": "NYSE", "sector": "PHARMA", "adr_ratio": "1:1"},
     {"company_name": "Sify Technologies", "indian_symbol": "SIFY", "adr_symbol": "SIFY", "exchange": "NASDAQ", "sector": "IT", "adr_ratio": "1:1"},
-    {"company_name": "WNS", "indian_symbol": "WNS", "adr_symbol": "WNS", "exchange": "NYSE", "sector": "IT", "adr_ratio": "1:1"},
-    {"company_name": "Tata Motors", "indian_symbol": "TATAMOTORS", "adr_symbol": "TTM", "exchange": "NYSE", "sector": "AUTO", "adr_ratio": "1:5"},
+    {"company_name": "WNS", "indian_symbol": "WNS", "adr_symbol": "WNS", "exchange": "NYSE", "sector": "IT", "adr_ratio": "1:1", "provider_symbol": "WNS"},
+    {"company_name": "Tata Motors", "indian_symbol": "TATAMOTORS", "adr_symbol": "TTM", "exchange": "OTC", "sector": "AUTO", "adr_ratio": "1:5", "provider_symbol": "TATAY"},
 ]
 
 _INDIAN_NAME_RE = re.compile(
@@ -190,6 +190,25 @@ def _api_key_from_doc(doc: Optional[Dict[str, Any]]) -> str:
             except Exception:
                 logger.warning("adr vault decrypt failed")
     return (os.environ.get("TWELVE_DATA_API_KEY") or "").strip()
+
+
+TD_QUOTE_ALIAS = {
+    "TTM": ("TATAY", "OTC"),
+    "TATAY": ("TATAY", "OTC"),
+}
+
+
+def quote_spec(cfg: Dict[str, Any]) -> Tuple[str, str, str]:
+    """Return (desk_symbol, twelve_data_symbol, exchange). Never send a blank symbol."""
+    adr = str(cfg.get("adr_symbol") or "").strip().upper()
+    prov = str(cfg.get("provider_symbol") or "").strip().upper()
+    exch = str(cfg.get("exchange") or "NYSE").strip().upper()
+    key = prov or adr
+    if key in TD_QUOTE_ALIAS:
+        return adr or key, TD_QUOTE_ALIAS[key][0], TD_QUOTE_ALIAS[key][1]
+    if adr == "TTM":
+        return "TTM", "TATAY", "OTC"
+    return adr or key, key, exch
 
 
 def universe_doc(row: Dict[str, Any], *, existing_id: Optional[str] = None) -> Dict[str, Any]:
@@ -435,6 +454,10 @@ async def seed_universe(db) -> int:
         doc = universe_doc({**row, "priority": 10 + i, "enabled": True})
         existing = await db[UNIVERSE_COL].find_one({"adr_symbol": doc["adr_symbol"]})
         if existing:
+            await db[UNIVERSE_COL].update_one(
+                {"id": existing.get("id") or doc["id"]},
+                {"$set": {"provider_symbol": doc["provider_symbol"], "exchange": doc["exchange"]}},
+            )
             continue
         await db[UNIVERSE_COL].update_one({"id": doc["id"]}, {"$setOnInsert": doc}, upsert=True)
         n += 1
@@ -550,22 +573,31 @@ def mark_twelve_data_rate_limited(seconds: float = TD_RATE_LIMIT_BACKOFF_S) -> N
     _rate_limited_until = time.monotonic() + max(30.0, float(seconds))
 
 
-async def fetch_quotes(api_key: str, symbols: List[str]) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+async def fetch_quotes(api_key: str, specs: List[Any]) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
     if not api_key:
         return {}, "not_configured"
-    if not symbols:
+    if not specs:
         return {}, None
     out: Dict[str, Dict[str, Any]] = {}
     err = None
     seen = []
-    for raw_sym in symbols:
-        sym = str(raw_sym or "").strip().upper()
-        if not sym or sym in seen:
+    for spec in specs:
+        if isinstance(spec, str):
+            desk, td, exch = spec.upper(), spec.upper(), "NYSE"
+        else:
+            desk, td, exch = spec[0], spec[1], spec[2] if len(spec) > 2 else "NYSE"
+        desk = str(desk or "").strip().upper()
+        td = str(td or "").strip().upper()
+        exch = str(exch or "").strip().upper()
+        if not td or td in seen:
             continue
-        seen.append(sym)
+        seen.append(td)
         await _consume_td_credit()
+        params: Dict[str, Any] = {"symbol": td, "apikey": api_key}
+        if exch:
+            params["exchange"] = exch
         try:
-            r = await _http_get(QUOTE_URL, {"symbol": sym, "apikey": api_key})
+            r = await _http_get(QUOTE_URL, params)
         except Exception as e:
             import httpx
             kind = "Timeout" if isinstance(e, httpx.TimeoutException) else type(e).__name__
@@ -594,17 +626,24 @@ async def fetch_quotes(api_key: str, symbols: List[str]) -> Tuple[Dict[str, Dict
                 mark_twelve_data_rate_limited()
                 await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="RateLimit")
                 return out, "rate_limited"
+            if "symbol" in msg.lower() and "invalid" in msg.lower() or "figi" in msg.lower():
+                await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="BadSymbol")
+                err = err or "bad_symbol"
+                continue
             await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="ProviderError")
             err = "provider_error"
             continue
         raw = payload
-        if isinstance(payload, dict) and isinstance(payload.get(sym), dict):
-            raw = payload[sym]
+        if isinstance(payload, dict) and isinstance(payload.get(td), dict):
+            raw = payload[td]
         if not isinstance(raw, dict):
             continue
-        norm = normalize_quote(raw, symbol=sym)
+        norm = normalize_quote(raw, symbol=desk or td)
         if norm:
-            out[norm["symbol"]] = norm
+            out[desk or td] = norm
+            out[td] = norm
+            if norm.get("symbol"):
+                out[str(norm["symbol"]).upper()] = norm
     return out, err
 
 
@@ -858,13 +897,13 @@ async def poll_once(db, *, reason: str = "interval") -> Dict[str, Any]:
     key = _api_key_from_doc(prefs_doc)
     await seed_universe(db)
     items = await list_universe(db, enabled_only=True)
-    symbols = [c.get("provider_symbol") or c["adr_symbol"] for c in items]
-    quotes, err = await fetch_quotes(key, symbols)
+    specs = [quote_spec(c) for c in items]
+    quotes, err = await fetch_quotes(key, specs)
     stored = 0
     failed = 0
     for cfg in items:
-        sym = (cfg.get("provider_symbol") or cfg["adr_symbol"]).upper()
-        q = quotes.get(sym)
+        desk, td, _ex = quote_spec(cfg)
+        q = quotes.get(desk) or quotes.get(td) or quotes.get((cfg.get("provider_symbol") or cfg["adr_symbol"]).upper())
         prev = None
         if db is not None:
             prev = await db[LATEST_COL].find_one({"adr_id": cfg["id"]}, {"_id": 0})

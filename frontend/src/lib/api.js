@@ -373,11 +373,32 @@ export const fetchStraddle = (idx, opts = {}) =>
   api.get(`/straddle/${idx}`, { params: opts }).then((r) => r.data);
 export const fetchStraddleTick = (idx, opts = {}) =>
   api.get(`/straddle/${idx}/tick`, { params: opts }).then((r) => r.data);
+
+const __straddleHist = new Map();
+const STRADDLE_HIST_TTL_MS = 45_000;
+
 export const fetchStraddleHistory = (idx, minutes = 60, opts = {}) => {
   const params = { ...opts };
   if (minutes != null) params.minutes = minutes;
-  return api.get(`/straddle/${idx}/history`, { params }).then((r) => r.data);
+  const key = `${idx}|${params.minutes || ""}|${params.expiry || ""}|${params.date || ""}`;
+  const hit = __straddleHist.get(key);
+  if (hit?.data && Date.now() - hit.at < STRADDLE_HIST_TTL_MS) return Promise.resolve(hit.data);
+  if (hit?.inflight) return hit.inflight;
+  const inflight = api.get(`/straddle/${idx}/history`, { params, timeout: 20000 }).then((r) => {
+    __straddleHist.set(key, { at: Date.now(), data: r.data });
+    return r.data;
+  }).catch((e) => {
+    __straddleHist.delete(key);
+    throw e;
+  });
+  __straddleHist.set(key, { inflight, at: 0 });
+  return inflight;
 };
+
+export function prefetchStraddleHistory(idx, opts = {}) {
+  if (!idx) return Promise.resolve();
+  return fetchStraddleHistory(idx, 60, opts).catch(() => {});
+}
 export const clearAlerts = () => api.delete("/alerts").then((r) => r.data);
 export const saveCredentials = (api_key, access_token) =>
   api.post("/credentials", { api_key, access_token }).then((r) => r.data);

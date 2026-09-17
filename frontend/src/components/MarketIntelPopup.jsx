@@ -323,7 +323,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
 
   return (
     <div
-      className={`fixed z-[70] md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto ${
+      className={`fixed z-[70] md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto h-[min(22rem,52vh)] ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
@@ -332,7 +332,6 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
           ? {}
           : {
               width: `min(${PANEL_W}px, calc(100vw - 16px))`,
-              maxHeight: "min(28rem, calc(100vh - 20px))",
             }),
       }}
       data-testid="market-intel-popup"
@@ -412,7 +411,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
         </button>
       </div>
 
-      <div className="px-2.5 pb-2.5 pt-1.5 space-y-1.5 text-xs overflow-y-auto max-h-[min(46vh,20rem)]">
+      <div className="px-2.5 pb-2.5 pt-1.5 space-y-1.5 text-xs overflow-y-auto min-h-0 flex-1">
         {loadError ? (
           <p className="text-[11px] text-rose-800" data-testid="mi-popup-error">Could not load news: {loadError}</p>
         ) : item ? (
