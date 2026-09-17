@@ -66,7 +66,7 @@ export function errorSourceLabel(src) {
     market_intel: "Mkt Intel",
     straddle: "Straddle",
     kite: "Kite",
-    telegram: "Telegram",
+    adr: "ADRs",
     ui: "UI",
     api: "API",
     ws: "WS",

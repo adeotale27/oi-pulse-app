@@ -1,8 +1,12 @@
 # Changelog
 
-## V10.15 — 2026-09-17
+## V11.01 — 2026-09-17
 
-Journal modal is a fixed desktop size with inner scroll (phone still fills the viewport). LIVE + Market Open · Next Pull stay pinned on the left of the status rail; only index quotes marquee end-to-end. Mkt Intel expands docked bottom-right. Admin configuration is tile panes (Alerts, Market timing, Data collection, Dashboard pages, Chart signals). CAS IEP still draws under header LTP and sidebar Indicative Close; Admin → Market timing has Preview IEP UI now. Book radar AI gets the live book + OI tape. Positions column headers drag left/right (order persisted).
+Admin can tick ADRs on Public/Admin dashboard pages (`adrs` is an allowed page key). Journal is a fixed desktop size; LIVE + Next Pull stay left while quotes marquee. Admin configuration is tiles. IEP preview-now, radar book tape, Positions column drag.
+
+## V11.00 — 2026-09-17
+
+Indian ADR desk tab: Twelve Data quotes (USD) for a seeded Indian ADR universe, admin-configurable. Backend-only polling (5m during the NYSE session, one 09:15 IST refresh). Column picker is a per-user preference. Large ADR / banking moves feed Market Intelligence and the existing Alerts list, deduped per session. API key is Fernet-vaulted and never returned to the browser.
 
 ## V10.14 — 2026-09-17
 

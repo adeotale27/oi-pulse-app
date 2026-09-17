@@ -17,3 +17,10 @@ def test_app_version_file_still_loads():
     expected = (root / "VERSION").read_text(encoding="utf-8").strip().splitlines()[0].strip()
     assert load_app_version() == expected
     assert APP_VERSION == expected
+
+
+def test_adrs_is_allowed_dashboard_page():
+    text = Path(__file__).resolve().parents[1].joinpath("server.py").read_text(encoding="utf-8")
+    start = text.index("DASHBOARD_PAGE_KEYS")
+    block = text[start:text.index("}", start)]
+    assert '"adrs"' in block

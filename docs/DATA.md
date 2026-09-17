@@ -13,7 +13,10 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `alerts` | Server-side OI reversal / pressure alerts |
 | `straddle_samples` | ATM straddle time series |
 | `credentials` | Encrypted Kite API key/secret/token vault (`_id: kite`) |
-| `settings` | Admin settings, public access flag (`open`, `require_approval`, expiry), password hash, sidebar notes, `mcx_desk_on`, Market Intelligence ingest/retention, `telegram_prefs` (alert filters + Fernet `bot_token_enc` + `chat_id`) |
+| `settings` | Admin settings, public access flag (`open`, `require_approval`, expiry), password hash, sidebar notes, `mcx_desk_on`, Market Intelligence ingest/retention, `telegram_prefs` (alert filters + Fernet `bot_token_enc` + `chat_id`), `adr_prefs` (Twelve Data Fernet `api_key_enc`, poll/alerts) |
+| `adr_universe` | Admin-editable Indian ADR list (company, NSE symbol, US ticker, sector, ratio) |
+| `adr_observations` | Twelve Data quote snapshots (time series; pruned with snapshot retention, latest kept) |
+| `adr_latest` | Last successful observation per ADR (survives a failed poll) |
 | `desk_ai_providers` | Vaulted OpenAI-compatible Desk AI keys (`key_enc`); `_id`/`id` plus `_active` pointer |
 | `mi_sources` | Admin Market Intelligence sources (RSS/API/Firecrawl); secrets encrypted |
 | `mi_articles` | Normalized scored news; rolling calendar-day retention |

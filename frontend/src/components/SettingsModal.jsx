@@ -30,6 +30,7 @@ const DASHBOARD_PAGES = [
   { id: "index-events", label: "Index Risk" },
   { id: "cas", label: "CAS Expiry" },
   { id: "market-intel", label: "Market Intelligence" },
+  { id: "adrs", label: "ADRs" },
 ];
 const ALL_PAGE_IDS = DASHBOARD_PAGES.map((p) => p.id);
 const SETTINGS_PANES = [
@@ -719,6 +720,8 @@ export default function SettingsModal({
                           ? "Optional for guests — also on the Public icon menu."
                           : page.id === "cas"
                             ? "Guests can view; only admin can Activate / Live."
+                            : page.id === "adrs"
+                              ? "Indian ADR quotes (USD). Tick Admin for your desk; Public for guests."
                             : null;
                     const tickClass = "rounded-full h-[18px] w-[18px] border-slate-300 shadow-none data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 data-[state=checked]:text-white";
                     return (
