@@ -323,6 +323,32 @@ def day_pnl(d: Optional[Dict[str, Any]]) -> float:
     return 0.0
 
 
+JOURNAL_INSERT_DEFAULTS = {
+    "went_well": "",
+    "went_wrong": "",
+    "notes": "",
+    "tags": [],
+    "rating": None,
+    "followed_plan": None,
+    "screenshots": [],
+    "eod_locked": False,
+}
+
+
+def mongo_upsert_ops(fields: Dict[str, Any]) -> Dict[str, Any]:
+    """Mongo update doc for journal P&L upsert.
+
+    ``$set`` and ``$setOnInsert`` must not share paths — Mongo rejects the write
+    (and the Positions snapshot used to swallow that, so locked first-writes never stored).
+    """
+    fields = dict(fields or {})
+    insert = {k: v for k, v in JOURNAL_INSERT_DEFAULTS.items() if k not in fields}
+    ops: Dict[str, Any] = {"$set": fields}
+    if insert:
+        ops["$setOnInsert"] = insert
+    return ops
+
+
 def apply_snapshot(
     existing: Optional[Dict[str, Any]],
     snap: Dict[str, Any],

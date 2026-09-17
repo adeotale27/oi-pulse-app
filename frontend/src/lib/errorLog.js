@@ -57,6 +57,13 @@ export function reportDeskError({ message, stack, source = "ui", path } = {}) {
   }
 }
 
+export const ERROR_LOG_UNSEEN_EVENT = "oi-error-log-unseen";
+
+export function notifyErrorLogUnseenChanged(unseen) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(ERROR_LOG_UNSEEN_EVENT, { detail: { unseen } }));
+}
+
 export function installDeskErrorLog() {
   if (typeof window === "undefined") return;
   if (window.__striklenzErrorLog) return;

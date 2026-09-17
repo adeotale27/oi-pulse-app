@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.12 — 2026-09-17
+
+Trade journal EOD first-write no longer fails Mongo `$set` / `$setOnInsert` on `eod_locked` (days after 15:45 were silently dropped). Market Intelligence `GET /api/market-intel?filter=&date=` validates YYYY-MM-DD, returns 400 on bad dates, and serializes feed items safely; empty days are 200 with `items: []`; UI distinguishes load error vs empty. Admin Error log shows a persisted unseen-count badge. Straddle hides next-refresh and stops live poll after market close.
+
 ## V10.11 — 2026-09-16
 
 OI Change tooltip stacks above Bias/PCR tiles and the Increase/Decrease legend. Session bias bar stays sticky at the top of the dashboard scroller (all tabs, phone included). ATM ± N recenters on live ATM as spot moves. Header Today P&L and Overnight/Desk AI book fetches are admin-only so a public desk does not show our trades.
