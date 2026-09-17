@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.00 — 2026-09-17
+
+Indian ADR desk tab: Twelve Data quotes (USD) for a seeded Indian ADR universe, admin-configurable. Backend-only polling (5m during the NYSE session, one 09:15 IST refresh). Column picker is a per-user preference. Large ADR / banking moves feed Market Intelligence and the existing Alerts list, deduped per session. API key is Fernet-vaulted and never returned to the browser.
+
 ## V10.14 — 2026-09-17
 
 Telegram token and chat ID live in Admin → Telegram (Fernet vault + BotFather help), not Admin configuration. Market Intel chip stays one line on the right with unseen CRITICAL count; popup is on by default and after 14:00 IST includes the prior session until the next open. Error log Src chips come from stored sources. Live strip is one RTL CSS marquee (LIVE + Next Pull + quotes). VIX uses the same portal hover as GIFT. Journal Previous/Next skip weekends and holidays. CAS IEP Quote window is admin-configurable (default 15:20–15:35 IST, 5s).

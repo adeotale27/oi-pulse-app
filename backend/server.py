@@ -6380,6 +6380,8 @@ async def desk_memory(
 # ------------------- Lifecycle -------------------
 import market_intel_api
 market_intel_api.mount(api_router, require_admin=require_admin, require_desk_user=require_desk_user)
+import adr_api
+adr_api.mount(api_router, require_admin=require_admin, require_desk_user=require_desk_user)
 app.include_router(api_router)
 
 
@@ -6512,6 +6514,8 @@ poll_watchdog_task = None
 journal_eod_task = None
 market_intel_task = None
 market_intel_stop = None
+adr_task = None
+adr_stop = None
 
 @app.on_event("startup")
 async def _startup():
@@ -6577,6 +6581,12 @@ async def _ensure_mongo_indexes():
             await _mi.ensure_indexes(db)
         except Exception as e:
             logger.warning("market intel indexes: %s", e)
+        try:
+            import adr as _adr
+            await _adr.ensure_indexes(db)
+            await _adr.seed_universe(db)
+        except Exception as e:
+            logger.warning("adr indexes: %s", e)
         await db.trade_journal.create_index("date", unique=True, name="uniq_journal_date")
         await db.cas_auto_log.create_index([("day", 1), ("at", -1)])
         await db.trade_cycles.create_index("cycle_id", unique=True, name="uniq_trade_cycle")
@@ -6631,7 +6641,7 @@ async def _seed_last_snapshots():
 
 
 async def _boot_rest():
-    global straddle_sampler_task, poll_watchdog_task, journal_eod_task, market_intel_task, market_intel_stop
+    global straddle_sampler_task, poll_watchdog_task, journal_eod_task, market_intel_task, market_intel_stop, adr_task, adr_stop
     await _ensure_mongo_indexes()
     try:
         await asyncio.wait_for(tracker.load_credentials(), timeout=20)
@@ -6667,6 +6677,11 @@ async def _boot_rest():
         )
     except Exception as e:
         logger.warning("market intel loop: %s", e)
+    try:
+        import adr as _adr
+        adr_task, adr_stop = _adr.start_loop(lambda: db)
+    except Exception as e:
+        logger.warning("adr loop: %s", e)
     logger.info(
         "Started browser-independent OI/straddle writers + market-day poll watchdog"
     )
@@ -6691,9 +6706,11 @@ async def _shutdown():
         await fii_dii.stop()
     except Exception:
         pass
-    for task_name in ("straddle_sampler_task", "poll_watchdog_task", "journal_eod_task", "market_intel_task"):
+    for task_name in ("straddle_sampler_task", "poll_watchdog_task", "journal_eod_task", "market_intel_task", "adr_task"):
         if task_name == "market_intel_task" and market_intel_stop:
             market_intel_stop.set()
+        if task_name == "adr_task" and adr_stop:
+            adr_stop.set()
         task = globals().get(task_name)
         if task:
             task.cancel()

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText, Newspaper } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText, Newspaper, Globe2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import DeskAiConfigMenu from "@/components/DeskAiConfigMenu";
@@ -186,6 +186,7 @@ export default function Header({
   positionsPublic: _positionsPublic = true,
   onOpenDeskAiKeys,
   onOpenMiSettings,
+  onOpenAdrSettings,
   showDeskAi = false,
   onDeskAiChange,
   onOpenDeskAiPanel,
@@ -684,6 +685,10 @@ export default function Header({
             <Newspaper className="w-4 h-4 mr-1.5" />
             Mkt Intel settings
           </Button>
+          <Button data-testid="btn-mobile-adr-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenAdrSettings)}>
+            <Globe2 className="w-4 h-4 mr-1.5" />
+            ADRs
+          </Button>
           <Button
             data-testid="btn-mobile-fresh-pull"
             size="sm"
@@ -1039,6 +1044,13 @@ export default function Header({
                   <Newspaper className="w-4 h-4" />
                   Mkt Intel settings
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-open-adr-settings"
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenAdrSettings?.(); }}
+                >
+                  <Globe2 className="w-4 h-4" />
+                  ADRs
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
                   Account
@@ -1194,6 +1206,10 @@ export default function Header({
           <Button data-testid="btn-tablet-mi-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenMiSettings)}>
             <Newspaper className="w-4 h-4 mr-1.5" />
             Mkt Intel settings
+          </Button>
+          <Button data-testid="btn-tablet-adr-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenAdrSettings)}>
+            <Globe2 className="w-4 h-4 mr-1.5" />
+            ADRs
           </Button>
           <Button
             data-testid="btn-tablet-fresh-pull"

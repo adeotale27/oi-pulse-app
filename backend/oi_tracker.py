@@ -190,11 +190,11 @@ DEFAULT_SETTINGS = {
     "straddle_poll_interval_seconds": 15,  # Dense straddle chart samples (FinanceDeft-style)
     "positions_poll_interval_seconds": 30,  # Positions desk auto-refresh (admin)
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
-    "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "positions", "alerts", "activity", "holidays", "straddle", "index-events", "market-intel"],
+    "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "positions", "alerts", "activity", "holidays", "straddle", "index-events", "market-intel", "adrs"],
     # Admin's own dashboard tabs (independent of guest visibility)
     "admin_visible_pages": [
         "oi-change", "open-interest", "strike-table", "sell-candidates", "buildup",
-        "positions", "alerts", "activity", "holidays", "straddle", "index-events", "cas", "market-intel",
+        "positions", "alerts", "activity", "holidays", "straddle", "index-events", "cas", "market-intel", "adrs",
     ],
     # Sidebar Strike Range steppers — off by default (ATM quick-picks cover most use)
     "show_strike_range": False,

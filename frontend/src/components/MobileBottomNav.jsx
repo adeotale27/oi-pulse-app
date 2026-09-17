@@ -12,6 +12,7 @@ import {
   Settings2,
   LayoutGrid,
   Radio,
+  Globe2,
 } from "lucide-react";
 import { DOCK_CATALOG, loadMobileDock, saveMobileDock } from "@/lib/mobileDock";
 
@@ -26,6 +27,7 @@ const ICONS = {
   alerts: Bell,
   "open-interest": BarChart3,
   "market-intel": Radio,
+  adrs: Globe2,
   desk: LayoutDashboard,
 };
 

@@ -25,6 +25,8 @@ import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
 import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
 import MarketIntelPage from "@/components/MarketIntelPage";
+import AdrPage from "@/components/AdrPage";
+import AdrAdminModal from "@/components/AdrAdminModal";
 import MarketIntelPopup from "@/components/MarketIntelPopup";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
 import CredentialsModal from "@/components/CredentialsModal";
@@ -103,6 +105,7 @@ const DASHBOARD_PAGES = [
   { v: "index-events", l: "Index Risk" },
   { v: "cas", l: "CAS" },
   { v: "market-intel", l: "Mkt Intel" },
+  { v: "adrs", l: "ADRs" },
 ];
 const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
   .filter((page) => !page.adminOnly && page.v !== "cas")
@@ -255,6 +258,7 @@ export default function Dashboard() {
   const [credsOpen, setCredsOpen] = useState(false);
   const [deskAiKeysOpen, setDeskAiKeysOpen] = useState(false);
   const [miSettingsOpen, setMiSettingsOpen] = useState(false);
+  const [adrAdminOpen, setAdrAdminOpen] = useState(false);
   const [morningRefreshOpen, setMorningRefreshOpen] = useState(false);
   const [telegramPrefsOpen, setTelegramPrefsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2150,6 +2154,7 @@ export default function Dashboard() {
         onOpenCreds={() => { if (authState.is_admin) setCredsOpen(true); }}
         onOpenDeskAiKeys={() => { if (authState.is_admin) setDeskAiKeysOpen(true); }}
         onOpenMiSettings={() => { if (authState.is_admin) setMiSettingsOpen(true); }}
+        onOpenAdrSettings={() => { if (authState.is_admin) setAdrAdminOpen(true); }}
         onOpenMorningRefresh={() => { if (authState.is_admin) setMorningRefreshOpen(true); }}
         onOpenTelegramPrefs={() => { if (authState.is_admin) setTelegramPrefsOpen(true); }}
         onOpenSettings={() => { if (authState.is_admin) setSettingsOpen(true); }}
@@ -2936,6 +2941,15 @@ export default function Dashboard() {
                       <MarketIntelPage />
                     </TabsContent>
                   )}
+                  {(tabOn("adrs")) && (
+                    <TabsContent value="adrs" className="mt-0">
+                      <AdrPage
+                        isAdmin={!!authState.is_admin}
+                        userKey={authState.admin_username || authState.guest_name || (authState.is_admin ? "admin" : "guest")}
+                        onOpenAdmin={() => setAdrAdminOpen(true)}
+                      />
+                    </TabsContent>
+                  )}
 
                 {(activeTab === "oi-change" || activeTab === "open-interest") && (
                 <div className="mt-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2 flex-wrap">
@@ -3088,6 +3102,9 @@ export default function Dashboard() {
       )}
       {authState.is_admin && (
         <MarketIntelSettingsModal open={miSettingsOpen} onOpenChange={setMiSettingsOpen} />
+      )}
+      {authState.is_admin && (
+        <AdrAdminModal open={adrAdminOpen} onOpenChange={setAdrAdminOpen} />
       )}
 
       {authState.is_admin && (
