@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip as ReTooltip, XAxis, YAxis } from "recharts";
-import { Columns3, Search, SlidersHorizontal, Clock } from "lucide-react";
+import { ChevronDown, ChevronRight, Columns3, Search, SlidersHorizontal, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
 import ListingFlag from "@/components/ListingFlag";
@@ -14,10 +14,30 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import {
-  ADR_COLUMNS, ADR_FILTERS, filterAdrRows, formatAdrCell, formatIstStamp, isAdrSessionOpen, listingCountryCode, loadAdrColumns, moveTone, resetAdrColumns, saveAdrColumns, sortAdrRows, toneClass, usdPrice, usdSigned, pctSigned, fmtVolume,
+  ADR_COLUMNS, ADR_FILTERS, ADR_PHONE_COL_IDS, filterAdrRows, formatAdrCell, formatIstStamp, isAdrSessionOpen, listingCountryCode, loadAdrColumns, moveTone, resetAdrColumns, saveAdrColumns, sortAdrRows, toneClass, usdPrice, usdSigned, pctSigned, fmtVolume,
 } from "@/lib/adr";
 
+function useIsPhone() {
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return phone;
+}
+
+const SUMMARY_TILES = (summary) => ([
+  ["ADR Coverage", summary.configured],
+  ["Gainers", summary.gainers],
+  ["Losers", summary.losers],
+  ["Large Moves", summary.large_moves],
+  ["US Market", summary.us_market],
+]);
+
 export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin }) {
+  const phone = useIsPhone();
   const [snap, setSnap] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +49,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
   const [openId, setOpenId] = useState(null);
   const [hist, setHist] = useState([]);
   const [range, setRange] = useState("1D");
+  const [statsOpen, setStatsOpen] = useState(false);
 
   const load = async () => {
     try {
@@ -48,7 +69,10 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
     setCols(loadAdrColumns(userKey));
   }, [userKey]);
 
-  const visibleCols = useMemo(() => ADR_COLUMNS.filter((c) => cols.includes(c.id)), [cols]);
+  const visibleCols = useMemo(() => {
+    if (phone) return ADR_COLUMNS.filter((c) => ADR_PHONE_COL_IDS.includes(c.id));
+    return ADR_COLUMNS.filter((c) => cols.includes(c.id));
+  }, [cols, phone]);
   const rows = useMemo(() => {
     const list = Array.isArray(snap?.items) ? snap.items : [];
     return sortAdrRows(filterAdrRows(list, { q, filter: filt }), sortKey, sortDir);
@@ -91,39 +115,53 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
     else { setSortKey(id); setSortDir(id === "company" ? "asc" : "desc"); }
   };
 
+  const summaryTiles = snap?.summary ? (
+    <div className={`grid gap-2 text-[11px] ${phone ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-5"}`}>
+      {SUMMARY_TILES(snap.summary).map(([k, v]) => (
+        <div key={k} className="rounded-sm border border-slate-200 dark:border-slate-700 px-2 py-1.5 bg-white dark:bg-slate-900">
+          <div className="uppercase tracking-wide text-slate-400 text-[10px]">{k}</div>
+          <div className="font-semibold font-mono-data">{v}</div>
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   return (
-    <div className="space-y-3" data-testid="adr-page">
+    <div className={`space-y-2 md:space-y-3 ${phone ? "pb-2" : ""}`} data-testid="adr-page">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <PageBrandTitle kicker="Indian ADR Market Monitor" title="ADRs" testId="adr-title" />
+        <PageBrandTitle kicker={phone ? null : "Indian ADR Market Monitor"} title="ADRs" testId="adr-title" />
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-semibold" data-testid="adr-us-status">
             {snap?.us_market_label || "US Market"}
           </span>
-          <span className="text-[11px] text-slate-500 font-mono-data" data-testid="adr-last-update">
-            Last Update: {formatIstStamp(snap?.last_update)}
-          </span>
+          {!phone ? (
+            <span className="text-[11px] text-slate-500 font-mono-data" data-testid="adr-last-update">
+              Last Update: {formatIstStamp(snap?.last_update)}
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-500 font-mono-data" data-testid="adr-last-update">
+              {formatIstStamp(snap?.last_update)}
+            </span>
+          )}
         </div>
       </div>
 
-      {snap?.summary ? (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
-          {[
-            ["ADR Coverage", snap.summary.configured],
-            ["Gainers", snap.summary.gainers],
-            ["Losers", snap.summary.losers],
-            ["Large Moves", snap.summary.large_moves],
-            ["US Market", snap.summary.us_market],
-          ].map(([k, v]) => (
-            <div key={k} className="rounded-sm border border-slate-200 dark:border-slate-700 px-2 py-1.5 bg-white dark:bg-slate-900">
-              <div className="uppercase tracking-wide text-slate-400 text-[10px]">{k}</div>
-              <div className="font-semibold font-mono-data">{v}</div>
-            </div>
-          ))}
-        </div>
+      {phone && snap?.summary ? (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 min-h-11"
+          onClick={() => setStatsOpen((v) => !v)}
+          data-testid="adr-stats-toggle"
+          aria-expanded={statsOpen}
+        >
+          {statsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          Coverage · Gainers · Losers
+        </button>
       ) : null}
+      {(!phone || statsOpen) ? summaryTiles : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[10rem] flex-1 max-w-xs">
+        <div className={`relative min-w-[8rem] flex-1 ${phone ? "" : "max-w-xs"}`}>
           <Search className="w-3.5 h-3.5 absolute left-2 top-2.5 text-slate-400" />
           <Input data-testid="adr-search" className="h-8 pl-7 text-xs" placeholder="Search ADRs…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
@@ -141,29 +179,31 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" size="sm" variant="outline" className="h-8 rounded-sm" data-testid="adr-columns">
-              <Columns3 className="w-3.5 h-3.5 mr-1" /> Columns
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="max-h-[min(70vh,24rem)] overflow-y-auto">
-            <DropdownMenuLabel>Visible columns</DropdownMenuLabel>
-            {ADR_COLUMNS.map((c) => (
-              <DropdownMenuCheckboxItem
-                key={c.id}
-                checked={cols.includes(c.id)}
-                onCheckedChange={() => toggleCol(c.id)}
-                onSelect={(e) => e.preventDefault()}
-                data-testid={`adr-col-${c.id}`}
-              >
-                {c.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={restore} data-testid="adr-col-reset">Restore defaults</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {!phone ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm" variant="outline" className="h-8 rounded-sm" data-testid="adr-columns">
+                <Columns3 className="w-3.5 h-3.5 mr-1" /> Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-[min(70vh,24rem)] overflow-y-auto">
+              <DropdownMenuLabel>Visible columns</DropdownMenuLabel>
+              {ADR_COLUMNS.map((c) => (
+                <DropdownMenuCheckboxItem
+                  key={c.id}
+                  checked={cols.includes(c.id)}
+                  onCheckedChange={() => toggleCol(c.id)}
+                  onSelect={(e) => e.preventDefault()}
+                  data-testid={`adr-col-${c.id}`}
+                >
+                  {c.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={restore} data-testid="adr-col-reset">Restore defaults</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
 
       {loading && !snap ? <p className="text-sm text-slate-500">Loading ADR quotes…</p> : null}
@@ -179,7 +219,35 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
         </div>
       ) : null}
 
-      {configured > 0 ? (
+      {configured > 0 && phone ? (
+        <div className="border border-slate-200 dark:border-slate-700 rounded-sm bg-white dark:bg-slate-900" data-testid="adr-table">
+          <div className="grid grid-cols-[minmax(0,1.3fr)_4.4rem_4.4rem_3.6rem] gap-1 px-2 py-1.5 text-[10px] uppercase tracking-wide text-slate-500 font-semibold">
+            <button type="button" className="text-left" onClick={() => headerSort("company")}>Company{sortKey === "company" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>
+            <button type="button" className="text-right" onClick={() => headerSort("last_price")}>Last{sortKey === "last_price" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>
+            <button type="button" className="text-right" onClick={() => headerSort("change")}>Change{sortKey === "change" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>
+            <button type="button" className="text-right" onClick={() => headerSort("change_percent")}>Chg. %{sortKey === "change_percent" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>
+          </div>
+          {rows.map((row) => (
+            <button
+              type="button"
+              key={row.id}
+              data-testid={`adr-row-${row.adr_symbol}`}
+              className={`w-full grid grid-cols-[minmax(0,1.3fr)_4.4rem_4.4rem_3.6rem] gap-1 px-2 py-2 border-t border-slate-100 dark:border-slate-800 text-left min-h-11 ${row.large_move ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}
+              onClick={() => openRow(row)}
+            >
+              <span className="font-sans inline-flex items-center gap-1 min-w-0">
+                <ListingFlag country={listingCountryCode(row)} />
+                <span className="font-semibold text-[11px] truncate">{row.company_name}</span>
+              </span>
+              <span className="font-mono-data text-[11px] text-right tabular-nums">{usdPrice(row.last_price)}</span>
+              <span className={`font-mono-data text-[11px] text-right tabular-nums ${toneClass(moveTone(row.change))}`}>{usdSigned(row.change)}</span>
+              <span className={`font-mono-data text-[11px] text-right tabular-nums ${toneClass(moveTone(row.change_percent))}`}>{pctSigned(row.change_percent)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {configured > 0 && !phone ? (
         <div className="overflow-x-auto oi-hover-scroll border border-slate-200 dark:border-slate-700 rounded-sm bg-white dark:bg-slate-900">
           <table className="w-full text-[11px] min-w-[52rem]" data-testid="adr-table">
             <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 text-[10px] uppercase tracking-wide text-slate-500">
@@ -241,7 +309,11 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
       ) : null}
 
       <Sheet open={!!detail} onOpenChange={(o) => { if (!o) setOpenId(null); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto" data-testid="adr-detail">
+        <SheetContent
+          side={phone ? "bottom" : "right"}
+          className={`w-full overflow-y-auto z-[80] ${phone ? "max-h-[85vh] rounded-t-xl pb-[max(1rem,env(safe-area-inset-bottom))]" : "sm:max-w-md"}`}
+          data-testid="adr-detail"
+        >
           <SheetHeader>
             <SheetTitle>
               <span className="mr-1.5 inline-flex align-middle"><ListingFlag country={listingCountryCode(detail)} /></span>

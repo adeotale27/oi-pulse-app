@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.07",
+    date: "2026-09-17",
+    user: [
+      "The desk opens on OI Change and only shows pages Admin has enabled — a reload will not list every feature. Phone ADRs are Last / Change / Chg. %; tap a company for the rest. Coverage tiles sit behind an arrow so the list scrolls.",
+    ],
+    admin: [
+      "visible_pages / admin_visible_pages apply before the tab bar paints. Boot ticks are oi-change only until GET /config.",
+    ],
+  },
+  {
     version: "11.06",
     date: "2026-09-17",
     user: [

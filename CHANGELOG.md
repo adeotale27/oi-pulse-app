@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.07 — 2026-09-17
+
+Reload no longer flashes every dashboard tab before `/config` — guests only see enabled pages, home is OI Change. Phone ADRs: quotes first (Last, Change, Chg. %), coverage tiles behind an arrow, tap a name for the full sheet.
+
 ## V11.06 — 2026-09-17
 
 CAS IEP UI hides when Kite settles (cash close 15:30 IST, or when Quote sends 0). Sidebar and popup show IEP change % vs previous close. ATM stays on LTP during the auction and snaps to the IEP strike after settle. ADRs use SVG USA/Germany flags (not “US” letters) and a nameless last-column clock with Market open / Market closed hover.
