@@ -195,7 +195,7 @@ export default function MarketIntelPage({ compact = false }) {
           Could not load market intelligence: {err}
         </div>
       )}
-      {!err || items.length > 0 ? (
+      {items.length > 0 || (!loading && !err) ? (
         <div className={`space-y-2 ${loading && items.length ? "opacity-80" : ""}`}>
           {!loading && items.length === 0 && !err && (
             <div className="text-xs text-slate-500 border rounded-md p-4 text-center py-8" data-testid="mi-empty">
@@ -230,7 +230,7 @@ export default function MarketIntelPage({ compact = false }) {
             </>
           )}
         </div>
-      )}
+      ) : null}
       <MarketIntelUserPrefs prefs={prefs} onChange={patchPrefs} />
     </div>
   );

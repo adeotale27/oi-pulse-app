@@ -23,22 +23,19 @@ function QuoteChip({ it, copy, testId }) {
       type="button"
       data-testid={testId}
       onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
-      className={`inline-flex items-center gap-1 shrink-0 whitespace-nowrap text-[11px] tabular-nums ${
+      className={`inline-flex items-center shrink-0 whitespace-nowrap text-[11px] tabular-nums ${
         it.active ? "text-white font-bold" : "text-white/95"
       } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
     >
       <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
       {it.price != null && it.price !== "" ? (
-        <span className="font-semibold tabular-nums font-mono-data inline-block min-w-[5.5rem] text-left">{it.price}</span>
+        <span className="font-semibold tabular-nums font-mono-data ml-[0.25em]">{it.price}</span>
       ) : null}
       {it.pct != null && Number.isFinite(it.pct) && (
-        <span className={`${pctCls(it.pct)} tabular-nums font-mono-data inline-block min-w-[3.5rem]`}>
+        <span className={`${pctCls(it.pct)} tabular-nums font-mono-data ml-[0.25em]`}>
           {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}
         </span>
       )}
-      <span className="text-white/30 pl-2" aria-hidden>
-        ·
-      </span>
     </button>
   );
 }

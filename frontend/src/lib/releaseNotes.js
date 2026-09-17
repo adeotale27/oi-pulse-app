@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.03",
+    date: "2026-09-17",
+    user: [
+      "ADRs tab loads. Live quotes sit tight (name price %) with a larger gap before the next name, and the strip moves slower.",
+    ],
+    admin: [
+      "Market Intel date switch JSX compiles. ADR column picker uses the shared ADR_COLUMNS list.",
+    ],
+  },
+  {
     version: "11.02",
     date: "2026-09-17",
     user: [
