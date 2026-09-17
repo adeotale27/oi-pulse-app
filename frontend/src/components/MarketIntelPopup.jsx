@@ -72,6 +72,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const [minimized, setMinimized] = useState(() => readMinimized());
   const [forceOpen, setForceOpen] = useState(false);
   const [dockUntilNext, setDockUntilNext] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [leftPx, setLeftPx] = useState(() => readNum(MI_POPUP_LEFT_KEY));
   const [bottomPx, setBottomPx] = useState(() => readNum(MI_POPUP_BOTTOM_KEY));
   const idxRef = useRef(0);
@@ -136,6 +137,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
       api.get("/market-intel/popup", { timeout: 15000 })
         .then((r) => {
           if (cancelled) return;
+          setLoadError(null);
           const next = r.data?.items || [];
           setDockUntilNext(r.data?.dock_until_next !== false);
           setItems((prev) => {
@@ -145,7 +147,10 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
             return next;
           });
         })
-        .catch(() => {});
+        .catch((e) => {
+          if (cancelled) return;
+          setLoadError(e?.message || "popup failed");
+        });
     };
     timer = setTimeout(() => {
       poll();
@@ -234,6 +239,8 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     if (shouldExpand) expand();
   };
 
+  if (!enabled) return null;
+
   const n = items.length;
   const item = n ? items[Math.min(idx, n - 1)] : null;
   const phoneOpen = typeof window !== "undefined" && isPhone();
@@ -246,7 +253,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     return { bottom, left, right: left ? "auto" : 12 };
   })();
 
-  if (!enabled) return null;
+  if (!item && !minimized && !forceOpen && !loadError) return null;
 
   const step = (dir) => {
     if (n < 2) return;
@@ -262,8 +269,6 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
     if (cid) api.post("/market-intel/popup/ack", { event_cluster_id: cid }).catch(() => {});
     if (next.length === 0) closeOrDock();
   };
-
-  if (!item && !minimized && !forceOpen) return null;
 
   if (minimized) {
     return (
@@ -292,6 +297,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
         <Newspaper className="w-3.5 h-3.5" />
         <span>Mkt Intel</span>
         {n > 0 ? <span className="opacity-70 font-mono-data">{n}</span> : null}
+        {loadError ? <span className="text-rose-700 font-bold" title={loadError}>!</span> : null}
         <Maximize2 className="w-3.5 h-3.5 opacity-70" />
       </button>
     );
@@ -389,7 +395,9 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
       </div>
 
       <div className="px-2.5 pb-2.5 pt-1.5 space-y-1.5 text-xs overflow-y-auto max-h-[min(46vh,20rem)]">
-        {item ? (
+        {loadError ? (
+          <p className="text-[11px] text-rose-800" data-testid="mi-popup-error">Could not load news: {loadError}</p>
+        ) : item ? (
           <>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_band || "HIGH"}</span>

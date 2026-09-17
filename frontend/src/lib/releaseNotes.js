@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.12",
+    date: "2026-09-17",
+    user: [
+      "Straddle no longer counts down to the next refresh after the cash market is closed. Market Intelligence shows a real error when the feed fails instead of pretending there is no news. Admin Error log has a badge for errors you have not opened yet.",
+    ],
+    admin: [
+      "Journal upsert no longer conflicts on eod_locked, so a first snapshot after 15:45 IST is stored. GET /api/market-intel?date=YYYY-MM-DD is a supported filter (400 on invalid date, 200 empty list when none). GET /api/errors/unseen-count and POST /api/errors/mark-seen persist last_error_log_seen_at per admin username.",
+    ],
+  },
+  {
     version: "10.11",
     date: "2026-09-16",
     user: [

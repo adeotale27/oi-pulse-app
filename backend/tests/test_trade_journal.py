@@ -22,6 +22,7 @@ from trade_journal import (
     journal_session_ymd,
     is_pre_session_auto_snapshot,
     is_stale_carryover_snapshot,
+    mongo_upsert_ops,
 )
 
 
@@ -729,3 +730,51 @@ def test_period_stats_from_to_and_index_filter():
     assert nifty["charges_are_all_indices"] is True
     assert nifty["charges_total"] == 125.35
     assert nifty["booked_after_charges"] is None
+
+
+def test_mongo_upsert_ops_no_path_conflict_when_locking():
+    snap = snapshot_from_positions(_payload(), date="2026-09-16")
+    locked = apply_snapshot({}, snap, now=datetime(2026, 9, 16, 15, 50, tzinfo=IST))
+    assert locked["eod_locked"] is True
+    ops = mongo_upsert_ops(locked)
+    set_keys = set(ops["$set"])
+    insert_keys = set(ops.get("$setOnInsert") or {})
+    assert not (set_keys & insert_keys)
+    assert "eod_locked" in set_keys
+    assert "eod_locked" not in insert_keys
+
+
+def test_consecutive_session_snapshots_keep_separate_dates():
+    """Two trading days must not collapse onto one Mongo date key."""
+    d1 = apply_snapshot({}, snapshot_from_positions(_payload(), date="2026-09-15"), now=datetime(2026, 9, 15, 15, 50, tzinfo=IST))
+    d2 = apply_snapshot({}, snapshot_from_positions(_payload(), date="2026-09-16"), now=datetime(2026, 9, 16, 15, 50, tzinfo=IST))
+    assert d1["date"] == "2026-09-15"
+    assert d2["date"] == "2026-09-16"
+    store = {}
+    for doc in (d1, d2):
+        ops = mongo_upsert_ops(doc)
+        day = doc["date"]
+        if day not in store:
+            store[day] = {**(ops.get("$setOnInsert") or {}), **ops["$set"]}
+        else:
+            store[day].update(ops["$set"])
+    assert set(store) == {"2026-09-15", "2026-09-16"}
+    assert store["2026-09-15"]["booked_pnl"] == 500.5
+    hist = apply_snapshot(store["2026-09-15"], snapshot_from_positions(_payload(), date="2026-09-16"))
+    assert hist["date"] == "2026-09-15"
+
+
+def test_repeat_snapshot_does_not_clobber_a_different_day():
+    existing = {
+        "date": "2026-09-15",
+        "trading_date": "2026-09-15",
+        "booked_pnl": 111.0,
+        "pnl_exited": 111.0,
+        "exited_count": 1,
+        "legs": [{"tradingsymbol": "NIFTY1", "exited": True, "realised": 111}],
+    }
+    later = snapshot_from_positions(_payload(), date="2026-09-16")
+    out = apply_snapshot(existing, later)
+    assert out["date"] == "2026-09-15"
+    assert out["trading_date"] == "2026-09-15"
+

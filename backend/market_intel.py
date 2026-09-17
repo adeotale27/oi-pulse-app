@@ -214,6 +214,51 @@ def parse_news_datetime(raw: Any) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None or value is False:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_feed_date(date_str: Optional[str]) -> Optional[date]:
+    """YYYY-MM-DD for the MI date filter. None/blank → caller uses today. Invalid → ValueError."""
+    if date_str is None:
+        return None
+    s = str(date_str).strip()
+    if not s:
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        raise ValueError("Use YYYY-MM-DD for date")
+    try:
+        return date.fromisoformat(s)
+    except ValueError as e:
+        raise ValueError("Invalid date") from e
+
+
+def json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    return str(value)
+
+
+def public_article(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not doc:
+        return None
+    out = {k: json_safe(v) for k, v in doc.items() if k != "_id"}
+    return out
+
+
 def item_ist_date(doc: Dict[str, Any]) -> Optional[date]:
     """Calendar day on the desk (IST). Naive YYYY-MM-DD keeps that date; RFC822/Z convert to IST."""
     raw = str(doc.get("published_at") or doc.get("discovered_at") or "").strip()
@@ -346,9 +391,9 @@ def cluster_id_for(title: str, existing: List[Dict[str, Any]]) -> str:
 
 
 def rank_key(doc: Dict[str, Any]) -> Tuple:
-    impact = int(doc.get("impact_score") or 0)
-    india = int(doc.get("india_relevance_score") or 0)
-    pri = int(doc.get("source_priority") or 50)
+    impact = _safe_int(doc.get("impact_score"), 0)
+    india = _safe_int(doc.get("india_relevance_score"), 0)
+    pri = _safe_int(doc.get("source_priority"), 50)
     pub = str(doc.get("published_at") or "")
     urgency = 1 if impact >= 90 else 0
     return (-(impact * 2 + india + pri // 5 + urgency * 20), pub)
@@ -843,7 +888,7 @@ def cluster_rows(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         bags.setdefault(str(d.get("event_cluster_id") or d.get("id")), []).append(d)
     out = []
     for cid, rows in bags.items():
-        rows.sort(key=lambda x: -int(x.get("impact_score") or 0))
+        rows.sort(key=lambda x: -_safe_int(x.get("impact_score"), 0))
         primary = dict(rows[0])
         primary["event_cluster_id"] = cid
         primary["source_count"] = len(rows)
@@ -857,8 +902,8 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
     if db is None:
         return []
     docs = await db[ART_COL].find({"status": {"$ne": "gone"}}, {"_id": 0}).sort("discovered_at", -1).to_list(300)
-    min_i = int(prefs.get("min_impact") or 0)
-    min_in = int(prefs.get("min_india") or 0)
+    min_i = _safe_int(prefs.get("min_impact"), 0)
+    min_in = _safe_int(prefs.get("min_india"), 0)
     show_mod = bool(prefs.get("show_moderate", False))
     show_high = bool(prefs.get("show_high", True))
     show_crit = bool(prefs.get("show_critical", True))
@@ -866,23 +911,14 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
     all_cats = {"india", "macro", "fed", "oil", "geopolitics", "corporate"}
     cat_filter = bool(cats) and not all_cats.issubset(cats) and len(cats) < 6
 
-    # Parse the date parameter if provided, otherwise use today
-    target_date = None
-    if date_str:
-        try:
-            target_date = date.fromisoformat(date_str)
-        except ValueError:
-            # If date parsing fails, default to today
-            target_date = ist_today()
-    else:
-        target_date = ist_today()
+    target_date = parse_feed_date(date_str) or ist_today()
 
     kept = []
     for d in docs:
-        sc = int(d.get("impact_score") or 0)
+        sc = _safe_int(d.get("impact_score"), 0)
         if sc < min_i:
             continue
-        if int(d.get("india_relevance_score") or 0) < min_in:
+        if _safe_int(d.get("india_relevance_score"), 0) < min_in:
             continue
         band = d.get("impact_band")
         if band == "CRITICAL" and not show_crit:
@@ -901,7 +937,7 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
         if cat_filter:
             et = str(d.get("event_type") or "")
             ok = (
-                ("india" in cats and (et == "india_macro" or int(d.get("india_relevance_score") or 0) >= 60))
+                ("india" in cats and (et == "india_macro" or _safe_int(d.get("india_relevance_score"), 0) >= 60))
                 or ("macro" in cats and et in ("macro", "india_macro"))
                 or ("fed" in cats and "fed" in _blob(d.get("title"), d.get("summary")))
                 or ("oil" in cats and et == "oil")
@@ -911,7 +947,8 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
             if not ok:
                 continue
         kept.append(d)
-    return cluster_rows(kept)[:limit]
+    ranked = cluster_rows(kept)[:limit]
+    return [public_article(r) or r for r in ranked]
 
 
 async def popup_candidates(

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 COLLECTION = "error_logs"
+PREFS_COL = "admin_ui_state"
 MAX_MSG = 2000
 MAX_TB = 8000
 DEDUP_SECONDS = 300
@@ -126,6 +127,39 @@ async def record_error(
         await coll.insert_one(doc)
     except Exception:
         logger.debug("error_log persist skipped", exc_info=True)
+
+
+def unseen_filter(since_iso: Optional[str]) -> dict:
+    """Errors created after the admin's last Error Log view. Dedup bumps `ts`, not `created_at`."""
+    if not since_iso:
+        return {}
+    since = str(since_iso)
+    return {
+        "$or": [
+            {"created_at": {"$gt": since}},
+            {"created_at": {"$exists": False}, "ts": {"$gt": since}},
+        ]
+    }
+
+
+async def count_unseen(db, since_iso: Optional[str]) -> int:
+    if db is None:
+        return 0
+    return int(await db[COLLECTION].count_documents(unseen_filter(since_iso)))
+
+
+async def mark_seen(db, username: str, when: Optional[datetime] = None) -> str:
+    iso = (when or _now()).isoformat()
+    uid = str(username or "admin").strip() or "admin"
+    await db[PREFS_COL].update_one(
+        {"_id": uid},
+        {"$set": {
+            "username": uid,
+            "last_error_log_seen_at": iso,
+        }},
+        upsert=True,
+    )
+    return iso
 
 
 def schedule_record_error(**kwargs) -> None:

@@ -10,10 +10,11 @@ import {
   ReferenceDot,
 } from "recharts";
 import { fetchStraddleTick, fetchStraddleHistory } from "../lib/api";
-import { isMarketQuiescent, getMarketOpenMinute, getMarketCloseMinute, getMarketOpenHm, getMarketCloseHm } from "@/lib/marketTimes";
+import { getMarketOpenMinute, getMarketCloseMinute, getMarketOpenHm, getMarketCloseHm } from "@/lib/marketTimes";
 import { sessionAnchorDateIST } from "@/lib/holidays";
 import PageBrandTitle from "@/components/PageBrandTitle";
-import { clampConfiguredPollMs, nextRefreshInSeconds } from "@/lib/dataTruth";
+import { clampConfiguredPollMs } from "@/lib/dataTruth";
+import { straddleLiveRefreshActive, straddleRefreshLabel } from "@/lib/straddleRefresh";
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -262,16 +263,9 @@ export default function StraddleChart({
     return () => clearInterval(id);
   }, []);
 
-  const isMarketOpen = () => {
-    const now = new Date();
-    const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    const hours = istTime.getHours();
-    const minutes = istTime.getMinutes();
-    const day = istTime.getDay();
-    if (day === 0 || day === 6) return false;
-    const nowMin = hours * 60 + minutes;
-    return nowMin >= getMarketOpenMinute() && nowMin <= getMarketCloseMinute();
-  };
+  const liveRefresh = straddleLiveRefreshActive(new Date(nowMs), tradeDate);
+
+  const isMarketOpen = () => straddleLiveRefreshActive(new Date(), tradeDateRef.current);
 
   const applyMeta = (point, ts) => {
     setMeta({
@@ -359,13 +353,18 @@ export default function StraddleChart({
       } catch (_e) { /* ignore */ }
     };
     loadHistory();
+    if (!liveRefresh) {
+      return () => {
+        cancelled = true;
+      };
+    }
     // Soft refresh history every 2 min so reopened tabs catch sampler density.
     const refreshId = setInterval(loadHistory, 120_000);
     return () => {
       cancelled = true;
       clearInterval(refreshId);
     };
-  }, [index, expiry, maxPoints, bucketMs, tradeDate]);
+  }, [index, expiry, maxPoints, bucketMs, tradeDate, liveRefresh]);
 
   // Live feed — REST safety net at Admin straddle_poll_interval_seconds.
   useEffect(() => {
@@ -375,9 +374,24 @@ export default function StraddleChart({
     let running = true;
     let wsAlive = false;
 
+    if (!liveRefresh) {
+      return () => {
+        running = false;
+        stopped = true;
+      };
+    }
+
     const tick = async () => {
       try {
-        if (!isMarketOpen()) return;
+        if (!isMarketOpen()) {
+          if (pollId) {
+            clearInterval(pollId);
+            pollId = null;
+          }
+          running = false;
+          stopped = true;
+          return;
+        }
         // Prefer WS when connected — avoid double Kite quote load.
         if (wsAlive) return;
         const res = await fetchStraddleTick(index, { expiry });
@@ -393,15 +407,6 @@ export default function StraddleChart({
         if (running) tick();
       }, livePollMs);
     };
-
-    try {
-      if (isMarketQuiescent()) {
-        return () => {
-          running = false;
-          stopped = true;
-        };
-      }
-    } catch (_e) { /* fall through */ }
 
     if (useWs && typeof window !== "undefined") {
       try {
@@ -437,7 +442,7 @@ export default function StraddleChart({
       wsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, expiry, position, qty, livePollMs, maxPoints, useWs, bucketMs, tradeDate]);
+  }, [index, expiry, position, qty, livePollMs, maxPoints, useWs, bucketMs, tradeDate, liveRefresh]);
 
   const chartWindow = useMemo(() => {
     const openMin = getMarketOpenMinute();
@@ -488,15 +493,17 @@ export default function StraddleChart({
   const dte = daysToExpiryLabel(expiry);
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
+    if (!liveRefresh) return undefined;
     const id = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
-  const lastUpdated = (() => {
-    if (!meta?.ts) return null;
-    const age = Math.max(0, (nowTick - new Date(meta.ts).getTime()) / 1000);
-    const left = nextRefreshInSeconds(age, livePollMs);
-    return `next (${left}s)`;
-  })();
+  }, [liveRefresh]);
+  const lastUpdated = liveRefresh
+    ? (() => {
+        if (!meta?.ts) return null;
+        const age = Math.max(0, (nowTick - new Date(meta.ts).getTime()) / 1000);
+        return straddleRefreshLabel(true, age, livePollMs);
+      })()
+    : "Market closed";
 
   return (
     <div className="w-full" data-testid="straddle-chart">
@@ -638,8 +645,12 @@ export default function StraddleChart({
             <div className="font-mono font-semibold text-slate-900 tabular-nums">{dte ?? "—"}</div>
           </div>
           <div className="min-w-[6.5rem] shrink-0">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">Next refresh</div>
-            <div className="font-mono font-semibold text-slate-800 text-[11px]">{lastUpdated ?? "—"}</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">
+              {liveRefresh ? "Next refresh" : "Session"}
+            </div>
+            <div className="font-mono font-semibold text-slate-800 text-[11px]" data-testid="straddle-refresh-label">
+              {liveRefresh ? (lastUpdated ?? "—") : "Market closed"}
+            </div>
           </div>
         </div>
       </div>

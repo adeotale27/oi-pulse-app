@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, apiDetail } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
 import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload } from "@/lib/marketIntel";
+import { todayIST } from "@/lib/holidays";
 
 export default function MarketIntelPage({ compact = false }) {
   const [filt, setFilt] = useState("all");
@@ -11,62 +12,45 @@ export default function MarketIntelPage({ compact = false }) {
   const [prefs, setPrefs] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // Default to today
-    const today = new Date();
-    // Get YYYY-MM-DD string in local timezone (avoiding UTC conversion issues)
-    return today.toLocaleDateString('en-CA');
-  });
+  const [selectedDate, setSelectedDate] = useState(() => todayIST());
   const [config, setConfig] = useState(null);
   const [minDate, setMinDate] = useState(null);
   const [maxDate, setMaxDate] = useState(null);
   const [configLoaded, setConfigLoaded] = useState(false);
+  const feedGen = useRef(0);
 
   const loadPrefs = useCallback(() => {
-    api.get("/market-intel/prefs").then((r) => setPrefs(r.data?.prefs || null)).catch(() => {});
+    return api.get("/market-intel/prefs").then((r) => setPrefs(r.data?.prefs || null)).catch(() => {});
   }, []);
 
   const loadConfig = useCallback(() => {
-    api.get("/market-intel/config").then((r) => {
+    return api.get("/market-intel/config").then((r) => {
       setConfig(r.data?.config || null);
-      // Extract date limits from config
-      const config = r.data?.config || {};
-      const maxDaysBack = config.max_days_back || 5; // Default to 5 days if not specified
-      const today = new Date();
-      // Get YYYY-MM-DD string in local timezone (avoiding UTC conversion issues)
-      const todayString = today.toLocaleDateString('en-CA');
-      const minDate = new Date(today);
-      minDate.setDate(today.getDate() - maxDaysBack);
-      const minDateString = minDate.toLocaleDateString('en-CA');
+      const cfg = r.data?.config || {};
+      const maxDaysBack = cfg.max_days_back || 5;
+      const todayString = todayIST();
+      const min = new Date(`${todayString}T12:00:00+05:30`);
+      min.setDate(min.getDate() - maxDaysBack);
+      const minDateString = min.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
       setMinDate(minDateString);
-      setMaxDate(todayString); // Only allow up to today
+      setMaxDate(todayString);
       setConfigLoaded(true);
     }).catch(() => {
-      // Even if config fails, set defaults and mark as loaded
-      const today = new Date();
-      // Get YYYY-MM-DD string in local timezone (avoiding UTC conversion issues)
-      const todayString = today.toLocaleDateString('en-CA');
-      const minDate = new Date(today);
-      minDate.setDate(today.getDate() - 5); // Default 5 days back
-      const minDateString = minDate.toLocaleDateString('en-CA');
-      setMinDate(minDateString);
+      const todayString = todayIST();
+      const min = new Date(`${todayString}T12:00:00+05:30`);
+      min.setDate(min.getDate() - 5);
+      setMinDate(min.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }));
       setMaxDate(todayString);
       setConfigLoaded(true);
     });
   }, []);
 
-  // Load config on mount to set date boundaries
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
 
-  const loadFeed = useCallback(() => {
-    // If config hasn't loaded yet, wait for it
-    if (!configLoaded) {
-      return;
-    }
-
-    // Validate date is within allowed range
+  const loadFeed = useCallback(async () => {
+    if (!configLoaded) return;
     if (minDate && selectedDate < minDate) {
       setItems([]);
       setErr(`No data available for dates before ${minDate}`);
@@ -78,27 +62,31 @@ export default function MarketIntelPage({ compact = false }) {
       return;
     }
 
-    api.get("/market-intel", { params: { filter: filt, date: selectedDate }, timeout: 10000 }) // Reduced from 20s to 10s
-      .then((r) => { setItems(r.data?.items || []); setErr(null); })
-      .catch((e) => setErr(e?.message || "feed failed"));
+    const gen = ++feedGen.current;
+    setLoading(true);
+    try {
+      const r = await api.get("/market-intel", { params: { filter: filt, date: selectedDate }, timeout: 10000 });
+      if (gen !== feedGen.current) return;
+      setItems(r.data?.items || []);
+      setErr(null);
+    } catch (e) {
+      if (gen !== feedGen.current) return;
+      setErr(apiDetail(e, "Market intelligence feed failed"));
+    } finally {
+      if (gen === feedGen.current) setLoading(false);
+    }
   }, [filt, selectedDate, minDate, maxDate, configLoaded]);
 
   useEffect(() => {
     let cancelled = false;
     const loadBoth = async () => {
-      if (cancelled) return;
-      setLoading(true);
-      try {
-        await loadPrefs();
-        await loadFeed();
-        if (!cancelled) setLoading(false);
-      } catch (e) {
-        if (!cancelled) setLoading(false);
-      }
+      await loadPrefs();
+      if (!cancelled) await loadFeed();
     };
     loadBoth();
     return () => { cancelled = true; };
-  }, [loadPrefs, loadFeed, loadConfig]);
+  }, [loadPrefs, loadFeed]);
+
   useEffect(() => {
     const onReload = () => loadFeed();
     window.addEventListener(MI_RELOAD_EVENT, onReload);
@@ -106,10 +94,11 @@ export default function MarketIntelPage({ compact = false }) {
   }, [loadFeed]);
 
   useEffect(() => {
+    if (!configLoaded) return undefined;
     const sec = Math.max(60, Number(prefs?.ui_poll_seconds) || 120);
     const id = setInterval(loadFeed, sec * 1000);
     return () => clearInterval(id);
-  }, [loadFeed, prefs?.ui_poll_seconds]);
+  }, [loadFeed, prefs?.ui_poll_seconds, configLoaded]);
 
   const patchPrefs = (patch) => {
     const next = { ...(prefs || {}), ...patch };
@@ -188,20 +177,20 @@ export default function MarketIntelPage({ compact = false }) {
           </button>
         </div>
       </div>
-      {loading && !err && (
-        <div className="text-xs text-slate-500 text-center py-8">
+      {loading && !items.length && !err && (
+        <div className="text-xs text-slate-500 text-center py-8" data-testid="mi-loading">
           Loading market intelligence...
         </div>
       )}
-      {err && !loading && (
-        <div className="text-xs text-rose-700 text-center py-8">
-          Showing last stored items if any. ({err})
+      {err && (
+        <div className="text-xs text-rose-700 text-center py-8 border border-rose-200 rounded-md" data-testid="mi-error">
+          Could not load market intelligence: {err}
         </div>
       )}
-      {!loading && !err && (
+      {!err && !loading && (
         <div className="space-y-2">
           {items.length === 0 && (
-            <div className="text-xs text-slate-500 border rounded-md p-4 text-center py-8">
+            <div className="text-xs text-slate-500 border rounded-md p-4 text-center py-8" data-testid="mi-empty">
               No ranked events for <b>{selectedDate}</b> yet.
               {selectedDate === maxDate ?
                 'Older days stay in storage but are not shown here.' :

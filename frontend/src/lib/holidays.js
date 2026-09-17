@@ -3,7 +3,7 @@
 // overlays those years at runtime (GET /api/holidays).
 // Format: { date: 'YYYY-MM-DD', name: 'Holiday name', session?, open?, close? }
 
-import { getMarketOpenMinute } from "./marketTimes";
+import { getMarketOpenMinute } from "./marketTimes.js";
 
 const HOLIDAYS_RAW = [
   // ---------- 2025 ----------

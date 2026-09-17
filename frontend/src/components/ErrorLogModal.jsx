@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { notifyErrorLogUnseenChanged } from "@/lib/errorLog";
 
 function fmtTs(iso) {
   if (!iso) return "—";
@@ -20,6 +21,12 @@ export default function ErrorLogModal({ open, onOpenChange }) {
     try {
       const r = await api.get("/errors", { params: { limit: 80 }, timeout: 8000 });
       setRows(r.data?.errors || []);
+      try {
+        const seen = await api.post("/errors/mark-seen", {}, { timeout: 8000 });
+        notifyErrorLogUnseenChanged(seen.data?.unseen ?? 0);
+      } catch {
+        notifyErrorLogUnseenChanged(0);
+      }
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not load error log");
       setRows([]);

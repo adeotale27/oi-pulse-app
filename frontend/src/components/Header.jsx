@@ -20,6 +20,7 @@ import BrandMark from "@/components/BrandMark";
 import BrandLiveClock from "@/components/BrandLiveClock";
 import { api, fetchExtras, subscribeExtras, unsubscribeExtras, logoutGuest, clearAdminAuth } from "@/lib/api";
 import { toast } from "sonner";
+import { ERROR_LOG_UNSEEN_EVENT } from "@/lib/errorLog";
 
 import { WEEKEND_START_MINUTE, GIFT_SESSION_WINDOWS } from '@/lib/marketTimes';
 import { isTradingDayIST, todayIST } from "@/lib/holidays";
@@ -36,6 +37,19 @@ import {
 const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_EVENT = "oi-positions-privacy";
 const PRIVACY_MASK = "••••";
+
+function ErrorLogBadge({ count }) {
+  const n = Number(count) || 0;
+  if (n <= 0) return null;
+  return (
+    <span
+      data-testid="error-log-unseen-badge"
+      className="ml-1 inline-flex min-w-[1.1rem] h-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white"
+    >
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
 
 /** Admin Today P&L chip for the header (beside the clock). Never shown to guests. */
 function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 30_000, className, compact = false }) {
@@ -239,6 +253,38 @@ export default function Header({
   const isGuestUser = !!authState.is_guest && !assumedAdmin;
   const isAdmin = !isGuestUser && (devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest));
   const showHeaderPnl = isAdmin;
+  const [errorUnseen, setErrorUnseen] = useState(0);
+
+  const loadErrorUnseen = async () => {
+    if (!isAdmin) {
+      setErrorUnseen(0);
+      return;
+    }
+    try {
+      const { data } = await api.get("/errors/unseen-count", { timeout: 8000 });
+      setErrorUnseen(Number(data?.unseen) || 0);
+    } catch {
+      /* keep last count */
+    }
+  };
+
+  useQuiescentAwarePolling(loadErrorUnseen, 60_000, [isAdmin], {
+    status,
+    immediate: true,
+    allowDuringQuiescent: true,
+    dedupeKey: "header-error-unseen",
+    delayMs: 2500,
+  });
+
+  useEffect(() => {
+    const onUnseen = (e) => {
+      const n = e?.detail?.unseen;
+      if (n != null) setErrorUnseen(Number(n) || 0);
+      else loadErrorUnseen();
+    };
+    window.addEventListener(ERROR_LOG_UNSEEN_EVENT, onUnseen);
+    return () => window.removeEventListener(ERROR_LOG_UNSEEN_EVENT, onUnseen);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -669,6 +715,7 @@ export default function Header({
           >
             <ScrollText className="w-4 h-4 mr-1.5" />
             Error log
+            <ErrorLogBadge count={errorUnseen} />
           </Button>
           <Button data-testid="btn-mobile-sounds" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />
@@ -958,6 +1005,7 @@ export default function Header({
                 >
                   <ScrollText className="w-4 h-4" />
                   Error log
+                  <ErrorLogBadge count={errorUnseen} />
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-settings"
@@ -1178,6 +1226,7 @@ export default function Header({
           >
             <ScrollText className="w-4 h-4 mr-1.5" />
             Error log
+            <ErrorLogBadge count={errorUnseen} />
           </Button>
           <Button data-testid="btn-tablet-sounds" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />

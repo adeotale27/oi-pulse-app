@@ -2867,6 +2867,27 @@ async def list_error_log(
     return {"count": len(docs), "errors": docs}
 
 
+@api_router.get("/errors/unseen-count")
+async def error_log_unseen_count(_admin: bool = Depends(require_admin)):
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    from error_log import count_unseen
+    seen_doc = await db.admin_ui_state.find_one({"_id": ADMIN_USERNAME}, {"last_error_log_seen_at": 1})
+    since = (seen_doc or {}).get("last_error_log_seen_at")
+    n = await count_unseen(db, since)
+    return {"unseen": n, "last_seen_at": since}
+
+
+@api_router.post("/errors/mark-seen")
+async def error_log_mark_seen(_admin: bool = Depends(require_admin)):
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    from error_log import mark_seen, count_unseen
+    iso = await mark_seen(db, ADMIN_USERNAME)
+    n = await count_unseen(db, iso)
+    return {"ok": True, "last_seen_at": iso, "unseen": n}
+
+
 @api_router.get("/config")
 async def get_config():
     s = _live_settings()
@@ -5243,23 +5264,26 @@ async def _snapshot_trade_journal(
         )
         if not fields:
             return
+        ops = journal.mongo_upsert_ops(fields)
         await db.trade_journal.update_one(
             {"date": day},
-            {"$set": fields, "$setOnInsert": {
-                "went_well": "",
-                "went_wrong": "",
-                "notes": "",
-                "tags": [],
-                "rating": None,
-                "followed_plan": None,
-                "screenshots": [],
-                "eod_locked": False,
-            }},
+            ops,
             upsert=True,
         )
     except Exception:
         logger = logging.getLogger("server")
-        logger.debug("trade journal snapshot skipped", exc_info=True)
+        logger.exception("trade journal snapshot failed for %s", day)
+        try:
+            await record_error(
+                source="journal",
+                message="trade journal snapshot failed",
+                traceback_text="",
+                path="/journal",
+                kind="JournalSnapshotError",
+                extra={"date": day},
+            )
+        except Exception:
+            pass
 
 
 async def _journal_eod_lock_loop() -> None:
@@ -6508,6 +6532,7 @@ async def _ensure_mongo_indexes():
         await db.error_logs.create_index([("created_at", -1)])
         await db.error_logs.create_index([("fingerprint", 1), ("created_at", -1)])
         await db.error_logs.create_index("source")
+        await db.admin_ui_state.create_index("username")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")
 

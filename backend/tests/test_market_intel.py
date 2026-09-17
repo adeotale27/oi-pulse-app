@@ -166,3 +166,88 @@ def test_ensure_default_sources_seeds_rss_without_overwrite():
     asyncio.run(ensure_default_sources(db))
     assert db.c.docs["google-news-in"]["enabled"] is False
     assert len(db.c.docs) >= len(RSS_TEMPLATES) + len(PUBLIC_API_CATALOG)
+
+
+def test_parse_feed_date_valid_invalid_and_missing():
+    from market_intel import parse_feed_date
+    assert parse_feed_date(None) is None
+    assert parse_feed_date("") is None
+    assert parse_feed_date("2026-09-17") == date(2026, 9, 17)
+    try:
+        parse_feed_date("17-09-2026")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+    try:
+        parse_feed_date("2026-13-40")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_feed_for_user_date_filter_empty_and_populated():
+    import asyncio
+    from datetime import datetime, timezone
+    from market_intel import feed_for_user, ART_COL
+
+    docs = [
+        {
+            "title": "RBI holds repo",
+            "impact_score": 80,
+            "india_relevance_score": 70,
+            "impact_band": "HIGH",
+            "event_type": "india_macro",
+            "published_at": "2026-09-17T08:00:00+05:30",
+            "discovered_at": datetime(2026, 9, 17, 3, 0, tzinfo=timezone.utc),
+            "event_cluster_id": "a",
+            "source_name": "t",
+            "status": "ok",
+        },
+        {
+            "title": "Old story",
+            "impact_score": 80,
+            "india_relevance_score": 70,
+            "impact_band": "HIGH",
+            "event_type": "macro",
+            "published_at": "2026-09-16T08:00:00+05:30",
+            "discovered_at": "2026-09-16T03:00:00+00:00",
+            "event_cluster_id": "b",
+            "source_name": "t",
+            "status": "ok",
+        },
+    ]
+
+    class Cur:
+        def __init__(self, rows):
+            self.rows = rows
+        def sort(self, *a, **k):
+            return self
+        async def to_list(self, n):
+            return list(self.rows)
+
+    class Col:
+        def find(self, *a, **k):
+            return Cur(docs)
+
+    class Db:
+        def __getitem__(self, k):
+            assert k == ART_COL
+            return Col()
+
+    prefs = {"show_moderate": True, "show_high": True, "show_critical": True, "min_impact": 0, "min_india": 0}
+
+    async def run():
+        today = await feed_for_user(Db(), prefs, "all", 40, date_str="2026-09-17")
+        assert len(today) == 1
+        assert today[0]["title"] == "RBI holds repo"
+        assert isinstance(today[0]["discovered_at"], str)
+        empty = await feed_for_user(Db(), prefs, "all", 40, date_str="2026-09-18")
+        assert empty == []
+        try:
+            await feed_for_user(Db(), prefs, "all", 40, date_str="not-a-date")
+            assert False, "expected ValueError"
+        except ValueError:
+            pass
+
+    asyncio.run(run())
+
