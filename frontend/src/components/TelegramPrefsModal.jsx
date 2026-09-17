@@ -51,6 +51,9 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
   const [majorLakh, setMajorLakh] = useState("200"); // 2 Cr default
+  const [tokenDraft, setTokenDraft] = useState("");
+  const [chatDraft, setChatDraft] = useState("");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +66,8 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
         setPrefs(p);
         setStatus(s);
         setMajorLakh(toLakh(p.major_abs_threshold));
+        setChatDraft(p.chat_id || "");
+        setTokenDraft("");
       } catch (e) {
         toast.error("Could not load Telegram preferences");
       }
@@ -75,6 +80,8 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
       const { data } = await api.post("/telegram/prefs", patch);
       setPrefs(data);
       setMajorLakh(toLakh(data.major_abs_threshold));
+      if (data.chat_id != null) setChatDraft(data.chat_id);
+      if (patch.bot_token) setTokenDraft("");
       toast.success("Preferences saved");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Save failed");
@@ -132,7 +139,7 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
             Change any time — takes effect on the next alert.
             {status && !status.configured && (
               <span className="block mt-1 text-rose-600">
-                Bot not configured — set token and chat ID in Admin → Admin configuration.
+                Bot not configured — save token and chat ID in this window.
               </span>
             )}
           </DialogDescription>
@@ -142,15 +149,38 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
           Phone alerts when Chrome is closed: use Telegram here. Browser banners only fire while this tab is open. iOS needs the site on the Home Screen for any browser push.
         </p>
 
-        {prefs.bot_token_masked ? (
-          <div className="text-[11px] text-slate-500" data-testid="tg-token-status">
-            Bot token: {prefs.bot_token_masked} (edit in Admin configuration)
+        <div className="rounded-md border border-slate-200 p-3 space-y-2" data-testid="tg-vault">
+          <div className="text-xs">
+            Token: <span className="font-mono" data-testid="tg-token-masked">{prefs.bot_token_masked || (prefs.bot_token_configured ? "Configured" : "Not configured")}</span>
           </div>
-        ) : (
-          <div className="text-[11px] text-slate-500" data-testid="tg-token-status">
-            Bot token not configured — set it in Admin → Admin configuration.
+          <div>
+            <Label className="text-xs uppercase tracking-wider text-slate-500">Replace bot token</Label>
+            <Input data-testid="tg-bot-token" type="password" autoComplete="off" value={tokenDraft} onChange={(e) => setTokenDraft(e.target.value)} placeholder="Leave blank to keep current token" className="font-mono text-xs mt-1" />
           </div>
-        )}
+          <div>
+            <Label className="text-xs uppercase tracking-wider text-slate-500">Chat ID</Label>
+            <Input data-testid="tg-chat-id" value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} placeholder="Telegram chat id" className="font-mono text-xs mt-1" />
+          </div>
+          <Button type="button" size="sm" variant="outline" className="rounded-sm" data-testid="tg-save-vault" disabled={saving} onClick={() => {
+            const patch = { chat_id: chatDraft };
+            if (tokenDraft.trim()) patch.bot_token = tokenDraft.trim();
+            save(patch);
+          }}>
+            Save credentials
+          </Button>
+          <button type="button" className="block text-[11px] text-sky-700 underline" data-testid="tg-how-to" onClick={() => setHelpOpen((v) => !v)}>
+            How to configure Telegram?
+          </button>
+          {helpOpen ? (
+            <ol className="text-[11px] text-slate-600 list-decimal pl-4 space-y-1" data-testid="tg-how-to-body">
+              <li>Open Telegram and search <b>BotFather</b> (<a className="underline" href="https://t.me/BotFather" target="_blank" rel="noreferrer">t.me/BotFather</a>).</li>
+              <li>Start the chat, send <code>/newbot</code>, follow the prompts, copy the bot token. Official: <a className="underline" href="https://core.telegram.org/bots/tutorial#obtain-your-bot-token" target="_blank" rel="noreferrer">obtain your bot token</a>.</li>
+              <li>Open a chat with <b>your</b> bot and tap Start (or add it to a group).</li>
+              <li>Chat ID is the numeric id of that chat. Easiest: message <a className="underline" href="https://t.me/userinfobot" target="_blank" rel="noreferrer">@userinfobot</a> and copy the Id, or for a group use the group id. API field: <a className="underline" href="https://core.telegram.org/bots/api#sendmessage" target="_blank" rel="noreferrer">sendMessage chat_id</a>.</li>
+              <li>Paste token and chat id above, save, then Send test message.</li>
+            </ol>
+          ) : null}
+        </div>
 
         {/* ---- Master switch ---- */}
         <div className="flex items-center justify-between p-3 rounded-sm border border-slate-200 bg-slate-50">

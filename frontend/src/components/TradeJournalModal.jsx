@@ -22,7 +22,7 @@ import {
   deleteJournalScreenshot,
 } from "@/lib/api";
 import { toast } from "sonner";
-import { holidayCellLabel, holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST } from "@/lib/holidays";
+import { holidayCellLabel, holidayShortName, isHoliday, isJournalSessionDayIST, isSpecialSessionIST, nextTradingDayIST, previousTradingDayIST } from "@/lib/holidays";
 import { overlayMonthOnYearHeat } from "@/lib/journalYearHeat";
 import { HEATMAP_IDS, INDEX_SHORT, DESK_IDS } from "@/lib/universe";
 import { journalSavePayload, resolveJournalSaveDoc } from "@/lib/journalSave";
@@ -345,6 +345,19 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not open day");
     }
+  };
+
+  const shiftJournalDay = async (dir) => {
+    if (!selected) return;
+    const next = dir < 0 ? previousTradingDayIST(selected) : nextTradingDayIST(selected);
+    if (!next || next === selected) return;
+    const [y, m] = next.split("-").map(Number);
+    if (y !== year || m !== month) {
+      setYear(y);
+      setMonth(m);
+      await loadMonth(y, m);
+    }
+    await loadDay(next);
   };
 
   const save = async (override = null) => {
@@ -1027,10 +1040,18 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               </button>
             <div className="rounded-2xl border border-emerald-100 p-4 space-y-3 bg-gradient-to-br from-white via-white to-emerald-50/40 shadow-sm flex-1 min-w-0" data-testid="journal-day-editor">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" className="h-8 rounded-full text-[11px]" data-testid="journal-prev-day" onClick={() => shiftJournalDay(-1)}>
+                    <ChevronLeft className="w-3.5 h-3.5 mr-0.5" /> Previous Day
+                  </Button>
                   <div className="text-sm font-semibold">
                     {new Date(`${dayDoc.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                   </div>
+                  <Button type="button" size="sm" variant="outline" className="h-8 rounded-full text-[11px]" data-testid="journal-next-day" onClick={() => shiftJournalDay(1)}>
+                    Next Day <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                  </Button>
+                </div>
+                <div className="min-w-0 text-right">
                   <div className={`text-[18px] md:text-[22px] font-bold font-mono-data leading-tight ${Number(dayDoc.booked_pnl ?? dayDoc.pnl_exited) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                     Booked {privacy ? "••••" : <Money v={dayDoc.booked_pnl ?? dayDoc.pnl_exited} signed={false} />}
                     {(() => {

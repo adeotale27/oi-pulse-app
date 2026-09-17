@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.14 — 2026-09-17
+
+Telegram token and chat ID live in Admin → Telegram (Fernet vault + BotFather help), not Admin configuration. Market Intel chip stays one line on the right with unseen CRITICAL count; popup is on by default and after 14:00 IST includes the prior session until the next open. Error log Src chips come from stored sources. Live strip is one RTL CSS marquee (LIVE + Next Pull + quotes). VIX uses the same portal hover as GIFT. Journal Previous/Next skip weekends and holidays. CAS IEP Quote window is admin-configurable (default 15:20–15:35 IST, 5s).
+
 ## V10.13 — 2026-09-17
 
 Telegram bot token and chat ID live in Admin → Admin configuration (same `telegram_prefs` document as alert filters). Token is Fernet-encrypted and never returned in plaintext. Market status is display-open (09:15) vs OI poll (09:14): live label is `Market Open · Next Pull (Xs)`. Pre-market 09:00–09:15 and CAS IEP 15:20–15:35 use Kite Quote `indicative_close_price` without overwriting LTP. Header index tiles are rounded rectangles. VIX hover explains volatility.

@@ -27,6 +27,7 @@ export default function MobileIndexTicker({
   spotPrices = {},
   tickers: tickersProp = null,
   indices = DESK_IDS,
+  leadItems = [],
 }) {
   const [tickersLocal, setTickersLocal] = useState([]);
   const [extras, setExtras] = useState({ vix: null, gift_nifty: null, windows: {} });
@@ -100,8 +101,8 @@ export default function MobileIndexTicker({
         active: idx === activeIndex,
       });
     }
-    return out;
-  }, [extras, tickers, spotPrices, activeIndex, onSelectIndex, indices]);
+    return [...(Array.isArray(leadItems) ? leadItems : []), ...out];
+  }, [extras, tickers, spotPrices, activeIndex, onSelectIndex, indices, leadItems]);
 
   const giftSessions = extras?.windows?.gift?.sessions || GIFT_SESSION_WINDOWS;
   const copies = items.length ? [0, 1] : [0];
@@ -123,12 +124,14 @@ export default function MobileIndexTicker({
                 type="button"
                 data-testid={copy === 0 ? `mobile-ticker-${it.key}` : undefined}
                 onClick={it.onClick && (it.selectable !== false) ? it.onClick : undefined}
-                className={`inline-flex items-center gap-1 shrink-0 text-[11px] tabular-nums ${
+                className={`inline-flex items-center gap-1 shrink-0 whitespace-nowrap text-[11px] tabular-nums ${
                   it.active ? "text-white font-bold" : "text-white/95"
                 } ${it.onClick && it.selectable !== false ? "cursor-pointer" : "cursor-default"} ${it.selectable === false ? "opacity-40 pointer-events-none" : ""}`}
               >
                 <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
-                <span className="font-semibold tabular-nums">{it.price}</span>
+                {it.price != null && it.price !== "" ? (
+                  <span className="font-semibold tabular-nums">{it.price}</span>
+                ) : null}
                 {it.pct != null && Number.isFinite(it.pct) && (
                   <span className={pctCls(it.pct)}>
                     {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}

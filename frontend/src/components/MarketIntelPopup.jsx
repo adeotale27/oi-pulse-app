@@ -283,7 +283,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
           }
           expand();
         }}
-        className={`fixed z-[70] md:bottom-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-2 px-3 py-2 ${
+        className={`fixed z-[70] md:bottom-3 right-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
           bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
         }`}
         style={posStyle}
@@ -294,9 +294,16 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
         title="Open market news · drag to move"
         aria-label="Mkt Intel"
       >
-        <Newspaper className="w-3.5 h-3.5" />
-        <span>Mkt Intel</span>
-        {n > 0 ? <span className="opacity-70 font-mono-data">{n}</span> : null}
+        <Newspaper className="w-3.5 h-3.5 shrink-0" />
+        <span className="whitespace-nowrap">Mkt Intel</span>
+        {n > 0 ? (
+          <span
+            data-testid="mi-unseen-badge"
+            className="inline-flex min-w-[1.1rem] h-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white"
+          >
+            {n > 99 ? "99+" : n}
+          </span>
+        ) : null}
         {loadError ? <span className="text-rose-700 font-bold" title={loadError}>!</span> : null}
         <Maximize2 className="w-3.5 h-3.5 opacity-70" />
       </button>
