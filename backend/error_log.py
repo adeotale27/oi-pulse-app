@@ -32,7 +32,7 @@ def bind(db) -> None:
     _db = db
 
 
-_TG_TOKEN_RE = re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{20,}\b")
+_TG_TOKEN_RE = re.compile(r"(?:bot)?\d{6,}:[A-Za-z0-9_-]{20,}")
 
 
 def redact(text: Any) -> str:
