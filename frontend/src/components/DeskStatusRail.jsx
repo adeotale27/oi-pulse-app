@@ -2,7 +2,7 @@ import { KeyRound, AlertTriangle, Clock, CalendarOff, Moon, Sunrise } from "luci
 import { Button } from "@/components/ui/button";
 import { buildDataTruth, formatIstClock } from "@/lib/dataTruth";
 import { isKiteCredentialProblem, kiteCredentialTitle } from "@/lib/kiteCredentialHealth";
-import { cloneElement, isValidElement, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const TRUTH_TONE = {
   live: { bar: "bg-emerald-600/95 text-white border-emerald-700", badge: "bg-white text-emerald-800", pulse: "bg-emerald-600" },
@@ -83,9 +83,9 @@ export default function DeskStatusRail({
       aria-live="polite"
       className={`w-full border-b ${tone.bar} py-0.5`}
     >
-      <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain oi-hover-scroll px-1.5">
+      <div className={`flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap px-1.5 ${mobileTicker ? "overflow-hidden" : "overflow-x-auto overscroll-x-contain oi-hover-scroll"}`}>
         <span
-          className={`hidden md:inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 rounded-sm px-1.5 py-0.5 ${tone.badge} ${mobileTicker ? "md:hidden" : ""}`}
+          className={`inline-flex items-center gap-1 font-bold tracking-wide uppercase shrink-0 rounded-sm px-1.5 py-0.5 ${tone.badge}`}
           data-testid="data-truth-badge"
         >
           {(truth.mode === "LIVE" || truth.mode === "STALE") && (
@@ -93,8 +93,13 @@ export default function DeskStatusRail({
           )}
           {truth.badge}
         </span>
+        {mobileTicker && truth.detail ? (
+          <span className="opacity-95 shrink-0 whitespace-nowrap font-semibold" data-testid="data-truth-detail">
+            {truth.detail}
+          </span>
+        ) : null}
         <span
-          className={`hidden md:inline font-mono-data font-semibold tracking-tight shrink-0 ${truth.mode === "LIVE" ? "md:hidden" : ""} ${mobileTicker ? "md:hidden" : ""}`}
+          className={`hidden md:inline font-mono-data font-semibold tracking-tight shrink-0 ${mobileTicker || truth.mode === "LIVE" ? "md:hidden" : ""}`}
           data-testid="data-truth-asof"
         >
           {truth.mode === "LAST_SESSION"
@@ -108,19 +113,7 @@ export default function DeskStatusRail({
         ) : null}
         {mobileTicker ? (
           <div className="min-w-0 flex-1 overflow-hidden" data-testid="desk-index-ticker">
-            {isValidElement(mobileTicker)
-              ? cloneElement(mobileTicker, {
-                  leadItems: [
-                    {
-                      key: "LIVE",
-                      label: truth.badge,
-                      price: truth.detail || (truth.mode === "LAST_SESSION" ? (sessionDate || truth.asOfLabel) : truth.asOfLabel),
-                      pct: null,
-                      onClick: null,
-                    },
-                  ],
-                })
-              : mobileTicker}
+            {mobileTicker}
           </div>
         ) : null}
 

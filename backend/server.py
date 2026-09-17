@@ -862,7 +862,7 @@ class ModeIn(BaseModel):
 DASHBOARD_PAGE_KEYS = {
     "oi-change", "open-interest", "strike-table", "sell-candidates",
     "buildup", "positions", "alerts", "activity", "holidays",
-    "straddle", "index-events", "cas", "market-intel",
+    "straddle", "index-events", "cas", "market-intel", "adrs",
 }
 
 class SettingsIn(BaseModel):
@@ -883,6 +883,7 @@ class SettingsIn(BaseModel):
     cas_iep_start_ist: Optional[str] = None
     cas_iep_end_ist: Optional[str] = None
     cas_iep_interval_seconds: Optional[int] = None
+    cas_iep_force: Optional[bool] = None
     straddle_enabled_indices: Optional[List[str]] = None  # Which indices to track for straddle
     visible_pages: Optional[List[str]] = None
     admin_visible_pages: Optional[List[str]] = None

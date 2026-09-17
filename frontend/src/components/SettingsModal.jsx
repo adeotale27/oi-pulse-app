@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { Settings2 } from "lucide-react";
+import { Settings2, Bell, Clock, Database, LayoutGrid, Activity } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import InfoTip from "@/components/InfoTip";
 
@@ -33,6 +33,13 @@ const DASHBOARD_PAGES = [
   { id: "adrs", label: "ADRs" },
 ];
 const ALL_PAGE_IDS = DASHBOARD_PAGES.map((p) => p.id);
+const SETTINGS_PANES = [
+  { id: "alerts", label: "Alerts", hint: "OI reversal, tracked names, today focus" },
+  { id: "market", label: "Market timing", hint: "Hours, CAS IEP preview, session TTL", admin: true },
+  { id: "data", label: "Data collection", hint: "OI / straddle / positions poll", admin: true },
+  { id: "pages", label: "Dashboard pages", hint: "Public vs admin ticks, OI extras", admin: true },
+  { id: "signals", label: "Chart signals", hint: "Huge shift, gamma, velocity, lots" },
+];
 
 function normalizeLoadedSettings(d) {
   const next = { ...(d || {}) };
@@ -67,6 +74,7 @@ export default function SettingsModal({
   const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [pane, setPane] = useState("alerts");
 
   useEffect(() => {
     if (!open) return;
@@ -205,6 +213,7 @@ export default function SettingsModal({
           cas_iep_start_ist: settings.cas_iep_start_ist || "15:20",
           cas_iep_end_ist: settings.cas_iep_end_ist || "15:35",
           cas_iep_interval_seconds: settings.cas_iep_interval_seconds ?? 5,
+          cas_iep_force: !!settings.cas_iep_force,
           expire_admin_on_market_close: settings.expire_admin_on_market_close,
           admin_session_ttl_minutes: settings.admin_session_ttl_minutes,
           alert_enabled_indices: settings.alert_enabled_indices,
@@ -270,7 +279,7 @@ export default function SettingsModal({
               {isAdmin ? "Admin configuration" : "Settings"}
           </DialogTitle>
           <DialogDescription>
-              Configure your alert thresholds and, if you are an admin, backend polling and public page visibility.
+              Pick a tile, then edit that group. Alerts and chart signals are local+server; Market timing, data, and pages are admin-only.
           </DialogDescription>
         </DialogHeader>
 
@@ -284,8 +293,31 @@ export default function SettingsModal({
           <div className="py-12 text-center text-xs text-slate-500">Loading settings…</div>
         ) : (
         <>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1" data-testid="settings-pane-tiles">
+          {SETTINGS_PANES.filter((p) => !p.admin || isAdmin).map((p) => {
+            const Icon = p.id === "alerts" ? Bell : p.id === "market" ? Clock : p.id === "data" ? Database : p.id === "pages" ? LayoutGrid : Activity;
+            const on = pane === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                data-testid={`settings-pane-${p.id}`}
+                onClick={() => setPane(p.id)}
+                className={`text-left rounded-lg border px-2.5 py-2 min-h-[3.5rem] ${
+                  on ? "border-emerald-600 bg-emerald-50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-900">
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  {p.label}
+                </div>
+                <div className="text-[10px] text-slate-500 leading-snug mt-0.5">{p.hint}</div>
+              </button>
+            );
+          })}
+        </div>
         <div className="space-y-6 pt-2">
-          {/* ------------- Backend reversal engine ------------- */}
+          {pane === "alerts" ? (
           <section className="space-y-4">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
               Server-side OI reversal engine
@@ -434,11 +466,10 @@ export default function SettingsModal({
               </div>
             </div>
           </section>
+          ) : null}
 
-          {/* ------------- Data Collection Poll Intervals ------------- */}
-          {isAdmin && (
-            <>
-              <section className="space-y-4 pt-2 border-t border-slate-200">
+          {isAdmin && pane === "market" ? (
+              <section className="space-y-4 pt-2">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
                   Market hours &amp; admin policy (Admin Only)
                 </div>
@@ -492,7 +523,9 @@ export default function SettingsModal({
                     <span className="text-sm font-medium">Show CAS indicative close (IEP) in the header</span>
                   </label>
                   <p className="text-[10px] text-slate-500">
-                    Kite Quote <code>indicative_close_price</code> only in this IST window. Does not replace LTP. Off = no extra Quote calls.
+                    IEP is the Kite Quote <code>indicative_close_price</code> under LTP on header index tiles
+                    (<code>ticker-*-iep</code>) and as Indicative Close on the sidebar spot. It never replaces LTP.
+                    Default window 15:20–15:35 IST. Off = no extra Quote calls. Preview now shows that UI at the current time so you can test without waiting for CAS.
                   </p>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -508,6 +541,14 @@ export default function SettingsModal({
                       <Input type="number" min={5} max={60} data-testid="cas-iep-interval" className="h-8" value={settings.cas_iep_interval_seconds ?? 5} onChange={(e) => setSettings({ ...settings, cas_iep_interval_seconds: Number(e.target.value) || 5 })} />
                     </div>
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
+                    <Checkbox
+                      data-testid="cas-iep-force"
+                      checked={!!settings.cas_iep_force}
+                      onCheckedChange={(ck) => setSettings({ ...settings, cas_iep_force: !!ck })}
+                    />
+                    <span className="text-sm font-medium">Preview IEP UI now (ignore the clock)</span>
+                  </label>
                 </div>
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
                   <Checkbox
@@ -541,12 +582,13 @@ export default function SettingsModal({
                   />
                 </div>
               </section>
+          ) : null}
 
-              <section className="space-y-4 pt-2 border-t border-slate-200">
+          {isAdmin && pane === "data" ? (
+              <section className="space-y-4 pt-2">
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
-                  Data Collection (Admin Only)
+                  Data collection
                 </div>
-
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
                     OI Data Pull Interval
@@ -651,11 +693,10 @@ export default function SettingsModal({
                   </div>
                 </div>
               </section>
+          ) : null}
 
-              <section className="space-y-4 pt-2 border-t border-slate-200">
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-800">
-                  Public / Admin dashboard pages
-                </div>
+          {isAdmin && pane === "pages" ? (
+              <section className="space-y-4 pt-2">
                 <div className="text-xs text-slate-500">
                   Tick <b>Public</b> to show a page to guests. Tick <b>Admin</b> to keep it on your own desk.
                   They are independent — you can hide a page from yourself without hiding it from guests, and the other way around.
@@ -679,6 +720,8 @@ export default function SettingsModal({
                           ? "Optional for guests — also on the Public icon menu."
                           : page.id === "cas"
                             ? "Guests can view; only admin can Activate / Live."
+                            : page.id === "adrs"
+                              ? "Indian ADR quotes (USD). Tick Admin for your desk; Public for guests."
                             : null;
                     const tickClass = "rounded-full h-[18px] w-[18px] border-slate-300 shadow-none data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 data-[state=checked]:text-white";
                     return (
@@ -773,9 +816,10 @@ export default function SettingsModal({
                   </div>
                 </label>
               </section>
-            </>
-          )}
-          <section className="space-y-3 pt-2 border-t border-slate-200">
+          ) : null}
+          {pane === "signals" ? (
+          <>
+          <section className="space-y-3 pt-2">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               Huge OI shift popup (ATM ± 1 strikes)
               <InfoTip title="Huge OI Shift Popup">
@@ -920,6 +964,8 @@ export default function SettingsModal({
               </div>
             </div>
           </section>
+          </>
+          ) : null}
         </div>
 
         <div className="flex justify-between items-center pt-3 border-t border-slate-200">
