@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.04 — 2026-09-17
+
+ADRs page imports `formatIstStamp` (and `formatAdrCell` / `ADR_FILTERS`) from `@/lib/adr`.
+
 ## V11.03 — 2026-09-17
 
 ADR page imports `ADR_COLUMNS`. Market Intel JSX parses. Live-strip quotes: one space name–price–%, wider gap between names, slower marquee.
