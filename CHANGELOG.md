@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.03 — 2026-09-17
+
+ADR page imports `ADR_COLUMNS`. Market Intel JSX parses. Live-strip quotes: one space name–price–%, wider gap between names, slower marquee.
+
 ## V11.02 — 2026-09-17
 
 Live strip no longer crashes (`useEffect` import). Index LTP on the existing spot WebSocket ticks every 1s in session; quote width is fixed so the marquee does not jump. Admin dialogs only scroll vertically; close X is square-aligned. ADR universe actions are icons. Market Intel keeps the last feed on screen while the next date loads and caches so leaving for Positions and returning is instant.
