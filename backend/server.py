@@ -2805,7 +2805,7 @@ async def ws_spot(websocket: WebSocket):
             elif not live_any and not quote_overlay:
                 await websocket.send_json({"type": "status", "status": "market_closed"})
             await asyncio.sleep(
-                cas_iep_interval_seconds() if is_cas_iep_window() else (2 if (live_any or quote_overlay) else 8)
+                cas_iep_interval_seconds() if is_cas_iep_window() else (1 if (live_any or quote_overlay) else 8)
             )
     except BaseException as exc:
         if ws_client_gone(exc):

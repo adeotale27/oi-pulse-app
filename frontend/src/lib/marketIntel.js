@@ -50,3 +50,18 @@ export const MI_POPUP_MIN_KEY = "oi_mi_popup_minimized";
 export function miMinimizeActive(nowMs, untilMs) {
   return Number.isFinite(untilMs) && Number(nowMs) < Number(untilMs);
 }
+
+const MI_FEED_CACHE = new Map();
+
+export function miFeedCacheKey(date, filt) {
+  return `${date || ""}|${filt || "all"}`;
+}
+
+export function readMiFeedCache(date, filt) {
+  return MI_FEED_CACHE.get(miFeedCacheKey(date, filt)) || null;
+}
+
+export function writeMiFeedCache(date, filt, items) {
+  MI_FEED_CACHE.set(miFeedCacheKey(date, filt), Array.isArray(items) ? items : []);
+}
+

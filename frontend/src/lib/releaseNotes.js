@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.02",
+    date: "2026-09-17",
+    user: [
+      "Index quotes on the top rail update live without jumping the loop. Market Intel keeps today’s stories visible while another date loads, and coming back from Positions is instant.",
+    ],
+    admin: [
+      "Live index WebSocket is 1s in session. Admin windows scroll up/down only; the close X sits square in the corner. ADR Edit / Enable / Delete are icons.",
+    ],
+  },
+  {
     version: "11.01",
     date: "2026-09-17",
     user: [
