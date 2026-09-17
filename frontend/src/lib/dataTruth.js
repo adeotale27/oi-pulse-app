@@ -97,12 +97,12 @@ export function buildDataTruth({
 
   if (isLive && open) {
     const left = nextRefreshInSeconds(age, pollMs);
-    const ageNote = age != null ? `next (${left}s)` : "Updating on schedule";
+    const ageNote = age != null ? `Next Pull (${left}s)` : "Updating on schedule";
     return {
       mode: "LIVE",
       badge: "LIVE",
       asOfLabel: asOfClock ? `Live data as of ${asOfClock} IST` : "Live data as of —",
-      detail: `Market open · ${ageNote}`,
+      detail: `Market Open · ${ageNote}`,
       tone: "live",
     };
   }

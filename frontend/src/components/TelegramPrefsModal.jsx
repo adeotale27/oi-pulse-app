@@ -132,7 +132,7 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
             Change any time — takes effect on the next alert.
             {status && !status.configured && (
               <span className="block mt-1 text-rose-600">
-                Bot not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in backend/.env.
+                Bot not configured — set token and chat ID in Admin → Admin configuration.
               </span>
             )}
           </DialogDescription>
@@ -141,6 +141,16 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
         <p className="text-[12px] text-slate-600 rounded-md border border-sky-100 bg-sky-50/80 px-3 py-2" data-testid="tg-closed-chrome-note">
           Phone alerts when Chrome is closed: use Telegram here. Browser banners only fire while this tab is open. iOS needs the site on the Home Screen for any browser push.
         </p>
+
+        {prefs.bot_token_masked ? (
+          <div className="text-[11px] text-slate-500" data-testid="tg-token-status">
+            Bot token: {prefs.bot_token_masked} (edit in Admin configuration)
+          </div>
+        ) : (
+          <div className="text-[11px] text-slate-500" data-testid="tg-token-status">
+            Bot token not configured — set it in Admin → Admin configuration.
+          </div>
+        )}
 
         {/* ---- Master switch ---- */}
         <div className="flex items-center justify-between p-3 rounded-sm border border-slate-200 bg-slate-50">

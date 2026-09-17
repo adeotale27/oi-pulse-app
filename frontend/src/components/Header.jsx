@@ -1264,12 +1264,13 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
   const tone = pct > 0.05 ? "rose" : pct < -0.05 ? "emerald" : "slate";
   const toneCls = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-slate-500 dark:text-slate-400";
   const hasData = v != null && v > 0;
+  const VIX_TIP = "VIX measures expected market volatility. Higher VIX = more expected movement; lower VIX = calmer markets.";
   if (inline) {
     return (
       <div
         className="inline-flex items-center gap-1 h-6 px-1.5 rounded-sm text-[11px] tabular-nums"
         data-testid="vix-metric"
-        title="India VIX"
+        title={VIX_TIP}
       >
         <span className="uppercase tracking-wider text-slate-400 font-semibold">VIX</span>
         <span className={`font-semibold ${hasData ? "text-slate-900 dark:text-slate-100" : "text-slate-400"}`} data-testid="vix-value">
@@ -1285,7 +1286,7 @@ function VixMetric({ value, sessionOpen, liveVix, inline = false }) {
     );
   }
   return (
-    <div className="flex flex-col min-w-[5.5rem]" data-testid="vix-metric">
+    <div className="flex flex-col min-w-[5.5rem]" data-testid="vix-metric" title={VIX_TIP}>
       <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-800 dark:text-slate-200 font-bold">
         <div className="flex items-center gap-1.5">INDIA VIX</div>
         <div className={`text-[11px] font-mono-data ${toneCls}`}>{hasData ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—"}</div>

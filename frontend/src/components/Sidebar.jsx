@@ -162,6 +162,7 @@ export default function Sidebar({
   showStrikeRange = false,
   lastUpdatedByIndex = {},
   marketOpen = true,
+  indicativeClose = null,
   onCollapse,
   layoutNonce = 0,
 }) {
@@ -486,18 +487,25 @@ export default function Sidebar({
         </div>
 
         {current && (
-          <div className="mt-3 flex items-center justify-between font-mono-data">
-            <span className="text-sm font-semibold">
-              {price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            </span>
-            <span className="text-xs text-slate-500 flex items-center gap-1">
-              ATM {current.atm}
-              {price >= current.atm ? (
-                <TrendingUp className="w-3 h-3 text-emerald-600" />
-              ) : (
-                <TrendingDown className="w-3 h-3 text-rose-600" />
-              )}
-            </span>
+          <div className="mt-3 font-mono-data">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">
+                {price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-xs text-slate-500 flex items-center gap-1">
+                ATM {current.atm}
+                {price >= current.atm ? (
+                  <TrendingUp className="w-3 h-3 text-emerald-600" />
+                ) : (
+                  <TrendingDown className="w-3 h-3 text-rose-600" />
+                )}
+              </span>
+            </div>
+            {indicativeClose != null && Number(indicativeClose) > 0 ? (
+              <div className="mt-1 text-[10px] text-slate-600" data-testid="sidebar-iep">
+                Indicative Close ₹{Number(indicativeClose).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </div>
+            ) : null}
           </div>
         )}
       </div>

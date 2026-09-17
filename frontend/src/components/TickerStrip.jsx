@@ -400,6 +400,11 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
               >
                 {ltpLabel}
               </div>
+              {isHeader && t.indicative_close_price != null && Number(t.indicative_close_price) > 0 ? (
+                <div className="text-[9px] font-semibold text-slate-700 dark:text-slate-200" data-testid={`ticker-${t.index}-iep`}>
+                  IEP {fmtNum(t.indicative_close_price, 2)}
+                </div>
+              ) : null}
               <div
                 className={`inline-flex items-center gap-1 font-mono-data tabular-nums leading-none ${tones.chg} ${
                   isHeader ? "text-[10px]" : useCompact ? "text-[10px]" : "gap-1.5 text-xs sm:text-[11px]"

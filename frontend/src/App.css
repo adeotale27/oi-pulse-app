@@ -98,7 +98,7 @@
 .header-index-tile {
   position: relative;
   overflow: hidden;
-  border-radius: 9999px;
+  border-radius: 0.75rem;
   isolation: isolate;
 }
 

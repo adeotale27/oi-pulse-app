@@ -1,11 +1,10 @@
 """
 Telegram notifier for uptime and trading alerts.
 
-Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from env. If either is missing,
-notifications become a no-op (graceful degradation).
+Reads TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID from Admin vault (settings._id=telegram_prefs,
+Fernet bot_token_enc) with env fallback. If either is missing, notifications no-op.
 
-Also honors per-user preferences stored in Mongo (db.settings, _id="telegram_prefs")
-so the user can filter which indices / event types / hours receive alerts.
+Also honors alert filters in the same telegram_prefs document.
 """
 import os
 import time
@@ -29,7 +28,9 @@ _last_sent: Dict[str, float] = {}
 _db = None
 _prefs_cache: Dict[str, Any] = {}
 _prefs_cache_ts: float = 0.0
+_secret: Dict[str, str] = {"token": "", "chat": ""}
 PREFS_TTL_SEC = 10  # short so changes reflect quickly
+_SECRET_DOC_KEYS = ("bot_token", "bot_token_enc", "token")
 
 DEFAULT_PREFS: Dict[str, Any] = {
     "enabled": True,
@@ -62,11 +63,44 @@ def set_db(db):
     _db = db
 
 
-def _cfg():
+def _env_cfg():
     return (
         os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
         os.environ.get("TELEGRAM_CHAT_ID", "").strip(),
     )
+
+
+def _cfg():
+    env_token, env_chat = _env_cfg()
+    token = (_secret.get("token") or env_token or "").strip()
+    chat = (_secret.get("chat") or env_chat or "").strip()
+    return token, chat
+
+
+def mask_bot_token(token: str) -> str:
+    t = (token or "").strip()
+    if not t:
+        return ""
+    tail = t[-4:] if len(t) >= 4 else t
+    return f"************{tail}"
+
+
+def is_placeholder_token(value: str) -> bool:
+    s = (value or "").strip()
+    if not s:
+        return True
+    return s.startswith("*") or s.lower() in {"configured", "unchanged"}
+
+
+def public_prefs(prefs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    raw = dict(prefs or _prefs_cache or DEFAULT_PREFS)
+    for k in _SECRET_DOC_KEYS:
+        raw.pop(k, None)
+    token, chat = _cfg()
+    raw["chat_id"] = chat
+    raw["bot_token_configured"] = bool(token)
+    raw["bot_token_masked"] = mask_bot_token(token)
+    return raw
 
 
 def is_configured() -> bool:
@@ -86,6 +120,18 @@ async def _load_prefs() -> Dict[str, Any]:
             doc = await _db.settings.find_one({"_id": "telegram_prefs"})
             if doc:
                 doc.pop("_id", None)
+                enc = doc.pop("bot_token_enc", None)
+                doc.pop("bot_token", None)
+                doc.pop("token", None)
+                if enc:
+                    try:
+                        from desk_llm import decrypt_secret
+                        _secret["token"] = decrypt_secret(enc)
+                    except Exception:
+                        logger.warning("telegram token decrypt failed")
+                chat_stored = str(doc.get("chat_id") or "").strip()
+                if chat_stored:
+                    _secret["chat"] = chat_stored
                 # Deep merge (only 1 level of nesting for indices/types/quiet_hours)
                 for k, v in doc.items():
                     if isinstance(v, dict) and isinstance(prefs.get(k), dict):
@@ -101,22 +147,31 @@ async def _load_prefs() -> Dict[str, Any]:
 
 
 async def get_prefs() -> Dict[str, Any]:
-    """Public accessor — always returns fresh-ish prefs merged with defaults."""
-    return await _load_prefs()
+    """Public accessor — secrets stripped; token only masked."""
+    prefs = await _load_prefs()
+    return public_prefs(prefs)
 
 
 async def save_prefs(patch: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge `patch` into stored prefs. Only known keys are persisted."""
+    """Merge `patch` into stored prefs. Only known keys are persisted. Empty bot_token keeps the vaulted value."""
     global _prefs_cache_ts
-    allowed_top = {"enabled", "indices", "types", "quiet_hours", "major_abs_threshold"}
+    allowed_top = {"enabled", "indices", "types", "quiet_hours", "major_abs_threshold", "chat_id"}
     clean = {k: v for k, v in (patch or {}).items() if k in allowed_top}
+    token_in = (patch or {}).get("bot_token")
+    if isinstance(token_in, str) and not is_placeholder_token(token_in):
+        from desk_llm import encrypt_secret
+        clean["bot_token_enc"] = encrypt_secret(token_in.strip())
+        _secret["token"] = token_in.strip()
+    if "chat_id" in clean:
+        _secret["chat"] = str(clean.get("chat_id") or "").strip()
     if _db is None:
         raise RuntimeError("DB not initialized for telegram prefs")
-    await _db.settings.update_one(
-        {"_id": "telegram_prefs"}, {"$set": clean}, upsert=True
-    )
+    if clean:
+        await _db.settings.update_one(
+            {"_id": "telegram_prefs"}, {"$set": clean}, upsert=True
+        )
     _prefs_cache_ts = 0  # invalidate cache
-    return await _load_prefs()
+    return await get_prefs()
 
 
 def _in_quiet_hours(prefs: Dict[str, Any]) -> bool:
@@ -241,7 +296,7 @@ async def send_message(text: str, *, dedupe_key: Optional[str] = None,
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(url, json=payload)
             if r.status_code != 200:
-                logger.warning(f"Telegram sendMessage failed [{r.status_code}]: {r.text[:200]}")
+                logger.warning("Telegram sendMessage failed [%s]", r.status_code)
                 return False
             return True
     except Exception as e:

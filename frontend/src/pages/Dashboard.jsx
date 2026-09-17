@@ -587,6 +587,9 @@ export default function Dashboard() {
           if (ticker.day_open) next.day_open = ticker.day_open;
           if (ticker.change != null) next.change = ticker.change;
           if (ticker.change_pct != null) next.change_pct = ticker.change_pct;
+          if (ticker.indicative_close_price) next.indicative_close_price = ticker.indicative_close_price;
+          else delete next.indicative_close_price;
+          if (ticker.final_close) next.final_close = ticker.final_close;
           out[idx] = next;
           changed = true;
         }
@@ -1226,7 +1229,7 @@ export default function Dashboard() {
           const out = { ...prev };
           let changed = false;
           for (const [idx, px] of Object.entries(spots)) {
-            if (out[idx] == null) {
+            if (out[idx] !== px) {
               out[idx] = px;
               changed = true;
             }
@@ -2227,6 +2230,7 @@ export default function Dashboard() {
                 showStrikeRange={showStrikeRange}
                 lastUpdatedByIndex={lastUpdatedByIndex}
                 marketOpen={!(status?.market && status.market.is_market_open === false)}
+                indicativeClose={tickerQuotes?.[activeIndex]?.indicative_close_price}
                 onCollapse={() => setCompact(true)}
                 layoutNonce={layoutNonce}
               />

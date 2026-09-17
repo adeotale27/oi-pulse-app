@@ -22,7 +22,7 @@ const live = buildDataTruth({
   pollMs: 15000,
 });
 assert.equal(live.mode, "LIVE");
-assert.match(live.detail, /next \(\d+s\)/);
-assert.equal(/Updated \d+s ago/.test(live.detail), false);
+assert.match(live.detail, /Market Open · Next Pull \(\d+s\)/);
+assert.equal(/Market open · next \(/.test(live.detail), false);
 
 console.log("dataTruth.test.js ok");

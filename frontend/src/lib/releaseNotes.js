@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "10.13",
+    date: "2026-09-17",
+    user: [
+      "Live strip says Market Open · Next Pull (Xs) for the next OI pull, not time until the open. Pre-market 9:00–9:15 keeps index prices moving. During the closing auction, Indicative Close / IEP shows when Kite sends it — last price stays last price. Header index chips are normal tiles. Hover VIX for a short volatility note.",
+    ],
+    admin: [
+      "Telegram bot token and chat ID are set in Admin configuration (Fernet vault, same telegram_prefs as filters). GET never returns the raw token. CAS IEP is Kite Quote indicative_close_price only 15:20–15:35 IST.",
+    ],
+  },
+  {
     version: "10.12",
     date: "2026-09-17",
     user: [

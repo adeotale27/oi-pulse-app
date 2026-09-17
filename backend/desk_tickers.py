@@ -23,7 +23,11 @@ def pick_quote_blob(data: Optional[dict], symbol: str) -> dict:
     if not isinstance(data, dict) or not symbol:
         return {}
     direct = data.get(symbol)
-    if isinstance(direct, dict) and (_f(direct.get("last_price")) or direct.get("ohlc")):
+    if isinstance(direct, dict) and (
+        _f(direct.get("last_price"))
+        or direct.get("ohlc")
+        or _f(direct.get("indicative_close_price"))
+    ):
         return direct
     tail = symbol.split(":", 1)[-1].strip().upper()
     for k, v in data.items():
@@ -31,9 +35,19 @@ def pick_quote_blob(data: Optional[dict], symbol: str) -> dict:
             continue
         ku = str(k).upper()
         if ku == symbol.upper() or ku.endswith(tail) or (tail and tail in ku):
-            if _f(v.get("last_price")) or v.get("ohlc"):
+            if _f(v.get("last_price")) or v.get("ohlc") or _f(v.get("indicative_close_price")):
                 return v
     return direct if isinstance(direct, dict) else {}
+
+
+def indicative_close_price(blob: Optional[dict]) -> Optional[float]:
+    """Kite Quote CAS IEP. Never coerce missing/zero to 0 for callers."""
+    if not isinstance(blob, dict):
+        return None
+    v = _f(blob.get("indicative_close_price"), 0.0)
+    if v <= 0:
+        return None
+    return round(v, 2)
 
 
 def merge_ticker_row(
@@ -42,8 +56,12 @@ def merge_ticker_row(
     *,
     kite_blob: Optional[dict] = None,
     snap: Optional[dict] = None,
+    include_iep: bool = False,
 ) -> Dict[str, Any]:
-    """Prefer live Kite LTP; if missing/zero, keep last snapshot price. Keep OHLC close for change."""
+    """Prefer live Kite LTP; if missing/zero, keep last snapshot price. Keep OHLC close for change.
+
+    Does not overwrite last_price / ltp with indicative_close_price.
+    """
     blob = kite_blob or {}
     snap = snap or {}
     ohlc = blob.get("ohlc") if isinstance(blob.get("ohlc"), dict) else {}
@@ -59,7 +77,8 @@ def merge_ticker_row(
     change = (ltp - prev) if prev else 0.0
     change_pct = (change / prev * 100) if prev else 0.0
     source = "kite" if kite_ltp else ("snapshot" if snap_ltp else "none")
-    return {
+    ohlc_close = _f(ohlc.get("close"))
+    row: Dict[str, Any] = {
         "index": internal,
         "label": label,
         "ltp": round(ltp, 2),
@@ -72,6 +91,13 @@ def merge_ticker_row(
         "source": source,
         "as_of": snap.get("timestamp"),
     }
+    if ohlc_close > 0:
+        row["final_close"] = round(ohlc_close, 2)
+    if include_iep:
+        iep = indicative_close_price(blob)
+        if iep is not None:
+            row["indicative_close_price"] = iep
+    return row
 
 
 def ticker_symbol_list(

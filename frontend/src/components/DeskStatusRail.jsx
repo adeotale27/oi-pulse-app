@@ -30,9 +30,10 @@ export default function DeskStatusRail({
 }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
+    if (!marketOpen) return undefined;
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [marketOpen]);
 
   const truth = useMemo(
     () => buildDataTruth({ dataStatus, marketOpen, mode, snapshotTs, pollMs }),
@@ -52,17 +53,19 @@ export default function DeskStatusRail({
     const openHm = market.display_open_ist || "09:15";
     const phaseIsClosed = phase === "post_close" || phase === "closed";
     const title = (
-      phase === "pre_open" ? (market.banner_title || "Not open yet")
+      phase === "pre_open" || phase === "pre_market" ? (market.banner_title || "Not open yet")
         : phase === "weekend" ? (market.banner_title || "Weekend")
           : phase === "holiday" ? (market.banner_title || "NSE holiday")
+            : phase === "cas" ? (market.banner_title || "Closing auction")
             : `Market Closed${closedAtClock ? ` at ${closedAtClock}` : ""}`
     );
     const short =
-      phase === "pre_open" ? `Opens ${openHm}`
+      phase === "pre_open" || phase === "pre_market" ? `Opens ${openHm}`
         : phase === "weekend" ? `Resumes ${openHm}`
           : phase === "holiday" ? "Suspended"
+            : phase === "cas" ? "CAS"
             : "";
-    const Icon = phase === "pre_open" ? Sunrise
+    const Icon = phase === "pre_open" || phase === "pre_market" ? Sunrise
       : phase === "weekend" || phase === "holiday" ? CalendarOff
         : phase === "post_close" || phaseIsClosed ? Moon
           : Clock;
