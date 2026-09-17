@@ -30,6 +30,7 @@ const DASHBOARD_PAGES = [
   { id: "index-events", label: "Index Risk" },
   { id: "cas", label: "CAS Expiry" },
   { id: "market-intel", label: "Market Intelligence" },
+  { id: "adrs", label: "ADRs" },
 ];
 const ALL_PAGE_IDS = DASHBOARD_PAGES.map((p) => p.id);
 

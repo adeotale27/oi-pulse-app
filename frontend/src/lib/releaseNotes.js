@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.00",
+    date: "2026-09-17",
+    user: [
+      "New ADRs tab: Indian ADR quotes in USD (Last, change, volume). Columns, search, and Gainers/Losers/Banking filters. US Open/Closed is New York time. After the US close the last successful print stays on screen.",
+    ],
+    admin: [
+      "Admin → ADRs: Twelve Data key is vaulted (Configured / Not Configured only). Poll 60–3600s, large-move and banking thresholds, add/enable/delete names. Seeded INFY/HDB/IBN/WIT/RDY/SIFY/WNS/TTM. Failures log as source adr without the API key.",
+    ],
+  },
+  {
     version: "10.14",
     date: "2026-09-17",
     user: [
