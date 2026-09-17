@@ -23,6 +23,7 @@ import BuildupTable from "@/components/BuildupTable";
 import GuestHolidayCalendarBanner from "@/components/GuestHolidayCalendarBanner";
 import AdminUploadAdvisor from "@/components/AdminUploadAdvisor";
 import OvernightGapBrief from "@/components/OvernightGapBrief";
+import CasIepPopup from "@/components/CasIepPopup";
 import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
 import MarketIntelPage from "@/components/MarketIntelPage";
 import AdrPage from "@/components/AdrPage";
@@ -69,9 +70,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, fetchConfig, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
-import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE } from "@/lib/marketTimes";
+import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE, istMinutesOfDay } from "@/lib/marketTimes";
 import { setPositionsBookPollMs, refreshPositionsBook, notifyKiteConnected } from "@/lib/positionsBook";
 import { connectSpotWS } from "@/lib/spotWs";
+import { casIepPopupActive, mergeIndicativeClose, readCasIepPopupPref, writeCasIepPopupPref } from "@/lib/casIepPopup";
 import { downloadOICsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { useNotify } from "@/hooks/useNotify";
@@ -80,7 +82,7 @@ import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert, unlockSounds } from "@/lib/sounds";
 import { flushHiddenAlerts, surfaceAlert } from "@/lib/alertSurface";
-import { applyUploadedHolidays } from "@/lib/holidays";
+import { applyUploadedHolidays, isTradingDayIST } from "@/lib/holidays";
 import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
@@ -355,6 +357,15 @@ export default function Dashboard() {
   const activeIndexRef = useRef(activeIndex);
   const [liveSpotPrices, setLiveSpotPrices] = useState({});
   const [tickerQuotes, setTickerQuotes] = useState({});
+  const [casIepPopup, setCasIepPopup] = useState(() => readCasIepPopupPref());
+  const [casIepCfg, setCasIepCfg] = useState({
+    enabled: true,
+    force: false,
+    startIst: "15:20",
+    endIst: "15:35",
+  });
+  const [iepClockMin, setIepClockMin] = useState(() => istMinutesOfDay());
+  const iepKeepRef = useRef(false);
   // Warm cache for ALL enabled indices so switching NIFTY ↔ SENSEX is instant.
   const oiCacheRef = useRef({});          // index -> last /change payload
   const expiryByIndexRef = useRef({});    // index -> { list, meta, note, selected }
@@ -373,6 +384,19 @@ export default function Dashboard() {
   useEffect(() => { selectedExpiryRef.current = selectedExpiry; }, [selectedExpiry]);
   useEffect(() => { liveSpotPricesRef.current = liveSpotPrices; }, [liveSpotPrices]);
   useEffect(() => { tickerQuotesRef.current = tickerQuotes; }, [tickerQuotes]);
+  useEffect(() => {
+    const id = setInterval(() => setIepClockMin(istMinutesOfDay()), 15000);
+    return () => clearInterval(id);
+  }, []);
+  const iepWindowOn = casIepPopupActive({
+    enabled: casIepCfg.enabled,
+    force: casIepCfg.force || !!status?.market?.is_cas_iep_window,
+    startIst: casIepCfg.startIst,
+    endIst: casIepCfg.endIst,
+    minutesOfDay: iepClockMin,
+    tradingDay: isTradingDayIST(),
+  });
+  useEffect(() => { iepKeepRef.current = iepWindowOn; }, [iepWindowOn]);
 
   // Force Sell Candidates panel to recompute every minute so scores stay fresh
   // even if the underlying OI snapshot only ticks every 30s.
@@ -591,7 +615,8 @@ export default function Dashboard() {
           if (ticker.day_open) next.day_open = ticker.day_open;
           if (ticker.change != null) next.change = ticker.change;
           if (ticker.change_pct != null) next.change_pct = ticker.change_pct;
-          if (ticker.indicative_close_price) next.indicative_close_price = ticker.indicative_close_price;
+          const iep = mergeIndicativeClose(cur, ticker, { keepLast: iepKeepRef.current });
+          if (iep != null) next.indicative_close_price = iep;
           else delete next.indicative_close_price;
           if (ticker.final_close) next.final_close = ticker.final_close;
           out[idx] = next;
@@ -1230,7 +1255,11 @@ export default function Dashboard() {
         for (const t of data?.tickers || []) {
           if (!t?.index) continue;
           const cur = out[t.index] || {};
-          out[t.index] = { ...cur, ...t, ltp: liveSpotPricesRef.current?.[t.index] ?? t.ltp ?? cur.ltp };
+          const merged = { ...cur, ...t, ltp: liveSpotPricesRef.current?.[t.index] ?? t.ltp ?? cur.ltp };
+          const iep = mergeIndicativeClose(cur, t, { keepLast: iepKeepRef.current });
+          if (iep != null) merged.indicative_close_price = iep;
+          else delete merged.indicative_close_price;
+          out[t.index] = merged;
         }
         return out;
       });
@@ -1299,6 +1328,14 @@ export default function Dashboard() {
     if (typeof d.show_writer_defense === "boolean") setShowWriterDefense(d.show_writer_defense);
     if (typeof d.show_suggestion === "boolean") setShowSuggestion(d.show_suggestion);
     if (typeof d.show_chart_signals === "boolean") setShowChartSignals(d.show_chart_signals);
+    if ("cas_iep_enabled" in d || "cas_iep_force" in d || "cas_iep_start_ist" in d || "cas_iep_end_ist" in d) {
+      setCasIepCfg((prev) => ({
+        enabled: d.cas_iep_enabled !== false,
+        force: !!d.cas_iep_force,
+        startIst: d.cas_iep_start_ist || prev.startIst,
+        endIst: d.cas_iep_end_ist || prev.endIst,
+      }));
+    }
     applyDeskAi(d);
   }, [applyDeskAi]);
 
@@ -2150,6 +2187,11 @@ export default function Dashboard() {
         vix={current?.vix || status?.vix}
         activeIndex={activeIndex}
       />
+      <CasIepPopup
+        enabled={!!casIepPopup && iepWindowOn}
+        quotes={tickerQuotes}
+        endLabel={casIepCfg.endIst}
+      />
       <Header
         status={status}
         current={current}
@@ -2200,6 +2242,11 @@ export default function Dashboard() {
         onOpenDeskAiMobile={openDeskAiMobile}
         onDeskAiChange={(next) => {
           if (typeof next?.show === "boolean") patchDeskAi({ desk_ai_show: next.show });
+        }}
+        casIepPopup={casIepPopup}
+        onToggleCasIepPopup={(on) => {
+          setCasIepPopup(!!on);
+          writeCasIepPopupPref(!!on);
         }}
         spotPrices={liveSpotPrices}
         onFreshPullDone={() => {

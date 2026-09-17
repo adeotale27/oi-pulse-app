@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip as ReTooltip, XAxis, YAxis } from "recharts";
-import { Columns3, Search, SlidersHorizontal } from "lucide-react";
+import { Columns3, Search, SlidersHorizontal, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import {
-  ADR_COLUMNS, ADR_FILTERS, filterAdrRows, formatAdrCell, formatIstStamp, loadAdrColumns, moveTone, resetAdrColumns, saveAdrColumns, sortAdrRows, toneClass, usdPrice, usdSigned, pctSigned, fmtVolume,
+  ADR_COLUMNS, ADR_FILTERS, filterAdrRows, formatAdrCell, formatIstStamp, isAdrSessionOpen, listingFlag, loadAdrColumns, moveTone, resetAdrColumns, saveAdrColumns, sortAdrRows, toneClass, usdPrice, usdSigned, pctSigned, fmtVolume,
 } from "@/lib/adr";
 
 export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin }) {
@@ -204,21 +204,28 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
                 >
                   {visibleCols.map((c) => {
                     const tone = (c.kind === "pct" || c.kind === "usdSigned") ? toneClass(moveTone(row[c.id])) : "";
-                    const text = c.id === "updated"
-                      ? (row.stale ? `Last successful: ${formatIstStamp(row.fetched_at)}` : formatIstStamp(row.fetched_at))
-                      : formatAdrCell(c, row);
+                    const text = formatAdrCell(c, row);
+                    const open = isAdrSessionOpen(row);
                     return (
                       <td
                         key={c.id}
                         className={`px-2 py-1.5 whitespace-nowrap font-mono-data ${c.sticky ? "sticky left-0 bg-white dark:bg-slate-900 font-sans font-semibold text-slate-900 dark:text-slate-100" : ""} ${tone}`}
                       >
                         {c.id === "company" ? (
-                          <span className="font-sans">
+                          <span className="font-sans inline-flex items-center gap-1.5">
+                            <span className="text-sm leading-none" aria-hidden>{listingFlag(row)}</span>
                             <span className="font-semibold">{row.company_name}</span>
                             {row.large_move ? <Badge className="ml-1 rounded-sm text-[9px] px-1 py-0 bg-rose-600">LARGE MOVE</Badge> : null}
                           </span>
                         ) : c.id === "adr_symbol" ? (
                           <span className="font-semibold tracking-wide">{row.adr_symbol}</span>
+                        ) : c.id === "session_clock" ? (
+                          <Clock
+                            className={`w-3.5 h-3.5 ${open ? "text-emerald-600" : "text-rose-500"}`}
+                            strokeWidth={2.25}
+                            aria-label={open ? "Market open" : "Market closed"}
+                            data-testid={`adr-clock-${row.adr_symbol}`}
+                          />
                         ) : text}
                       </td>
                     );
@@ -233,7 +240,10 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
       <Sheet open={!!detail} onOpenChange={(o) => { if (!o) setOpenId(null); }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto" data-testid="adr-detail">
           <SheetHeader>
-            <SheetTitle>{detail?.company_name} · {detail?.adr_symbol}</SheetTitle>
+            <SheetTitle>
+              <span className="mr-1" aria-hidden>{listingFlag(detail)}</span>
+              {detail?.company_name} · {detail?.adr_symbol}
+            </SheetTitle>
           </SheetHeader>
           {detail ? (
             <div className="mt-3 space-y-2 text-xs">
@@ -242,7 +252,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
                 <div>Indian {detail.indian_symbol}</div>
                 <div>Ratio {detail.adr_ratio}</div>
                 <div>{detail.exchange} · {detail.sector}</div>
-                <div>{detail.display_status === "LAST_KNOWN" ? "Using Last Successful Data" : detail.stale ? "US Market Closed" : "US Market Open"}</div>
+                <div>{detail.display_status === "LAST_KNOWN" ? "Using Last Successful Data" : formatAdrCell({ id: "market_status" }, detail)}</div>
                 <div>Vol {fmtVolume(detail.volume)}</div>
                 <div>Avg {fmtVolume(detail.average_volume)}</div>
                 <div>52W {detail.week52_range || `${usdPrice(detail.week52_low)} – ${usdPrice(detail.week52_high)}`}</div>

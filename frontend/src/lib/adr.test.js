@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   usdPrice, usdSigned, pctSigned, fmtVolume, moveTone, sortAdrRows, filterAdrRows,
   loadAdrColumns, saveAdrColumns, resetAdrColumns, ADR_DEFAULT_VISIBLE, prefStorageKey, formatIstStamp,
+  listingFlag, listingCountryCode, isAdrSessionOpen, formatAdrCell,
 } from "./adr.js";
 
 assert.equal(usdPrice(11.08), "$11.08");
@@ -47,5 +48,15 @@ assert.equal(formatIstStamp(undefined), "—");
 assert.equal(formatIstStamp(""), "—");
 assert.match(formatIstStamp("2026-09-16T10:30:00.000Z"), /IST$/);
 assert.equal(formatIstStamp("2026-09-16T10:30:00.000Z"), "16:00:00 IST");
+
+assert.equal(listingCountryCode("XETRA"), "DE");
+assert.equal(listingFlag("NYSE"), "🇺🇸");
+assert.equal(listingFlag({ exchange: "FRA" }), "🇩🇪");
+assert.equal(isAdrSessionOpen({ is_market_open: true }), true);
+assert.equal(isAdrSessionOpen({ listing_open: false }), false);
+assert.equal(formatAdrCell({ id: "updated" }, { fetched_at: "2026-09-16T10:30:00.000Z" }), "16:00:00 IST");
+assert.equal(formatAdrCell({ id: "market_status" }, { exchange: "NYSE", stale: true }), "US Market Closed");
+assert.equal(formatAdrCell({ id: "market_status" }, { exchange: "XETRA", listing_open: true, display_status: "CURRENT" }), "German Market Open");
+assert.ok(ADR_DEFAULT_VISIBLE.includes("session_clock"));
 
 console.log("adr.test.js ok");

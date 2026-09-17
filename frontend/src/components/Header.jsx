@@ -8,12 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import DeskAiConfigMenu from "@/components/DeskAiConfigMenu";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import TickerStrip from "@/components/TickerStrip";
 import AdminControls from "@/components/AdminControls";
 import BrandMark from "@/components/BrandMark";
@@ -51,7 +53,20 @@ function ErrorLogBadge({ count }) {
   );
 }
 
-/** Admin Today P&L chip for the header (beside the clock). Never shown to guests. */
+function IepPopupSwitch({ on, onChange, testId, className = "" }) {
+  return (
+    <label
+      className={`flex items-center justify-between gap-2 px-2 py-1.5 text-sm cursor-pointer ${className}`}
+      data-testid={testId}
+    >
+      <span className="text-xs font-medium">Indicative price popup</span>
+      <Switch
+        checked={!!on}
+        onCheckedChange={(ck) => onChange?.(!!ck)}
+      />
+    </label>
+  );
+}
 function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 30_000, className, compact = false }) {
   const cached = readTodayPnlCache();
   const [pnl, setPnl] = useState(() => cached?.total ?? null);
@@ -192,6 +207,8 @@ export default function Header({
   onOpenDeskAiPanel,
   onOpenDeskAiMobile,
   onToggleSlimStatusRail,
+  casIepPopup = true,
+  onToggleCasIepPopup,
 }) {
   const price = current?.price ?? 0;
   const pcr = current?.pcr ?? 0;
@@ -657,6 +674,12 @@ export default function Header({
               <X className="w-4 h-4" />
             </button>
           </div>
+          <IepPopupSwitch
+            className="w-full rounded-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-11"
+            on={casIepPopup}
+            onChange={onToggleCasIepPopup}
+            testId="mobile-toggle-iep-popup"
+          />
           <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
@@ -970,10 +993,18 @@ export default function Header({
                   Admin
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52 z-[100] border-emerald-200 bg-white shadow-2xl ring-1 ring-emerald-700/15" data-testid="admin-tools-menu">
+              <DropdownMenuContent align="end" className="w-60 z-[100] border-emerald-200 bg-white shadow-2xl ring-1 ring-emerald-700/15" data-testid="admin-tools-menu">
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
                   Desk tools
                 </DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={!!casIepPopup}
+                  onCheckedChange={(ck) => onToggleCasIepPopup?.(!!ck)}
+                  onSelect={(e) => e.preventDefault()}
+                  data-testid="menu-toggle-iep-popup"
+                >
+                  Indicative price popup
+                </DropdownMenuCheckboxItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   data-testid="menu-refresh-day"
@@ -1179,6 +1210,12 @@ export default function Header({
           <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
             Admin tools
           </div>
+          <IepPopupSwitch
+            className="w-full rounded-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+            on={casIepPopup}
+            onChange={onToggleCasIepPopup}
+            testId="tablet-toggle-iep-popup"
+          />
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration

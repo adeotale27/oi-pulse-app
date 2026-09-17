@@ -502,8 +502,11 @@ export default function Sidebar({
               </span>
             </div>
             {indicativeClose != null && Number(indicativeClose) > 0 ? (
-              <div className="mt-1 text-[10px] text-slate-600" data-testid="sidebar-iep">
-                Indicative Close ₹{Number(indicativeClose).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              <div className="mt-1.5" data-testid="sidebar-iep">
+                <div className="text-[10px] uppercase tracking-wide text-slate-500">Indicative price</div>
+                <div className="font-mono-data text-sm font-bold text-slate-900 dark:text-slate-100">
+                  ₹{Number(indicativeClose).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </div>
               </div>
             ) : null}
           </div>

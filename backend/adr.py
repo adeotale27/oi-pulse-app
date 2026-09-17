@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 IST = ZoneInfo("Asia/Kolkata")
 ET = ZoneInfo("America/New_York")
+BERLIN = ZoneInfo("Europe/Berlin")
 UTC = timezone.utc
 
 CFG_COL = "settings"
@@ -36,7 +37,12 @@ DEFAULT_LARGE_MOVE = 5.0
 DEFAULT_BANKING_MOVE = 5.0
 US_OPEN = dtime(9, 30)
 US_CLOSE = dtime(16, 0)
+DE_OPEN = dtime(9, 0)
+DE_CLOSE = dtime(17, 30)
 IST_OPEN_REFRESH = dtime(9, 15)
+US_EXCHANGES = frozenset({"NYSE", "NASDAQ", "NYSE ARCA", "NYSE MKT", "AMEX"})
+DE_EXCHANGES = frozenset({"FRA", "XETRA", "FWB", "FSE", "XETR", "FRANKFURT"})
+LISTING_FLAGS = {"US": "🇺🇸", "DE": "🇩🇪", "GB": "🇬🇧"}
 RETENTION_HOURS = int(os.environ.get("ADR_RETENTION_HOURS") or os.environ.get("SNAPSHOT_RETENTION_HOURS") or 96)
 
 # NYSE full-day closures (not early closes). DST is handled by America/New_York.
@@ -202,8 +208,47 @@ def universe_doc(row: Dict[str, Any], *, existing_id: Optional[str] = None) -> D
     }
 
 
+def listing_country_code(exchange: Optional[str]) -> str:
+    e = str(exchange or "").strip().upper()
+    if e in DE_EXCHANGES:
+        return "DE"
+    if e in {"LSE", "LON", "LONDON"}:
+        return "GB"
+    return "US"
+
+
+def listing_flag(exchange: Optional[str]) -> str:
+    return LISTING_FLAGS.get(listing_country_code(exchange), "🇺🇸")
+
+
+def listing_market_name(exchange: Optional[str]) -> str:
+    code = listing_country_code(exchange)
+    if code == "DE":
+        return "German Market"
+    if code == "GB":
+        return "UK Market"
+    return "US Market"
+
+
+def is_de_equity_session(dt: Optional[datetime] = None) -> bool:
+    src = dt or _now_utc()
+    if src.tzinfo is None:
+        src = src.replace(tzinfo=UTC)
+    local = src.astimezone(BERLIN)
+    if local.weekday() >= 5:
+        return False
+    t = local.time()
+    return DE_OPEN <= t < DE_CLOSE
+
+
+def is_listing_session_open(exchange: Optional[str], dt: Optional[datetime] = None) -> bool:
+    if listing_country_code(exchange) == "DE":
+        return is_de_equity_session(dt)
+    return is_us_equity_session(dt)
+
+
 def is_indian_adr_listing(row: Dict[str, Any]) -> bool:
-    """Keep only US depositary receipts tied to an Indian parent — not Frankfurt/OTC noise."""
+    """Indian-parent US ADRs, plus Indian names listed in Germany (e.g. Reliance on XETRA)."""
     if not isinstance(row, dict):
         return False
     symbol = str(row.get("symbol") or row.get("adr_symbol") or "").upper()
@@ -211,15 +256,18 @@ def is_indian_adr_listing(row: Dict[str, Any]) -> bool:
     if symbol in seed:
         return True
     exch = str(row.get("exchange") or "").upper()
-    if exch not in ("NYSE", "NASDAQ", "NYSE ARCA", "NYSE MKT"):
-        return False
     typ = str(row.get("type") or "").lower()
     country = str(row.get("country") or "").lower()
     name = str(row.get("name") or row.get("company_name") or "")
+    indian_name = bool(_INDIAN_NAME_RE.search(name))
     adr_like = ("deposit" in typ) or ("adr" in typ) or typ in ("adr", "gdr")
+    if exch in DE_EXCHANGES:
+        return indian_name or country in ("india", "ind")
+    if exch not in US_EXCHANGES:
+        return False
     if country in ("india", "ind"):
         return adr_like or exch in ("NYSE", "NASDAQ")
-    if adr_like and _INDIAN_NAME_RE.search(name):
+    if adr_like and indian_name:
         return True
     return False
 
@@ -579,19 +627,27 @@ async def prune_observations(db) -> None:
 
 def row_view(cfg: Dict[str, Any], latest: Optional[Dict[str, Any]], *, us_open: bool, indices: Optional[List[str]] = None) -> Dict[str, Any]:
     obs = latest or {}
-    stale = (not us_open) or obs.get("poll_status") in ("failed", "stale")
+    exch = cfg.get("exchange")
+    venue_open = is_listing_session_open(exch)
+    quote_open = obs.get("is_market_open")
+    listing_open = bool(quote_open) if quote_open is not None else venue_open
+    stale = (not listing_open) or obs.get("poll_status") in ("failed", "stale")
     status = "CURRENT"
     if obs.get("poll_status") == "failed":
         status = "LAST_KNOWN"
-    elif not us_open:
+    elif not listing_open:
         status = "STALE"
-    elif obs.get("is_market_open") is False and us_open:
+    elif quote_open is False and venue_open:
         status = "USING_LAST_KNOWN"
     return {
         **{k: cfg.get(k) for k in (
             "id", "company_name", "indian_symbol", "adr_symbol", "exchange", "sector",
             "adr_ratio", "currency", "provider", "enabled", "priority",
         )},
+        "listing_country": listing_country_code(exch),
+        "listing_flag": listing_flag(exch),
+        "listing_open": listing_open,
+        "market_label": listing_market_name(exch),
         "last_price": obs.get("last_price"),
         "change": obs.get("change"),
         "change_percent": obs.get("change_percent"),
@@ -606,7 +662,7 @@ def row_view(cfg: Dict[str, Any], latest: Optional[Dict[str, Any]], *, us_open: 
         "week52_low": obs.get("week52_low"),
         "week52_high": obs.get("week52_high"),
         "week52_range": obs.get("week52_range"),
-        "is_market_open": obs.get("is_market_open"),
+        "is_market_open": listing_open if quote_open is None else bool(quote_open),
         "poll_status": obs.get("poll_status") or ("ok" if latest else "empty"),
         "fetched_at": obs.get("fetched_at"),
         "last_quote_at": obs.get("last_quote_at"),
@@ -811,6 +867,7 @@ def should_poll_now(state: Dict[str, Any], prefs: Dict[str, Any], now: Optional[
     last_open_day = state.get("last_us_open_day")
     last_ist_day = state.get("last_ist_refresh_day")
     us_open = is_us_equity_session(dt)
+    de_open = is_de_equity_session(dt)
     today_et = et.date().isoformat()
     today_ist = ist.date().isoformat()
 
@@ -827,8 +884,10 @@ def should_poll_now(state: Dict[str, Any], prefs: Dict[str, Any], now: Optional[
             nse_day = ist.weekday() < 5
         if nse_day and IST_OPEN_REFRESH <= ist_t <= window_end and last_ist_day != today_ist:
             return True, "ist_open"
-    if not us_open:
+    if not us_open and not de_open:
         return False, "us_closed"
+    if de_open and not us_open and not last_ok:
+        return True, "de_open"
     if not last_ok:
         return True, "interval"
     try:
