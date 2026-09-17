@@ -12,6 +12,10 @@ assert.equal(pageAllowed("adrs", { pagesReady: true, visiblePages: ["oi-change",
 assert.equal(pageAllowed("straddle", { pagesReady: true, visiblePages: ["oi-change"] }), false);
 assert.equal(pageAllowed("cas", { pagesReady: true, isAdmin: true, adminPages: ["oi-change", "cas"] }), true);
 assert.equal(pageAllowed("cas", { pagesReady: true, isAdmin: false, visiblePages: ["oi-change"] }), false);
+assert.equal(pageAllowed("holidays", { pagesReady: false, visiblePages: ["oi-change"] }), false);
+assert.equal(pageAllowed("holidays", { pagesReady: true, visiblePages: ["oi-change"] }), true);
+assert.equal(pageAllowed("holidays", { pagesReady: true, isAdmin: true, adminPages: ["oi-change"] }), true);
+assert.equal(pageAllowed("index-events", { pagesReady: true, visiblePages: ["oi-change"] }), false);
 
 assert.deepEqual(sanitizePageList(null), ["oi-change"]);
 assert.deepEqual(sanitizePageList([]), ["oi-change"]);

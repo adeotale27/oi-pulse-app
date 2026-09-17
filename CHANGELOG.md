@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.08 — 2026-09-17
+
+Market Intel timeouts no longer pretend to be a Kite dump; GET `/market-intel` filters Mongo to the selected IST day so the feed can return before the client aborts. Events (holidays, economic calendar, index impact) stay public even when Index Risk is unticked. ADR quotes follow Twelve Data Basic 8 (8 credits/min, one symbol per call, 7.5s spacing, 90s backoff on 429) and keep the last good prints.
+
 ## V11.07 — 2026-09-17
 
 Reload no longer flashes every dashboard tab before `/config` — guests only see enabled pages, home is OI Change. Phone ADRs: quotes first (Last, Change, Chg. %), coverage tiles behind an arrow, tap a name for the full sheet.

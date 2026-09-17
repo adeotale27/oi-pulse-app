@@ -68,7 +68,7 @@ export default function MarketIntelPage({ compact = false }) {
     }
     setLoading(true);
     try {
-      const r = await api.get("/market-intel", { params: { filter: filt, date: selectedDate }, timeout: 10000 });
+      const r = await api.get("/market-intel", { params: { filter: filt, date: selectedDate }, timeout: 25000 });
       if (gen !== feedGen.current) return;
       const next = r.data?.items || [];
       writeMiFeedCache(selectedDate, filt, next);

@@ -1,6 +1,7 @@
 from datetime import date
 
 from market_intel import (
+    articles_window_query,
     clamp_retention,
     classify_event_type,
     cluster_id_for,
@@ -183,6 +184,14 @@ def test_parse_feed_date_valid_invalid_and_missing():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def test_articles_window_query_is_ist_day():
+    q = articles_window_query(date(2026, 9, 17))
+    assert q["status"] == {"$ne": "gone"}
+    blob = str(q)
+    assert "2026-09-17" in blob
+    assert "$or" in q
 
 
 def test_feed_for_user_date_filter_empty_and_populated():
