@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   usdPrice, usdSigned, pctSigned, fmtVolume, moveTone, sortAdrRows, filterAdrRows,
-  loadAdrColumns, saveAdrColumns, resetAdrColumns, ADR_DEFAULT_VISIBLE, prefStorageKey,
+  loadAdrColumns, saveAdrColumns, resetAdrColumns, ADR_DEFAULT_VISIBLE, prefStorageKey, formatIstStamp,
 } from "./adr.js";
 
 assert.equal(usdPrice(11.08), "$11.08");
@@ -41,5 +41,11 @@ assert.deepEqual(loadAdrColumns(other), ADR_DEFAULT_VISIBLE);
 assert.notEqual(prefStorageKey(user), prefStorageKey(other));
 assert.deepEqual(resetAdrColumns(user), ADR_DEFAULT_VISIBLE);
 assert.deepEqual(loadAdrColumns(user), ADR_DEFAULT_VISIBLE);
+
+assert.equal(formatIstStamp(null), "—");
+assert.equal(formatIstStamp(undefined), "—");
+assert.equal(formatIstStamp(""), "—");
+assert.match(formatIstStamp("2026-09-16T10:30:00.000Z"), /IST$/);
+assert.equal(formatIstStamp("2026-09-16T10:30:00.000Z"), "16:00:00 IST");
 
 console.log("adr.test.js ok");

@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.04",
+    date: "2026-09-17",
+    user: [
+      "ADRs Last Update and row timestamps render in IST without crashing the page.",
+    ],
+    admin: [
+      "AdrPage imports formatIstStamp from lib/adr (already defined there).",
+    ],
+  },
+  {
     version: "11.03",
     date: "2026-09-17",
     user: [
