@@ -13,7 +13,6 @@ import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSet
 import InfoTip from "@/components/InfoTip";
 
 import { DESK_IDS, isMcxMajorId } from "@/lib/universe";
-import { ALWAYS_ON_PAGES } from "@/lib/dashboardPages";
 
 const ALL_INDICES = DESK_IDS;
 const HARD_ADMIN_PAGES = new Set([]);
@@ -156,10 +155,9 @@ export default function SettingsModal({
   };
 
   const toggleVisiblePage = (pageId) => {
-    if (HARD_ADMIN_PAGES.has(pageId) || ALWAYS_ON_PAGES.includes(pageId)) return;
+    if (HARD_ADMIN_PAGES.has(pageId)) return;
     const cur = new Set(Array.isArray(settings.visible_pages) ? settings.visible_pages : ALL_PAGE_IDS);
     for (const id of HARD_ADMIN_PAGES) cur.delete(id);
-    ALWAYS_ON_PAGES.forEach((id) => cur.add(id));
     if (cur.has(pageId)) {
       if (cur.size <= 1) {
         toast.error("Keep at least one public page visible");
@@ -171,13 +169,11 @@ export default function SettingsModal({
   };
 
   const toggleAdminPage = (pageId) => {
-    if (ALWAYS_ON_PAGES.includes(pageId)) return;
     const cur = new Set(
       Array.isArray(settings.admin_visible_pages) && settings.admin_visible_pages.length
         ? settings.admin_visible_pages
         : ALL_PAGE_IDS,
     );
-    ALWAYS_ON_PAGES.forEach((id) => cur.add(id));
     if (cur.has(pageId)) {
       if (cur.size <= 1) {
         toast.error("Keep at least one page on your dashboard");
@@ -230,17 +226,15 @@ export default function SettingsModal({
           market_intel_retention_days: settings.market_intel_retention_days,
           market_intel_min_history_days: settings.market_intel_min_history_days,
           market_intel_popup_enabled: settings.market_intel_popup_enabled !== false,
-          visible_pages: Array.from(new Set([
-            ...ALWAYS_ON_PAGES,
-            ...(Array.isArray(settings.visible_pages) ? settings.visible_pages : []).filter((id) => !HARD_ADMIN_PAGES.has(id)),
-          ])),
-          admin_visible_pages: Array.from(new Set([
-            ...ALWAYS_ON_PAGES,
-            ...(Array.isArray(settings.admin_visible_pages) && settings.admin_visible_pages.length
+          visible_pages: Array.from(new Set(
+            (Array.isArray(settings.visible_pages) ? settings.visible_pages : []).filter((id) => !HARD_ADMIN_PAGES.has(id)),
+          )),
+          admin_visible_pages: Array.from(new Set(
+            (Array.isArray(settings.admin_visible_pages) && settings.admin_visible_pages.length
               ? settings.admin_visible_pages
               : ALL_PAGE_IDS
             ).filter((id) => !HARD_ADMIN_PAGES.has(id)),
-          ])),
+          )),
         };
         if (!payload.visible_pages.length) {
           toast.error("Keep at least one public page visible");
@@ -711,18 +705,17 @@ export default function SettingsModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {DASHBOARD_PAGES.map((page) => {
                     const hardAdmin = !!page.hardAdmin || HARD_ADMIN_PAGES.has(page.id);
-                    const alwaysOn = ALWAYS_ON_PAGES.includes(page.id);
                     const guestOn = hardAdmin
                       ? false
-                      : alwaysOn || (Array.isArray(settings.visible_pages) ? settings.visible_pages : ALL_PAGE_IDS).includes(page.id);
+                      : (Array.isArray(settings.visible_pages) ? settings.visible_pages : ALL_PAGE_IDS).includes(page.id);
                     const adminList = Array.isArray(settings.admin_visible_pages) && settings.admin_visible_pages.length
                       ? settings.admin_visible_pages
                       : ALL_PAGE_IDS;
-                    const adminOn = alwaysOn || adminList.includes(page.id);
+                    const adminOn = adminList.includes(page.id);
                     const hint = page.id === "holidays"
-                      ? "Always on for guests and admin. Holidays, economic calendar, and index impact stay on Events even if Index Risk is unticked."
+                      ? "Optional Events page. Holiday / FII / Events / Index Impact tiles stay on the dashboard even if this page is off."
                       : page.id === "index-events"
-                      ? "Optional dedicated page. Unticking it does not hide Events or the Index Impact tile — those stay public."
+                      ? "Optional Index Risk page. Unticking it does not hide the four info tiles (including Index Impact)."
                       : page.id === "positions"
                         ? "Guests see Connect Zerodha for their own book. Charts stay on your publisher token. Header Today P&L stays admin-only."
                         : page.id === "sell-candidates"
@@ -744,10 +737,10 @@ export default function SettingsModal({
                         {hint ? <div className="text-[10px] text-slate-500 leading-snug mt-0.5">{hint}</div> : null}
                       </div>
                       <div className="flex items-center gap-5">
-                        <label className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${hardAdmin || alwaysOn ? "opacity-40" : "text-slate-700 cursor-pointer"}`}>
+                        <label className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${hardAdmin ? "opacity-40" : "text-slate-700 cursor-pointer"}`}>
                           <Checkbox
                             data-testid={`visible-page-${page.id}`}
-                            disabled={hardAdmin || alwaysOn}
+                            disabled={hardAdmin}
                             checked={guestOn}
                             onCheckedChange={() => toggleVisiblePage(page.id)}
                             aria-label={`${page.label} public`}
@@ -755,10 +748,9 @@ export default function SettingsModal({
                           />
                           Public
                         </label>
-                        <label className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${alwaysOn ? "opacity-40" : "text-slate-700 cursor-pointer"}`}>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 cursor-pointer">
                           <Checkbox
                             data-testid={`admin-page-${page.id}`}
-                            disabled={alwaysOn}
                             checked={adminOn}
                             onCheckedChange={() => toggleAdminPage(page.id)}
                             aria-label={`${page.label} admin`}

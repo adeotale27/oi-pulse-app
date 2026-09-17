@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.09",
+    date: "2026-09-17",
+    user: [
+      "On the phone, page tabs stay visible after you scroll so you can switch views. NIFTY and SENSEX tiles show Indicative price when it is live. Market news popup keeps one size. Holiday / FII / Events / Impact tiles stay on even if those pages are off.",
+    ],
+    admin: [
+      "Events and Index Risk pages are ticks again. MI ingest skips impact < 50 and near-duplicate headlines; constituent names ≥1% weight are kept. ADR TTM maps to TATAY on OTC. Straddle history is cached and prefetched.",
+    ],
+  },
+  {
     version: "11.08",
     date: "2026-09-17",
     user: [

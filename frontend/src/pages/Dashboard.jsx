@@ -67,7 +67,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, fetchConfig, api, completeUserKiteSession, userKiteLoginUrl } from "@/lib/api";
+import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, fetchConfig, api, completeUserKiteSession, userKiteLoginUrl, prefetchStraddleHistory } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
 import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE, istMinutesOfDay } from "@/lib/marketTimes";
@@ -779,11 +779,10 @@ export default function Dashboard() {
   }, []);
 
   const openHolidaysTab = useCallback(() => {
-    setActiveTab("holidays");
-  }, []);
+    if (tabOn("holidays")) setActiveTab("holidays");
+  }, [tabOn]);
   const openIndexEventsTab = useCallback(() => {
     if (tabOn("index-events")) setActiveTab("index-events");
-    else setActiveTab("holidays");
   }, [tabOn]);
   const showImpactTile = true;
 
@@ -1325,6 +1324,14 @@ export default function Dashboard() {
   // ---- Straddle + Positions poll intervals (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(15000); // until /config: then straddle_poll_interval_seconds
   const [positionsPollMs, setPositionsPollMs] = useState(30000);
+
+  useEffect(() => {
+    if (!activeIndex) return undefined;
+    const t = window.setTimeout(() => {
+      prefetchStraddleHistory(activeIndex, { expiry: selectedExpiry || undefined });
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, [activeIndex, selectedExpiry]);
 
   // Other expiries fill after first OI paint inside loadOI (do not stampede /expiries here).
 
@@ -2174,7 +2181,7 @@ export default function Dashboard() {
         current,
       });
       const move = indexDayMove({ price, ticker: t });
-      out[idx] = { price, changePts: move.pts, changePct: move.pct, ltp: t?.ltp };
+      out[idx] = { price, changePts: move.pts, changePct: move.pct, ltp: t?.ltp, iep: t?.indicative_close_price };
     }
     return out;
   }, [enabledIndices, tickerQuotes, liveSpotPrices, activeIndex, current]);
@@ -2464,10 +2471,11 @@ export default function Dashboard() {
             <PanelGroup direction="horizontal" autoSaveId="oi-pulse-split" className="w-full h-full min-h-0">
               <Panel defaultSize={showRightPanel ? 72 : 100} minSize={50} className={`${flash ? "alert-flash" : ""} min-h-0 overflow-hidden`}>
                 <div
-                  className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2"
+                  className="h-full min-h-0 overflow-y-auto overscroll-y-auto md:overscroll-contain space-y-3 sm:space-y-4 px-2 sm:px-0 pr-2"
+                  style={{ WebkitOverflowScrolling: "touch" }}
                   onScroll={(e) => {
                     if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) return;
-                    setChromeSlim(e.currentTarget.scrollTop > 28);
+                    setChromeSlim(e.currentTarget.scrollTop > 64);
                   }}
                 >
                 {(dayBiasSummary || changeSummary) && (
@@ -2990,11 +2998,7 @@ export default function Dashboard() {
 
                   {(tabOn("holidays")) && (
                     <TabsContent value="holidays" className="mt-0">
-                    <HolidaysTab
-                      activeIndex={activeIndex}
-                      isAdmin={!!authState.is_admin}
-                      refreshKey={uploadRefreshKey}
-                    />
+                    <HolidaysTab />
                   </TabsContent>
                   )}
 

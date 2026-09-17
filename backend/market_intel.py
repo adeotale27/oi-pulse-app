@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -27,6 +28,8 @@ PREF_COL = "mi_user_prefs"
 
 SOURCE_TYPES = ("API", "RSS", "FIRECRAWL", "OFFICIAL_FEED")
 STATUSES = ("HEALTHY", "WARNING", "FAILED", "DISABLED")
+STORE_MIN_IMPACT = 50
+_constit_cache: Dict[str, Any] = {"t": 0.0, "terms": []}
 
 DEFAULT_INGEST_S = 300
 DEFAULT_RETENTION_DAYS = 5
@@ -717,7 +720,7 @@ def enrich_item(raw: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
     now = now_dt.isoformat()
     pub_dt = parse_news_datetime(raw.get("published_at")) or now_dt
     dhash = duplicate_hash(title, url)
-    status = "noise" if impact < 35 else "ok"
+    status = "noise" if impact < STORE_MIN_IMPACT else "ok"
     return {
         "id": uuid.uuid4().hex,
         "source_id": src.get("id"),
@@ -742,6 +745,51 @@ def enrich_item(raw: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+async def load_constituent_terms(db) -> List[Tuple[str, float]]:
+    now = time.monotonic()
+    if _constit_cache["terms"] and now - float(_constit_cache["t"] or 0) < 600:
+        return _constit_cache["terms"]
+    terms: List[Tuple[str, float]] = []
+    if db is not None:
+        try:
+            async for row in db.index_constituents.find(
+                {}, {"symbol": 1, "company": 1, "company_name": 1, "name": 1, "weightage": 1}
+            ):
+                try:
+                    w = float(row.get("weightage") or 0)
+                except (TypeError, ValueError):
+                    w = 0.0
+                if w < 1.0:
+                    continue
+                for k in ("symbol", "company", "company_name", "name"):
+                    s = str(row.get(k) or "").strip().lower()
+                    if len(s) >= 3:
+                        terms.append((s, w))
+        except Exception:
+            terms = _constit_cache["terms"] or []
+    _constit_cache["t"] = now
+    _constit_cache["terms"] = terms
+    return terms
+
+
+def constituent_boost(text: str, terms: List[Tuple[str, float]]) -> Tuple[bool, int]:
+    t = (text or "").lower()
+    best = 0.0
+    hit = False
+    for name, w in terms:
+        if name and name in t:
+            hit = True
+            if w > best:
+                best = w
+    if not hit:
+        return False, 0
+    return True, 22 if best >= 3 else 14
+
+
+def should_store_article(score: int) -> bool:
+    return int(score or 0) >= STORE_MIN_IMPACT
+
+
 async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str, Any]:
     stats = {"fetched": 0, "accepted": 0, "duplicates": 0, "noise": 0, "error": None, "preview": []}
     if not src.get("enabled") and not test:
@@ -754,22 +802,44 @@ async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str
     if meta.get("error"):
         return stats
     recent = []
+    terms = []
     if db is not None and not test:
-        recent = await db[ART_COL].find({}, {"title": 1, "event_cluster_id": 1, "duplicate_hash": 1, "_id": 0}).sort("discovered_at", -1).to_list(80)
+        recent = await db[ART_COL].find(
+            {"status": "ok"}, {"title": 1, "event_cluster_id": 1, "duplicate_hash": 1, "_id": 0}
+        ).sort("discovered_at", -1).to_list(120)
+        terms = await load_constituent_terms(db)
     for raw in items:
         row = enrich_item(raw, src)
+        hit, extra = constituent_boost(_blob(row.get("title"), row.get("summary")), terms)
+        if hit:
+            row["impact_score"] = min(100, _safe_int(row.get("impact_score"), 0) + extra)
+            row["impact_band"] = impact_band(row["impact_score"])
+            row["india_relevance_score"] = min(100, _safe_int(row.get("india_relevance_score"), 0) + 18)
+            if row.get("event_type") == "other":
+                row["event_type"] = "corporate"
+            row["status"] = "ok" if should_store_article(row["impact_score"]) else "noise"
         if test:
             stats["preview"].append({k: row[k] for k in ("title", "impact_score", "india_relevance_score", "event_type", "article_url", "impact_band")})
             stats["accepted"] += 1
             continue
-        if row["status"] == "noise":
+        if not should_store_article(row.get("impact_score") or 0):
             stats["noise"] += 1
+            continue
         cid = cluster_id_for(row["title"], recent)
         row["event_cluster_id"] = cid
         if db is None:
             stats["accepted"] += 1
             continue
-        exists = await db[ART_COL].find_one({"duplicate_hash": row["duplicate_hash"]})
+        if any(
+            r.get("duplicate_hash") == row["duplicate_hash"] or similar_titles(row["title"], r.get("title") or "")
+            for r in recent
+        ):
+            stats["duplicates"] += 1
+            continue
+        exists = await db[ART_COL].find_one({"$or": [
+            {"duplicate_hash": row["duplicate_hash"]},
+            {"event_cluster_id": cid},
+        ]})
         if exists:
             stats["duplicates"] += 1
             continue
@@ -934,7 +1004,10 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
     if db is None:
         return []
     target_date = parse_feed_date(date_str) or ist_today()
-    docs = await db[ART_COL].find(articles_window_query(target_date), {"_id": 0}).sort("discovered_at", -1).to_list(400)
+    docs = await db[ART_COL].find(
+        {**articles_window_query(target_date), "impact_score": {"$gte": STORE_MIN_IMPACT}},
+        {"_id": 0},
+    ).sort("discovered_at", -1).to_list(120)
     min_i = _safe_int(prefs.get("min_impact"), 0)
     min_in = _safe_int(prefs.get("min_india"), 0)
     show_mod = bool(prefs.get("show_moderate", False))

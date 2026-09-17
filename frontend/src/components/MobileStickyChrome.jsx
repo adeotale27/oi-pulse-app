@@ -132,6 +132,7 @@ export default function MobileStickyChrome({
     const pts = q.changePts != null && Number.isFinite(Number(q.changePts))
       ? Number(q.changePts)
       : null;
+    const iepN = q.iep != null && Number(q.iep) > 0 ? Number(q.iep) : null;
     const up = (pct ?? pts ?? 0) > 0;
     const down = (pct ?? pts ?? 0) < 0;
     const moveCls = up ? "text-emerald-700 dark:text-emerald-300" : down ? "text-rose-700 dark:text-rose-300" : "text-slate-500";
@@ -170,6 +171,11 @@ export default function MobileStickyChrome({
           {pts != null ? `${pts > 0 ? "+" : ""}${pts.toFixed(Math.abs(pts) >= 100 ? 0 : 1)}` : "—"}
           {pct != null ? ` ${pct > 0 ? "+" : ""}${pct.toFixed(2)}%` : ""}
         </div>
+        {iepN != null && (idx === "NIFTY" || idx === "SENSEX") ? (
+          <div className="font-mono-data text-[9px] font-semibold text-amber-800 dark:text-amber-200 tabular-nums truncate" data-testid={`mobile-iep-${idx}`}>
+            IEP {iepN.toLocaleString("en-IN", { maximumFractionDigits: 1 })}
+          </div>
+        ) : null}
           </>
         )}
       </button>
@@ -213,7 +219,7 @@ export default function MobileStickyChrome({
         </div>
       </div>
 
-      {tabs.length > 0 && !chromeSlim && (
+      {tabs.length > 0 && (
         <div className="border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-1 px-1.5 py-1">
           <div
@@ -293,7 +299,7 @@ export default function MobileStickyChrome({
         </div>
       )}
 
-      {typeof onToggleInfoTiles === "function" && infoTilesOpen && !chromeSlim && (
+      {typeof onToggleInfoTiles === "function" && infoTilesOpen && (
         <div
           className="border-t border-slate-100 px-2 py-2 dark:border-slate-800"
           data-testid="mobile-info-tiles-bar"
