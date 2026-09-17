@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.02 — 2026-09-17
+
+Live strip no longer crashes (`useEffect` import). Index LTP on the existing spot WebSocket ticks every 1s in session; quote width is fixed so the marquee does not jump. Admin dialogs only scroll vertically; close X is square-aligned. ADR universe actions are icons. Market Intel keeps the last feed on screen while the next date loads and caches so leaving for Positions and returning is instant.
+
 ## V11.01 — 2026-09-17
 
 Admin can tick ADRs on Public/Admin dashboard pages (`adrs` is an allowed page key). Journal is a fixed desktop size; LIVE + Next Pull stay left while quotes marquee. Admin configuration is tiles. IEP preview-now, radar book tape, Positions column drag.

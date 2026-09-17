@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
 import { api, subscribeExtras, unsubscribeExtras } from "@/lib/api";
 import { GIFT_SESSION_WINDOWS } from "@/lib/marketTimes";
@@ -29,10 +29,10 @@ function QuoteChip({ it, copy, testId }) {
     >
       <span className="uppercase tracking-wide font-semibold text-white/90">{it.label}</span>
       {it.price != null && it.price !== "" ? (
-        <span className="font-semibold tabular-nums">{it.price}</span>
+        <span className="font-semibold tabular-nums font-mono-data inline-block min-w-[5.5rem] text-left">{it.price}</span>
       ) : null}
       {it.pct != null && Number.isFinite(it.pct) && (
-        <span className={pctCls(it.pct)}>
+        <span className={`${pctCls(it.pct)} tabular-nums font-mono-data inline-block min-w-[3.5rem]`}>
           {`${it.pct >= 0 ? "+" : ""}${it.pct.toFixed(2)}%`}
         </span>
       )}
@@ -145,7 +145,7 @@ export default function MobileIndexTicker({
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [items, pad]);
+  }, [items.length, pad]);
 
   const giftSessions = extras?.windows?.gift?.sessions || GIFT_SESSION_WINDOWS;
   const loopItems = useMemo(() => {

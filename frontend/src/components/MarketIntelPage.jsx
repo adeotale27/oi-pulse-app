@@ -3,7 +3,7 @@ import { api, apiDetail } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
-import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload } from "@/lib/marketIntel";
+import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload, readMiFeedCache, writeMiFeedCache } from "@/lib/marketIntel";
 import { todayIST } from "@/lib/holidays";
 
 export default function MarketIntelPage({ compact = false }) {
@@ -52,26 +52,31 @@ export default function MarketIntelPage({ compact = false }) {
   const loadFeed = useCallback(async () => {
     if (!configLoaded) return;
     if (minDate && selectedDate < minDate) {
-      setItems([]);
       setErr(`No data available for dates before ${minDate}`);
       return;
     }
     if (maxDate && selectedDate > maxDate) {
-      setItems([]);
       setErr(`No data available for dates after ${maxDate}`);
       return;
     }
 
     const gen = ++feedGen.current;
+    const cached = readMiFeedCache(selectedDate, filt);
+    if (cached) {
+      setItems(cached);
+      setErr(null);
+    }
     setLoading(true);
     try {
       const r = await api.get("/market-intel", { params: { filter: filt, date: selectedDate }, timeout: 10000 });
       if (gen !== feedGen.current) return;
-      setItems(r.data?.items || []);
+      const next = r.data?.items || [];
+      writeMiFeedCache(selectedDate, filt, next);
+      setItems(next);
       setErr(null);
     } catch (e) {
       if (gen !== feedGen.current) return;
-      setErr(apiDetail(e, "Market intelligence feed failed"));
+      if (!cached) setErr(apiDetail(e, "Market intelligence feed failed"));
     } finally {
       if (gen === feedGen.current) setLoading(false);
     }
@@ -177,19 +182,22 @@ export default function MarketIntelPage({ compact = false }) {
           </button>
         </div>
       </div>
+      {loading && items.length > 0 ? (
+        <div className="text-[10px] text-slate-400" data-testid="mi-loading-inline">Updating…</div>
+      ) : null}
       {loading && !items.length && !err && (
         <div className="text-xs text-slate-500 text-center py-8" data-testid="mi-loading">
           Loading market intelligence...
         </div>
       )}
-      {err && (
+      {err && !items.length && (
         <div className="text-xs text-rose-700 text-center py-8 border border-rose-200 rounded-md" data-testid="mi-error">
           Could not load market intelligence: {err}
         </div>
       )}
-      {!err && !loading && (
-        <div className="space-y-2">
-          {items.length === 0 && (
+      {!err || items.length > 0 ? (
+        <div className={`space-y-2 ${loading && items.length ? "opacity-80" : ""}`}>
+          {!loading && items.length === 0 && !err && (
             <div className="text-xs text-slate-500 border rounded-md p-4 text-center py-8" data-testid="mi-empty">
               No ranked events for <b>{selectedDate}</b> yet.
               {selectedDate === maxDate ?

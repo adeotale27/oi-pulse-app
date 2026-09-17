@@ -128,7 +128,7 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="tg-prefs-modal" className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent data-testid="tg-prefs-modal" className="max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="w-4 h-4" />

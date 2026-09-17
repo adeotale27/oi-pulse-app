@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { Pencil, Power, Trash2 } from "lucide-react";
 
 const blank = {
   company_name: "", indian_symbol: "", adr_symbol: "", exchange: "NYSE",
@@ -75,7 +76,7 @@ export default function AdrAdminModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="adr-admin-modal" className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent data-testid="adr-admin-modal" className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0">
         <DialogHeader>
           <DialogTitle>ADRs</DialogTitle>
           <DialogDescription>Twelve Data quotes for Indian ADRs. The API key stays in the vault and is never returned to the browser.</DialogDescription>
@@ -141,31 +142,35 @@ export default function AdrAdminModal({ open, onOpenChange }) {
 
         <section className="space-y-2">
           <div className="text-[11px] font-semibold uppercase tracking-widest">ADR Universe</div>
-          <div className="overflow-x-auto border rounded-sm text-[11px]">
-            <table className="w-full">
+          <div className="overflow-x-hidden border rounded-sm text-[11px]">
+            <table className="w-full table-fixed">
               <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
-                  {["Company", "Indian", "ADR", "Exch", "Sector", "Ratio", "On", "MI", "Alerts", ""].map((h) => (
-                    <th key={h} className="text-left px-2 py-1">{h}</th>
+                  {["Company", "Indian", "ADR", "Exch", "On", ""].map((h) => (
+                    <th key={h || "act"} className="text-left px-1.5 py-1">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {items.map((it) => (
                   <tr key={it.id} className="border-t">
-                    <td className="px-2 py-1">{it.company_name}</td>
-                    <td className="px-2 py-1 font-mono-data">{it.indian_symbol}</td>
-                    <td className="px-2 py-1 font-mono-data">{it.adr_symbol}</td>
-                    <td className="px-2 py-1">{it.exchange}</td>
-                    <td className="px-2 py-1">{it.sector}</td>
-                    <td className="px-2 py-1">{it.adr_ratio}</td>
-                    <td className="px-2 py-1">{it.enabled ? "On" : "Off"}</td>
-                    <td className="px-2 py-1">{it.market_intelligence_enabled ? "On" : "Off"}</td>
-                    <td className="px-2 py-1">{it.notification_enabled ? "On" : "Off"}</td>
-                    <td className="px-2 py-1 whitespace-nowrap">
-                      <button type="button" className="text-sky-700 mr-2" onClick={() => setForm(it)}>Edit</button>
-                      <button type="button" className="text-slate-600 mr-2" onClick={() => api.post(`/adrs/items/${it.id}/toggle`).then(load)}>Enable/Disable</button>
-                      <button type="button" className="text-rose-700" onClick={() => api.delete(`/adrs/items/${it.id}`).then(load)}>Delete</button>
+                    <td className="px-1.5 py-1 truncate" title={`${it.company_name} · ${it.sector} · ${it.adr_ratio}`}>{it.company_name}</td>
+                    <td className="px-1.5 py-1 font-mono-data truncate">{it.indian_symbol}</td>
+                    <td className="px-1.5 py-1 font-mono-data truncate">{it.adr_symbol}</td>
+                    <td className="px-1.5 py-1 truncate">{it.exchange}</td>
+                    <td className="px-1.5 py-1">{it.enabled ? "On" : "Off"}</td>
+                    <td className="px-1 py-1">
+                      <div className="inline-flex items-center justify-end gap-0.5">
+                        <button type="button" className="h-8 w-8 inline-flex items-center justify-center rounded text-sky-700 hover:bg-sky-50" title="Edit" aria-label={`Edit ${it.adr_symbol}`} data-testid={`adr-edit-${it.id}`} onClick={() => setForm(it)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" className={`h-8 w-8 inline-flex items-center justify-center rounded hover:bg-slate-50 ${it.enabled ? "text-emerald-700" : "text-slate-400"}`} title={it.enabled ? "Disable" : "Enable"} aria-label={`${it.enabled ? "Disable" : "Enable"} ${it.adr_symbol}`} data-testid={`adr-toggle-${it.id}`} onClick={() => api.post(`/adrs/items/${it.id}/toggle`).then(load)}>
+                          <Power className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" className="h-8 w-8 inline-flex items-center justify-center rounded text-rose-700 hover:bg-rose-50" title="Delete" aria-label={`Delete ${it.adr_symbol}`} data-testid={`adr-delete-${it.id}`} onClick={() => api.delete(`/adrs/items/${it.id}`).then(load)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

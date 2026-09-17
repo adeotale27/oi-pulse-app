@@ -1219,24 +1219,29 @@ export default function Dashboard() {
   const loadTickers = useCallback(async () => {
     try {
       const data = await fetchTickers();
-      const map = {};
       const spots = {};
       for (const t of data?.tickers || []) {
         if (!t?.index) continue;
-        map[t.index] = t;
         const n = Number(t.ltp);
         if (Number.isFinite(n) && n) spots[t.index] = n;
       }
-      setTickerQuotes(map);
+      setTickerQuotes((prev) => {
+        const out = { ...prev };
+        for (const t of data?.tickers || []) {
+          if (!t?.index) continue;
+          const cur = out[t.index] || {};
+          out[t.index] = { ...cur, ...t, ltp: liveSpotPricesRef.current?.[t.index] ?? t.ltp ?? cur.ltp };
+        }
+        return out;
+      });
       if (Object.keys(spots).length) {
         setLiveSpotPrices((prev) => {
           const out = { ...prev };
           let changed = false;
           for (const [idx, px] of Object.entries(spots)) {
-            if (out[idx] !== px) {
-              out[idx] = px;
-              changed = true;
-            }
+            if (out[idx] != null) continue;
+            out[idx] = px;
+            changed = true;
           }
           return changed ? out : prev;
         });
@@ -2937,7 +2942,7 @@ export default function Dashboard() {
                   )}
 
                   {(tabOn("market-intel")) && (
-                    <TabsContent value="market-intel" className="mt-0">
+                    <TabsContent value="market-intel" forceMount className={activeTab === "market-intel" ? "mt-0" : "hidden"}>
                       <MarketIntelPage />
                     </TabsContent>
                   )}

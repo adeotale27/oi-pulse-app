@@ -272,7 +272,7 @@ export default function SettingsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="settings-modal" className="max-w-2xl max-h-[min(90dvh,calc(100dvh-1rem))] overflow-y-auto max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:translate-y-0 max-md:w-[calc(100vw-1rem)]">
+      <DialogContent data-testid="settings-modal" className="max-w-2xl max-h-[min(90dvh,calc(100dvh-1rem))] overflow-y-auto overflow-x-hidden min-w-0 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:translate-y-0 max-md:w-[calc(100vw-1rem)]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="w-4 h-4" />
