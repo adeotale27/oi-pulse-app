@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { Settings2 } from "lucide-react";
+import { Settings2, Send } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import InfoTip from "@/components/InfoTip";
 
@@ -66,6 +66,10 @@ export default function SettingsModal({
   const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [tgPrefs, setTgPrefs] = useState(null);
+  const [tgTokenDraft, setTgTokenDraft] = useState("");
+  const [tgChatDraft, setTgChatDraft] = useState("");
+  const [tgSaving, setTgSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -111,7 +115,17 @@ export default function SettingsModal({
         });
       });
     setLocal(loadOISettings());
-  }, [open]);
+    if (isAdmin) {
+      setTgTokenDraft("");
+      api.get("/telegram/prefs")
+        .then((r) => {
+          const p = r.data || {};
+          setTgPrefs(p);
+          setTgChatDraft(p.chat_id || "");
+        })
+        .catch(() => setTgPrefs(null));
+    }
+  }, [open, isAdmin]);
 
   const toggleIndex = (idx) => {
     const cur = new Set(settings.enabled_indices || []);
@@ -177,6 +191,21 @@ export default function SettingsModal({
 
   const setLocalField = (k, v) => setLocal((prev) => ({ ...prev, [k]: v }));
   const setLot = (idx, v) => setLocal((prev) => ({ ...prev, lotSize: { ...prev.lotSize, [idx]: v } }));
+
+  const saveTelegramVault = async (patch) => {
+    setTgSaving(true);
+    try {
+      const { data } = await api.post("/telegram/prefs", patch);
+      setTgPrefs(data);
+      setTgChatDraft(data.chat_id || "");
+      setTgTokenDraft("");
+      toast.success("Telegram configuration saved");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Telegram save failed");
+    } finally {
+      setTgSaving(false);
+    }
+  };
 
   const submit = async () => {
     setSaving(true);
@@ -508,6 +537,68 @@ export default function SettingsModal({
                     className="h-9"
                   />
                 </div>
+              </section>
+
+              <section className="space-y-4 pt-2 border-t border-slate-200" data-testid="tg-admin-config">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
+                  <Send className="w-3 h-3" />
+                  Telegram (desk alerts)
+                </div>
+                <p className="text-xs text-slate-500">
+                  Bot token is stored in the same Fernet vault as Desk AI keys. It is never returned in full. Alert filters stay on Admin → Telegram (same settings document).
+                </p>
+                <div className="text-xs">
+                  Token: <span className="font-mono" data-testid="tg-token-masked">{tgPrefs?.bot_token_masked || (tgPrefs?.bot_token_configured ? "Configured" : "Not configured")}</span>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Replace bot token</Label>
+                  <Input
+                    data-testid="tg-bot-token"
+                    type="password"
+                    autoComplete="off"
+                    value={tgTokenDraft}
+                    onChange={(e) => setTgTokenDraft(e.target.value)}
+                    placeholder="Leave blank to keep current token"
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Chat ID</Label>
+                  <Input
+                    data-testid="tg-chat-id"
+                    value={tgChatDraft}
+                    onChange={(e) => setTgChatDraft(e.target.value)}
+                    placeholder="Telegram chat id"
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-sm border border-slate-200 bg-slate-50">
+                  <div>
+                    <div className="text-sm font-semibold">Master switch</div>
+                    <div className="text-xs text-slate-500">{tgPrefs?.enabled ? "Telegram alerts ON" : "Muted (except critical errors)"}</div>
+                  </div>
+                  <Switch
+                    data-testid="tg-admin-master"
+                    checked={!!tgPrefs?.enabled}
+                    disabled={tgSaving || !tgPrefs}
+                    onCheckedChange={() => saveTelegramVault({ enabled: !tgPrefs.enabled })}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-sm"
+                  data-testid="tg-save-vault"
+                  disabled={tgSaving}
+                  onClick={() => {
+                    const patch = { chat_id: tgChatDraft };
+                    if (tgTokenDraft.trim()) patch.bot_token = tgTokenDraft.trim();
+                    saveTelegramVault(patch);
+                  }}
+                >
+                  {tgSaving ? "Saving…" : "Save Telegram credentials"}
+                </Button>
               </section>
 
               <section className="space-y-4 pt-2 border-t border-slate-200">

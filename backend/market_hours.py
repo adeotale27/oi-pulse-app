@@ -20,6 +20,10 @@ IST = timezone(timedelta(hours=5, minutes=30))
 _DISPLAY_OPEN = dtime(9, 15)
 _POLL_OPEN = dtime(9, 14)
 _POLL_CLOSE = dtime(15, 41)  # Index F&O closes 15:40; keep one tick after
+_PRE_MARKET_OPEN = dtime(9, 0)
+_CAS_PHASE_START = dtime(15, 15)
+_CAS_IEP_START = dtime(15, 20)
+_CAS_IEP_END = dtime(15, 35)
 
 # Back-compat aliases used across the codebase
 MARKET_OPEN = _POLL_OPEN
@@ -297,6 +301,75 @@ def is_market_open(dt: datetime = None) -> bool:
     return start <= t <= end
 
 
+def is_nse_cash_trading_day(dt: datetime = None) -> bool:
+    dt = dt or now_ist()
+    if is_weekend(dt) and not is_special_session_day(dt):
+        return False
+    if is_full_holiday(dt) and not is_special_session_day(dt):
+        return False
+    return is_trading_day(dt) or (is_special_session_day(dt) and quote_session_is_live())
+
+
+def is_pre_market(dt: datetime = None) -> bool:
+    """NSE pre-open 09:00 IST until display open (default 09:15). Not a special-session window."""
+    dt = dt or now_ist()
+    if is_special_session_day(dt):
+        return False
+    if not is_nse_cash_trading_day(dt):
+        return False
+    t = dt.time()
+    disp_open, _ = session_display_bounds(dt)
+    return _PRE_MARKET_OPEN <= t < disp_open
+
+
+def is_cas_iep_window(dt: datetime = None) -> bool:
+    """Kite Quote indicative_close_price window: 15:20–15:35 IST."""
+    dt = dt or now_ist()
+    if is_special_session_day(dt):
+        return False
+    if not is_nse_cash_trading_day(dt):
+        return False
+    t = dt.time()
+    return _CAS_IEP_START <= t <= _CAS_IEP_END
+
+
+def is_cas_phase(dt: datetime = None) -> bool:
+    """CAS transition through matching: 15:15–15:35 IST."""
+    dt = dt or now_ist()
+    if is_special_session_day(dt):
+        return False
+    if not is_nse_cash_trading_day(dt):
+        return False
+    t = dt.time()
+    return _CAS_PHASE_START <= t <= _CAS_IEP_END
+
+
+def is_display_session_open(dt: datetime = None) -> bool:
+    """UI live session: display open through OI poll close (not pre-market)."""
+    dt = dt or now_ist()
+    if is_weekend(dt) and not (is_special_session_day(dt) and quote_session_is_live()):
+        return False
+    if is_special_session_day(dt) and is_trading_day(dt):
+        return is_market_open(dt)
+    if not is_nse_cash_trading_day(dt):
+        return False
+    if quote_session_is_live() and not is_weekend(dt):
+        t = dt.time()
+        disp_open, _ = session_display_bounds(dt)
+        _poll_open, poll_close = session_poll_bounds(dt)
+        return disp_open <= t <= poll_close
+    t = dt.time()
+    disp_open, _ = session_display_bounds(dt)
+    _poll_open, poll_close = session_poll_bounds(dt)
+    return disp_open <= t <= poll_close
+
+
+def needs_index_quote_overlay(dt: datetime = None) -> bool:
+    """Kite Quote for index LTP/IEP — pre-market or CAS IEP only (not all-day REST)."""
+    dt = dt or now_ist()
+    return is_pre_market(dt) or is_cas_iep_window(dt)
+
+
 # MCX non-agri (GOLD, SILVER, CRUDEOIL, NATURALGAS, base metals).
 # MCX/TRD/068/2026: 09:00 IST open; close 23:30 while US DST, 23:55 otherwise.
 # Poll one minute past display close (same pattern as NSE).
@@ -475,9 +548,10 @@ def seconds_until_next_open(dt: datetime = None) -> int:
     return max(0, int((next_market_open(dt) - dt).total_seconds()))
 
 
-def market_status() -> dict:
-    dt = now_ist()
-    open_ = is_market_open(dt)
+def market_status(dt: datetime = None) -> dict:
+    dt = dt or now_ist()
+    poll_open_flag = is_market_open(dt)
+    open_ = is_display_session_open(dt)
     t = dt.time()
     poll_open, poll_close = session_poll_bounds(dt)
     disp_open, disp_close = session_display_bounds(dt)
@@ -524,10 +598,24 @@ def market_status() -> dict:
                 f"Special session ended {disp_close_s} IST. "
                 f"Displaying this session's snapshots. Regular hours resume next trading day."
             )
+    elif is_cas_phase(dt):
+        phase = "cas"
+        banner_title = "Closing auction"
+        banner_detail = (
+            "CAS 15:15–15:35 IST. Indicative close (IEP) is shown only when Kite Quote "
+            "returns indicative_close_price. Last price is kept separate."
+        )
     elif open_:
         phase = "open"
         banner_title = None
         banner_detail = None
+    elif is_pre_market(dt):
+        phase = "pre_market"
+        banner_title = "Pre-market"
+        banner_detail = (
+            f"NSE pre-open 09:00–{disp_open_s} IST. Index prices update from Kite. "
+            f"Open Interest polling starts at {disp_open_s} IST."
+        )
     elif t < poll_open:
         phase = "pre_open"
         banner_title = "Markets have not opened yet"
@@ -563,6 +651,9 @@ def market_status() -> dict:
 
     return {
         "is_market_open": open_,
+        "is_oi_polling": poll_open_flag,
+        "is_pre_market": is_pre_market(dt),
+        "is_cas_iep_window": is_cas_iep_window(dt),
         "phase": phase,
         "banner_title": banner_title,
         "banner_detail": banner_detail,

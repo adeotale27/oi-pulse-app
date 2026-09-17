@@ -1,5 +1,9 @@
 # Changelog
 
+## V10.13 — 2026-09-17
+
+Telegram bot token and chat ID live in Admin → Admin configuration (same `telegram_prefs` document as alert filters). Token is Fernet-encrypted and never returned in plaintext. Market status is display-open (09:15) vs OI poll (09:14): live label is `Market Open · Next Pull (Xs)`. Pre-market 09:00–09:15 and CAS IEP 15:20–15:35 use Kite Quote `indicative_close_price` without overwriting LTP. Header index tiles are rounded rectangles. VIX hover explains volatility.
+
 ## V10.12 — 2026-09-17
 
 Trade journal EOD first-write no longer fails Mongo `$set` / `$setOnInsert` on `eod_locked` (days after 15:45 were silently dropped). Market Intelligence `GET /api/market-intel?filter=&date=` validates YYYY-MM-DD, returns 400 on bad dates, and serializes feed items safely; empty days are 200 with `items: []`; UI distinguishes load error vs empty. Admin Error log shows a persisted unseen-count badge. Straddle hides next-refresh and stops live poll after market close.

@@ -13,7 +13,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `alerts` | Server-side OI reversal / pressure alerts |
 | `straddle_samples` | ATM straddle time series |
 | `credentials` | Encrypted Kite API key/secret/token vault (`_id: kite`) |
-| `settings` | Admin settings, public access flag (`open`, `require_approval`, expiry), password hash, sidebar notes, `mcx_desk_on`, Market Intelligence ingest/retention |
+| `settings` | Admin settings, public access flag (`open`, `require_approval`, expiry), password hash, sidebar notes, `mcx_desk_on`, Market Intelligence ingest/retention, `telegram_prefs` (alert filters + Fernet `bot_token_enc` + `chat_id`) |
 | `desk_ai_providers` | Vaulted OpenAI-compatible Desk AI keys (`key_enc`); `_id`/`id` plus `_active` pointer |
 | `mi_sources` | Admin Market Intelligence sources (RSS/API/Firecrawl); secrets encrypted |
 | `mi_articles` | Normalized scored news; rolling calendar-day retention |

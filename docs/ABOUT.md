@@ -89,7 +89,7 @@ Spot and straddle WS endpoints (see `frontend/src/lib/spotWs.js`, `straddleWs.js
 |---------|----------|
 | **Zerodha Kite Connect** | Live option chain / OI, spot, GIFT NIFTY (`NSEIX:GIFT NIFTY`), India VIX, positions |
 | **MongoDB** | Snapshots, alerts, sessions, credentials vault, settings |
-| **Telegram Bot API** | Optional alert / huge-shift / digest delivery (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) |
+| **Telegram Bot API** | Optional alert / huge-shift / digest delivery. Token/chat from Admin → Admin configuration (Fernet vault) or `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` env fallback. |
 | **yfinance** (optional paths) | Auxiliary market data where configured |
 | **Google Fonts** | Inter in `index.html` (only browser third-party on the desk) |
 

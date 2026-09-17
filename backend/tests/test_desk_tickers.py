@@ -38,3 +38,26 @@ def test_core_symbols_include_sensex():
     assert ids == ["NIFTY", "SENSEX", "BANKNIFTY"]
     listed = ticker_symbol_list(["NIFTY", "SENSEX", "BANKNIFTY"])
     assert [s[0] for s in listed] == ids
+
+
+def test_iep_not_overwriting_ltp_and_zero_omitted():
+    from desk_tickers import merge_ticker_row, indicative_close_price
+
+    blob = {
+        "last_price": 24366.2,
+        "indicative_close_price": 24380.5,
+        "ohlc": {"close": 24300, "open": 24280},
+    }
+    row = merge_ticker_row("NIFTY", "NIFTY 50", kite_blob=blob, include_iep=True)
+    assert row["ltp"] == 24366.2
+    assert row["indicative_close_price"] == 24380.5
+    assert row["final_close"] == 24300
+    assert indicative_close_price({"indicative_close_price": 0}) is None
+    row0 = merge_ticker_row(
+        "NIFTY", "NIFTY 50",
+        kite_blob={"last_price": 24366.2, "indicative_close_price": 0},
+        include_iep=True,
+    )
+    assert "indicative_close_price" not in row0
+    row_off = merge_ticker_row("NIFTY", "NIFTY 50", kite_blob=blob, include_iep=False)
+    assert "indicative_close_price" not in row_off

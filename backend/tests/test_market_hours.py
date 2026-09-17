@@ -117,3 +117,48 @@ def test_mcx_non_agri_close_follows_us_dst():
     assert index_in_session("GOLD", _d(2026, 11, 6, 23, 50)) is True
     assert index_in_session("GOLD", _d(2026, 8, 14, 23, 50)) is False
     assert index_in_session("GOLD", _d(2026, 8, 15, 20, 0)) is False  # Saturday
+
+
+def test_pre_market_cas_and_display_open_are_distinct():
+    from market_hours import (
+        is_pre_market,
+        is_cas_iep_window,
+        is_cas_phase,
+        is_display_session_open,
+        market_status,
+        needs_index_quote_overlay,
+    )
+
+    fri = lambda hh, mm: _d(2026, 8, 14, hh, mm)
+    assert is_pre_market(fri(8, 59)) is False
+    assert is_pre_market(fri(9, 0)) is True
+    assert is_pre_market(fri(9, 7)) is True
+    assert is_pre_market(fri(9, 14)) is True
+    assert is_pre_market(fri(9, 15)) is False
+    assert is_display_session_open(fri(9, 14)) is False
+    assert is_display_session_open(fri(9, 15)) is True
+    assert is_market_open(fri(9, 14)) is True  # OI poll window
+    assert needs_index_quote_overlay(fri(9, 7)) is True
+    assert needs_index_quote_overlay(fri(10, 0)) is False
+
+    assert market_status(fri(9, 7))["phase"] == "pre_market"
+    assert market_status(fri(9, 7))["is_market_open"] is False
+    st_open = market_status(fri(9, 15))
+    assert st_open["phase"] == "open"
+    assert st_open["is_market_open"] is True
+
+    assert is_cas_phase(fri(15, 15)) is True
+    assert is_cas_iep_window(fri(15, 19)) is False
+    assert is_cas_iep_window(fri(15, 20)) is True
+    assert is_cas_iep_window(fri(15, 35)) is True
+    assert is_cas_iep_window(fri(15, 36)) is False
+    assert needs_index_quote_overlay(fri(15, 25)) is True
+    assert needs_index_quote_overlay(fri(15, 50)) is False
+    assert market_status(fri(15, 20))["phase"] == "cas"
+    assert market_status(fri(15, 20))["is_market_open"] is True
+    assert market_status(fri(15, 50))["phase"] == "post_close"
+    assert market_status(fri(15, 50))["is_market_open"] is False
+
+    sat = _d(2026, 8, 15, 10, 0)
+    assert is_pre_market(sat) is False
+    assert market_status(sat)["phase"] == "weekend"

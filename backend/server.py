@@ -39,6 +39,7 @@ from market_hours import (
     session_anchor_date, session_window_utc, previous_trading_day, now_ist,
     is_special_session_day, is_full_holiday, session_poll_bounds,
     index_in_session, any_index_in_session,
+    is_cas_iep_window, needs_index_quote_overlay,
 )
 from gift_vix_service import extra_tickers
 from fii_dii_service import fii_dii
@@ -2733,42 +2734,66 @@ async def ws_straddle(websocket: WebSocket, index_name: str, expiry: Optional[st
 
 @api_router.websocket("/ws/spot")
 async def ws_spot(websocket: WebSocket):
-    """Push last-known LTP from the OI poller. Does not call Kite (avoids 520s)."""
+    """Push index LTP. Snapshot during the OI session; Kite Quote only in pre-market / CAS IEP."""
     await websocket.accept()
     try:
         while True:
             enabled = list((tracker.settings.get("enabled_indices") if tracker else None) or INDICES)
             live_any = any_index_in_session(enabled, configs=INDEX_CONFIG)
+            quote_overlay = needs_index_quote_overlay()
             payload = {
                 "type": "spot",
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "tickers": [],
             }
-            for idx in enabled:
-                snap = tracker.last_snapshot.get(idx) if tracker else None
-                if not snap or not snap.get("price"):
-                    continue
-                payload["tickers"].append({
-                    "index": idx,
-                    "price": round(float(snap.get("price") or 0.0), 2),
-                    "atm": int(snap.get("atm") or 0),
-                    "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                    "mode": snap.get("mode") or "snapshot",
-                    "prev_close": (round(float(snap.get("prev_close") or 0), 2) or None),
-                    "day_open": (round(float(snap.get("day_open") or 0), 2) or None),
-                    "change": None,
-                    "change_pct": None,
-                })
-                row = payload["tickers"][-1]
-                prev = float(row["prev_close"] or row["day_open"] or 0)
-                if prev and row["price"]:
-                    row["change"] = round(row["price"] - prev, 2)
-                    row["change_pct"] = round((row["price"] - prev) / prev * 100, 3)
+            if quote_overlay:
+                pack = await _desk_ticker_payload()
+                for t in pack.get("tickers") or []:
+                    ltp = t.get("ltp")
+                    if ltp is None or float(ltp or 0) == 0:
+                        continue
+                    row = {
+                        "index": t.get("index"),
+                        "price": round(float(ltp), 2),
+                        "atm": int(t.get("atm") or 0),
+                        "timestamp": t.get("as_of") or pack.get("fetched_at"),
+                        "mode": t.get("source") or "kite",
+                        "prev_close": t.get("prev_close"),
+                        "day_open": t.get("day_open"),
+                        "change": t.get("change"),
+                        "change_pct": t.get("change_pct"),
+                    }
+                    if t.get("indicative_close_price"):
+                        row["indicative_close_price"] = t["indicative_close_price"]
+                    if t.get("final_close"):
+                        row["final_close"] = t["final_close"]
+                    payload["tickers"].append(row)
+            else:
+                for idx in enabled:
+                    snap = tracker.last_snapshot.get(idx) if tracker else None
+                    if not snap or not snap.get("price"):
+                        continue
+                    payload["tickers"].append({
+                        "index": idx,
+                        "price": round(float(snap.get("price") or 0.0), 2),
+                        "atm": int(snap.get("atm") or 0),
+                        "timestamp": snap.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                        "mode": snap.get("mode") or "snapshot",
+                        "prev_close": (round(float(snap.get("prev_close") or 0), 2) or None),
+                        "day_open": (round(float(snap.get("day_open") or 0), 2) or None),
+                        "change": None,
+                        "change_pct": None,
+                    })
+                    row = payload["tickers"][-1]
+                    prev = float(row["prev_close"] or row["day_open"] or 0)
+                    if prev and row["price"]:
+                        row["change"] = round(row["price"] - prev, 2)
+                        row["change_pct"] = round((row["price"] - prev) / prev * 100, 3)
             if payload["tickers"]:
                 await websocket.send_json(payload)
-            elif not live_any:
+            elif not live_any and not quote_overlay:
                 await websocket.send_json({"type": "status", "status": "market_closed"})
-            await asyncio.sleep(2 if live_any else 8)
+            await asyncio.sleep(2 if (live_any or quote_overlay) else 8)
     except BaseException as exc:
         if ws_client_gone(exc):
             await close_ws_quietly(websocket)
@@ -3800,7 +3825,13 @@ from market_hours import market_status as _market_status
 
 @api_router.get("/telegram/status")
 async def telegram_status():
-    return {"configured": _notifier.is_configured()}
+    await _notifier.get_prefs()
+    token_ok, chat_ok = _notifier._cfg()
+    return {
+        "configured": _notifier.is_configured(),
+        "bot_token_configured": bool(token_ok),
+        "chat_id_configured": bool(chat_ok),
+    }
 
 
 @api_router.get("/telegram/prefs")
@@ -3814,6 +3845,8 @@ class TelegramPrefsIn(BaseModel):
     types: Optional[dict] = None
     quiet_hours: Optional[dict] = None
     major_abs_threshold: Optional[float] = None
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
 
 
 @api_router.post("/telegram/prefs")
@@ -3873,8 +3906,9 @@ async def telegram_prefs_preset(name: str, _admin: bool = Depends(require_admin)
 
 @api_router.post("/telegram/test")
 async def telegram_test(_admin: bool = Depends(require_admin)):
+    await _notifier.get_prefs()
     if not _notifier.is_configured():
-        raise HTTPException(400, "Telegram not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in backend/.env and restart.")
+        raise HTTPException(400, "Telegram not configured. Set bot token and chat ID in Admin → Admin configuration.")
     ok = await _notifier.send_test_message()
     if not ok:
         raise HTTPException(502, "Telegram send failed — check bot token / chat id / network.")
@@ -3898,8 +3932,7 @@ async def telegram_huge_shift(
     request: Request,
     _who: str = Depends(require_desk_user),
 ):
-    """Forward Huge OI shift alerts to Telegram. Requires admin or guest session
-    (blocks fully anonymous spam). Rate-limited by middleware."""
+    await _notifier.get_prefs()
     if not _notifier.is_configured():
         return {"ok": False, "reason": "telegram_not_configured"}
     # Respect admin Alert Settings index focus (same gate as OI reversal alerts).
@@ -3929,6 +3962,7 @@ async def telegram_digest_preview(_admin: bool = Depends(require_admin)):
 @api_router.post("/telegram/digest/send")
 async def telegram_digest_send(_admin: bool = Depends(require_admin)):
     """Manually send today's digest to Telegram now (useful for testing or if auto-send missed)."""
+    await _notifier.get_prefs()
     if not _notifier.is_configured():
         raise HTTPException(400, "Telegram not configured.")
     digest = await tracker.build_daily_digest()
@@ -3976,13 +4010,10 @@ async def delete_sidebar_note(_admin: bool = Depends(require_admin)):
 
 
 # ------------------- Multi-index quote for header ticker -------------------
-@api_router.get("/tickers")
-async def get_tickers():
+async def _desk_ticker_payload():
     """LTP + prev close for every enabled desk index.
 
-    Kite quote when connected; any name with missing/zero LTP (common for
-    BSE:SENSEX on a partial quote) falls back to last OI snapshot / Mongo so
-    mobile chips never show a blank price while NIFTY is selected.
+    Kite quote when connected; CAS IEP attached only inside the IEP window when Kite sends it.
     """
     from universe import DESK_IDS, get as universe_get, without_paused_mcx
     from desk_tickers import merge_ticker_row, pick_quote_blob, ticker_symbol_list
@@ -4030,12 +4061,18 @@ async def get_tickers():
             logger.warning("tickers kite failed, using snapshots: %s", e)
             kite_data = None
 
+    include_iep = is_cas_iep_window()
     result = []
     for internal, symbol, label in symbols:
         snap = await _snap_for(internal)
         blob = pick_quote_blob(kite_data, symbol) if kite_data else {}
-        result.append(merge_ticker_row(internal, label, kite_blob=blob, snap=snap))
+        result.append(merge_ticker_row(internal, label, kite_blob=blob, snap=snap, include_iep=include_iep))
     return {"mode": tracker.mode if tracker else "offline", "tickers": result, "fetched_at": datetime.now(timezone.utc).isoformat()}
+
+
+@api_router.get("/tickers")
+async def get_tickers():
+    return await _desk_ticker_payload()
 
 
 # ------------------- Extra tickers: VIX + GIFT NIFTY -------------------
