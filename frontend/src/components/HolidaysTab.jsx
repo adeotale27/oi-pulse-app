@@ -3,7 +3,6 @@ import { CalendarDays, PartyPopper, ChevronDown, ChevronRight } from "lucide-rea
 import { allHolidays, todayIST, formatDatePretty, daysBetweenIST, subscribeHolidays } from "@/lib/holidays";
 import { upcomingEvents, eventBadgeTone } from "@/lib/econCalendar";
 import PageBrandTitle from "@/components/PageBrandTitle";
-import EventRiskWidget from "@/components/EventRiskWidget";
 
 function HolidayCard({ h, today }) {
   const isPast = h.date < today;
@@ -48,7 +47,7 @@ function HolidayCard({ h, today }) {
   );
 }
 
-export default function HolidaysTab({ activeIndex, isAdmin = false, refreshKey = 0 }) {
+export default function HolidaysTab() {
   const today = todayIST();
   const [calTick, setCalTick] = useState(0);
   const [pastOpen, setPastOpen] = useState(false);
@@ -61,14 +60,6 @@ export default function HolidaysTab({ activeIndex, isAdmin = false, refreshKey =
   return (
     <div className="space-y-6" data-testid="holidays-tab">
       <PageBrandTitle title="Events" className="mb-1" testId="events-page-title" />
-      {activeIndex ? (
-        <EventRiskWidget
-          activeIndex={activeIndex}
-          refreshKey={refreshKey}
-          isAdmin={!!isAdmin}
-          allowDismiss={false}
-        />
-      ) : null}
       <div>
         <div className="flex items-center gap-2 mb-3">
           <CalendarDays className="w-4 h-4 text-slate-700" />

@@ -18,6 +18,7 @@ from adr import (
     now_et,
     public_prefs,
     quote_credit_wait_s,
+    quote_spec,
     should_poll_now,
     universe_doc,
     validate_universe_row,
@@ -167,7 +168,13 @@ def test_ist_open_refresh_once():
     assert not go
 
 
-def test_universe_validation():
+def test_quote_spec_tata_wns():
+    desk, td, exch = quote_spec({"adr_symbol": "TTM", "provider_symbol": "TTM", "exchange": "NYSE"})
+    assert desk == "TTM" and td == "TATAY" and exch == "OTC"
+    desk, td, exch = quote_spec(universe_doc(SEED_ADRS[-1] if SEED_ADRS[-1]["adr_symbol"] == "TTM" else next(r for r in SEED_ADRS if r["adr_symbol"] == "TTM")))
+    assert td == "TATAY"
+    wns = quote_spec(next(r for r in SEED_ADRS if r["adr_symbol"] == "WNS"))
+    assert wns[1] == "WNS" and wns[0] == "WNS"
     assert validate_universe_row({"company_name": "X"}) == "Indian symbol required"
     assert validate_universe_row(universe_doc(SEED_ADRS[0])) == ""
     assert validate_universe_row({**SEED_ADRS[0], "adr_ratio": "nope"}) == "ADR ratio must look like 1:1"
