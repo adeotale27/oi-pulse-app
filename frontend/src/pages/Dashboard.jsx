@@ -89,6 +89,7 @@ import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/l
 import { pickIndexLtp, indexDayMove } from "@/lib/indexQuotes";
 import { annotateExpiries } from "@/lib/expiryKind";
 import { atmWindow } from "@/lib/strikeRange";
+import { HOME_PAGE, BOOT_VISIBLE_PAGES, pageAllowed, sanitizePageList } from "@/lib/dashboardPages";
 
 const INDICES = DESK_IDS;
 const POLL_OPTIONS = [15000, 30000, 60000];
@@ -109,18 +110,7 @@ const DASHBOARD_PAGES = [
   { v: "market-intel", l: "Mkt Intel" },
   { v: "adrs", l: "ADRs" },
 ];
-const PUBLIC_DEFAULT_PAGES = DASHBOARD_PAGES
-  .filter((page) => !page.adminOnly && page.v !== "cas")
-  .map((page) => page.v);
-const ALL_DASHBOARD_PAGE_IDS = DASHBOARD_PAGES.map((page) => page.v);
 
-function pageAllowed(id, { isAdmin, visiblePages, adminPages }) {
-  if (isAdmin) {
-    if (!Array.isArray(adminPages) || adminPages.length === 0) return true;
-    return adminPages.includes(id);
-  }
-  return Array.isArray(visiblePages) && visiblePages.includes(id);
-}
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
@@ -283,8 +273,9 @@ export default function Dashboard() {
   const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
   const [pulsePull, setPulsePull] = useState(false); // green flash on each fresh pull
   const [oiSettings, setOiSettings] = useState(loadOISettings());
-  const [visiblePages, setVisiblePages] = useState(PUBLIC_DEFAULT_PAGES);
-  const [adminVisiblePages, setAdminVisiblePages] = useState(ALL_DASHBOARD_PAGE_IDS);
+  const [visiblePages, setVisiblePages] = useState(BOOT_VISIBLE_PAGES);
+  const [adminVisiblePages, setAdminVisiblePages] = useState(BOOT_VISIBLE_PAGES);
+  const [pagesReady, setPagesReady] = useState(false);
   const [tabOrder, setTabOrder] = useState(() => loadTabOrder());
   const [tileOrder, setTileOrder] = useState(() => loadTileOrder());
   const [layoutNonce, setLayoutNonce] = useState(0);
@@ -293,7 +284,7 @@ export default function Dashboard() {
   const hugeShiftOpenRef = useRef(false);
   const [activity, setActivity] = useState([]);       // unusual activity feed events
   const [activityFilter, setActivityFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState("oi-change");
+  const [activeTab, setActiveTab] = useState(HOME_PAGE);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("darkMode") === "1"; } catch { return false; }
   });
@@ -604,8 +595,8 @@ export default function Dashboard() {
     const onSaved = (e) => {
       const settings = e?.detail;
       if (!settings || typeof settings !== "object") return;
-      if (Array.isArray(settings.visible_pages)) setVisiblePages(settings.visible_pages);
-      if (Array.isArray(settings.admin_visible_pages)) setAdminVisiblePages(settings.admin_visible_pages);
+      if (Array.isArray(settings.visible_pages)) setVisiblePages(sanitizePageList(settings.visible_pages));
+      if (Array.isArray(settings.admin_visible_pages)) setAdminVisiblePages(sanitizePageList(settings.admin_visible_pages));
       if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
         setEnabledIndices(normalizeEnabledIndices(settings.enabled_indices, !!settings.mcx_desk_on));
       }
@@ -695,8 +686,9 @@ export default function Dashboard() {
       isAdmin: !!authState.is_admin,
       visiblePages,
       adminPages: adminVisiblePages,
+      pagesReady,
     }),
-    [authState.is_admin, visiblePages, adminVisiblePages],
+    [authState.is_admin, visiblePages, adminVisiblePages, pagesReady],
   );
 
   useEffect(() => {
@@ -708,7 +700,7 @@ export default function Dashboard() {
       .map((page) => page.v);
     if (allowedTabs.length === 0) return;
     if (!allowedTabs.includes(activeTab)) {
-      setActiveTab(allowedTabs[0]);
+      setActiveTab(allowedTabs.includes(HOME_PAGE) ? HOME_PAGE : allowedTabs[0]);
     }
   }, [authState.is_admin, activeTab, visiblePages, adminVisiblePages, tabOrder, tabOn]);
 
@@ -1364,8 +1356,8 @@ export default function Dashboard() {
       setPositionsPollMs((prev) => (prev === next ? prev : next));
       setPositionsBookPollMs(next);
     }
-    if (Array.isArray(d.visible_pages)) setVisiblePages(d.visible_pages);
-    if (Array.isArray(d.admin_visible_pages)) setAdminVisiblePages(d.admin_visible_pages);
+    if (Array.isArray(d.visible_pages)) setVisiblePages(sanitizePageList(d.visible_pages));
+    if (Array.isArray(d.admin_visible_pages)) setAdminVisiblePages(sanitizePageList(d.admin_visible_pages));
     if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
       setEnabledIndices(normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on));
     }
@@ -1386,6 +1378,7 @@ export default function Dashboard() {
       }));
     }
     applyDeskAi(d);
+    setPagesReady(true);
   }, [applyDeskAi]);
 
   const patchDeskAi = useCallback(async (patch) => {
@@ -1417,7 +1410,7 @@ export default function Dashboard() {
   useEffect(() => {
     fetchConfig().then((data) => {
       applyServerSettings(data || {});
-    }).catch(() => { /* ignore — settings poll will retry */ });
+    }).catch(() => { setPagesReady(true); });
   }, [applyServerSettings]);
 
   // Auth state — AuthGate already fetched; listen, then refresh later (no boot stampede).

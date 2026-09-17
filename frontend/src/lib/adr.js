@@ -25,6 +25,8 @@ export const ADR_COLUMNS = [
 
 export const ADR_COL_IDS = ADR_COLUMNS.map((c) => c.id);
 export const ADR_DEFAULT_VISIBLE = ADR_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
+/** Phone quote strip — Last / Change / Chg. % after the name. Full row opens the detail sheet. */
+export const ADR_PHONE_COL_IDS = ["company", "last_price", "change", "change_percent"];
 export const ADR_FILTERS = [
   { id: "all", label: "All" },
   { id: "gainers", label: "Gainers" },

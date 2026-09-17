@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   usdPrice, usdSigned, pctSigned, fmtVolume, moveTone, sortAdrRows, filterAdrRows,
-  loadAdrColumns, saveAdrColumns, resetAdrColumns, ADR_DEFAULT_VISIBLE, prefStorageKey, formatIstStamp,
+  loadAdrColumns, saveAdrColumns, resetAdrColumns, ADR_DEFAULT_VISIBLE, ADR_PHONE_COL_IDS, prefStorageKey, formatIstStamp,
   listingFlag, listingCountryCode, isAdrSessionOpen, formatAdrCell,
 } from "./adr.js";
 
@@ -58,5 +58,6 @@ assert.equal(formatAdrCell({ id: "updated" }, { fetched_at: "2026-09-16T10:30:00
 assert.equal(formatAdrCell({ id: "market_status" }, { exchange: "NYSE", stale: true }), "US Market Closed");
 assert.equal(formatAdrCell({ id: "market_status" }, { exchange: "XETRA", listing_open: true, display_status: "CURRENT" }), "German Market Open");
 assert.ok(!ADR_DEFAULT_VISIBLE.includes("session_clock"));
+assert.deepEqual(ADR_PHONE_COL_IDS, ["company", "last_price", "change", "change_percent"]);
 
 console.log("adr.test.js ok");
