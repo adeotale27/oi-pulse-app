@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import { readPositionsBook, subscribePositionsBook } from "@/lib/positionsBook";
-import { openOiMarks, formatMarkHover, strikeKey } from "@/lib/oiPositionMarks";
+import { openOiMarks, formatMarkHover, strikeKey, peTopKey, ceTopKey } from "@/lib/oiPositionMarks";
 
 const PUT_GREEN = "#16A34A";
 const PUT_LIGHT = "#86EFAC";
@@ -111,6 +111,27 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   const [pressHold, setPressHold] = useState(false);
   const [touchTooltip, setTouchTooltip] = useState(false);
   const pressOrigin = useRef({ x: 0, y: 0 });
+  const wrapRef = useRef(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const markShape = useMemo(() => {
+    const make = (segment, side) => (props) => (
+      <g>
+        <BarSeg {...props} />
+        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
+      </g>
+    );
+    return {
+      pe_base: make("pe_base", "PE"),
+      pe_up: make("pe_up", "PE"),
+      pe_down: make("pe_down", "PE"),
+      pe_delta: make("pe_delta", "PE"),
+      ce_base: make("ce_base", "CE"),
+      ce_up: make("ce_up", "CE"),
+      ce_down: make("ce_down", "CE"),
+      ce_delta: make("ce_delta", "CE"),
+    };
+  }, [showOI, compact]);
 
   if (!current) {
     return (
@@ -126,12 +147,6 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   const tickEvery = compact && data.length > 12 ? 1 : 0;
   const chartH = compact ? "h-[280px]" : "h-[440px]";
   const topPad = hasMarks ? (compact ? 36 : 44) : (compact ? 28 : 28);
-  const yMax = Math.max(
-    1,
-    ...data.map((d) => (showOI
-      ? Math.max(d.pe_base + d.pe_up + d.pe_down, d.ce_base + d.ce_up + d.ce_down)
-      : Math.max(Math.abs(d.pe_delta), Math.abs(d.ce_delta)))),
-  );
 
   const endPressHold = () => setPressHold(false);
   const onChartPointerDown = (e) => {
@@ -151,6 +166,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   return (
     <div className="w-full relative z-20 isolate overflow-visible" data-testid="oi-chart">
       <div
+        ref={wrapRef}
         className={`w-full ${chartH} touch-manipulation relative overflow-visible`}
         onPointerDown={(e) => {
           onChartPointerDown(e);
@@ -256,71 +272,40 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
                 {/* Show OI ON → Sensibull-style stacked bars: solid CURRENT (or PREVIOUS-if-smaller)
                     base + a small "Increase" striped segment OR "Decrease" outlined segment on top.
                     Total height = max(now, prev). Legend has 6 items (Put OI · Increase · Decrease · Call OI · Increase · Decrease). */}
-                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_base : undefined} />
+                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_up : undefined} />
+                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_down : undefined} />
+                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_base : undefined} />
+                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_up : undefined} />
+                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_down : undefined} />
               </>
             ) : (
               <>
                 {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars. Positive = up = increase,
                     Negative = down = decrease. y=0 baseline for clarity. */}
                 <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1} />
-                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_delta : undefined} />
+                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_delta : undefined} />
               </>
             )}
           </BarChart>
         </ResponsiveContainer>
-        {hasMarks ? (
-          <div
-            className="absolute z-30 pointer-events-none"
-            style={{
-              top: topPad,
-              left: compact ? 40 : 74,
-              right: compact ? 8 : 20,
-              bottom: compact ? 88 : 112,
-            }}
-            data-testid="oi-pos-mark-row"
-          >
-            <div className="relative flex h-full w-full">
-              {data.map((d) => {
-                const peH = showOI ? d.pe_base + d.pe_up + d.pe_down : Math.max(0, d.pe_delta);
-                const ceH = showOI ? d.ce_base + d.ce_up + d.ce_down : Math.max(0, d.ce_delta);
-                return (
-                  <div key={d.strike} className="relative min-w-0 flex-1">
-                    {d.pe_pos ? (
-                      <div
-                        className="absolute left-1/4 -translate-x-1/2 -translate-y-full"
-                        style={{ top: `${((yMax - peH) / yMax) * 100}%` }}
-                      >
-                        <MarkDot mark={d.pe_pos} compact={compact} onHover={setHoverMark} />
-                      </div>
-                    ) : null}
-                    {d.ce_pos ? (
-                      <div
-                        className="absolute left-3/4 -translate-x-1/2 -translate-y-full"
-                        style={{ top: `${((yMax - ceH) / yMax) * 100}%` }}
-                      >
-                        <MarkDot mark={d.ce_pos} compact={compact} onHover={setHoverMark} />
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
         {hoverMark ? (
           <div
-            className="pointer-events-none absolute left-1/2 z-40 max-w-[min(16rem,calc(100%-1rem))] -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-medium leading-snug text-slate-800 shadow-lg"
-            style={{ top: 4 }}
+            className="pointer-events-none absolute z-40 min-w-[9.5rem] -translate-x-1/2 -translate-y-full rounded-md border px-2.5 py-1.5 shadow-lg"
+            style={{
+              left: hoverMark.left ?? "50%",
+              top: Math.max(10, (hoverMark.top ?? 12) - 6),
+              background: hoverMark.pnl >= 0 ? "#ECFDF5" : "#FEF2F2",
+              borderColor: hoverMark.pnl >= 0 ? "#6EE7B7" : "#FECACA",
+            }}
             data-testid="oi-pos-mark-hover"
           >
-            <div>{hoverMark.strike} {hoverMark.side}</div>
-            <div>{formatMarkHover(hoverMark)}</div>
+            <div className="font-mono-data text-[10px] font-semibold text-slate-700">{hoverMark.strike} {hoverMark.side}</div>
+            <div className="text-[11px] text-slate-800">{formatMarkHover(hoverMark).split(" · ")[0]}</div>
+            <div className={`text-[12px] font-semibold tabular-nums ${hoverMark.pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+              {formatMarkHover(hoverMark).split(" · ")[1] || ""}
+            </div>
           </div>
         ) : null}
       </div>
@@ -347,34 +332,80 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   );
 });
 
-function MarkDot({ mark, compact, onHover }) {
-  if (!mark?.tag) return null;
-  const sold = mark.tag === "S";
-  const r = compact ? 8 : 9;
+function BarSeg({ x, y, width, height, fill, stroke, strokeWidth, opacity }) {
+  const h = Number(height) || 0;
+  const yy = Number(y) || 0;
+  const w = Math.max(0, Number(width) || 0);
+  const xx = Number(x) || 0;
+  if (!Number.isFinite(xx) || !Number.isFinite(yy)) return null;
   return (
-    <button
-      type="button"
-      data-testid={`oi-pos-mark-${mark.side}-${mark.strike}`}
-      className="pointer-events-auto inline-flex shrink-0 items-center justify-center rounded-full border border-white font-extrabold text-white shadow-sm"
-      style={{
-        width: r * 2,
-        height: r * 2,
-        fontSize: compact ? 8 : 10,
-        fontFamily: "Outfit, system-ui, sans-serif",
-        background: sold ? "#DC2626" : "#2563EB",
-      }}
-      aria-label={formatMarkHover(mark)}
-      onMouseEnter={() => onHover?.(mark)}
+    <rect
+      x={xx}
+      y={h < 0 ? yy + h : yy}
+      width={w}
+      height={Math.abs(h)}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      opacity={opacity}
+    />
+  );
+}
+
+function pinHover(wrapRef, el, mark, onHover) {
+  if (!mark) return onHover?.(null);
+  const wrap = wrapRef?.current;
+  if (!wrap || !el) return onHover?.(mark);
+  const wr = wrap.getBoundingClientRect();
+  const br = el.getBoundingClientRect();
+  onHover?.({
+    ...mark,
+    left: br.left - wr.left + br.width / 2,
+    top: br.top - wr.top,
+  });
+}
+
+function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, wrapRef, onHover, dataRef }) {
+  const row = payload || dataRef?.current?.[index];
+  if (!row || x == null || y == null || !Number.isFinite(Number(x))) return null;
+  const pos = side === "CE" ? row.ce_pos : row.pe_pos;
+  if (!pos?.tag) return null;
+  const top = showOI
+    ? (side === "CE" ? ceTopKey(row) : peTopKey(row))
+    : (side === "CE" ? "ce_delta" : "pe_delta");
+  if (segment !== top) return null;
+  const r = compact ? 8 : 9;
+  const cx = Number(x) + Number(width || 0) / 2;
+  const topY = Math.min(Number(y) || 0, (Number(y) || 0) + (Number(height) || 0));
+  let cy = topY - r - 2;
+  if (cy < r + 1) cy = r + 1;
+  const sold = pos.tag === "S";
+  return (
+    <g
+      data-testid={`oi-pos-mark-${pos.side}-${pos.strike}`}
+      style={{ pointerEvents: "auto", cursor: "pointer" }}
+      onMouseEnter={(e) => pinHover(wrapRef, e.currentTarget, pos, onHover)}
       onMouseLeave={() => onHover?.(null)}
-      onFocus={() => onHover?.(mark)}
-      onBlur={() => onHover?.(null)}
       onClick={(e) => {
         e.stopPropagation();
-        onHover?.(mark);
+        pinHover(wrapRef, e.currentTarget, pos, onHover);
       }}
     >
-      {mark.tag}
-    </button>
+      <circle cx={cx} cy={cy} r={r + (compact ? 3 : 2)} fill="transparent" />
+      <circle cx={cx} cy={cy} r={r} fill={sold ? "#DC2626" : "#2563EB"} stroke="#fff" strokeWidth={1.4} />
+      <text
+        x={cx}
+        y={cy}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="#fff"
+        fontSize={compact ? 8 : 10}
+        fontWeight={800}
+        fontFamily="Outfit, system-ui, sans-serif"
+      >
+        {pos.tag}
+      </text>
+    </g>
   );
 }
 
