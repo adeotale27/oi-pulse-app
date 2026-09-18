@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.15",
+    date: "2026-09-18",
+    user: [
+      "Bought/Sold dots sit on the matching OI candles for the expiry on screen. Switch ±5 / ±25 and they hide or come back with those strikes. Hover (tap on phone) shows lots and P&L.",
+    ],
+    admin: [
+      "Marks follow the live Positions book and the selected expiry. Guests still need Positions public plus their own Kite book.",
+    ],
+  },
+  {
     version: "11.14",
     date: "2026-09-18",
     user: [
