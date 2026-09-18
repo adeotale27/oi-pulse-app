@@ -11,7 +11,7 @@ import {
   EXPIRY_LIST_MAX_PX,
 } from "@/lib/tabOrder";
 import StrikeAroundChips from "@/components/StrikeAroundChips";
-import { INDEX_SHORT, INDEX_STEP, usesIndexOverflow } from "@/lib/universe";
+import { INDEX_SHORT, INDEX_STEP, INDEX_DOT, usesIndexOverflow } from "@/lib/universe";
 import { pickIndexLtp } from "@/lib/indexQuotes";
 import { annotateExpiries } from "@/lib/expiryKind";
 
@@ -58,7 +58,28 @@ const INDEX_THEME = {
     idleCls:     "bg-gradient-to-br from-cyan-50 to-sky-50 text-cyan-900 border-cyan-200 hover:from-cyan-100",
     dot:         "bg-cyan-600",
   },
+  FINNIFTY: {
+    label: "FINNIFTY",
+    activeCls:   "bg-gradient-to-br from-indigo-500 to-violet-600 text-white border-indigo-500 shadow-md shadow-indigo-500/20",
+    idleCls:     "bg-gradient-to-br from-indigo-50 to-violet-50 text-indigo-900 border-indigo-100 hover:from-indigo-100",
+    dot:         "bg-indigo-500",
+  },
+  MIDCPNIFTY: {
+    label: "MIDCP",
+    activeCls:   "bg-gradient-to-br from-fuchsia-500 to-pink-600 text-white border-fuchsia-500 shadow-md shadow-fuchsia-500/20",
+    idleCls:     "bg-gradient-to-br from-fuchsia-50 to-pink-50 text-fuchsia-900 border-fuchsia-100 hover:from-fuchsia-100",
+    dot:         "bg-fuchsia-500",
+  },
 };
+
+function indexTheme(id) {
+  return INDEX_THEME[id] || {
+    label: INDEX_SHORT[id] || id,
+    activeCls: "bg-gradient-to-br from-indigo-500 to-slate-700 text-white border-indigo-500 shadow-md",
+    idleCls: "bg-gradient-to-br from-slate-50 to-indigo-50 text-slate-800 border-slate-200",
+    dot: INDEX_DOT[id] || "bg-indigo-500",
+  };
+}
 
 /**
  * Strike-range step size per index (as per user requirement):
@@ -403,7 +424,7 @@ export default function Sidebar({
             </label>
             {(() => {
               const idx = activeIndex;
-              const theme = INDEX_THEME[idx] || INDEX_THEME.NIFTY;
+              const theme = indexTheme(idx);
               const pulled = lastUpdatedByIndex?.[idx];
               const age = ageSec(pulled);
               const fresh = age != null && age <= 90;
@@ -427,7 +448,7 @@ export default function Sidebar({
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {indexList.map((idx) => {
             const active = idx === activeIndex;
-            const theme = INDEX_THEME[idx] || INDEX_THEME.NIFTY;
+            const theme = indexTheme(idx);
             const pulled = lastUpdatedByIndex?.[idx];
             const age = ageSec(pulled);
             // Align with server stale_after (max(90, poll_interval*3)); 180 covers 60s cadence.

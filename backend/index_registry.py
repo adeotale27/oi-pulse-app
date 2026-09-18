@@ -267,7 +267,13 @@ def extra_poll_cfg(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     if not doc.get("quote_symbol") and quote_kind != "mcx_fut":
         return None
-    return {**doc, "name": doc.get("name") or uid}
+    urow = universe_get(uid) or {}
+    out = {**doc, "name": doc.get("name") or uid}
+    if urow.get("step"):
+        out["step"] = urow["step"]
+    if urow.get("kite_name"):
+        out["name"] = urow["kite_name"]
+    return out
 
 
 def merge_live_index_config(extra: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:

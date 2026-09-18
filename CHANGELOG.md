@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.10 — 2026-09-18
+
+Error log fills the viewport and wraps messages so the table does not need a horizontal scrollbar. Market Intel retention and min-history accept 0 (cleanup can wipe stored news). Enabling Gold turns the MCX desk on, uses Kite name GOLD (not GOLDM) and a 200-pt strike step, and the board picks up the name without a full reload. FINNIFTY / MIDCPNIFTY keep their own header and sidebar colours. Admin alerts, data collection, and chart-signal lots only list Index-management-enabled names. Header index tiles switch the desk on click.
+
 ## V11.09 — 2026-09-17
 
 Phone dashboard keeps page tabs while scrolling so you can scroll back up. NIFTY/SENSEX mobile tiles show IEP in-tile. Market Intel popup is a fixed height. Events page ticks are admin-configurable again; the four info tiles stay on. News below impact 50 is not stored; same-story duplicates are dropped; heavy index constituents boost ingest. Tata Motors ADR quotes TATAY (OTC). Straddle history prefetches in the background.

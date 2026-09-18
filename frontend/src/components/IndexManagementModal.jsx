@@ -97,11 +97,11 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
     if (!name) return;
     setBusy(true);
     try {
-      await api.post(`/admin/indices/${encodeURIComponent(name)}/enable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
+      const { data } = await api.post(`/admin/indices/${encodeURIComponent(name)}/enable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
       toast.success(`${name} enabled — OI poll will include it`);
       setInspect((p) => (p && p.id === name ? { ...p, enabled: true } : p));
       await loadList();
-      onChanged?.();
+      onChanged?.(data);
     } catch (e) {
       toast.error(apiDetail(e, "Enable failed"));
     } finally {
@@ -112,11 +112,11 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
   const disable = async (name) => {
     setBusy(true);
     try {
-      await api.post(`/admin/indices/${encodeURIComponent(name)}/disable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
+      const { data } = await api.post(`/admin/indices/${encodeURIComponent(name)}/disable`, null, { timeout: INDEX_ADMIN_TIMEOUT_MS });
       toast.success(`${name} hidden from the desk (history kept)`);
       if (inspect?.id === name) setInspect((p) => (p ? { ...p, enabled: false } : p));
       await loadList();
-      onChanged?.();
+      onChanged?.(data);
     } catch (e) {
       toast.error(apiDetail(e, "Disable failed"));
     } finally {

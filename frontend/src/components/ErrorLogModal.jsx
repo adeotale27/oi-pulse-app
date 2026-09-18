@@ -53,7 +53,7 @@ export default function ErrorLogModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col" data-testid="error-log-modal">
+      <DialogContent className="max-w-[96vw] w-[96vw] h-[92dvh] max-h-[92dvh] overflow-hidden flex flex-col sm:rounded-lg" data-testid="error-log-modal">
         <DialogHeader>
           <DialogTitle>Error log</DialogTitle>
           <DialogDescription>
@@ -90,26 +90,26 @@ export default function ErrorLogModal({ open, onOpenChange }) {
           ))}
         </div>
         {err ? <p className="text-[12px] text-rose-600">{err}</p> : null}
-        <div className="overflow-auto rounded-md border border-slate-100 text-[11px]">
-          <table className="w-full">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-md border border-slate-100 text-[11px]">
+          <table className="w-full table-fixed">
             <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="text-left font-semibold px-2 py-1">When (UTC)</th>
-                <th className="text-left font-semibold px-2 py-1">Src</th>
-                <th className="text-left font-semibold px-2 py-1">Kind</th>
+                <th className="text-left font-semibold px-2 py-1 w-[9.5rem]">When (UTC)</th>
+                <th className="text-left font-semibold px-2 py-1 w-24">Src</th>
+                <th className="text-left font-semibold px-2 py-1 w-36">Kind</th>
                 <th className="text-left font-semibold px-2 py-1">Message</th>
-                <th className="text-right font-semibold px-2 py-1">n</th>
+                <th className="text-right font-semibold px-2 py-1 w-10">n</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-t border-slate-50 align-top">
                   <td className="px-2 py-1 whitespace-nowrap font-mono-data">{fmtTs(row.ts)}</td>
-                  <td className="px-2 py-1">{row.source}</td>
-                  <td className="px-2 py-1">{row.kind}</td>
+                  <td className="px-2 py-1 break-all">{row.source}</td>
+                  <td className="px-2 py-1 break-all">{row.kind}</td>
                   <td className="px-2 py-1">
-                    <div className="text-slate-800">{row.message}</div>
-                    <div className="text-[10px] text-slate-400 truncate max-w-[28rem]">{row.path}</div>
+                    <div className="text-slate-800 whitespace-pre-wrap break-words">{row.message}</div>
+                    <div className="text-[10px] text-slate-400 break-all">{row.path}</div>
                   </td>
                   <td className="px-2 py-1 text-right font-mono-data">{row.count || 1}</td>
                 </tr>

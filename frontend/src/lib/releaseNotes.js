@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.10",
+    date: "2026-09-18",
+    user: [
+      "Header index tiles switch the board on click and show the correct name colours for FINNIFTY and MIDCP. The error log window is larger so messages wrap instead of scrolling sideways.",
+    ],
+    admin: [
+      "Index management Enable/Disable applies without a page refresh. Disabled names drop from Admin alerts, straddle collection, and lot-size fields. GOLD uses Kite GOLD (not GOLDM) and strike step 200. Market Intel retention/min-history can be 0 for a full cleanup.",
+    ],
+  },
+  {
     version: "11.09",
     date: "2026-09-17",
     user: [

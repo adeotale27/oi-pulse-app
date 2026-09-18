@@ -282,14 +282,18 @@ def is_ist_today_item(doc: Dict[str, Any], today: Optional[date] = None) -> bool
 
 
 def clamp_retention(retention_days: int, min_history_days: int) -> Tuple[int, int]:
-    mn = max(1, min(30, int(min_history_days or DEFAULT_MIN_HISTORY_DAYS)))
-    ret = max(mn, min(90, int(retention_days or DEFAULT_RETENTION_DAYS)))
+    mn = max(0, int(0 if min_history_days is None else min_history_days))
+    ret = max(0, int(0 if retention_days is None else retention_days))
+    if ret and mn and ret < mn:
+        ret = mn
     return ret, mn
 
 
 def retention_cutoff(today: date, retention_days: int, min_history_days: int) -> date:
     ret, mn = clamp_retention(retention_days, min_history_days)
     days = max(ret, mn)
+    if days <= 0:
+        return today + timedelta(days=1)
     return today - timedelta(days=days - 1)
 
 
@@ -909,8 +913,10 @@ async def run_all_sources(db, settings: Optional[Dict[str, Any]] = None) -> Dict
 
 
 async def cleanup_old(db, settings: Dict[str, Any]) -> Dict[str, Any]:
-    ret = int(settings.get("market_intel_retention_days") or DEFAULT_RETENTION_DAYS)
-    mn = int(settings.get("market_intel_min_history_days") or DEFAULT_MIN_HISTORY_DAYS)
+    ret = settings.get("market_intel_retention_days")
+    mn = settings.get("market_intel_min_history_days")
+    ret = DEFAULT_RETENTION_DAYS if ret is None else int(ret)
+    mn = DEFAULT_MIN_HISTORY_DAYS if mn is None else int(mn)
     cut = retention_cutoff(ist_today(), ret, mn)
     cut_s = cut.isoformat()
     q = {"published_at": {"$lt": cut_s}}

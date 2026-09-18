@@ -1504,12 +1504,17 @@ async def get_settings(reload: bool = Query(False)):
     data = dict(_live_settings())
     data.pop("_id", None)
     try:
-        from universe import MCX_DESK_AVAILABLE, without_paused_mcx
-        known = list(INDEX_CONFIG.keys())
-        data["mcx_desk_on"] = bool(tracker.settings.get("mcx_desk_on")) if tracker else False
-        data["known_indices"] = known if MCX_DESK_AVAILABLE else without_paused_mcx(known, INDEX_CONFIG)
-        if "enabled_indices" in data:
-            data["enabled_indices"] = without_paused_mcx(data["enabled_indices"], INDEX_CONFIG)
+        from universe import without_paused_mcx, set_mcx_desk_available
+        data["mcx_desk_on"] = bool(tracker.settings.get("mcx_desk_on")) if tracker else bool(data.get("mcx_desk_on"))
+        if data.get("mcx_desk_on"):
+            set_mcx_desk_available(True)
+        enabled = list(data.get("enabled_indices") or [])
+        if not data.get("mcx_desk_on"):
+            enabled = without_paused_mcx(enabled, INDEX_CONFIG)
+        data["enabled_indices"] = enabled
+        data["known_indices"] = list(enabled)
+        data["alert_enabled_indices"] = [i for i in (data.get("alert_enabled_indices") or []) if i in enabled]
+        data["straddle_enabled_indices"] = [i for i in (data.get("straddle_enabled_indices") or []) if i in enabled]
     except Exception:
         data["known_indices"] = list(INDEX_CONFIG.keys())
     return data
@@ -1581,13 +1586,15 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         patch["market_intel_ingest_seconds"] = v
     if "market_intel_retention_days" in patch or "market_intel_min_history_days" in patch:
         s = _live_settings()
-        ret = int(patch.get("market_intel_retention_days") or s.get("market_intel_retention_days") or 5)
-        mn = int(patch.get("market_intel_min_history_days") or s.get("market_intel_min_history_days") or 2)
-        if mn < 1 or mn > 30:
-            raise HTTPException(400, "market_intel_min_history_days must be 1–30")
-        if ret < 3 or ret > 90:
-            raise HTTPException(400, "market_intel_retention_days must be 3–90")
-        if ret < mn:
+        ret_raw = patch["market_intel_retention_days"] if "market_intel_retention_days" in patch else s.get("market_intel_retention_days", 5)
+        mn_raw = patch["market_intel_min_history_days"] if "market_intel_min_history_days" in patch else s.get("market_intel_min_history_days", 2)
+        ret = int(ret_raw if ret_raw is not None else 5)
+        mn = int(mn_raw if mn_raw is not None else 2)
+        if mn < 0:
+            raise HTTPException(400, "market_intel_min_history_days must be ≥ 0")
+        if ret < 0:
+            raise HTTPException(400, "market_intel_retention_days must be ≥ 0")
+        if ret and mn and ret < mn:
             raise HTTPException(400, "News retention cannot be below minimum historical context days")
         patch["market_intel_retention_days"] = ret
         patch["market_intel_min_history_days"] = mn
@@ -1733,7 +1740,7 @@ async def admin_enable_index(
         public_registry_doc,
         write_audit,
     )
-    from universe import DESK_IDS, is_paused_mcx
+    from universe import DESK_IDS, MCX_MAJOR_IDS, is_paused_mcx
 
     key = name.strip().upper()
     try:
@@ -1775,7 +1782,15 @@ async def admin_enable_index(
         enabled = list(tracker.settings.get("enabled_indices") or [])
         if key not in enabled:
             enabled.append(key)
-        await tracker.save_settings({"enabled_indices": enabled})
+        patch = {"enabled_indices": enabled}
+        if key in MCX_MAJOR_IDS:
+            patch["mcx_desk_on"] = True
+            try:
+                from universe import set_mcx_desk_available
+                set_mcx_desk_available(True)
+            except Exception:
+                pass
+        await tracker.save_settings(patch)
         tracker.ensure_index_slots([key])
         try:
             if tracker.kite_service:
@@ -1794,7 +1809,7 @@ async def admin_enable_index(
         except Exception:
             logger.warning("index_enable audit failed for %s", key, exc_info=True)
         stored = await db.index_registry.find_one({"_id": key})
-        return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled}
+        return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled, "mcx_desk_on": bool(tracker.settings.get("mcx_desk_on"))}
     except HTTPException:
         raise
     except Exception as e:
@@ -1822,7 +1837,13 @@ async def admin_disable_index(
         {"$set": {"enabled": False, "updated_at": now_iso}},
         upsert=True,
     )
-    await tracker.save_settings({"enabled_indices": enabled})
+    alerts = [i for i in (tracker.settings.get("alert_enabled_indices") or []) if i != key]
+    strad = [i for i in (tracker.settings.get("straddle_enabled_indices") or []) if i != key]
+    await tracker.save_settings({
+        "enabled_indices": enabled,
+        "alert_enabled_indices": alerts or enabled[:1],
+        "straddle_enabled_indices": strad,
+    })
     sess = await _admin_from_request(request)
     stored = await db.index_registry.find_one({"_id": key})
     await write_audit(
@@ -1833,7 +1854,7 @@ async def admin_disable_index(
         prev=prev,
         new=stored,
     )
-    return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled, "desk": key in DESK_IDS}
+    return {"ok": True, "index": public_registry_doc(stored), "enabled_indices": enabled, "desk": key in DESK_IDS, "mcx_desk_on": bool(tracker.settings.get("mcx_desk_on"))}
 
 
 def _session_open_utc_for_anchor(anchor: datetime) -> datetime:
@@ -2952,8 +2973,16 @@ async def get_config():
     straddle_poll = clamp_straddle_poll_seconds(s)
     positions_poll = clamp_positions_poll_seconds(s)
     open_hm, close_hm = display_hours()
-    from universe import without_paused_mcx
-    raw_enabled = s.get("enabled_indices", list(INDEX_CONFIG.keys()))
+    from universe import without_paused_mcx, set_mcx_desk_available
+    if s.get("mcx_desk_on"):
+        set_mcx_desk_available(True)
+    raw_enabled = list(s.get("enabled_indices") or list(INDEX_CONFIG.keys()))
+    enabled = raw_enabled if s.get("mcx_desk_on") else without_paused_mcx(raw_enabled, INDEX_CONFIG)
+    def _int_or(key, default):
+        v = s.get(key)
+        if v is None or v == "":
+            return default
+        return int(v)
     return {
         "indices": INDEX_CONFIG,
         "poll_interval_seconds": poll_interval_seconds,
@@ -2961,15 +2990,15 @@ async def get_config():
         "straddle_poll_interval_seconds": straddle_poll,
         "positions_poll_interval_seconds": positions_poll,
         "market_intel_ingest_seconds": int(s.get("market_intel_ingest_seconds") or 300),
-        "market_intel_retention_days": int(s.get("market_intel_retention_days") or 5),
-        "market_intel_min_history_days": int(s.get("market_intel_min_history_days") or 2),
+        "market_intel_retention_days": _int_or("market_intel_retention_days", 5),
+        "market_intel_min_history_days": _int_or("market_intel_min_history_days", 2),
         "market_intel_popup_enabled": s.get("market_intel_popup_enabled", True) is not False,
         "market_intel_popup_dock_until_next": s.get("market_intel_popup_dock_until_next", True) is not False,
         **cas_iep_config(),
-        "enabled_indices": without_paused_mcx(raw_enabled, INDEX_CONFIG),
+        "enabled_indices": enabled,
         "mcx_desk_on": bool(s.get("mcx_desk_on")),
-        "straddle_enabled_indices": s.get("straddle_enabled_indices", STRADDLE_INDICES),
-        "alert_enabled_indices": s.get("alert_enabled_indices"),
+        "straddle_enabled_indices": [i for i in (s.get("straddle_enabled_indices", STRADDLE_INDICES) or []) if i in enabled],
+        "alert_enabled_indices": [i for i in (s.get("alert_enabled_indices") or []) if i in enabled] or s.get("alert_enabled_indices"),
         "visible_pages": s.get("visible_pages"),
         "admin_visible_pages": s.get("admin_visible_pages"),
         "market_open_ist": s.get("market_open_ist", open_hm),

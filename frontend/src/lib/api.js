@@ -275,17 +275,19 @@ const CONFIG_TTL_MS = 15_000;
 
 export function invalidateConfigCache() {
   __configCache = null;
+  __configInflight = null;
 }
 
 /** One in-flight /config for Dashboard + BigClock (both used to stampede). */
-export function fetchConfig() {
+export function fetchConfig(opts = {}) {
+  const force = !!opts.force;
   const now = Date.now();
-  if (__configCache && now - __configCache.at < CONFIG_TTL_MS) {
+  if (!force && __configCache && now - __configCache.at < CONFIG_TTL_MS) {
     return Promise.resolve(__configCache.data);
   }
-  if (__configInflight) return __configInflight;
+  if (!force && __configInflight) return __configInflight;
   __configInflight = api
-    .get("/config", { timeout: 4000 })
+    .get("/config", { timeout: 4000, params: force ? { _: now } : undefined })
     .then((r) => {
       __configCache = { data: r.data, at: Date.now() };
       return r.data;

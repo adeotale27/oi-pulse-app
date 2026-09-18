@@ -87,10 +87,8 @@ export default function SettingsModal({
       .then((r) => {
         const d = normalizeLoadedSettings(r.data || {});
         setSettings(d);
-        const known = Array.isArray(d.known_indices) ? d.known_indices : [];
         const enabled = Array.isArray(d.enabled_indices) ? d.enabled_indices : [];
-        const pool = [...new Set([...DESK_IDS, ...known, ...enabled])]
-          .filter((i) => !!d.mcx_desk_on || !isMcxMajorId(i));
+        const pool = [...new Set(enabled)].filter(Boolean);
         if (pool.length) setKnownIndices(pool);
       })
       .catch((e) => {
@@ -131,8 +129,14 @@ export default function SettingsModal({
       }
       cur.delete(idx);
     } else cur.add(idx);
-    const pool = [...new Set([...knownIndices, ...(settings.enabled_indices || [])])];
-    setSettings({ ...settings, enabled_indices: pool.filter((i) => cur.has(i)) });
+    const next = [...new Set([...knownIndices, ...(settings.enabled_indices || [])])].filter((i) => cur.has(i));
+    setKnownIndices(next);
+    setSettings({
+      ...settings,
+      enabled_indices: next,
+      alert_enabled_indices: (settings.alert_enabled_indices || []).filter((i) => next.includes(i)),
+      straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => next.includes(i)),
+    });
   };
 
   const toggleAlertIndex = (idx) => {
@@ -202,10 +206,11 @@ export default function SettingsModal({
           cooldown_seconds: settings.cooldown_seconds,
           compare_minutes: settings.compare_minutes,
           enabled_indices: settings.enabled_indices,
+          straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => (settings.enabled_indices || []).includes(i)),
+          alert_enabled_indices: (settings.alert_enabled_indices || []).filter((i) => (settings.enabled_indices || []).includes(i)),
           oi_poll_interval_seconds: settings.oi_poll_interval_seconds,
           straddle_poll_interval_seconds: settings.straddle_poll_interval_seconds,
           positions_poll_interval_seconds: positionsPoll,
-          straddle_enabled_indices: settings.straddle_enabled_indices,
           market_open_ist: settings.market_open_ist,
           market_close_ist: settings.market_close_ist,
           second_session_ist: settings.second_session_ist,
@@ -216,7 +221,6 @@ export default function SettingsModal({
           cas_iep_force: !!settings.cas_iep_force,
           expire_admin_on_market_close: settings.expire_admin_on_market_close,
           admin_session_ttl_minutes: settings.admin_session_ttl_minutes,
-          alert_enabled_indices: settings.alert_enabled_indices,
           mcx_desk_on: !!settings.mcx_desk_on,
           show_strike_range: settings.show_strike_range,
           show_writer_defense: settings.show_writer_defense,
