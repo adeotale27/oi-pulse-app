@@ -228,6 +228,7 @@ export default function RightPanel({
               showOI={showOI}
               currentTime={current?.timestamp}
               prevTime={previous?.timestamp}
+              index={activeIndex}
             />
           )}
           {selectedView === "oi-change" && (
@@ -239,6 +240,7 @@ export default function RightPanel({
               showOI={showOI}
               currentTime={current?.timestamp}
               prevTime={previous?.timestamp}
+              index={activeIndex}
             />
           )}
           {selectedView === "straddle" && (

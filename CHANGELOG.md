@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.14 — 2026-09-18
+
+OI Change and Open Interest charts mark open option legs: blue **B** (bought) and red **S** (sold) sit on the matching strike bar and move with it. Shown from the live Positions book when Kite is connected (admin, or guests if Positions is public). Closed legs drop off.
+
 ## V11.13 — 2026-09-18
 
 Journal booked P&L is the 15:46 IST print, written to Mongo and frozen. After that the next session is a new day (no leftover rewrite). MCX desks still wait for commodity close + 5 min.

@@ -1,7 +1,9 @@
-import { useMemo, memo, useState, useRef } from "react";
+import { useMemo, memo, useState, useRef, useEffect } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, LabelList,
 } from "recharts";
+import { readPositionsBook, subscribePositionsBook } from "@/lib/positionsBook";
+import { openOiMarks, peTopKey, ceTopKey } from "@/lib/oiPositionMarks";
 
 const PUT_GREEN = "#16A34A";
 const PUT_LIGHT = "#86EFAC";
@@ -26,8 +28,25 @@ function formatTime(iso) {
   }
 }
 
-export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "" }) {
+export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp }) {
   const spotPrice = current?.price ?? null;
+  const [book, setBook] = useState(() => readPositionsBook());
+  useEffect(() => subscribePositionsBook(setBook), []);
+  const indexName = indexProp || current?.index;
+  const posMarks = useMemo(() => {
+    if (!book || book.kite_connected === false || book.token_issue) return [];
+    return openOiMarks(book?.positions, indexName);
+  }, [book, indexName]);
+  const markByStrike = useMemo(() => {
+    const pe = new Map();
+    const ce = new Map();
+    for (const m of posMarks) {
+      if (m.side === "CE") ce.set(m.strike, m.tag);
+      else pe.set(m.strike, m.tag);
+    }
+    return { pe, ce };
+  }, [posMarks]);
+  const hasMarks = posMarks.length > 0;
   const data = useMemo(() => {
     if (!current) return [];
     const prevMap = new Map();
@@ -59,9 +78,10 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
       const ceBase = Math.min(ceNow, cePrev);
       const ceUp = ceDelta > 0 ? ceDelta : 0;
       const ceDown = ceDelta < 0 ? -ceDelta : 0;
-
+      const strike = Number(s.strike);
+      if (!Number.isFinite(strike)) return null;
       return {
-        strike: s.strike,
+        strike,
         pe_now: peNow,
         pe_prev: pePrev,
         ce_now: ceNow,
@@ -74,9 +94,11 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
         ce_base: ceBase,
         ce_up: ceUp,
         ce_down: ceDown,
+        pe_tag: markByStrike.pe.get(strike) || null,
+        ce_tag: markByStrike.ce.get(strike) || null,
       };
     });
-  }, [current, previous]);
+  }, [current, previous, markByStrike]);
 
   const [pressHold, setPressHold] = useState(false);
   const [touchTooltip, setTouchTooltip] = useState(false);
@@ -94,6 +116,10 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   const pt = prevTime || previous?.timestamp;
   const tickEvery = compact && data.length > 12 ? 1 : 0;
   const chartH = compact ? "h-[280px]" : "h-[440px]";
+  const topPad = hasMarks ? (compact ? 36 : 44) : (compact ? 28 : 28);
+  const posLabel = (dataKey) => (props) => (
+    <PosMark {...props} dataKey={dataKey} showOI={showOI} compact={compact} />
+  );
 
   const endPressHold = () => setPressHold(false);
   const onChartPointerDown = (e) => {
@@ -125,7 +151,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
           <BarChart
             key={chartKey || undefined}
             data={data}
-            margin={compact ? { top: 28, right: 8, left: 0, bottom: 12 } : { top: 28, right: 20, left: 10, bottom: 20 }}
+            margin={compact ? { top: topPad, right: 8, left: 0, bottom: 12 } : { top: topPad, right: 20, left: 10, bottom: 20 }}
             barCategoryGap={compact ? "12%" : "18%"}
           >
             {/* SVG patterns for the "increase" striped fills and the "decrease" outlined bars. */}
@@ -187,7 +213,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
             <Legend
               verticalAlign="bottom"
               wrapperStyle={{ zIndex: 0 }}
-              content={<CustomLegend showOI={showOI} compact={compact} />}
+              content={<CustomLegend showOI={showOI} compact={compact} hasMarks={hasMarks} />}
             />
             {atm && (
               <ReferenceLine
@@ -214,20 +240,36 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
                 {/* Show OI ON → Sensibull-style stacked bars: solid CURRENT (or PREVIOUS-if-smaller)
                     base + a small "Increase" striped segment OR "Decrease" outlined segment on top.
                     Total height = max(now, prev). Legend has 6 items (Put OI · Increase · Decrease · Call OI · Increase · Decrease). */}
-                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="pe_base" content={posLabel("pe_base")} /> : null}
+                </Bar>
+                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="pe_up" content={posLabel("pe_up")} /> : null}
+                </Bar>
+                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="pe_down" content={posLabel("pe_down")} /> : null}
+                </Bar>
+                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="ce_base" content={posLabel("ce_base")} /> : null}
+                </Bar>
+                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="ce_up" content={posLabel("ce_up")} /> : null}
+                </Bar>
+                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="ce_down" content={posLabel("ce_down")} /> : null}
+                </Bar>
               </>
             ) : (
               <>
                 {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars. Positive = up = increase,
                     Negative = down = decrease. y=0 baseline for clarity. */}
                 <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1} />
-                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" />
-                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" />
+                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="pe_delta" content={posLabel("pe_delta")} /> : null}
+                </Bar>
+                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out">
+                  {hasMarks ? <LabelList dataKey="ce_delta" content={posLabel("ce_delta")} /> : null}
+                </Bar>
               </>
             )}
           </BarChart>
@@ -255,6 +297,43 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     </div>
   );
 });
+
+function PosMark({ x, y, width, payload, dataKey, showOI, compact }) {
+  if (payload == null || x == null || y == null || !Number.isFinite(Number(x))) return null;
+  const isCe = String(dataKey || "").startsWith("ce");
+  const tag = isCe ? payload.ce_tag : payload.pe_tag;
+  if (!tag) return null;
+  const top = showOI
+    ? (isCe ? ceTopKey(payload) : peTopKey(payload))
+    : (isCe ? "ce_delta" : "pe_delta");
+  if (dataKey !== top) return null;
+  const r = compact ? 7 : 9;
+  const cx = Number(x) + Number(width || 0) / 2;
+  let cy = Number(y) - r - 3;
+  if (cy < r + 1) cy = r + 1;
+  const sold = tag === "S";
+  const fill = sold ? "#DC2626" : "#2563EB";
+  const side = isCe ? "CE" : "PE";
+  const title = sold ? `Sold ${payload.strike} ${side}` : `Bought ${payload.strike} ${side}`;
+  return (
+    <g data-testid={`oi-pos-mark-${side}-${payload.strike}`} style={{ pointerEvents: "none" }}>
+      <title>{title}</title>
+      <circle cx={cx} cy={cy} r={r} fill={fill} stroke="#fff" strokeWidth={1.4} />
+      <text
+        x={cx}
+        y={cy}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="#fff"
+        fontSize={compact ? 8 : 10}
+        fontWeight={800}
+        fontFamily="Outfit, system-ui, sans-serif"
+      >
+        {tag}
+      </text>
+    </g>
+  );
+}
 
 function SignalIcon({ tag, side }) {
   const isCall = side === "CE";
@@ -351,7 +430,7 @@ function TipRow({ color, label, value, muted, isDelta, deltaPositive, compact })
   );
 }
 
-function CustomLegend({ showOI, compact }) {
+function CustomLegend({ showOI, compact, hasMarks }) {
   const items = showOI
     ? [
         { label: "Put OI", swatch: <span className="w-3 h-3 inline-block rounded-sm" style={{ background: PUT_GREEN }} /> },
@@ -374,6 +453,18 @@ function CustomLegend({ showOI, compact }) {
             <span>{it.label}</span>
           </div>
         ))}
+        {hasMarks ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-extrabold text-white">B</span>
+              <span>Bought</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-extrabold text-white">S</span>
+              <span>Sold</span>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );
