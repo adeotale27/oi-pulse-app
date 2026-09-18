@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.14",
+    date: "2026-09-18",
+    user: [
+      "If you have open options, OI Change and Open Interest show a blue B (bought) or red S (sold) on that strike, above the bar.",
+    ],
+    admin: [
+      "B/S marks come from the live Positions book (same as the Positions page). They follow ATM/strike refreshes. Guests see them only when Positions is public and their Kite book is connected.",
+    ],
+  },
+  {
     version: "11.13",
     date: "2026-09-18",
     user: [
