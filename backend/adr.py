@@ -712,7 +712,8 @@ def row_view(cfg: Dict[str, Any], latest: Optional[Dict[str, Any]], *, us_open: 
     exch = cfg.get("exchange")
     venue_open = is_listing_session_open(exch)
     quote_open = obs.get("is_market_open")
-    listing_open = bool(quote_open) if quote_open is not None else venue_open
+    # Venue hours win: a last print / vendor flag must not keep the clock green after close.
+    listing_open = bool(venue_open) and quote_open is not False
     stale = (not listing_open) or obs.get("poll_status") in ("failed", "stale")
     status = "CURRENT"
     if obs.get("poll_status") == "failed":
@@ -744,7 +745,7 @@ def row_view(cfg: Dict[str, Any], latest: Optional[Dict[str, Any]], *, us_open: 
         "week52_low": obs.get("week52_low"),
         "week52_high": obs.get("week52_high"),
         "week52_range": obs.get("week52_range"),
-        "is_market_open": listing_open if quote_open is None else bool(quote_open),
+        "is_market_open": listing_open,
         "poll_status": obs.get("poll_status") or ("ok" if latest else "empty"),
         "fetched_at": obs.get("fetched_at"),
         "last_quote_at": obs.get("last_quote_at"),

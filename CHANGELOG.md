@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.11 — 2026-09-18
+
+Unchecking a tracked index only stops polling; Index-management-enabled names stay in Admin alerts, straddle ticks, and chart-signal lot fields. Kite lot size is stored on instrument sync / Enable. Error log is a bit narrower with wrapping, shows stored range, and can purge from the oldest day or flush all. ADR session clock follows listing hours, so a last print after the US close stays red.
+
 ## V11.10 — 2026-09-18
 
 Error log fills the viewport and wraps messages so the table does not need a horizontal scrollbar. Market Intel retention and min-history accept 0 (cleanup can wipe stored news). Enabling Gold turns the MCX desk on, uses Kite name GOLD (not GOLDM) and a 200-pt strike step, and the board picks up the name without a full reload. FINNIFTY / MIDCPNIFTY keep their own header and sidebar colours. Admin alerts, data collection, and chart-signal lots only list Index-management-enabled names. Header index tiles switch the desk on click.

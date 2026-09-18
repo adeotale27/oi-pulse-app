@@ -905,6 +905,7 @@ class SettingsIn(BaseModel):
     desk_ai_admin: Optional[bool] = None  # Compat alias of desk_ai_show
     desk_ai_public: Optional[bool] = None  # Compat alias of desk_ai_show
     mcx_desk_on: Optional[bool] = None  # Master MCX majors switch; Enable still per-name
+    lot_sizes: Optional[Dict[str, int]] = None  # Kite F&O lot size per index (chart signals)
 
     @field_validator(
         "cooldown_seconds",
@@ -1512,9 +1513,29 @@ async def get_settings(reload: bool = Query(False)):
         if not data.get("mcx_desk_on"):
             enabled = without_paused_mcx(enabled, INDEX_CONFIG)
         data["enabled_indices"] = enabled
-        data["known_indices"] = list(enabled)
-        data["alert_enabled_indices"] = [i for i in (data.get("alert_enabled_indices") or []) if i in enabled]
-        data["straddle_enabled_indices"] = [i for i in (data.get("straddle_enabled_indices") or []) if i in enabled]
+        known = []
+        if db is not None:
+            async for d in db.index_registry.find({"enabled": True}, {"_id": 1}):
+                if d.get("_id"):
+                    known.append(d["_id"])
+        if not known:
+            known = list(INDEX_CONFIG.keys())
+        if not data.get("mcx_desk_on"):
+            known = without_paused_mcx(known, INDEX_CONFIG)
+        data["known_indices"] = known
+        known_set = set(known)
+        data["alert_enabled_indices"] = [i for i in (data.get("alert_enabled_indices") or []) if i in known_set]
+        data["straddle_enabled_indices"] = [i for i in (data.get("straddle_enabled_indices") or []) if i in known_set]
+        lots = dict(data.get("lot_sizes") or {})
+        lots_out = {}
+        for k, v in lots.items():
+            try:
+                n = int(v)
+            except (TypeError, ValueError):
+                continue
+            if k in known_set and n > 0:
+                lots_out[k] = n
+        data["lot_sizes"] = lots_out
     except Exception:
         data["known_indices"] = list(INDEX_CONFIG.keys())
     return data
@@ -1617,20 +1638,17 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if v < 5 or v > 60:
             raise HTTPException(400, "cas_iep_interval_seconds must be 5–60")
         patch["cas_iep_interval_seconds"] = v
+    if "lot_sizes" in patch and isinstance(patch["lot_sizes"], dict):
+        clean = {}
+        for k, v in patch["lot_sizes"].items():
+            try:
+                n = int(v)
+            except (TypeError, ValueError):
+                continue
+            if n > 0:
+                clean[str(k).upper()] = n
+        patch["lot_sizes"] = clean
     out = await tracker.save_settings(patch)
-    if "enabled_indices" in patch:
-        try:
-            now_iso = datetime.now(timezone.utc).isoformat()
-            wanted = set(patch["enabled_indices"])
-            async for d in db.index_registry.find({}):
-                en = d["_id"] in wanted
-                if bool(d.get("enabled")) != en:
-                    await db.index_registry.update_one(
-                        {"_id": d["_id"]},
-                        {"$set": {"enabled": en, "updated_at": now_iso}},
-                    )
-        except Exception:
-            logger.warning("index_registry enabled sync from settings failed", exc_info=True)
     return out
 
 
@@ -1690,7 +1708,18 @@ async def admin_sync_instruments(_admin: bool = Depends(require_admin)):
     rows = await _kite_instrument_rows()
     summaries = summarize_underlyings(rows, q="", limit=None)
     n = await persist_underlyings(db, summaries)
-    return {"ok": True, "count": n}
+    try:
+        lots = dict((tracker.settings or {}).get("lot_sizes") or {})
+        for s in summaries:
+            uid = s.get("id")
+            ls = int(s.get("lot_size") or 0)
+            if uid and ls > 0 and not lots.get(uid):
+                lots[uid] = ls
+        if lots:
+            await tracker.save_settings({"lot_sizes": lots})
+    except Exception:
+        logger.warning("lot_sizes merge on index sync failed", exc_info=True)
+    return {"ok": True, "count": n, "lot_sizes": dict((tracker.settings or {}).get("lot_sizes") or {})}
 
 
 @api_router.get("/admin/indices/search")
@@ -1770,6 +1799,9 @@ async def admin_enable_index(
             "updated_at": now_iso,
             "created_at": (prev or {}).get("created_at") or now_iso,
         }
+        ls = int(info.get("lot_size") or (prev or {}).get("lot_size") or 0)
+        if ls > 0:
+            doc["lot_size"] = ls
         await db.index_registry.update_one({"_id": key}, {"$set": doc}, upsert=True)
         extra = {}
         async for d in db.index_registry.find({}):
@@ -1783,6 +1815,10 @@ async def admin_enable_index(
         if key not in enabled:
             enabled.append(key)
         patch = {"enabled_indices": enabled}
+        if ls > 0:
+            lots = dict(tracker.settings.get("lot_sizes") or {})
+            lots[key] = ls
+            patch["lot_sizes"] = lots
         if key in MCX_MAJOR_IDS:
             patch["mcx_desk_on"] = True
             try:
@@ -2935,7 +2971,9 @@ async def list_error_log(
         sources = sorted(s for s in (await db.error_logs.distinct("source")) if s)
     except Exception:
         sources = sorted({str(d.get("source") or "") for d in docs if d.get("source")})
-    return {"count": len(docs), "errors": docs, "sources": sources}
+    from error_log import store_stats
+    stats = await store_stats(db)
+    return {"count": len(docs), "errors": docs, "sources": sources, **stats}
 
 
 @api_router.get("/errors/unseen-count")
@@ -2957,6 +2995,29 @@ async def error_log_mark_seen(_admin: bool = Depends(require_admin)):
     iso = await mark_seen(db, ADMIN_USERNAME)
     n = await count_unseen(db, iso)
     return {"ok": True, "last_seen_at": iso, "unseen": n}
+
+
+@api_router.post("/errors/flush")
+async def error_log_flush(_admin: bool = Depends(require_admin)):
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    from error_log import flush_all, store_stats
+    deleted = await flush_all(db)
+    stats = await store_stats(db)
+    return {"ok": True, "deleted": deleted, **stats}
+
+
+@api_router.post("/errors/purge")
+async def error_log_purge(
+    days: int = Query(..., ge=1, le=3650),
+    _admin: bool = Depends(require_admin),
+):
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    from error_log import purge_from_oldest, store_stats
+    deleted = await purge_from_oldest(db, days)
+    stats = await store_stats(db)
+    return {"ok": True, "deleted": deleted, "days": days, **stats}
 
 
 @api_router.get("/config")

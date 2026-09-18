@@ -28,6 +28,7 @@ def _opt(name, itype, strike, expiry, exch="NFO", seg="NFO-OPT"):
         "exchange": exch,
         "segment": seg,
         "tradingsymbol": f"{name}{itype}{strike}",
+        "lot_size": 40,
     }
 
 
@@ -59,6 +60,8 @@ def test_summarize_and_inspect_finnifty():
     assert info["config"]["name"] == "FINNIFTY"
     assert info["config"]["quote_symbol"] == "NSE:NIFTY FIN SERVICE"
     assert info["step"] == 100
+    assert info["lot_size"] == 40
+    assert fin["lot_size"] == 40
 
 
 def test_inspect_crudeoil_nearest_fut():

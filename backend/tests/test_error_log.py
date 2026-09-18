@@ -99,3 +99,66 @@ def test_count_unseen_and_mark_seen_per_admin():
 
     asyncio.run(run())
 
+
+def test_store_stats_flush_and_purge_from_oldest():
+    import asyncio
+    from error_log import store_stats, flush_all, purge_from_oldest, COLLECTION
+
+    class Col:
+        def __init__(self, rows=None):
+            self.rows = list(rows or [])
+        async def count_documents(self, q):
+            if not q:
+                return len(self.rows)
+            return 0
+        async def find_one(self, q, proj=None, sort=None):
+            rows = list(self.rows)
+            if sort:
+                key, direction = sort[0]
+                rows.sort(key=lambda r: r.get(key) or "", reverse=direction < 0)
+            return rows[0] if rows else None
+        async def delete_many(self, q):
+            if not q:
+                n = len(self.rows)
+                self.rows = []
+                class R: deleted_count = n
+                return R()
+            cutoff = None
+            orq = q.get("$or") or []
+            if orq:
+                cutoff = orq[0].get("created_at", {}).get("$lt")
+            kept = []
+            n = 0
+            for r in self.rows:
+                when = r.get("created_at") or r.get("ts")
+                if cutoff and when and when < cutoff:
+                    n += 1
+                else:
+                    kept.append(r)
+            self.rows = kept
+            class R: deleted_count = n
+            return R()
+
+    class Db:
+        def __init__(self):
+            self.cols = {COLLECTION: Col([
+                {"id": "a", "created_at": "2026-09-01T10:00:00+00:00"},
+                {"id": "b", "created_at": "2026-09-03T10:00:00+00:00"},
+                {"id": "c", "created_at": "2026-09-10T10:00:00+00:00"},
+            ])}
+        def __getitem__(self, k):
+            return self.cols[k]
+
+    db = Db()
+
+    async def run():
+        stats = await store_stats(db)
+        assert stats["stored"] == 3
+        assert stats["oldest"].startswith("2026-09-01")
+        n = await purge_from_oldest(db, 2)
+        assert n == 1
+        assert await flush_all(db) == 2
+        assert (await store_stats(db))["stored"] == 0
+
+    asyncio.run(run())
+

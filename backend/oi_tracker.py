@@ -211,6 +211,7 @@ DEFAULT_SETTINGS = {
     "desk_ai_public": False,
     # MCX majors (GOLD/CRUDE/…) — off until Admin turns this on, then Enable per name.
     "mcx_desk_on": False,
+    "lot_sizes": {"NIFTY": 65, "SENSEX": 20, "BANKNIFTY": 30},
     "market_intel_ingest_seconds": 300,
     "market_intel_retention_days": 5,
     "market_intel_min_history_days": 2,

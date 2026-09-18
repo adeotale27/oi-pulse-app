@@ -80,7 +80,7 @@ Copy this into the PR. Do not ship with boxes unchecked.
 - [ ] **Trade journal** — those legs snapshot into the admin journal. Enabled MCX majors (GOLD, CRUDEOIL, …) have their own year-heatmap row. FINNIFTY / stocks / minis stay in `booked_index_pnl.OTHER`.
 - [ ] **Year heatmap** — Trade Journal year view lists desk + enabled MCX majors, plus an **Others** row.
 - [ ] **Phone + existing chrome** — ship the same control on phone. Fit extra names into the **existing** header / sidebar / sticky index row (`INDEX_CHIP_CAP` = 3: dropdown or slide, do not grow those panes). The phone index picker must be able to select the new name so its OI loads. Do not invent a larger window.
-- [ ] **Enable path** — first Kite dump can exceed 20s; Index management Enable/inspect uses a 90s timeout. Admin configuration ticks must keep extras already enabled (union `known_indices` with `enabled_indices`).
+- [ ] **Enable path** — first Kite dump can exceed 20s; Index management Enable/inspect uses a 90s timeout. Admin lists use Index-management-enabled names (`known_indices`); Tracked indices only control polling (`enabled_indices`). Kite `lot_size` fills chart-signal lots on sync/Enable.
 - [ ] **Desk AI** — if the name is MCX and it is the selected index, Desk AI loads that commodity tape; NSE selection keeps the cash heavyweight tape.
 - [ ] **Admin config first** — before hardcoding an interval or similar, check SettingsModal / `DEFAULT_SETTINGS`. Use the saved value end to end.
 - [ ] Catalog lockstep: `backend/universe.py` **and** `frontend/src/lib/universe.js` (quote hint, `session_group`, `pollable`).

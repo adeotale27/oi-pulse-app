@@ -152,6 +152,60 @@ async def count_unseen(db, since_iso: Optional[str]) -> int:
     return int(await db[COLLECTION].count_documents(unseen_filter(since_iso)))
 
 
+def _row_when(row: Optional[dict]) -> Optional[str]:
+    if not row:
+        return None
+    return row.get("created_at") or row.get("ts")
+
+
+async def store_stats(db) -> dict:
+    if db is None:
+        return {"stored": 0, "oldest": None, "newest": None}
+    coll = db[COLLECTION]
+    stored = int(await coll.count_documents({}))
+    oldest = newest = None
+    if stored:
+        first = await coll.find_one({}, {"created_at": 1, "ts": 1, "_id": 0}, sort=[("created_at", 1)])
+        last = await coll.find_one({}, {"created_at": 1, "ts": 1, "_id": 0}, sort=[("created_at", -1)])
+        oldest = _row_when(first)
+        newest = _row_when(last)
+    return {"stored": stored, "oldest": oldest, "newest": newest}
+
+
+async def flush_all(db) -> int:
+    if db is None:
+        return 0
+    res = await db[COLLECTION].delete_many({})
+    return int(getattr(res, "deleted_count", 0) or 0)
+
+
+async def purge_from_oldest(db, days: int) -> int:
+    """Delete errors from the oldest stored timestamp through N calendar days."""
+    if db is None or int(days) < 1:
+        return 0
+    first = await db[COLLECTION].find_one({}, sort=[("created_at", 1)])
+    start = _row_when(first)
+    if not start:
+        return 0
+    raw = str(start).replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        dt = _now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    cutoff = (dt + timedelta(days=int(days))).isoformat()
+    res = await db[COLLECTION].delete_many(
+        {
+            "$or": [
+                {"created_at": {"$lt": cutoff}},
+                {"created_at": {"$exists": False}, "ts": {"$lt": cutoff}},
+            ]
+        }
+    )
+    return int(getattr(res, "deleted_count", 0) or 0)
+
+
 async def mark_seen(db, username: str, when: Optional[datetime] = None) -> str:
     iso = (when or _now()).isoformat()
     uid = str(username or "admin").strip() or "admin"
