@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.16 — 2026-09-18
+
+OI B/S badges sit on the centre of each candle and move with the bars (zoom and timeframe). Hover is on the badge: green P&L if profit, red if loss.
+
 ## V11.15 — 2026-09-18
 
 Open option B/S marks sit on the matching OI Change / Open Interest candles for the expiry you have open (including next week / next month). Tightening ATM ±N hides marks with those strikes; widening brings them back. Hover (or tap on phone) shows lots and running P&L.

@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.16",
+    date: "2026-09-18",
+    user: [
+      "Bought/Sold sits on the middle of that candle and stays there when you zoom or change the timeframe. Hover on the badge: green if that leg is in profit, red if it is in loss.",
+    ],
+    admin: [
+      "Marks are drawn in the chart SVG (bar centre), not a separate overlay.",
+    ],
+  },
+  {
     version: "11.15",
     date: "2026-09-18",
     user: [
