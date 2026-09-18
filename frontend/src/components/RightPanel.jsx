@@ -229,6 +229,7 @@ export default function RightPanel({
               currentTime={current?.timestamp}
               prevTime={previous?.timestamp}
               index={activeIndex}
+              expiry={selectedExpiry}
             />
           )}
           {selectedView === "oi-change" && (
@@ -241,6 +242,7 @@ export default function RightPanel({
               currentTime={current?.timestamp}
               prevTime={previous?.timestamp}
               index={activeIndex}
+              expiry={selectedExpiry}
             />
           )}
           {selectedView === "straddle" && (

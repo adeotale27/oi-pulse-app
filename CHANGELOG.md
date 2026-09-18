@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.15 — 2026-09-18
+
+Open option B/S marks sit on the matching OI Change / Open Interest candles for the expiry you have open (including next week / next month). Tightening ATM ±N hides marks with those strikes; widening brings them back. Hover (or tap on phone) shows lots and running P&L.
+
 ## V11.14 — 2026-09-18
 
 OI Change and Open Interest charts mark open option legs: blue **B** (bought) and red **S** (sold) sit on the matching strike bar and move with it. Shown from the live Positions book when Kite is connected (admin, or guests if Positions is public). Closed legs drop off.

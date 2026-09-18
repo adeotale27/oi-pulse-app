@@ -2676,6 +2676,7 @@ export default function Dashboard() {
                       key={`${activeIndex}-${timeframe}-${showOI ? "oi" : "chg"}`}
                       compact={isMobile}
                       index={activeIndex}
+                      expiry={selectedExpiry || current?.expiry}
                       current={current?.index && current.index !== activeIndex ? null : filteredCurrent}
                       previous={current?.index && current.index !== activeIndex ? null : (replayFrame || previous)}
                       atm={current?.atm}
@@ -2852,6 +2853,7 @@ export default function Dashboard() {
                     <OIChart
                       compact={isMobile}
                       index={activeIndex}
+                      expiry={selectedExpiry || current?.expiry}
                       current={filteredCurrent}
                       previous={null}
                       atm={current?.atm}
