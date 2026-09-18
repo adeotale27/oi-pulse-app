@@ -19,6 +19,7 @@ from adr import (
     public_prefs,
     quote_credit_wait_s,
     quote_spec,
+    row_view,
     should_poll_now,
     universe_doc,
     validate_universe_row,
@@ -178,3 +179,16 @@ def test_quote_spec_tata_wns():
     assert validate_universe_row({"company_name": "X"}) == "Indian symbol required"
     assert validate_universe_row(universe_doc(SEED_ADRS[0])) == ""
     assert validate_universe_row({**SEED_ADRS[0], "adr_ratio": "nope"}) == "ADR ratio must look like 1:1"
+
+
+def test_row_view_closed_when_venue_closed(monkeypatch):
+    import adr as adr_mod
+    monkeypatch.setattr(adr_mod, "is_listing_session_open", lambda exch, dt=None: False)
+    view = adr_mod.row_view(
+        {"id": "infy", "adr_symbol": "INFY", "exchange": "NYSE", "company_name": "Infosys"},
+        {"is_market_open": True, "last_price": 11.0, "poll_status": "ok", "fetched_at": "2026-09-18T12:00:00+00:00"},
+        us_open=False,
+    )
+    assert view["listing_open"] is False
+    assert view["is_market_open"] is False
+    assert view["stale"] is True

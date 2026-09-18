@@ -88,8 +88,20 @@ export default function SettingsModal({
         const d = normalizeLoadedSettings(r.data || {});
         setSettings(d);
         const enabled = Array.isArray(d.enabled_indices) ? d.enabled_indices : [];
-        const pool = [...new Set(enabled)].filter(Boolean);
+        const known = Array.isArray(d.known_indices) ? d.known_indices : [];
+        const pool = [...new Set([...known, ...enabled])].filter(Boolean);
         if (pool.length) setKnownIndices(pool);
+        const kiteLots = d.lot_sizes && typeof d.lot_sizes === "object" ? d.lot_sizes : {};
+        setLocal((prev) => {
+          const lotSize = { ...prev.lotSize };
+          Object.entries(kiteLots).forEach(([k, v]) => {
+            const n = Number(v);
+            if (k && n > 0 && !lotSize[k]) lotSize[k] = n;
+          });
+          const next = { ...prev, lotSize };
+          saveOISettings(next);
+          return next;
+        });
       })
       .catch((e) => {
         setLoadError(e?.response?.data?.detail || e.message || "Failed to load settings");
@@ -129,13 +141,9 @@ export default function SettingsModal({
       }
       cur.delete(idx);
     } else cur.add(idx);
-    const next = [...new Set([...knownIndices, ...(settings.enabled_indices || [])])].filter((i) => cur.has(i));
-    setKnownIndices(next);
     setSettings({
       ...settings,
-      enabled_indices: next,
-      alert_enabled_indices: (settings.alert_enabled_indices || []).filter((i) => next.includes(i)),
-      straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => next.includes(i)),
+      enabled_indices: Array.from(cur),
     });
   };
 
@@ -206,8 +214,9 @@ export default function SettingsModal({
           cooldown_seconds: settings.cooldown_seconds,
           compare_minutes: settings.compare_minutes,
           enabled_indices: settings.enabled_indices,
-          straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => (settings.enabled_indices || []).includes(i)),
-          alert_enabled_indices: (settings.alert_enabled_indices || []).filter((i) => (settings.enabled_indices || []).includes(i)),
+          straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => knownIndices.includes(i)),
+          alert_enabled_indices: (settings.alert_enabled_indices || []).filter((i) => knownIndices.includes(i)),
+          lot_sizes: local.lotSize || {},
           oi_poll_interval_seconds: settings.oi_poll_interval_seconds,
           straddle_poll_interval_seconds: settings.straddle_poll_interval_seconds,
           positions_poll_interval_seconds: positionsPoll,
@@ -395,7 +404,7 @@ export default function SettingsModal({
             <div>
               <div className="flex items-center justify-between gap-3 mb-2">
                 <Label className="text-xs uppercase tracking-wider text-slate-500">
-                  Tracked indices (polled every cycle)
+                  Tracked indices (polled every cycle). Unchecking stops the poll; the name stays in Admin settings while it is Enabled in Index management.
                 </Label>
                 <label className="inline-flex items-center gap-2 text-[12px] font-semibold text-slate-700" data-testid="settings-mcx-desk-toggle">
                   MCX

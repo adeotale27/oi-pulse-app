@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.11",
+    date: "2026-09-18",
+    user: [
+      "The ADR open/closed clock follows US or German listing hours, so it stays red after that market closes even if a last print is still on screen. The error log window is a bit smaller; long messages wrap.",
+    ],
+    admin: [
+      "Tracked indices is the poll list only. Names Enabled in Index management stay in Admin configuration (alerts, straddle, lot size). Kite lot size fills chart-signal lots on sync/Enable. Error log shows stored count and date range, with delete-from-oldest-days and flush-all.",
+    ],
+  },
+  {
     version: "11.10",
     date: "2026-09-18",
     user: [

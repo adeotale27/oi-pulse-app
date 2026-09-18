@@ -120,9 +120,9 @@ export function listingMarketName(exchangeOrRow) {
 
 export function isAdrSessionOpen(row) {
   if (!row) return false;
-  if (row.listing_open === true || row.is_market_open === true) return true;
-  if (row.listing_open === false || row.is_market_open === false) return false;
-  if (row.display_status === "CURRENT" && !row.stale) return true;
+  if (row.listing_open === false) return false;
+  if (row.is_market_open === false) return false;
+  if (row.listing_open === true) return true;
   return false;
 }
 
@@ -137,8 +137,8 @@ export function formatAdrCell(col, row) {
     const venue = listingMarketName(row);
     if (row.display_status === "CURRENT" && isAdrSessionOpen(row)) return `${venue} Open`;
     if (row.display_status === "LAST_KNOWN") return "Using Last Successful Data";
-    if (row.stale) return `${venue} Closed`;
-    return isAdrSessionOpen(row) ? `${venue} Open` : `${venue} Closed`;
+    if (!isAdrSessionOpen(row) || row.stale) return `${venue} Closed`;
+    return `${venue} Open`;
   }
   if (id === "updated") return formatIstStamp(row.fetched_at);
   const v = row[id];

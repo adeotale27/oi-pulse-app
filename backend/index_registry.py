@@ -31,6 +31,17 @@ QUOTE_HINTS = {
 }
 
 
+def lot_size_from_rows(rows: Iterable[Dict[str, Any]]) -> Optional[int]:
+    for row in rows or []:
+        try:
+            ls = int(row.get("lot_size") or 0)
+        except (TypeError, ValueError):
+            continue
+        if ls > 0:
+            return ls
+    return None
+
+
 def infer_step(strikes: Iterable[Any], fallback: int = 50) -> int:
     xs = sorted({int(s) for s in strikes if s not in (None, "") and str(s).replace(".", "", 1).isdigit() and float(s) > 0})
     diffs = [xs[i + 1] - xs[i] for i in range(len(xs) - 1) if xs[i + 1] > xs[i]]
@@ -75,8 +86,13 @@ def summarize_underlyings(rows: List[Dict[str, Any]], q: str = "", limit: int = 
                 "expiries": set(),
                 "sample_opt": None,
                 "sample_fut": None,
+                "lot_size": None,
             },
         )
+        if b.get("lot_size") is None:
+            ls = lot_size_from_rows([row])
+            if ls:
+                b["lot_size"] = ls
         if exch:
             b["exchanges"].add(exch)
         if seg:
@@ -120,6 +136,7 @@ def summarize_underlyings(rows: List[Dict[str, Any]], q: str = "", limit: int = 
                 "capabilities": caps,
                 "expiry_count": len(b["expiries"]),
                 "strike_count": len(b["strikes"]),
+                "lot_size": b.get("lot_size"),
             }
         )
     out.sort(key=lambda r: (0 if r["id"] in DESK_IDS else 1, r["id"]))
@@ -230,6 +247,7 @@ def inspect_underlying(rows: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
         "capabilities": caps,
         "config": cfg,
         "can_enable_oi": bool(cfg) and caps["optionOI"],
+        "lot_size": lot_size_from_rows(ce or pe or fut or related),
         "notes": notes,
         "hint": hint,
     }
@@ -250,6 +268,7 @@ def public_registry_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         "segment": doc.get("segment"),
         "step": doc.get("step"),
         "enabled": bool(doc.get("enabled")),
+        "lot_size": int(doc["lot_size"]) if doc.get("lot_size") else None,
         "capabilities": caps,
         "updated_at": doc.get("updated_at"),
     }
