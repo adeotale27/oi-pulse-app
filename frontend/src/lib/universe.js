@@ -36,8 +36,11 @@ export const INDEX_STEP = {
   NIFTY: 50,
   SENSEX: 100,
   BANKNIFTY: 100,
+  FINNIFTY: 50,
+  MIDCPNIFTY: 25,
+  BANKEX: 100,
   CRUDEOIL: 50,
-  GOLD: 100,
+  GOLD: 200,
   SILVER: 250,
   NATURALGAS: 1,
 };
@@ -46,6 +49,9 @@ export const INDEX_SHORT = {
   NIFTY: "NIFTY",
   SENSEX: "SENSEX",
   BANKNIFTY: "BNF",
+  FINNIFTY: "FINNIFTY",
+  MIDCPNIFTY: "MIDCP",
+  BANKEX: "BANKEX",
   CRUDEOIL: "CRUDE",
   GOLD: "GOLD",
   SILVER: "SILVER",
@@ -56,6 +62,9 @@ export const INDEX_DOT = {
   NIFTY: "bg-sky-500",
   SENSEX: "bg-amber-500",
   BANKNIFTY: "bg-emerald-500",
+  FINNIFTY: "bg-indigo-500",
+  MIDCPNIFTY: "bg-fuchsia-500",
+  BANKEX: "bg-teal-600",
   CRUDEOIL: "bg-slate-600",
   GOLD: "bg-yellow-500",
   SILVER: "bg-zinc-400",
@@ -122,8 +131,7 @@ export function matchSymbolPrefix(tradingsymbol) {
 export function normalizeEnabledIndices(list, mcxDeskOn = MCX_DESK_AVAILABLE) {
   const raw = (Array.isArray(list) ? list : [])
     .map((x) => normalizeId(x))
-    .filter(Boolean)
-    .filter((i) => mcxDeskOn || !MCX_MAJOR_IDS.includes(i));
+    .filter(Boolean);
   const set = new Set(raw);
   const desk = DESK_IDS.filter((i) => set.has(i));
   const extra = raw.filter((i) => !DESK_IDS.includes(i));

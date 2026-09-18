@@ -67,7 +67,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, fetchConfig, api, completeUserKiteSession, userKiteLoginUrl, prefetchStraddleHistory } from "@/lib/api";
+import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, fetchConfig, invalidateConfigCache, api, completeUserKiteSession, userKiteLoginUrl, prefetchStraddleHistory } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
 import { applyMarketHoursFromStatus, getMarketOpenMinute, getMarketCloseMinute, nseCashSessionLive, isMarketQuiescent, EVENT_WARNING_MINUTE, istMinutesOfDay } from "@/lib/marketTimes";
@@ -598,7 +598,9 @@ export default function Dashboard() {
       if (Array.isArray(settings.visible_pages)) setVisiblePages(sanitizePageList(settings.visible_pages));
       if (Array.isArray(settings.admin_visible_pages)) setAdminVisiblePages(sanitizePageList(settings.admin_visible_pages));
       if (Array.isArray(settings.enabled_indices) && settings.enabled_indices.length) {
-        setEnabledIndices(normalizeEnabledIndices(settings.enabled_indices, !!settings.mcx_desk_on));
+        const next = normalizeEnabledIndices(settings.enabled_indices, !!settings.mcx_desk_on || settings.enabled_indices.some((i) => ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS"].includes(i)));
+        setEnabledIndices(next);
+        setActiveIndex((cur) => (next.includes(cur) ? cur : next[0]));
       }
       if (Array.isArray(settings.alert_enabled_indices) && settings.alert_enabled_indices.length) {
         setAlertEnabledIndices(settings.alert_enabled_indices);
@@ -1367,7 +1369,9 @@ export default function Dashboard() {
     if (Array.isArray(d.visible_pages)) setVisiblePages(sanitizePageList(d.visible_pages));
     if (Array.isArray(d.admin_visible_pages)) setAdminVisiblePages(sanitizePageList(d.admin_visible_pages));
     if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
-      setEnabledIndices(normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on));
+      const next = normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on);
+      setEnabledIndices(next);
+      setActiveIndex((cur) => (next.includes(cur) ? cur : next[0]));
     }
     if (d.indices && typeof d.indices === "object") setIndexMeta(d.indices);
     if (Array.isArray(d.alert_enabled_indices) && d.alert_enabled_indices.length) {
@@ -3276,9 +3280,14 @@ export default function Dashboard() {
       <IndexManagementModal
         open={indexManagerOpen}
         onOpenChange={setIndexManagerOpen}
-        onChanged={() => {
-          fetchSettings();
-          fetchConfig().then((data) => applyServerSettings(data || {})).catch(() => {});
+        onChanged={(data) => {
+          invalidateConfigCache();
+          if (Array.isArray(data?.enabled_indices) && data.enabled_indices.length) {
+            setEnabledIndices(normalizeEnabledIndices(data.enabled_indices, true));
+          }
+          fetchConfig({ force: true }).then((cfg) => applyServerSettings(cfg || {})).catch(() => {});
+          loadTickers();
+          try { window.dispatchEvent(new CustomEvent("oi-settings-saved", { detail: data || {} })); } catch (_) {}
         }}
       />
 

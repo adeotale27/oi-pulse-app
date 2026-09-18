@@ -10,6 +10,7 @@ import {
   INDEX_CHIP_CAP,
   usesIndexOverflow,
   MCX_DESK_AVAILABLE,
+  INDEX_STEP,
 } from "./universe.js";
 
 assert.equal(MCX_DESK_AVAILABLE, false);
@@ -22,7 +23,7 @@ assert.equal(isDeskId("GOLD"), false);
 assert.equal(isDeskId("NIFTY"), true);
 assert.deepEqual(
   normalizeEnabledIndices(["BANKNIFTY", "GOLD", "nifty", "BANK", "FINNIFTY"]),
-  ["NIFTY", "BANKNIFTY", "FINNIFTY"],
+  ["NIFTY", "BANKNIFTY", "GOLD", "FINNIFTY"],
 );
 assert.deepEqual(
   normalizeEnabledIndices(["BANKNIFTY", "GOLD", "nifty"], true),
@@ -38,5 +39,8 @@ assert.equal(isDeskId("CRUDEOIL"), false);
 assert.equal(INDEX_CHIP_CAP, 3);
 assert.equal(usesIndexOverflow(["NIFTY", "SENSEX", "BANKNIFTY"]), false);
 assert.equal(usesIndexOverflow(["NIFTY", "SENSEX", "BANKNIFTY", "GOLD"]), true);
+assert.equal(INDEX_STEP.GOLD, 200);
+assert.equal(INDEX_STEP.FINNIFTY, 50);
+assert.equal(INDEX_STEP.MIDCPNIFTY, 25);
 
 console.log("universe.test.js: ok");

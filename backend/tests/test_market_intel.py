@@ -96,6 +96,9 @@ def test_retention_five_day_window():
 def test_min_history_validation():
     ret, mn = clamp_retention(3, 5)
     assert ret >= mn == 5
+    r0, m0 = clamp_retention(0, 0)
+    assert r0 == 0 and m0 == 0
+    assert retention_cutoff(date(2026, 9, 15), 0, 0) == date(2026, 9, 16)
 
 
 def test_weekend_context_inside_five_days():

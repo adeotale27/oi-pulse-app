@@ -107,7 +107,41 @@ const INDEX_STYLE = {
     idleChgDn: "text-rose-700",
     activeChg: "text-white/90",
   },
+  FINNIFTY: {
+    label: "FINNIFTY",
+    short: "FINNIFTY",
+    dot: "bg-indigo-500",
+    selectedBorder: "border-indigo-500",
+    idleShell: "bg-gradient-to-br from-indigo-50 to-violet-50 text-indigo-900 border-indigo-100 hover:from-indigo-100",
+    activeShell: "bg-gradient-to-br from-indigo-500 to-violet-600 text-white border-indigo-500 shadow-md shadow-indigo-500/20",
+    idleChgUp: "text-emerald-700",
+    idleChgDn: "text-rose-700",
+    activeChg: "text-white/90",
+  },
+  MIDCPNIFTY: {
+    label: "MIDCP NIFTY",
+    short: "MIDCP",
+    dot: "bg-fuchsia-500",
+    selectedBorder: "border-fuchsia-500",
+    idleShell: "bg-gradient-to-br from-fuchsia-50 to-pink-50 text-fuchsia-900 border-fuchsia-100 hover:from-fuchsia-100",
+    activeShell: "bg-gradient-to-br from-fuchsia-500 to-pink-600 text-white border-fuchsia-500 shadow-md shadow-fuchsia-500/20",
+    idleChgUp: "text-emerald-700",
+    idleChgDn: "text-rose-700",
+    activeChg: "text-white/90",
+  },
 };
+
+function tickerStyle(idx) {
+  return INDEX_STYLE[idx] || {
+    ...INDEX_STYLE.NIFTY,
+    label: idx,
+    short: idx,
+    dot: "bg-indigo-500",
+    selectedBorder: "border-indigo-500",
+    idleShell: "bg-gradient-to-br from-slate-50 to-indigo-50 text-slate-800 border-slate-200",
+    activeShell: "bg-gradient-to-br from-indigo-500 to-slate-700 text-white border-indigo-500 shadow-md",
+  };
+}
 
 function useDragScroll(ref, enabled) {
   useEffect(() => {
@@ -119,6 +153,7 @@ function useDragScroll(ref, enabled) {
     let startScroll = 0;
     const onDown = (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (e.target?.closest?.("button,a,[data-testid^='ticker-']")) return;
       dragging = true;
       moved = false;
       startX = e.clientX;
@@ -129,7 +164,8 @@ function useDragScroll(ref, enabled) {
     const onMove = (e) => {
       if (!dragging) return;
       const dx = e.clientX - startX;
-      if (Math.abs(dx) > 4) moved = true;
+      if (Math.abs(dx) <= 16) return;
+      moved = true;
       el.scrollLeft = startScroll - dx;
     };
     const onUp = (e) => {
@@ -162,7 +198,7 @@ function useDragScroll(ref, enabled) {
 }
 
 function headerTileTone(indexKey, up, flat, isActive) {
-  const s = INDEX_STYLE[indexKey] || INDEX_STYLE.NIFTY;
+  const s = tickerStyle(indexKey);
   if (isActive) {
     return {
       shell: s.activeShell,
@@ -250,7 +286,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
         data-testid="ticker-strip"
       >
         {displayTickers.map((t) => {
-          const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
+          const s = tickerStyle(t.index);
           const up = t.change > 0;
           const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
           const toneCls = flat ? "text-slate-600 dark:text-slate-300" : up ? "text-emerald-600" : "text-rose-600";
@@ -335,7 +371,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
   return (
     <div ref={isHeader ? scrollerRef : undefined} className={stripClass} data-testid="ticker-strip">
       {displayTickers.map((t) => {
-        const s = INDEX_STYLE[t.index] || INDEX_STYLE.NIFTY;
+        const s = tickerStyle(t.index);
         const up = t.change > 0;
         const flat = Math.abs(t.change) < 0.01 || t.ltp == null || Number(t.ltp) === 0;
         const isActive = t.index === activeIndex;

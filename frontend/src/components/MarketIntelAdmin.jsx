@@ -116,12 +116,12 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
                 data-testid="mi-ingest-seconds" />
             </label>
             <label>Retention days
-              <input type="number" min={3} max={90} className="w-full h-8 border rounded-sm px-2 mt-0.5"
+              <input type="number" min={0} className="w-full h-8 border rounded-sm px-2 mt-0.5"
                 value={settings.market_intel_retention_days ?? 5}
                 onChange={(e) => setSettings({ ...settings, market_intel_retention_days: Number(e.target.value) })} />
             </label>
             <label>Min history days
-              <input type="number" min={1} max={30} className="w-full h-8 border rounded-sm px-2 mt-0.5"
+              <input type="number" min={0} className="w-full h-8 border rounded-sm px-2 mt-0.5"
                 value={settings.market_intel_min_history_days ?? 2}
                 onChange={(e) => setSettings({ ...settings, market_intel_min_history_days: Number(e.target.value) })} />
             </label>
