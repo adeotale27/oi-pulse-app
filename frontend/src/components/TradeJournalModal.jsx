@@ -1063,7 +1063,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                         </span>
                       );
                     })()}
-                    {dayDoc.eod_locked ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-violet-600">Locked 15:45</span> : <span className="ml-2 text-[10px] font-medium text-slate-400">Live until 15:45 IST</span>}
+                    {dayDoc.eod_locked ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-violet-600">Locked 15:46</span> : <span className="ml-2 text-[10px] font-medium text-slate-400">Live until 15:46 IST</span>}
                   </div>
                   {dayDoc.funds_base ? (
                     <div className="text-[11px] text-slate-500 mt-0.5 font-mono-data">

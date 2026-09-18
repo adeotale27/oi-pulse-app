@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.13 — 2026-09-18
+
+Journal booked P&L is the 15:46 IST print, written to Mongo and frozen. After that the next session is a new day (no leftover rewrite). MCX desks still wait for commodity close + 5 min.
+
 ## V11.12 — 2026-09-18
 
 Trade journal on desktop uses nearly the full viewport so the month grid is not clipped. The background journal snapshot keeps writing after OI hours (15:40) and after EOD lock, so booked P&L is stored even when leftover hedges print later. An open-only 0-booked book is not frozen as EOD. Error log is taller.

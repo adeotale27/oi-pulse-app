@@ -5475,8 +5475,6 @@ async def _journal_eod_lock_loop() -> None:
                     except Exception as e:
                         log.warning("journal special-session snapshot failed: %s", e)
 
-            # Keep writing booked P&L for the calendar session even after OI hours
-            # end (15:40) — Kite day P&L is still live until / after cash close.
             if not journal.should_lock_eod(now, live_session=live, enabled_indices=enabled):
                 if calendar_session:
                     if time.monotonic() - _last_special_journal_snap_mono >= 60:
@@ -5488,20 +5486,10 @@ async def _journal_eod_lock_loop() -> None:
                             log.warning("journal in-session snapshot failed: %s", e)
                 continue
             if locked_for == day:
-                if time.monotonic() - _last_special_journal_snap_mono >= 60:
-                    try:
-                        mid = await get_positions(None, "admin")
-                        await _snapshot_trade_journal(mid, force_lock=True, live_session=live)
-                        _last_special_journal_snap_mono = time.monotonic()
-                    except Exception as e:
-                        log.warning("journal post-lock snapshot failed: %s", e)
                 continue
             if db is not None:
-                existing = await db.trade_journal.find_one(
-                    {"date": day},
-                    {"eod_locked": 1, "booked_pnl": 1, "exited_count": 1, "partial_count": 1, "pnl_exited": 1, "legs": 1},
-                )
-                if existing and existing.get("eod_locked") and journal._is_traded(existing):
+                existing = await db.trade_journal.find_one({"date": day}, {"eod_locked": 1})
+                if existing and existing.get("eod_locked"):
                     locked_for = day
                     continue
             try:
