@@ -9,12 +9,13 @@ from typing import Any, Dict, List, Optional
 from market_hours import (
     is_trading_day,
     is_journal_session_day,
+    is_special_session_day,
     now_ist,
     IST,
     eod_lock_time,
     session_anchor_date,
 )
-from universe import DESK_IDS, HEATMAP_IDS, match_symbol_prefix
+from universe import DESK_IDS, HEATMAP_IDS, MCX_MAJOR_IDS, match_symbol_prefix
 from account_equity import (
     apply_period_equity,
     attach_live_funds,
@@ -24,8 +25,8 @@ from account_equity import (
     pnl_after_charges,
 )
 
-# Freeze after the last Positions auto-refresh (Index F&O close + 5 min catch-up).
-EOD_LOCK_IST = dtime(15, 45)
+# Index F&O booked P&L is frozen into Mongo at 15:46 IST; after that the next session is a new day.
+EOD_LOCK_IST = dtime(15, 46)
 # Fallback if special-session close is missing (evening Muhurat).
 SPECIAL_SESSION_LOCK_IST = dtime(20, 0)
 HEATMAP_INDICES = HEATMAP_IDS
@@ -281,15 +282,20 @@ def snapshot_from_positions(
 
 
 def should_lock_eod(dt=None, *, live_session: bool = False, enabled_indices=None) -> bool:
-    """True when the journal should freeze booked P&L for this IST clock.
+    """True when today's booked P&L should be frozen into Mongo.
 
-    Regular NSE-only desks lock at 15:45. If MCX names are enabled, lock after
-    that commodity's close + 5 min so evening GOLD/CRUDE prints are not dropped.
-    Muhurat locks at that session's close + 5 min. Unlisted live sessions lock at 20:00.
+    Index F&O: 15:46 IST — that print is the day, then we start the next session.
+    MCX majors enabled: wait until that commodity's close + 5 min.
+    Muhurat / surprise live sessions: that session's close + 5 min / 20:00.
     """
     dt = dt or now_ist()
     if is_trading_day(dt):
-        return dt.time() >= eod_lock_time(dt, enabled_indices=enabled_indices)
+        if is_special_session_day(dt):
+            return dt.time() >= eod_lock_time(dt, enabled_indices=enabled_indices)
+        ids = {str(x).upper() for x in (enabled_indices or [])}
+        if ids & set(MCX_MAJOR_IDS):
+            return dt.time() >= eod_lock_time(dt, enabled_indices=enabled_indices)
+        return dt.time() >= EOD_LOCK_IST
     if live_session:
         return dt.time() >= SPECIAL_SESSION_LOCK_IST
     return False
@@ -300,9 +306,11 @@ def snapshot_is_empty(snap: Optional[Dict[str, Any]]) -> bool:
         return True
     if int(snap.get("trade_count") or 0) > 0:
         return False
-    if int(snap.get("open_count") or 0) + int(snap.get("exited_count") or 0) > 0:
+    if int(snap.get("open_count") or 0) + int(snap.get("exited_count") or 0) + int(snap.get("partial_count") or 0) > 0:
         return False
     if snap.get("legs"):
+        return False
+    if abs(_num(snap.get("booked_pnl"))) >= 0.01:
         return False
     return abs(_num(snap.get("pnl_total"))) < 0.01 and abs(_num(snap.get("pnl_exited"))) < 0.01
 
@@ -360,44 +368,14 @@ def apply_snapshot(
 ) -> Optional[Dict[str, Any]]:
     """Fields to $set for P&L. None = leave stored P&L untouched (empty clobber).
 
-    After EOD lock, a non-empty same-day snap may still revise booked P&L (expiry
-    leftover hedges booked after 15:45). Notes / tags / screenshots are not in snap.
+    At 15:46 IST the booked print is frozen. After lock we do not rewrite the day —
+    the next session is a new Mongo row.
     """
     now = now or now_ist()
     existing = existing or {}
     keep_day = _resolve_trading_date(existing, snap)
-    snap_day = str(snap.get("date") or "")
     if existing.get("eod_locked"):
-        if snapshot_is_empty(snap):
-            return None
-        exist_day = str(existing.get("trading_date") or existing.get("date") or "")
-        if exist_day and snap_day and exist_day != snap_day:
-            out = dict(snap)
-            out["date"] = exist_day
-            out["trading_date"] = exist_day
-            _carry_charges(out, existing)
-            booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
-            out["booked_pnl"] = booked
-            out["eod_locked"] = True
-            out["eod_locked_at"] = existing.get("eod_locked_at") or datetime.now(timezone.utc).isoformat()
-            out["frozen_pnl"] = booked
-            if out.get("charges_total") is not None:
-                out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
-            _carry_funds(out, existing, lock=True)
-            return out
-        out = dict(snap)
-        out["date"] = keep_day
-        out["trading_date"] = keep_day
-        _carry_charges(out, existing)
-        booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
-        out["booked_pnl"] = booked
-        out["eod_locked"] = True
-        out["eod_locked_at"] = existing.get("eod_locked_at") or datetime.now(timezone.utc).isoformat()
-        out["frozen_pnl"] = booked
-        if out.get("charges_total") is not None:
-            out["booked_after_charges"] = round(booked - _num(out.get("charges_total")), 2)
-        _carry_funds(out, existing, lock=True)
-        return out
+        return None
     lock = bool(force_lock or should_lock_eod(now, live_session=live_session, enabled_indices=enabled_indices))
     if snapshot_is_empty(snap):
         if _is_traded(existing) and lock:
@@ -425,7 +403,13 @@ def apply_snapshot(
         empty_out = dict(snap)
         empty_out["date"] = keep_day
         empty_out["trading_date"] = keep_day
-        _carry_funds(empty_out, existing, lock=False)
+        booked = round(_num(empty_out.get("booked_pnl") if empty_out.get("booked_pnl") is not None else empty_out.get("pnl_exited")), 2)
+        empty_out["booked_pnl"] = booked
+        if lock:
+            empty_out["eod_locked"] = True
+            empty_out["eod_locked_at"] = datetime.now(timezone.utc).isoformat()
+            empty_out["frozen_pnl"] = booked
+        _carry_funds(empty_out, existing, lock=lock)
         return empty_out
     out = dict(snap)
     out["date"] = keep_day

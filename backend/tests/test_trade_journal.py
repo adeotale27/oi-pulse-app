@@ -247,10 +247,10 @@ def test_month_bounds():
     assert month_bounds(2026, 12) == ("2026-12-01", "2027-01-01")
 
 
-def test_should_lock_eod_at_1545_on_weekday():
+def test_should_lock_eod_at_1546_on_weekday():
     ist = timezone(timedelta(hours=5, minutes=30))
-    before = datetime(2026, 8, 13, 15, 44, tzinfo=ist)
-    at = datetime(2026, 8, 13, 15, 45, tzinfo=ist)
+    before = datetime(2026, 8, 13, 15, 45, tzinfo=ist)
+    at = datetime(2026, 8, 13, 15, 46, tzinfo=ist)
     after = datetime(2026, 8, 13, 16, 5, tzinfo=ist)
     sunday = datetime(2026, 8, 16, 16, 0, tzinfo=ist)
     assert should_lock_eod(before) is False
@@ -380,12 +380,54 @@ def test_apply_snapshot_does_not_clobber_locked_or_empty():
 def test_apply_snapshot_locks_live_book_at_close():
     snap = snapshot_from_positions(_payload(), date="2026-08-13")
     ist = timezone(timedelta(hours=5, minutes=30))
-    close = datetime(2026, 8, 13, 15, 45, tzinfo=ist)
+    close = datetime(2026, 8, 13, 15, 46, tzinfo=ist)
     out = apply_snapshot({}, snap, now=close)
     assert out["eod_locked"] is True
     assert out["frozen_pnl"] == 500.5
     assert out["booked_pnl"] == 500.5
     assert day_pnl(out) == 500.5
+
+
+def test_open_only_at_1546_locks_whatever_booked_is():
+    ist = timezone(timedelta(hours=5, minutes=30))
+    close = datetime(2026, 8, 13, 15, 46, tzinfo=ist)
+    snap = snapshot_from_positions({
+        "positions": [{
+            "tradingsymbol": "NIFTY25AUG25000CE",
+            "index": "NIFTY",
+            "side": "CE",
+            "quantity": 65,
+            "exited": False,
+            "pnl": 120.0,
+            "realised": 0,
+        }],
+        "pnl_today": {"total": 34213.0, "open": 120.0, "exited": 34213.0, "booked": 34213.0},
+        "open_count": 1,
+        "exited_count": 0,
+    }, date="2026-08-13")
+    out = apply_snapshot({}, snap, now=close, force_lock=True)
+    assert out["eod_locked"] is True
+    assert out["booked_pnl"] == 34213.0
+    later = snapshot_from_positions({
+        "positions": [{
+            "tradingsymbol": "NIFTY25AUG25000CE",
+            "index": "NIFTY",
+            "side": "CE",
+            "quantity": 0,
+            "exited": True,
+            "pnl": 100.0,
+            "realised": 100.0,
+        }],
+        "pnl_today": {"total": 100.0, "open": 0, "exited": 100.0, "booked": 100.0},
+        "open_count": 0,
+        "exited_count": 1,
+    }, date="2026-08-13")
+    assert apply_snapshot(out, later, now=datetime(2026, 8, 13, 16, 10, tzinfo=ist), force_lock=True) is None
+
+
+def test_snapshot_is_empty_treats_booked_pnl():
+    assert snapshot_is_empty({"booked_pnl": 34213, "pnl_total": 0, "pnl_exited": 0}) is False
+    assert snapshot_is_empty({"pnl_total": 0, "pnl_exited": 0}) is True
 
 
 def test_snapshot_fields_are_what_mongo_stores():
@@ -633,8 +675,8 @@ def test_carry_charges_recomputes_after_charges_from_booked():
     assert patched["booked_after_charges"] == round(20674 - 185.25, 2)
 
 
-def test_apply_snapshot_revises_locked_same_day_booked():
-    """Expiry leftover settle after 15:45 must update the frozen journal row."""
+def test_locked_day_is_not_rewritten_after_1546():
+    """After 15:46 the Mongo day is frozen; leftover Kite prints wait for the next session."""
     existing = {
         "date": "2026-08-18",
         "pnl_total": 50076.0,
@@ -666,13 +708,7 @@ def test_apply_snapshot_revises_locked_same_day_booked():
         ],
     }, date="2026-08-18")
     out = apply_snapshot(existing, snap)
-    assert out is not None
-    assert out["eod_locked"] is True
-    assert out["eod_locked_at"] == existing["eod_locked_at"]
-    assert out["booked_pnl"] == 47489.15
-    assert out["frozen_pnl"] == 47489.15
-    assert out["charges_total"] == 2228.4
-    assert out["booked_after_charges"] == round(47489.15 - 2228.4, 2)
+    assert out is None
     empty = snapshot_from_positions({"positions": [], "pnl_today": {"total": 0, "open": 0, "exited": 0}})
     assert apply_snapshot(existing, empty) is None
 
@@ -761,7 +797,7 @@ def test_consecutive_session_snapshots_keep_separate_dates():
     assert set(store) == {"2026-09-15", "2026-09-16"}
     assert store["2026-09-15"]["booked_pnl"] == 500.5
     hist = apply_snapshot(store["2026-09-15"], snapshot_from_positions(_payload(), date="2026-09-16"))
-    assert hist["date"] == "2026-09-15"
+    assert hist is None
 
 
 def test_repeat_snapshot_does_not_clobber_a_different_day():

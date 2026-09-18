@@ -4,6 +4,26 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.13",
+    date: "2026-09-18",
+    user: [
+      "Trade journal books the 15:46 IST P&L and then starts the next day. The month window stays large on a computer.",
+    ],
+    admin: [
+      "At 15:46 IST the Positions book is snapshotted into trade_journal and locked. Later Kite prints do not rewrite that date. MCX still locks after commodity close + 5 min.",
+    ],
+  },
+  {
+    version: "11.12",
+    date: "2026-09-18",
+    user: [
+      "Trade journal on a computer fills the screen so the month is readable without a tiny window. The error log is taller.",
+    ],
+    admin: [
+      "Journal snapshots keep running after 15:40 and after lock so booked P&L is written to Mongo (open-only 0-book no longer freezes an empty EOD day).",
+    ],
+  },
+  {
     version: "11.11",
     date: "2026-09-18",
     user: [

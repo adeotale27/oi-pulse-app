@@ -5475,9 +5475,8 @@ async def _journal_eod_lock_loop() -> None:
                     except Exception as e:
                         log.warning("journal special-session snapshot failed: %s", e)
 
-            # Keep the book while MCX (or any later close) is still printing.
             if not journal.should_lock_eod(now, live_session=live, enabled_indices=enabled):
-                if calendar_session and tracker is not None and tracker.oi_session_open():
+                if calendar_session:
                     if time.monotonic() - _last_special_journal_snap_mono >= 60:
                         try:
                             mid = await get_positions(None, "admin")
