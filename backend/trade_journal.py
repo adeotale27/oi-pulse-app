@@ -300,9 +300,11 @@ def snapshot_is_empty(snap: Optional[Dict[str, Any]]) -> bool:
         return True
     if int(snap.get("trade_count") or 0) > 0:
         return False
-    if int(snap.get("open_count") or 0) + int(snap.get("exited_count") or 0) > 0:
+    if int(snap.get("open_count") or 0) + int(snap.get("exited_count") or 0) + int(snap.get("partial_count") or 0) > 0:
         return False
     if snap.get("legs"):
+        return False
+    if abs(_num(snap.get("booked_pnl"))) >= 0.01:
         return False
     return abs(_num(snap.get("pnl_total"))) < 0.01 and abs(_num(snap.get("pnl_exited"))) < 0.01
 
@@ -433,7 +435,8 @@ def apply_snapshot(
     _carry_charges(out, existing)
     booked = round(_num(out.get("booked_pnl") if out.get("booked_pnl") is not None else out.get("pnl_exited")), 2)
     out["booked_pnl"] = booked
-    if lock:
+    # Do not freeze a 0-booked open book — leftover hedges after cash close still print.
+    if lock and (_is_traded(out) or _is_traded(existing) or int(out.get("open_count") or 0) == 0):
         out["eod_locked"] = True
         out["eod_locked_at"] = datetime.now(timezone.utc).isoformat()
         out["frozen_pnl"] = booked

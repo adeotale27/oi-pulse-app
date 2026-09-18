@@ -448,7 +448,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="z-[90] w-[min(96vw,72rem)] max-w-[72rem] h-[min(52rem,88vh)] max-h-[min(52rem,88vh)] overflow-hidden flex flex-col p-0 gap-0 max-lg:left-0 max-lg:top-0 max-lg:translate-x-0 max-lg:translate-y-0 max-lg:w-full max-lg:max-w-none max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:rounded-none sm:rounded-2xl lg:rounded-2xl border-slate-200"
+        className="z-[90] w-[min(98vw,80rem)] max-w-[80rem] h-[min(96dvh,calc(100dvh-0.5rem))] max-h-[min(96dvh,calc(100dvh-0.5rem))] overflow-hidden flex flex-col p-0 gap-0 max-lg:left-0 max-lg:top-0 max-lg:translate-x-0 max-lg:translate-y-0 max-lg:w-full max-lg:max-w-none max-lg:h-[100dvh] max-lg:max-h-[100dvh] max-lg:rounded-none sm:rounded-2xl lg:rounded-2xl border-slate-200"
         data-testid="trade-journal-modal"
       >
         <div className="px-4 sm:px-5 pt-4 pb-3 pr-12 border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#fff_45%,#f8fafc_100%)] shrink-0">
@@ -487,7 +487,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
           </div>
         </div>
 
-        <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 flex-1 min-h-0 overflow-y-auto max-lg:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+        <div className="px-3 sm:px-5 py-3 lg:py-2 space-y-3 flex-1 min-h-0 overflow-y-auto max-lg:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           {!focused && (
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2" data-testid="journal-period-panel">
               <div className="grid grid-cols-1 gap-2 min-w-0 sm:flex sm:flex-wrap sm:items-end">

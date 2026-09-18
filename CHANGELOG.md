@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.12 — 2026-09-18
+
+Trade journal on desktop uses nearly the full viewport so the month grid is not clipped. The background journal snapshot keeps writing after OI hours (15:40) and after EOD lock, so booked P&L is stored even when leftover hedges print later. An open-only 0-booked book is not frozen as EOD. Error log is taller.
+
 ## V11.11 — 2026-09-18
 
 Unchecking a tracked index only stops polling; Index-management-enabled names stay in Admin alerts, straddle ticks, and chart-signal lot fields. Kite lot size is stored on instrument sync / Enable. Error log is a bit narrower with wrapping, shows stored range, and can purge from the oldest day or flush all. ADR session clock follows listing hours, so a last print after the US close stays red.

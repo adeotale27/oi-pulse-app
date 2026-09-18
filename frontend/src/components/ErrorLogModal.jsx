@@ -96,7 +96,7 @@ export default function ErrorLogModal({ open, onOpenChange }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[min(76vw,52rem)] w-[76vw] max-md:w-[calc(100vw-1rem)] max-md:max-w-none h-[min(80dvh,36rem)] max-h-[80dvh] overflow-hidden flex flex-col sm:rounded-lg"
+        className="max-w-[min(76vw,52rem)] w-[76vw] max-md:w-[calc(100vw-1rem)] max-md:max-w-none h-[min(88dvh,48rem)] max-h-[88dvh] overflow-hidden flex flex-col sm:rounded-lg"
         data-testid="error-log-modal"
       >
         <DialogHeader>

@@ -388,6 +388,51 @@ def test_apply_snapshot_locks_live_book_at_close():
     assert day_pnl(out) == 500.5
 
 
+def test_open_only_at_close_does_not_lock_zero_book():
+    ist = timezone(timedelta(hours=5, minutes=30))
+    close = datetime(2026, 8, 13, 15, 50, tzinfo=ist)
+    snap = snapshot_from_positions({
+        "positions": [{
+            "tradingsymbol": "NIFTY25AUG25000CE",
+            "index": "NIFTY",
+            "side": "CE",
+            "quantity": 65,
+            "exited": False,
+            "pnl": 120.0,
+            "realised": 0,
+        }],
+        "pnl_today": {"total": 120.0, "open": 120.0, "exited": 0, "booked": 0},
+        "open_count": 1,
+        "exited_count": 0,
+    }, date="2026-08-13")
+    out = apply_snapshot({}, snap, now=close, force_lock=True)
+    assert out.get("eod_locked") is not True
+    assert abs(out.get("booked_pnl") or 0) < 0.01
+
+    booked = snapshot_from_positions({
+        "positions": [{
+            "tradingsymbol": "NIFTY25AUG25000CE",
+            "index": "NIFTY",
+            "side": "CE",
+            "quantity": 0,
+            "exited": True,
+            "pnl": 34213.0,
+            "realised": 34213.0,
+        }],
+        "pnl_today": {"total": 34213.0, "open": 0, "exited": 34213.0, "booked": 34213.0},
+        "open_count": 0,
+        "exited_count": 1,
+    }, date="2026-08-13")
+    locked = apply_snapshot(out, booked, now=close, force_lock=True)
+    assert locked["eod_locked"] is True
+    assert locked["booked_pnl"] == 34213.0
+
+
+def test_snapshot_is_empty_treats_booked_pnl():
+    assert snapshot_is_empty({"booked_pnl": 34213, "pnl_total": 0, "pnl_exited": 0}) is False
+    assert snapshot_is_empty({"pnl_total": 0, "pnl_exited": 0}) is True
+
+
 def test_snapshot_fields_are_what_mongo_stores():
     """Journal snapshot is a Mongo document shape — not Kite and not the browser."""
     snap = snapshot_from_positions(
