@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, apiDetail } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
 import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload, readMiFeedCache, writeMiFeedCache } from "@/lib/marketIntel";
 import { todayIST } from "@/lib/holidays";
 
-export default function MarketIntelPage({ compact = false }) {
+export default function MarketIntelPage({ compact = false, isAdmin = false }) {
   const [filt, setFilt] = useState("all");
   const [items, setItems] = useState([]);
   const [prefs, setPrefs] = useState(null);
@@ -17,6 +17,7 @@ export default function MarketIntelPage({ compact = false }) {
   const [minDate, setMinDate] = useState(null);
   const [maxDate, setMaxDate] = useState(null);
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const feedGen = useRef(0);
 
   const loadPrefs = useCallback(() => {
@@ -113,6 +114,21 @@ export default function MarketIntelPage({ compact = false }) {
     }).catch(() => {});
   };
 
+  const refreshLatest = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setErr(null);
+    try {
+      await api.post("/market-intel/refresh", {}, { timeout: 120000 });
+      notifyMarketIntelReload();
+      await loadFeed();
+    } catch (e) {
+      setErr(apiDetail(e, "Could not refresh configured news sources"));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="space-y-3" data-testid="market-intel-page">
       {!compact && (
@@ -128,7 +144,20 @@ export default function MarketIntelPage({ compact = false }) {
             data-testid={`mi-filter-${f.id}`}
           >{f.label}</button>
         ))}
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="flex items-center gap-2 ml-auto">
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={refreshLatest}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-sm border border-emerald-300 text-emerald-800 hover:bg-emerald-50 disabled:opacity-60"
+              data-testid="mi-refresh-latest"
+              title="Fetch each enabled Market Intelligence source now"
+            >
+              <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing…" : "Refresh latest"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {

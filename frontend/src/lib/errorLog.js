@@ -2,6 +2,24 @@
 
 const MAX_PER_MIN = 8;
 const stamps = [];
+const CHUNK_RELOAD_KEY = "oi_chunk_reload_once";
+
+export function isChunkLoadError(message) {
+  return /chunkloaderror|loading chunk [0-9]+ failed/i.test(String(message || ""));
+}
+
+function recoverFromChunkLoad(message) {
+  if (!isChunkLoadError(message) || typeof window === "undefined") return;
+  try {
+    // A deploy can leave an old HTML shell pointing to retired hashed chunks.
+    // Reload once to fetch the current shell, then stop rather than looping.
+    if (sessionStorage.getItem(CHUNK_RELOAD_KEY) === "1") return;
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+    window.setTimeout(() => window.location.reload(), 50);
+  } catch {
+    /* storage can be unavailable in an embedded browser */
+  }
+}
 
 function backendOrigin() {
   const env = (process.env.REACT_APP_BACKEND_URL || "").trim();
@@ -85,11 +103,13 @@ export function installDeskErrorLog() {
   if (window.__striklenzErrorLog) return;
   window.__striklenzErrorLog = true;
   window.addEventListener("error", (ev) => {
+    const message = ev?.message || ev?.error?.message || "window.error";
     reportDeskError({
-      message: ev?.message || ev?.error?.message || "window.error",
+      message,
       stack: ev?.error?.stack || "",
       source: "ui",
     });
+    recoverFromChunkLoad(message);
   });
   window.addEventListener("unhandledrejection", (ev) => {
     const reason = ev?.reason;
@@ -99,5 +119,6 @@ export function installDeskErrorLog() {
       stack: reason?.stack || "",
       source: "ui",
     });
+    recoverFromChunkLoad(message);
   });
 }

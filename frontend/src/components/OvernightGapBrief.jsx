@@ -31,6 +31,7 @@ import {
   shouldAutoShowBrief,
 } from "@/lib/overnightBrief";
 import { DESK_IDS } from "@/lib/universe";
+import { useFloatingDockFocus } from "@/lib/floatingDock";
 
 function isPhone() {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
@@ -123,6 +124,7 @@ export default function OvernightGapBrief({
   vix = null,
   activeIndex = null,
 }) {
+  const { bringToFront, zIndexClass } = useFloatingDockFocus("overnight", true);
   const [now, setNow] = useState(() => new Date());
   const [active, setActive] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -143,6 +145,10 @@ export default function OvernightGapBrief({
   const skipClickRef = useRef(false);
   const userPinnedRef = useRef(null);
   const packedBookRef = useRef({ book: null, adjust: null, journal: null, sells: [], memory: null });
+
+  useEffect(() => {
+    if (active) bringToFront();
+  }, [active, bringToFront]);
 
   const setLeft = (px) => {
     const w = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -166,6 +172,7 @@ export default function OvernightGapBrief({
   };
 
   const expand = () => {
+    bringToFront();
     userPinnedRef.current = "open";
     setIconOnly(false);
     writeCarryIconOnly(false);
@@ -200,6 +207,7 @@ export default function OvernightGapBrief({
   }, [clampBottom]);
 
   const onCarryPointerDown = (e, kind = "mobile") => {
+    bringToFront();
     const desktop = !isPhone();
     if (kind === "mobile" && desktop) return;
     if (kind === "move" && !desktop) return;
@@ -588,7 +596,7 @@ export default function OvernightGapBrief({
           }
           expand();
         }}
-        className={`fixed z-[60] md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
+        className={`fixed ${zIndexClass} md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
           iconOnly ? "p-2.5" : "gap-2 px-3 py-2"
         } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
         style={carryPosStyle}
@@ -616,7 +624,7 @@ export default function OvernightGapBrief({
       data-testid="overnight-gap-brief"
       ref={boxRef}
       data-dock={dockHint}
-      className={`fixed z-[60] md:bottom-3 flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${
+      className={`fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{

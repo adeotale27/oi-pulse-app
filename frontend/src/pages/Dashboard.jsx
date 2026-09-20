@@ -3050,7 +3050,7 @@ export default function Dashboard() {
 
                   {(tabOn("market-intel")) && (
                     <TabsContent value="market-intel" forceMount className={activeTab === "market-intel" ? "mt-0" : "hidden"}>
-                      <MarketIntelPage />
+                      <MarketIntelPage isAdmin={!!authState.is_admin} />
                     </TabsContent>
                   )}
                   {(tabOn("adrs")) && (

@@ -94,8 +94,8 @@ RSS_TEMPLATES = [
         "id": "google-news-in",
         "name": "Google News (markets, IN)",
         "source_type": "RSS",
-        "endpoint": "https://news.google.com/rss/search?q=RBI+OR+Sensex+OR+Nifty+OR+FOMC+OR+crude+when:1d&hl=en-IN&gl=IN&ceid=IN:en",
-        "note": "Public RSS. Same family as Desk AI tape.",
+        "endpoint": "https://news.google.com/rss/search?q=RBI+OR+Sensex+OR+Nifty+OR+FOMC+OR+crude+OR+oil+OR+war+OR+conflict+OR+Iran+OR+Russia+OR+Ukraine+OR+China+OR+India+OR+Japan+OR+UAE+when:1d&hl=en-IN&gl=IN&ceid=IN:en",
+        "note": "Public RSS. India markets plus geopolitical and oil-shock headlines.",
     },
     {
         "id": "et-markets",
@@ -141,13 +141,17 @@ _CRIT = (
     r"\bopec\+?\b.{0,40}\b(cut|boost|output|production)\b",
     r"\bsupply disruption\b", r"\bstrait of hormuz\b", r"\boil embargo\b",
     r"\bdefault\b", r"\bbankruptcy\b", r"\bwar\b.{0,30}\b(escalat|invasion)\b",
+    r"\b(military strike|armed conflict|invasion|missile attack|blockade)\b",
+    r"\b(iran|israel|russia|ukraine|china|taiwan)\b.{0,40}\b(conflict|war|attack|strike)\b",
+    r"\b(hormuz|red sea|bab el mandeb)\b.{0,50}\b(block|attack|disrupt|close)\b",
 )
 _HIGH = (
     r"\bcpi\b", r"\bppi\b", r"\bnonfarm\b", r"\bunemployment\b", r"\bgdp\b",
     r"\becb\b", r"\bboj\b", r"\bboe\b", r"\brbi\b", r"\bsebi\b",
     r"\brepo rate\b", r"\btariff", r"\bsanction", r"\bcrude\b", r"\brent\b", r"\bwti\b",
     r"\bearnings surprise\b", r"\bguidance (cut|raise|slash)\b", r"\bmerger\b", r"\bacquisition\b",
-    r"\bfraud\b", r"\bdowngrade\b", r"\binflation\b",
+    r"\bfraud\b", r"\bdowngrade\b", r"\binflation\b", r"\bconflict\b",
+    r"\b(military|missile|drone|airstrike|ceasefire|shipping lane)\b",
 )
 _INDIA_DIRECT = (
     r"\bindia\b", r"\bindian\b", r"\brbi\b", r"\bsebi\b", r"\bnse\b", r"\bbse\b",
@@ -158,6 +162,9 @@ _INDIA_VIA_GLOBAL = (
     r"\bfed\b", r"\bfederal reserve\b", r"\busd\b", r"\bdollar\b", r"\bus treasury\b",
     r"\byield", r"\bcrude\b", r"\boil\b", r"\bopec\b", r"\bchina\b", r"\btariff",
     r"\bmiddle east\b", r"\bukraine\b", r"\brussia\b", r"\bliquidity\b",
+    r"\biran\b", r"\bisrael\b", r"\buae\b", r"\bsaudi arabia\b", r"\bqatar\b",
+    r"\biraq\b", r"\bkuwait\b", r"\bvenezuela\b", r"\bnigeria\b", r"\bjapan\b",
+    r"\bchina\b", r"\btaiwan\b", r"\bnorth korea\b", r"\bsouth korea\b",
     r"\becb\b", r"\bpmi\b", r"\bcpi\b", r"\bjobs report\b", r"\bnonfarm\b",
 )
 _NOISE = (
@@ -314,7 +321,11 @@ def classify_event_type(text: str) -> str:
         return "macro"
     if _hits(t, (r"\bcrude\b", r"\boil\b", r"\bopec\b", r"\brent\b")):
         return "oil"
-    if _hits(t, (r"\bwar\b", r"\btariff", r"\bsanction", r"\bukraine", r"\bisrael", r"\bhamas")):
+    if _hits(t, (
+        r"\bwar\b", r"\bconflict\b", r"\btariff", r"\bsanction", r"\bukraine",
+        r"\brussia\b", r"\bisrael\b", r"\biran\b", r"\bchina\b", r"\btaiwan\b",
+        r"\bhamas\b", r"\bmilitary\b", r"\bmissile\b", r"\bdrone\b",
+    )):
         return "geopolitics"
     if _hits(t, (r"\bearnings\b", r"\bmerger\b", r"\bceo\b", r"\bipo\b", r"\bdefault\b")):
         return "corporate"
@@ -528,7 +539,19 @@ async def ensure_default_sources(db) -> None:
     if db is None:
         return
     for t in RSS_TEMPLATES:
-        if await db[SRC_COL].find_one({"id": t["id"]}):
+        existing = await db[SRC_COL].find_one({"id": t["id"]})
+        if existing:
+            # Upgrade only our previous Google catalog query; leave any admin
+            # source changes and every enabled/disabled choice untouched.
+            if (
+                t["id"] == "google-news-in"
+                and existing.get("is_catalog")
+                and existing.get("endpoint") == "https://news.google.com/rss/search?q=RBI+OR+Sensex+OR+Nifty+OR+FOMC+OR+crude+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+            ):
+                await db[SRC_COL].update_one(
+                    {"id": t["id"]},
+                    {"$set": {"endpoint": t["endpoint"], "note": t["note"]}},
+                )
             continue
         await db[SRC_COL].update_one({"id": t["id"]}, {"$set": _catalog_source_doc(t, enabled=True, priority=20)}, upsert=True)
     for t in PUBLIC_API_CATALOG:
@@ -877,7 +900,7 @@ async def update_source_health(db, src_id: str, stats: Dict[str, Any]) -> None:
 
 
 async def run_all_sources(db, settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    summary = {"ran": 0, "ok": 0, "failed": 0}
+    summary = {"ran": 0, "ok": 0, "failed": 0, "fetched": 0, "accepted": 0, "duplicates": 0}
     if db is None:
         return summary
     cur = db[SRC_COL].find({"enabled": True})
@@ -886,6 +909,9 @@ async def run_all_sources(db, settings: Optional[Dict[str, Any]] = None) -> Dict
         try:
             stats = await ingest_one(db, src, test=False)
             await update_source_health(db, src["id"], stats)
+            summary["fetched"] += int(stats.get("fetched") or 0)
+            summary["accepted"] += int(stats.get("accepted") or 0)
+            summary["duplicates"] += int(stats.get("duplicates") or 0)
             if stats.get("error") in ("missing_api_key", "missing_firecrawl_key", "disabled"):
                 pass
             elif stats.get("error"):

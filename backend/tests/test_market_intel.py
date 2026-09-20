@@ -60,6 +60,13 @@ def test_geopolitics_and_india_event():
     assert india_relevance_score(ind) >= 40
 
 
+def test_geopolitical_conflict_and_oil_routes_to_desk():
+    headline = "Iran conflict disrupts Hormuz shipping lanes and crude supply"
+    assert classify_event_type(headline) == "oil"
+    assert impact_score(headline) >= 75
+    assert india_relevance_score(headline) >= 30
+
+
 def test_noise_deprioritized():
     assert impact_band(impact_score("What to watch this week: opinion recap explained")) in ("NOISE", "LOW")
 
