@@ -9,6 +9,7 @@ assert.equal(indiaImpactLabel(70), "Indian market impact 70");
 assert.equal(formatEventTypeLabel("india_macro"), "INDIA MACRO");
 assert.equal(formatEventTypeLabel("oil"), "OIL");
 assert.equal(formatEventTypeLabel("fed-funds"), "FED FUNDS");
+assert.equal(formatEventTypeLabel("geopolitics"), "GEOPOLITICS");
 assert.equal(miMinimizeActive(100, 200), true);
 assert.equal(miMinimizeActive(200, 200), false);
 assert.equal(miMinimizeActive(201, 200), false);

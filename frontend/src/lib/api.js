@@ -20,7 +20,7 @@ export const API = `${BACKEND_URL}/api`;
 // credentials mode. We authenticate via `X-Admin-Token` / `X-Guest-Token`
 // headers (see the request interceptor below) — no cookies are used — so
 // disabling withCredentials is safe.
-export const api = axios.create({ baseURL: API, timeout: 12000, withCredentials: false });
+export const api = axios.create({ baseURL: API, timeout: 20000, withCredentials: false });
 
 export const INDEX_ADMIN_TIMEOUT_MS = 90000;
 

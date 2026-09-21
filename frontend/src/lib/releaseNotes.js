@@ -17,10 +17,10 @@ export const RELEASE_NOTES = [
     version: "11.16",
     date: "2026-09-18",
     user: [
-      "Bought/Sold sits on the middle of that candle and stays there when you zoom or change the timeframe. Hover on the badge: green if that leg is in profit, red if it is in loss.",
+      "Market Intelligence now flags geopolitical and oil-route shocks more clearly. Admins can refresh configured sources from the desk, and the Overnight, Mkt Intel, and Indicative price cards keep the card you open in front.",
     ],
     admin: [
-      "Marks are drawn in the chart SVG (bar centre), not a separate overlay.",
+      "Refresh runs each enabled Market Intelligence source sequentially and prevents duplicate runs. The catalog query adds major geopolitical and oil-market terms without changing admin source settings.",
     ],
   },
   {
