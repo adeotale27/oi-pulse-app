@@ -361,25 +361,28 @@ function BookVerdictCard({ bookVerdict, slot = "top", onSlot, collapsed, onToggl
 
 /** Professional symbol: NIFTY 11TH AUG 24800 CE */
 function positionLabel(r) {
-  return r?.display_name || r?.tradingsymbol || "—";
+  const label = r?.display_name || r?.tradingsymbol || "—";
+  // The expiry is shown once in the compact metadata row below; repeating it
+  // in the instrument name wastes the scan line on a dense options book.
+  return String(label).replace(/\s+\d{1,2}(?:st|nd|rd|th)?\s+[a-z]{3}\s+(?=\d{3,6}\s+(?:ce|pe)\b)/i, " ");
 }
 
 function positionExpiryLabel(row) {
   const iso = String(row?.expiry_iso || row?.expiryIso || "").slice(0, 10);
   const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
-  const [, year, month, day] = match;
+  const [, , month, day] = match;
   const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(month) - 1];
-  return monthName ? `Exp ${Number(day)} ${monthName} '${year.slice(2)}` : null;
+  return monthName ? `${Number(day)} ${monthName}` : null;
 }
 
 function PositionInstrumentMeta({ row, exited = false, privacy = false }) {
   const expiry = positionExpiryLabel(row);
   return (
-    <div className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] ${exited ? "text-slate-300" : "text-slate-500"}`}>
+    <div className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] ${exited ? "text-slate-300" : "text-slate-700"}`}>
       <ProductSidePair row={row} exited={exited} />
-      <span className="font-mono-data">Qty: {privacy ? PRIVACY_MASK : (exited ? 0 : row.quantity)}</span>
-      {expiry ? <span className="font-mono-data">{expiry}</span> : null}
+      <span className={`font-mono-data font-bold ${exited ? "" : "text-slate-800"}`}>Qty: {privacy ? PRIVACY_MASK : (exited ? 0 : row.quantity)}</span>
+      {expiry ? <span className={`font-mono-data ${exited ? "" : "text-slate-700"}`}>{expiry}</span> : null}
     </div>
   );
 }
@@ -1401,7 +1404,7 @@ export default function PositionsPanel({
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
+    <div className="oi-surface-lift oi-3d-stage space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
       <div className="space-y-2">
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
@@ -1999,7 +2002,7 @@ export default function PositionsPanel({
               data-testid="position-card"
               data-position-symbol={r.tradingsymbol}
               data-exited={r.exited ? "1" : "0"}
-              className={`rounded-lg border px-3 py-2.5 transition-colors ${
+              className={`oi-surface-lift rounded-lg border px-3 py-2.5 transition-colors ${
                 highlightSymbol && r.tradingsymbol === highlightSymbol
                   ? "ring-2 ring-emerald-400 bg-emerald-50/80"
                   : r.exited
@@ -2111,7 +2114,7 @@ export default function PositionsPanel({
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block overflow-auto rounded-lg border border-slate-200/80 shadow-sm bg-white">
+      <div className="oi-surface-lift hidden md:block overflow-auto rounded-lg border border-slate-200/80 bg-white">
         <table className="w-full text-sm font-mono-data">
           <thead className="bg-slate-50/90 text-slate-500 uppercase tracking-wider text-xs sticky top-0 z-10">
             <tr className="border-b border-slate-200/80">

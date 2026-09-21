@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { configureMarketHours, isMarketQuiescent } from "./marketTimes.js";
+import { configureMarketHours, isMarketQuiescent, isPositionMarkGlowActive } from "./marketTimes.js";
 
 configureMarketHours("09:15", "15:40");
 
@@ -8,6 +8,9 @@ assert.equal(isMarketQuiescent(new Date("2026-08-31T19:22:00.000Z")), true, "wee
 // Tue 1 Sep 2026 11:00 IST = 05:30 UTC
 assert.equal(isMarketQuiescent(new Date("2026-09-01T05:30:00.000Z")), false, "weekday session");
 assert.equal(isMarketQuiescent(new Date("2026-09-01T10:15:00.000Z")), true, "weekday after 15:40 IST");
+assert.equal(isPositionMarkGlowActive(false, new Date("2026-09-01T10:09:00.000Z")), true, "marker ring stays on before configured close");
+assert.equal(isPositionMarkGlowActive(false, new Date("2026-09-01T10:10:00.000Z")), false, "marker ring stops at configured close");
+assert.equal(isPositionMarkGlowActive(true, new Date("2026-09-01T10:10:00.000Z")), true, "after-close policy keeps marker ring visible");
 assert.equal(
   isMarketQuiescent({ market: { is_market_open: false } }),
   true,

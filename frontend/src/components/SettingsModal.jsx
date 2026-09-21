@@ -127,6 +127,7 @@ export default function SettingsModal({
           show_writer_defense: true,
           show_suggestion: true,
           show_chart_signals: false,
+          position_mark_glow_after_close: true,
         });
       });
     setLocal(loadOISettings());
@@ -235,6 +236,7 @@ export default function SettingsModal({
           show_writer_defense: settings.show_writer_defense,
           show_suggestion: settings.show_suggestion,
           show_chart_signals: settings.show_chart_signals,
+          position_mark_glow_after_close: settings.position_mark_glow_after_close !== false,
           market_intel_ingest_seconds: settings.market_intel_ingest_seconds,
           market_intel_retention_days: settings.market_intel_retention_days,
           market_intel_min_history_days: settings.market_intel_min_history_days,
@@ -571,6 +573,23 @@ export default function SettingsModal({
                   />
                   <span className="text-sm">Expire admin sessions on market close (off by default)</span>
                 </label>
+                <label className="flex items-center gap-2 py-1 cursor-pointer">
+                  <Checkbox
+                    data-testid="position-mark-glow-after-close"
+                    checked={settings.position_mark_glow_after_close !== false}
+                    onCheckedChange={(ck) => setSettings({ ...settings, position_mark_glow_after_close: !!ck })}
+                  />
+                  <span className="text-sm">Keep near-ATM position glow after market close</span>
+                  <span className="ml-1 inline-flex items-center gap-1 text-[10px] font-mono-data" title="Chart position markers">
+                    <b className="rounded-sm border border-rose-200 bg-rose-50 px-1 text-rose-700">S</b>
+                    <span className="text-slate-500">short</span>
+                    <b className="rounded-sm border border-blue-200 bg-blue-50 px-1 text-blue-700">L</b>
+                    <span className="text-slate-500">long</span>
+                  </span>
+                </label>
+                <div className="text-[10px] text-slate-500 -mt-1 pl-6">
+                  Off stops the chart ring at the Market close time above; it does not add a second clock.
+                </div>
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
                   <Checkbox
                     data-testid="show-strike-range"

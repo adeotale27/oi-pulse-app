@@ -224,6 +224,9 @@ DEFAULT_SETTINGS = {
     "cas_iep_force": False,
     # Gamma-wall / institution / velocity chips under OI Change chart (off by default)
     "show_chart_signals": False,
+    # Keep the near-ATM position ring visible after the configured F&O close.
+    # The close itself remains market_close_ist; this only chooses the after-close policy.
+    "position_mark_glow_after_close": True,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",
@@ -502,7 +505,7 @@ class OITracker:
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",
             "show_strike_range", "show_writer_defense", "show_suggestion",
-            "show_chart_signals",
+            "show_chart_signals", "position_mark_glow_after_close",
             "desk_ai_show", "desk_ai_ask", "desk_ai_positions", "desk_ai_radar",
             "desk_ai_carry",
             "desk_ai_admin", "desk_ai_public",

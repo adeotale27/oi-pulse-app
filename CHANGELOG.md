@@ -1,5 +1,13 @@
 # Changelog
 
+## V11.19 — 2026-09-22
+
+Admin Market timing now labels the near-ATM position glow markers: red `S` for short and blue `L` for long. Desk panels and interactive Positions / Market Intelligence surfaces have a more visible layered depth treatment, without changing the color palette.
+
+## V11.18 — 2026-09-22
+
+Position contract lines are compact: expiry is no longer repeated in the symbol, and the metadata shows bold, dark `Qty` plus a short date. Near-ATM chart rings are smaller and can now stop at the configured Market close or stay visible after it. Positions and Market Intelligence use restrained surface depth without changing the desk palette. Market Intelligence now shows articles freshly discovered today even when their source publication timestamp is from the prior day.
+
 ## V11.17 — 2026-09-22
 
 OI Change and Open Interest now use blue **L** (Long) and red **S** (Short) marks. A mark pulses in its own colour while its strike is within 1% of ATM. The Positions blotter keeps product, quantity, and API-backed expiry below the contract symbol, removes redundant Product/Qty columns, and adds P&L change %. On phones, the Error log table scrolls horizontally so no fields are clipped.

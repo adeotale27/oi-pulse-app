@@ -238,7 +238,7 @@ export default function MarketIntelPage({ compact = false, isAdmin = false }) {
           {items.length > 0 && (
             <>
               {items.map((it) => (
-                <article key={it.event_cluster_id || it.id} className="rounded-md border border-slate-200 bg-white p-3 space-y-1" data-testid="mi-event">
+                <article key={it.event_cluster_id || it.id} className="oi-surface-lift oi-3d-stage rounded-md border border-slate-200 bg-white p-3 space-y-1" data-testid="mi-event">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{it.impact_band || "—"}</span>
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{impactScoreLabel(it.impact_score)}</span>
