@@ -897,6 +897,7 @@ class SettingsIn(BaseModel):
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
+    position_mark_glow_after_close: Optional[bool] = None  # Keep near-ATM position ring after configured close
     desk_ai_show: Optional[bool] = None  # Header: Desk AI on/off for the whole desk
     desk_ai_ask: Optional[bool] = None  # Kept for compat; on whenever Desk AI is on
     desk_ai_positions: Optional[bool] = None  # Positions page intelligence strip
@@ -3069,6 +3070,7 @@ async def get_config():
         "show_writer_defense": bool(s.get("show_writer_defense", True)),
         "show_suggestion": bool(s.get("show_suggestion", True)),
         "show_chart_signals": bool(s.get("show_chart_signals", False)),
+        "position_mark_glow_after_close": s.get("position_mark_glow_after_close", True) is not False,
         **resolve_desk_ai(s),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "universe": catalog_public(),

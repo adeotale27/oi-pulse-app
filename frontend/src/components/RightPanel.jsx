@@ -58,6 +58,7 @@ export default function RightPanel({
   isKiteMode,
   status,
   showOI,
+  keepPositionMarkGlowAfterClose = true,
   suggestion,
   // straddle poll interval (ms) supplied by parent/dashboard
   straddlePollMs = 15000,
@@ -104,7 +105,7 @@ export default function RightPanel({
   }, [allowedViews, view, onChangeView]);
 
   return (
-    <div className="oi-panel h-full min-h-0 flex flex-col overflow-hidden" data-testid="right-panel">
+    <div className="oi-panel oi-3d-stage h-full min-h-0 flex flex-col overflow-hidden" data-testid="right-panel">
       <div className="flex items-center gap-2 border-b border-slate-200/80 dark:border-slate-700/80 px-3 py-2 bg-emerald-50/40 dark:bg-emerald-950/20 shrink-0 relative z-20">
         <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         <div className="relative flex-1 min-w-0">
@@ -230,6 +231,7 @@ export default function RightPanel({
               prevTime={previous?.timestamp}
               index={activeIndex}
               expiry={selectedExpiry}
+              keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
             />
           )}
           {selectedView === "oi-change" && (
@@ -243,6 +245,7 @@ export default function RightPanel({
               prevTime={previous?.timestamp}
               index={activeIndex}
               expiry={selectedExpiry}
+              keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
             />
           )}
           {selectedView === "straddle" && (

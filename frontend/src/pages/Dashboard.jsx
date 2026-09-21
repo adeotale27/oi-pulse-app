@@ -871,6 +871,7 @@ export default function Dashboard() {
   const [showWriterDefense, setShowWriterDefense] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showChartSignals, setShowChartSignals] = useState(false);
+  const [keepPositionMarkGlowAfterClose, setKeepPositionMarkGlowAfterClose] = useState(true);
   const [deskAiShow, setDeskAiShow] = useState(false);
   const [deskAiPositions, setDeskAiPositions] = useState(false);
   const [deskAiRadar, setDeskAiRadar] = useState(false);
@@ -1381,6 +1382,7 @@ export default function Dashboard() {
     if (typeof d.show_writer_defense === "boolean") setShowWriterDefense(d.show_writer_defense);
     if (typeof d.show_suggestion === "boolean") setShowSuggestion(d.show_suggestion);
     if (typeof d.show_chart_signals === "boolean") setShowChartSignals(d.show_chart_signals);
+    if (typeof d.position_mark_glow_after_close === "boolean") setKeepPositionMarkGlowAfterClose(d.position_mark_glow_after_close);
     if ("cas_iep_enabled" in d || "cas_iep_force" in d || "cas_iep_start_ist" in d || "cas_iep_end_ist" in d) {
       setCasIepCfg((prev) => ({
         enabled: d.cas_iep_enabled !== false,
@@ -2522,7 +2524,7 @@ export default function Dashboard() {
                   );
                 })()}
                 <div
-                  className={`oi-panel oi-rise p-4 transition-all duration-700 ${
+                  className={`oi-panel oi-3d-stage oi-rise p-4 transition-all duration-700 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
                   } ${
                     !showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""
@@ -2685,6 +2687,7 @@ export default function Dashboard() {
                       currentTime={current?.timestamp}
                       prevTime={(replayFrame || previous)?.timestamp}
                       signalsMap={showChartSignals ? perStrikeSignals : null}
+                      keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
                     />
                     {marketIntel && (
                       <div
@@ -2859,6 +2862,7 @@ export default function Dashboard() {
                       atm={current?.atm}
                       mode={status?.mode}
                       chartKey={`${activeIndex}-abs`}
+                      keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
                     />
                   </TabsContent>
                   )}
@@ -3134,6 +3138,7 @@ export default function Dashboard() {
                       isKiteMode={kiteLiveConnected}
                       status={status}
                       showOI={showOI}
+                      keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
                       // pass configured straddle poll interval (ms)
                       straddlePollMs={straddlePollMs}
                       uploadRefreshKey={uploadRefreshKey}

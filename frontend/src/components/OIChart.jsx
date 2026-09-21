@@ -4,6 +4,7 @@ import {
 } from "recharts";
 import { readPositionsBook, subscribePositionsBook } from "@/lib/positionsBook";
 import { openOiMarks, formatMarkHover, isMarkNearAtm, strikeKey, peTopKey, ceTopKey } from "@/lib/oiPositionMarks";
+import { isPositionMarkGlowActive } from "@/lib/marketTimes";
 
 const PUT_GREEN = "#16A34A";
 const PUT_LIGHT = "#86EFAC";
@@ -28,11 +29,17 @@ function formatTime(iso) {
   }
 }
 
-export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp, expiry: expiryProp }) {
+export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp, expiry: expiryProp, keepPositionMarkGlowAfterClose = true }) {
   const spotPrice = current?.price ?? null;
   const [book, setBook] = useState(() => readPositionsBook());
   const [hoverMark, setHoverMark] = useState(null);
+  const [, setClockTick] = useState(0);
   useEffect(() => subscribePositionsBook(setBook), []);
+  useEffect(() => {
+    const id = window.setInterval(() => setClockTick((tick) => tick + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const showGlow = isPositionMarkGlowActive(keepPositionMarkGlowAfterClose);
   const indexName = indexProp || current?.index;
   const chartExpiry = expiryProp || current?.expiry;
   const posMarks = useMemo(() => {
@@ -118,7 +125,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     const make = (segment, side) => (props) => (
       <g>
         <BarSeg {...props} />
-        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} spotPrice={spotPrice} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
+        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} spotPrice={spotPrice} showGlow={showGlow} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
       </g>
     );
     return {
@@ -131,7 +138,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
       ce_down: make("ce_down", "CE"),
       ce_delta: make("ce_delta", "CE"),
     };
-  }, [showOI, compact, spotPrice]);
+  }, [showOI, compact, spotPrice, showGlow]);
 
   if (!current) {
     return (
@@ -365,7 +372,7 @@ function pinHover(wrapRef, el, mark, onHover) {
   });
 }
 
-function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, spotPrice, wrapRef, onHover, dataRef }) {
+function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, spotPrice, showGlow, wrapRef, onHover, dataRef }) {
   const row = payload || dataRef?.current?.[index];
   if (!row || x == null || y == null || !Number.isFinite(Number(x))) return null;
   const pos = side === "CE" ? row.ce_pos : row.pe_pos;
@@ -393,11 +400,11 @@ function PosMark({ x, y, width, height, payload, index, segment, side, showOI, c
       }}
     >
       <circle cx={cx} cy={cy} r={r + (compact ? 3 : 2)} fill="transparent" />
-      {nearAtm ? (
+      {nearAtm && showGlow ? (
         <circle
           cx={cx}
           cy={cy}
-          r={r + (compact ? 5 : 6)}
+          r={r + (compact ? 3 : 4)}
           fill="none"
           stroke={sold ? "#DC2626" : "#2563EB"}
           strokeWidth={compact ? 2 : 2.5}

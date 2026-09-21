@@ -288,6 +288,16 @@ def is_ist_today_item(doc: Dict[str, Any], today: Optional[date] = None) -> bool
     return d is not None and d == (today or ist_today())
 
 
+def item_matches_feed_date(doc: Dict[str, Any], target_date: date) -> bool:
+    """A newly pulled article belongs in today's desk feed even when its source timestamp is older."""
+    published = parse_news_datetime(doc.get("published_at"))
+    discovered = parse_news_datetime(doc.get("discovered_at"))
+    return bool(
+        (published and published.astimezone(IST).date() == target_date)
+        or (discovered and discovered.astimezone(IST).date() == target_date)
+    )
+
+
 def clamp_retention(retention_days: int, min_history_days: int) -> Tuple[int, int]:
     mn = max(0, int(0 if min_history_days is None else min_history_days))
     ret = max(0, int(0 if retention_days is None else retention_days))
@@ -1067,8 +1077,9 @@ async def feed_for_user(db, prefs: Dict[str, Any], filt: str = "all", limit: int
             continue
         if not passes_filter(d, filt):
             continue
-        # Check if item matches the target date (instead of hardcoded today)
-        if not is_ist_today_item(d, target_date):
+        # A refresh may discover an overnight article whose source timestamp is
+        # yesterday. It must remain visible in the day it reached the desk.
+        if not item_matches_feed_date(d, target_date):
             continue
         if cat_filter:
             et = str(d.get("event_type") or "")

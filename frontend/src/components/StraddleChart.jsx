@@ -507,7 +507,7 @@ export default function StraddleChart({
 
   return (
     <div className="w-full" data-testid="straddle-chart">
-      <div className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm overflow-hidden">
+      <div className="oi-surface-lift oi-3d-stage w-full rounded-lg border border-slate-200 bg-white text-slate-900 overflow-hidden">
         <div className="px-3 py-2 md:px-5 md:py-3 border-b border-slate-100 flex items-center justify-between bg-white">
           <PageBrandTitle
             kicker={index}

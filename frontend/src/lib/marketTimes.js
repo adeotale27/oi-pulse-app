@@ -108,6 +108,11 @@ export function istMinutesOfDay(now = new Date()) {
   return Number(get("hour") || 0) * 60 + Number(get("minute") || 0);
 }
 
+/** Near-ATM position rings use the same admin-configured F&O close as the desk. */
+export function isPositionMarkGlowActive(keepAfterClose = true, now = new Date()) {
+  return keepAfterClose || istMinutesOfDay(now) < _closeMinute;
+}
+
 /** One extra Positions pull after Index F&O close (default 15:40 → 15:45). */
 export function getPositionsCatchupMinute() {
   return _closeMinute + 5;

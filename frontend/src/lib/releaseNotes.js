@@ -4,6 +4,27 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.19",
+    date: "2026-09-22",
+    user: [
+      "Desk panels and the Positions / Market Intelligence surfaces now have clearer layered depth while keeping the same colors.",
+    ],
+    admin: [
+      "Market timing labels the near-ATM glow markers: red S is short and blue L is long.",
+    ],
+  },
+  {
+    version: "11.18",
+    date: "2026-09-22",
+    user: [
+      "Positions now show a clean contract name, bold quantity, and a short expiry below. Near-ATM position rings are smaller, and the desk adds quiet depth to Positions and Market Intelligence without changing its colors.",
+      "Market Intelligence keeps a freshly pulled overnight story visible on the day it reaches the desk.",
+    ],
+    admin: [
+      "Admin configuration can keep near-ATM position rings visible after the existing Market close, or stop them at that same configured time.",
+    ],
+  },
+  {
     version: "11.17",
     date: "2026-09-22",
     user: [

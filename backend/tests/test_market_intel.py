@@ -283,6 +283,17 @@ def test_feed_for_user_date_filter_empty_and_populated():
     asyncio.run(run())
 
 
+def test_freshly_discovered_overnight_item_is_visible_on_refresh_day():
+    from datetime import datetime, timezone
+    from market_intel import item_matches_feed_date
+
+    row = {
+        "published_at": "2026-09-21T12:30:00+00:00",
+        "discovered_at": datetime(2026, 9, 22, 4, 45, tzinfo=timezone.utc),
+    }
+    assert item_matches_feed_date(row, date(2026, 9, 22)) is True
+
+
 def test_popup_feed_dates_overnight_vs_session():
     from datetime import datetime, timezone, timedelta
     from market_intel import popup_feed_dates, ist_today
