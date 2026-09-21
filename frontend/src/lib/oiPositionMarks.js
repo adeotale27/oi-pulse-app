@@ -1,4 +1,4 @@
-/** Map open Kite option legs onto OI chart strikes (B = long, S = short). */
+/** Map open Kite option legs onto OI chart strikes (L = long, S = short). */
 
 import { optionSide } from "./optionSide.js";
 import { isOpenPositionRow, hedgeUnderlying, quantityToLots } from "./positionHedge.js";
@@ -121,7 +121,7 @@ export function openOiMarks(positions, indexName, chartExpiry) {
     marks.push({
       strike: Number(strike),
       side,
-      tag: cur.qty < 0 ? "S" : "B",
+      tag: cur.qty < 0 ? "S" : "L",
       lots: quantityToLots(cur.qty, lotSize),
       pnl: Math.round(cur.pnl * 100) / 100,
       qty: cur.qty,
@@ -142,6 +142,17 @@ export function ceTopKey(d) {
   return "ce_base";
 }
 
+export const POSITION_MARK_NEAR_ATM_PCT = 0.01;
+
+/** A chart mark needs attention when its strike is within the one-percent ATM band. */
+export function isMarkNearAtm(mark, spot, bandPct = POSITION_MARK_NEAR_ATM_PCT) {
+  const strike = Number(mark?.strike);
+  const price = Number(spot);
+  const band = Number(bandPct);
+  if (!Number.isFinite(strike) || strike <= 0 || !Number.isFinite(price) || price <= 0 || !Number.isFinite(band) || band <= 0) return false;
+  return Math.abs(strike - price) / price <= band;
+}
+
 function fmtLots(n) {
   if (Number.isInteger(n)) return String(n);
   const t = Math.round(n * 10000) / 10000;
@@ -152,7 +163,7 @@ export function formatMarkHover(m) {
   if (!m) return "";
   const lots = Number(m.lots) || 0;
   const unit = Math.abs(lots) === 1 ? "lot" : "lots";
-  const verb = m.tag === "S" ? "Sold" : "Bought";
+  const verb = m.tag === "S" ? "Short" : "Long";
   const pnl = Number(m.pnl) || 0;
   const abs = Math.abs(pnl);
   const num = abs.toLocaleString("en-IN", {

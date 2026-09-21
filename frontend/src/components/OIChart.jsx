@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import { readPositionsBook, subscribePositionsBook } from "@/lib/positionsBook";
-import { openOiMarks, formatMarkHover, strikeKey, peTopKey, ceTopKey } from "@/lib/oiPositionMarks";
+import { openOiMarks, formatMarkHover, isMarkNearAtm, strikeKey, peTopKey, ceTopKey } from "@/lib/oiPositionMarks";
 
 const PUT_GREEN = "#16A34A";
 const PUT_LIGHT = "#86EFAC";
@@ -118,7 +118,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     const make = (segment, side) => (props) => (
       <g>
         <BarSeg {...props} />
-        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
+        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} spotPrice={spotPrice} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
       </g>
     );
     return {
@@ -131,7 +131,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
       ce_down: make("ce_down", "CE"),
       ce_delta: make("ce_delta", "CE"),
     };
-  }, [showOI, compact]);
+  }, [showOI, compact, spotPrice]);
 
   if (!current) {
     return (
@@ -365,7 +365,7 @@ function pinHover(wrapRef, el, mark, onHover) {
   });
 }
 
-function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, wrapRef, onHover, dataRef }) {
+function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, spotPrice, wrapRef, onHover, dataRef }) {
   const row = payload || dataRef?.current?.[index];
   if (!row || x == null || y == null || !Number.isFinite(Number(x))) return null;
   const pos = side === "CE" ? row.ce_pos : row.pe_pos;
@@ -380,6 +380,7 @@ function PosMark({ x, y, width, height, payload, index, segment, side, showOI, c
   let cy = topY - r - 2;
   if (cy < r + 1) cy = r + 1;
   const sold = pos.tag === "S";
+  const nearAtm = isMarkNearAtm(pos, spotPrice);
   return (
     <g
       data-testid={`oi-pos-mark-${pos.side}-${pos.strike}`}
@@ -392,6 +393,17 @@ function PosMark({ x, y, width, height, payload, index, segment, side, showOI, c
       }}
     >
       <circle cx={cx} cy={cy} r={r + (compact ? 3 : 2)} fill="transparent" />
+      {nearAtm ? (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r + (compact ? 5 : 6)}
+          fill="none"
+          stroke={sold ? "#DC2626" : "#2563EB"}
+          strokeWidth={compact ? 2 : 2.5}
+          className={`oi-position-mark-glow ${sold ? "oi-position-mark-glow-short" : "oi-position-mark-glow-long"}`}
+        />
+      ) : null}
       <circle cx={cx} cy={cy} r={r} fill={sold ? "#DC2626" : "#2563EB"} stroke="#fff" strokeWidth={1.4} />
       <text
         x={cx}
@@ -530,12 +542,12 @@ function CustomLegend({ showOI, compact, hasMarks }) {
         {hasMarks ? (
           <>
             <div className="flex items-center gap-1.5">
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-extrabold text-white">B</span>
-              <span>Bought</span>
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[9px] font-extrabold text-white">L</span>
+              <span>Long</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-extrabold text-white">S</span>
-              <span>Sold</span>
+              <span>Short</span>
             </div>
           </>
         ) : null}

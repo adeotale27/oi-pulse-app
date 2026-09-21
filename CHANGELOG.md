@@ -1,5 +1,9 @@
 # Changelog
 
+## V11.17 — 2026-09-22
+
+OI Change and Open Interest now use blue **L** (Long) and red **S** (Short) marks. A mark pulses in its own colour while its strike is within 1% of ATM. The Positions blotter keeps product, quantity, and API-backed expiry below the contract symbol, removes redundant Product/Qty columns, and adds P&L change %. On phones, the Error log table scrolls horizontally so no fields are clipped.
+
 ## V11.16 — 2026-09-18
 
 OI B/S badges sit on the centre of each candle and move with the bars (zoom and timeframe). Hover is on the badge: green P&L if profit, red if loss.

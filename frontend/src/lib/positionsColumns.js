@@ -6,11 +6,9 @@ export const POSITIONS_COLUMN_ORDER_KEY = "oiPositionsColumnOrder";
 /** @type {{ id: string, label: string, required?: boolean, defaultOn?: boolean, align?: "left" | "right" }[]} */
 export const POSITIONS_COLUMN_DEFS = [
   { id: "instrument", label: "Instrument", required: true, defaultOn: true, align: "left" },
-  { id: "product", label: "Product", defaultOn: true, align: "left" },
-  { id: "qty", label: "Qty", defaultOn: true, align: "right" },
   { id: "avg", label: "Avg", defaultOn: true, align: "right" },
   { id: "ltp", label: "LTP", defaultOn: true, align: "right" },
-  { id: "pnl", label: "P&L", defaultOn: true, align: "right" },
+  { id: "pnl", label: "P&L (Chg%)", defaultOn: true, align: "right" },
   { id: "tilt", label: "Tilt", defaultOn: true, align: "right" },
   { id: "theta", label: "Θ ₹/day", defaultOn: true, align: "right" },
   { id: "stillEarn", label: "Still earn", defaultOn: true, align: "right" },

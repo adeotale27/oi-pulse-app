@@ -4,6 +4,16 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "11.17",
+    date: "2026-09-22",
+    user: [
+      "OI Change and Open Interest now label live legs as Long (blue L) and Short (red S). A mark pulses in its colour when its strike is within 1% of ATM. Positions keeps quantity and expiry under the API-backed contract symbol, with a cleaner price and P&L grid.",
+    ],
+    admin: [
+      "The Error log table scrolls horizontally on a phone, so all error fields remain reachable instead of being clipped.",
+    ],
+  },
+  {
     version: "11.16",
     date: "2026-09-18",
     user: [

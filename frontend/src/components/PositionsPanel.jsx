@@ -364,6 +364,35 @@ function positionLabel(r) {
   return r?.display_name || r?.tradingsymbol || "—";
 }
 
+function positionExpiryLabel(row) {
+  const iso = String(row?.expiry_iso || row?.expiryIso || "").slice(0, 10);
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(month) - 1];
+  return monthName ? `Exp ${Number(day)} ${monthName} '${year.slice(2)}` : null;
+}
+
+function PositionInstrumentMeta({ row, exited = false, privacy = false }) {
+  const expiry = positionExpiryLabel(row);
+  return (
+    <div className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] ${exited ? "text-slate-300" : "text-slate-500"}`}>
+      <ProductSidePair row={row} exited={exited} />
+      <span className="font-mono-data">Qty: {privacy ? PRIVACY_MASK : (exited ? 0 : row.quantity)}</span>
+      {expiry ? <span className="font-mono-data">{expiry}</span> : null}
+    </div>
+  );
+}
+
+function positionPnlPercent(row) {
+  const average = Number(row?.average_price);
+  const quantity = Math.abs(Number(row?.quantity));
+  const pnl = Number(row?.pnl);
+  const base = average * quantity;
+  if (!Number.isFinite(pnl) || !Number.isFinite(base) || base <= 0) return null;
+  return (pnl / base) * 100;
+}
+
 function AvgCell({ row, privacy = false }) {
   if (privacy) return <span className="text-slate-400 tracking-widest">{PRIVACY_MASK}</span>;
   if (row?.exited) {
@@ -1982,18 +2011,11 @@ export default function PositionsPanel({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <ProductSidePair row={r} exited={r.exited} />
-                    {r.exited ? (
-                      <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
-                    ) : null}
-                  </div>
                   <div className={`text-base font-semibold truncate ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
                     {positionLabel(r)}
                   </div>
-                  <div className={`text-xs ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
-                    {r.exchange}
-                  </div>
+                  <PositionInstrumentMeta row={r} exited={r.exited} privacy={privacyMode} />
+                  {r.exited ? <div className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</div> : null}
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1">
                   <GreeksHealthChip health={r.greeksHealth} />
@@ -2001,12 +2023,6 @@ export default function PositionsPanel({
                 </div>
               </div>
               <div className={`mt-2 grid grid-cols-3 gap-2 text-sm font-mono-data ${r.exited ? "text-slate-400" : ""}`}>
-                <div>
-                  <div className="text-[10px] uppercase text-slate-400">Qty</div>
-                  <div className={r.exited ? "text-slate-400 font-semibold" : r.isShort ? "text-rose-600 font-semibold" : "text-sky-700 font-semibold"}>
-                    {privacyMode ? PRIVACY_MASK : (r.exited ? 0 : r.quantity)}
-                  </div>
-                </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Avg</div>
                   <div><AvgCell row={r} privacy={privacyMode} /></div>
@@ -2016,6 +2032,7 @@ export default function PositionsPanel({
                   <div className={`font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
                     {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
                   </div>
+                  {!privacyMode && positionPnlPercent(r) != null ? <div className="text-[10px] text-slate-400">{positionPnlPercent(r).toFixed(1)}%</div> : null}
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">LTP</div>
@@ -2068,20 +2085,13 @@ export default function PositionsPanel({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <ProductSidePair row={r} exited />
-                    <span className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</span>
-                  </div>
-                  <div className="text-base font-semibold truncate text-slate-400">{positionLabel(r)}</div>
-                  <div className="text-xs text-slate-300">{r.exchange}</div>
+                <div className="text-base font-semibold truncate text-slate-400">{positionLabel(r)}</div>
+                <PositionInstrumentMeta row={r} exited privacy={privacyMode} />
+                <div className="text-[9px] uppercase tracking-wide text-slate-400">Squared off</div>
                 </div>
                 <StatusChip breached={false} isShortOpt={false} exited />
               </div>
-              <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-mono-data text-slate-400">
-                <div>
-                  <div className="text-[10px] uppercase text-slate-400">Qty</div>
-                  <div className="font-semibold">{privacyMode ? PRIVACY_MASK : 0}</div>
-                </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm font-mono-data text-slate-400">
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">Avg</div>
                   <div><AvgCell row={r} privacy={privacyMode} /></div>
@@ -2222,30 +2232,13 @@ export default function PositionsPanel({
                 {shownCols.map((id) => {
                   const align = columnAlign(id);
                   const tdAlign = align === "right" ? "text-right" : "";
-                  if (id === "product") {
-                    return (
-                      <td key={id} className="px-2 py-1 min-w-[7.25rem]">
-                        <ProductSidePair row={r} exited={r.exited} />
-                      </td>
-                    );
-                  }
                   if (id === "instrument") {
                     return (
-                      <td key={id} className="px-2 py-1">
+                      <td key={id} className="px-3 py-1.5 min-w-[16rem]">
                         <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
                           {positionLabel(r)}
                         </div>
-                        <div className={`text-[10px] ${r.exited ? "text-slate-300" : "text-slate-400"}`}>
-                          {r.exchange}
-                          {r.exited ? " · exited" : ""}
-                        </div>
-                      </td>
-                    );
-                  }
-                  if (id === "qty") {
-                    return (
-                      <td key={id} className={`text-right px-2 py-1 font-semibold ${r.exited ? "text-slate-400" : r.isShort ? "text-rose-600" : "text-sky-700"}`}>
-                        {privacyMode ? PRIVACY_MASK : (r.exited ? 0 : r.quantity)}
+                        <PositionInstrumentMeta row={r} exited={r.exited} privacy={privacyMode} />
                       </td>
                     );
                   }
@@ -2262,9 +2255,11 @@ export default function PositionsPanel({
                     );
                   }
                   if (id === "pnl") {
+                    const pct = positionPnlPercent(r);
                     return (
                       <td key={id} className={`text-right px-2 py-1 font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
-                        {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
+                        <div>{privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}</div>
+                        {!privacyMode && pct != null ? <div className="text-[10px] font-normal text-slate-400">{pct.toFixed(1)}%</div> : null}
                       </td>
                     );
                   }
