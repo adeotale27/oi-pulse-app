@@ -14,6 +14,7 @@ import {
 } from "@/lib/marketIntel";
 import { clampCarryLeft, clampDockBottom, deskHeaderClearance, snapCarryLeft } from "@/lib/carryDock";
 import { nextSessionOpenMs } from "@/lib/overnightBrief";
+import { useFloatingDockFocus } from "@/lib/floatingDock";
 
 const PANEL_W = 320;
 
@@ -79,6 +80,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   const dragRef = useRef(null);
   const boxRef = useRef(null);
   const skipClickRef = useRef(false);
+  const { bringToFront, zIndexClass } = useFloatingDockFocus("market-intel", enabled);
   idxRef.current = idx;
 
   const setLeft = (px) => {
@@ -183,6 +185,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   };
 
   const expand = () => {
+    bringToFront();
     clearMinimized();
     setMinimized(false);
     setForceOpen(true);
@@ -200,6 +203,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
   };
 
   const onPointerDown = (e, kind) => {
+    bringToFront();
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const startBottom = bottomPx != null ? bottomPx : dockClearance();
@@ -294,7 +298,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
           }
           expand();
         }}
-        className={`fixed z-[70] md:bottom-3 right-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
+        className={`fixed ${zIndexClass} md:bottom-3 right-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
           bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
         }`}
         style={posStyle}
@@ -323,7 +327,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage }) {
 
   return (
     <div
-      className={`fixed z-[70] md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto h-[min(22rem,52vh)] ${
+      className={`fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto h-[min(22rem,52vh)] ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{

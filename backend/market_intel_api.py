@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+import asyncio
 
 from fastapi import Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
@@ -65,6 +66,7 @@ def mount(api_router, *, require_admin, require_desk_user):
     import desk_llm
     import market_intel as mi
     from desk_llm import encrypt_secret
+    refresh_lock = asyncio.Lock()
 
     def _db():
         import server
@@ -191,6 +193,24 @@ def mount(api_router, *, require_admin, require_desk_user):
             return {"ok": True, **result}
         except Exception as e:
             return {"ok": False, "error": str(e)[:200], "deleted": 0}
+
+    @api_router.post("/market-intel/refresh")
+    async def mi_refresh_all(_admin: bool = Depends(require_admin)):
+        """Fetch every enabled source sequentially on an explicit desk request."""
+        if refresh_lock.locked():
+            raise HTTPException(409, "Market intelligence refresh is already running")
+        async with refresh_lock:
+            db = _db()
+            if db is None:
+                raise HTTPException(503, "Database unavailable")
+            try:
+                await mi.ensure_default_sources(db)
+                summary = await mi.run_all_sources(db, _settings())
+                return {"ok": summary.get("failed", 0) == 0, **summary}
+            except Exception as e:
+                logger = __import__("logging").getLogger("market_intel")
+                logger.exception("market-intel refresh failed")
+                raise HTTPException(500, "Market intelligence refresh failed") from e
 
     @api_router.get("/market-intel/stats")
     async def mi_stats(_admin: bool = Depends(require_admin)):

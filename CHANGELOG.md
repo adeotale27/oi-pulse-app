@@ -1,5 +1,9 @@
 # Changelog
 
+## V12.00 — 2026-09-21
+
+Market Intelligence now treats geopolitical conflict, oil-route disruption, and major global/oil-producing economies as market-relevant signals. Admins can refresh every enabled configured news source sequentially from the desk. Overnight, Market Intelligence, and Indicative price floating cards now bring the card you open to the front instead of covering it with another card.
+
 ## V11.16 — 2026-09-18
 
 OI B/S badges sit on the centre of each candle and move with the bars (zoom and timeframe). Hover is on the badge: green P&L if profit, red if loss.

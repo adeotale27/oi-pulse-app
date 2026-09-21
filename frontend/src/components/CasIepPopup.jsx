@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { GripHorizontal, Maximize2, Minimize2, X } from "lucide-react";
 import { clampCarryLeft, clampDockBottom, deskHeaderClearance, snapCarryLeft } from "@/lib/carryDock";
 import { CAS_IEP_POPUP_INDICES, indicativeChangePct } from "@/lib/casIepPopup";
+import { useFloatingDockFocus } from "@/lib/floatingDock";
 
 const PANEL_W = 300;
 const LEFT_KEY = "oiCasIepPopupLeftPx";
@@ -45,6 +46,7 @@ function fmtPx(v) {
 
 /** Docked NIFTY 50 + SENSEX indicative prices during the CAS IEP window. */
 export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }) {
+  const { bringToFront, zIndexClass } = useFloatingDockFocus("indicative-price", enabled);
   const [minimized, setMinimized] = useState(() => {
     try { return localStorage.getItem(MIN_KEY) === "1"; } catch { return false; }
   });
@@ -101,11 +103,13 @@ export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }
     try { localStorage.setItem(MIN_KEY, "1"); } catch { /* noop */ }
   };
   const expand = () => {
+    bringToFront();
     setMinimized(false);
     try { localStorage.removeItem(MIN_KEY); } catch { /* noop */ }
   };
 
   const onPointerDown = (e, kind) => {
+    bringToFront();
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const startBottom = bottomPx != null ? bottomPx : dockClearance();
@@ -173,7 +177,7 @@ export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }
           }
           expand();
         }}
-        className={`fixed z-[72] md:bottom-3 flex items-center rounded-full border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
+        className={`fixed ${zIndexClass} md:bottom-3 flex items-center rounded-full border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
           bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
         }`}
         style={posStyle}
@@ -192,7 +196,7 @@ export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }
 
   return (
     <div
-      className={`fixed z-[72] md:bottom-3 flex flex-col rounded-xl border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg pointer-events-auto ${
+      className={`fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg pointer-events-auto ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
