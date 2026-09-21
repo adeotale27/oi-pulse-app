@@ -7,6 +7,7 @@ import {
   ceTopKey,
   parseOptionSymbol,
   formatMarkHover,
+  isMarkNearAtm,
   strikeKey,
 } from "./oiPositionMarks.js";
 
@@ -36,7 +37,7 @@ const nifty = openOiMarks(rows, "NIFTY", "2026-09-22");
 assert.equal(nifty.length, 3);
 assert.equal(nifty.find((m) => m.strike === 23650 && m.side === "CE").tag, "S");
 assert.equal(nifty.find((m) => m.strike === 23650).lots, 7);
-assert.equal(nifty.find((m) => m.strike === 24800).tag, "B");
+assert.equal(nifty.find((m) => m.strike === 24800).tag, "L");
 assert.ok(!nifty.some((m) => m.strike === 25000));
 assert.ok(!nifty.some((m) => m.strike === 80000));
 assert.ok(!nifty.some((m) => m.strike === 24000));
@@ -46,12 +47,15 @@ assert.deepEqual(peTopKey({ pe_down: 10, pe_up: 1, pe_base: 5 }), "pe_down");
 assert.deepEqual(ceTopKey({ ce_up: 3, ce_base: 2, ce_down: 0 }), "ce_up");
 
 const hoverS = formatMarkHover({ tag: "S", lots: 7, pnl: 1432 });
-assert.ok(hoverS.includes("Sold 7 lots"));
+assert.ok(hoverS.includes("Short 7 lots"));
 assert.ok(hoverS.includes("P&L"));
 assert.ok(hoverS.includes("1,432") || hoverS.includes("1432"));
-const hoverB = formatMarkHover({ tag: "B", lots: 1, pnl: -371.5 });
-assert.ok(hoverB.includes("Bought 1 lot"));
-assert.ok(hoverB.includes("-₹"));
+const hoverL = formatMarkHover({ tag: "L", lots: 1, pnl: -371.5 });
+assert.ok(hoverL.includes("Long 1 lot"));
+assert.ok(hoverL.includes("-₹"));
+assert.equal(isMarkNearAtm({ strike: 23650 }, 23420), true);
+assert.equal(isMarkNearAtm({ strike: 23650 }, 23399), false);
+assert.equal(isMarkNearAtm({ strike: 23650 }, null), false);
 
 const windowStrikes = new Set([23000, 23650]);
 const visible = nifty.filter((m) => windowStrikes.has(m.strike));

@@ -255,8 +255,23 @@ input[type="number"] {
   border-radius: 0.4rem;
 }
 
+@keyframes oi-position-mark-glow {
+  0%, 100% { opacity: 0.18; stroke-width: 1.5px; }
+  50% { opacity: 0.95; stroke-width: 4px; }
+}
+
+.oi-position-mark-glow {
+  animation: oi-position-mark-glow 1.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.oi-position-mark-glow-short { filter: drop-shadow(0 0 4px rgba(220, 38, 38, 0.9)); }
+.oi-position-mark-glow-long { filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.9)); }
+
 @media (prefers-reduced-motion: reduce) {
-  .oi-brand-pulse { animation: none; }
+  .oi-brand-pulse,
+  .oi-position-mark-glow { animation: none; }
 }
 
 .oi-mobile-ticker-track {

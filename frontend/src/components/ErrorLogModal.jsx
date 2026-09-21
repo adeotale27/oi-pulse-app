@@ -158,8 +158,8 @@ export default function ErrorLogModal({ open, onOpenChange }) {
           </Button>
         </div>
         {err ? <p className="text-[12px] text-rose-600 whitespace-normal break-words">{err}</p> : null}
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-md border border-slate-100 text-[11px]">
-          <table className="w-full table-fixed">
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-100 text-[11px]" data-testid="error-log-scroll">
+          <table className="w-full min-w-[42rem] table-fixed">
             <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="text-left font-semibold px-2 py-1 w-[9.5rem]">When (UTC)</th>

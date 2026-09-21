@@ -1,8 +1,8 @@
 # Changelog
 
-## V12.00 — 2026-09-21
+## V11.17 — 2026-09-22
 
-Market Intelligence now treats geopolitical conflict, oil-route disruption, and major global/oil-producing economies as market-relevant signals. Admins can refresh every enabled configured news source sequentially from the desk. Overnight, Market Intelligence, and Indicative price floating cards now bring the card you open to the front instead of covering it with another card.
+OI Change and Open Interest now use blue **L** (Long) and red **S** (Short) marks. A mark pulses in its own colour while its strike is within 1% of ATM. The Positions blotter keeps product, quantity, and API-backed expiry below the contract symbol, removes redundant Product/Qty columns, and adds P&L change %. On phones, the Error log table scrolls horizontally so no fields are clipped.
 
 ## V11.16 — 2026-09-18
 
