@@ -113,6 +113,7 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
     journal = _compact_journal(b.get("journal"))
     memory = _compact_memory(b.get("memory"))
+    market_memory = _compact_market_memory(b.get("market_memory"))
     sells = _compact_sells(b.get("sells"))
     index = _clip(b.get("index"))[:16] or None
     session_focus = _clip(b.get("session_focus") or index)[:16] or None
@@ -153,6 +154,7 @@ def compact_snapshot(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "session_focus": session_focus,
         "journal": journal,
         "memory": memory,
+        "market_memory": market_memory,
         "sells": sells,
     }
 
@@ -314,6 +316,20 @@ def _compact_memory(raw: Any) -> Optional[Dict[str, Any]]:
     if not lines and not buckets:
         return None
     return {"lines": lines, "buckets": buckets}
+
+
+def _compact_market_memory(raw: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return None
+    levels = []
+    for row in (raw.get("levels") or [])[:6]:
+        if not isinstance(row, dict):
+            continue
+        try:
+            levels.append({"level": float(row.get("level")), "type": _clip(row.get("lastInteractionType"))[:24], "count": int(row.get("rejectionCount") or row.get("touchCount") or 0), "averageReaction": row.get("averageReaction"), "largestReaction": row.get("largestReaction"), "lastInteraction": _clip(row.get("lastInteraction"))[:32], "currentDistance": row.get("currentDistance")})
+        except (TypeError, ValueError):
+            continue
+    return {"index": _clip(raw.get("index"))[:16], "levels": levels} if levels else None
 
 
 def _compact_sells(raw: Any) -> List[Dict[str, Any]]:

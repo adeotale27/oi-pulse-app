@@ -26,7 +26,8 @@ import OvernightGapBrief from "@/components/OvernightGapBrief";
 import CasIepPopup from "@/components/CasIepPopup";
 import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
 import MarketIntelPage from "@/components/MarketIntelPage";
-import AdrPage from "@/components/AdrPage";
+import GlobalMarketsPage from "@/components/GlobalMarketsPage";
+import MarketMemoryCard from "@/components/MarketMemoryCard";
 import AdrAdminModal from "@/components/AdrAdminModal";
 import MarketIntelPopup from "@/components/MarketIntelPopup";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
@@ -109,7 +110,7 @@ const DASHBOARD_PAGES = [
   { v: "index-events", l: "Index Risk" },
   { v: "cas", l: "CAS" },
   { v: "market-intel", l: "Mkt Intel" },
-  { v: "adrs", l: "ADRs" },
+  { v: "adrs", l: "Global Markets" },
 ];
 
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
@@ -2635,6 +2636,7 @@ export default function Dashboard() {
                         )}
                       </div>
                     </div>
+                    <div className="mb-3 max-w-xs"><MarketMemoryCard index={activeIndex} /></div>
                     {replayOpen && (
                       <div className="mb-2">
                         <ReplayScrubber
@@ -3089,7 +3091,7 @@ export default function Dashboard() {
                   )}
                   {(tabOn("adrs")) && (
                     <TabsContent value="adrs" className="mt-0">
-                      <AdrPage
+                      <GlobalMarketsPage
                         isAdmin={!!authState.is_admin}
                         userKey={authState.admin_username || authState.guest_name || (authState.is_admin ? "admin" : "guest")}
                         onOpenAdmin={() => setAdrAdminOpen(true)}

@@ -1,5 +1,9 @@
 # Changelog
 
+## V12.00 — 2026-09-22
+
+**Global Markets** replaces the ADRs navigation surface while preserving the ADR Monitor within it. A centrally configured Twelve Data registry now normalizes Global Indices, FX, commodities, crypto and macro instruments through the existing shared client/rate limiter, with local exchange clocks and honest unavailable/stale states. **Market Memory** records deterministic touch, rejection and breakout interactions from the existing Kite/OI snapshots, exposes compact desk context, and supplies structured context to Desk AI.
+
 ## V11.24 — 2026-09-22
 
 Error Log now hides only noisy external Market Intel source/API failures by default, with a one-click switch to show them; genuine Market Intel application errors remain visible. API Configuration moved from Admin configuration to the Admin Desk tools menu on desktop, tablet, and phone.

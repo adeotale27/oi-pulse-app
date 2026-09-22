@@ -54,7 +54,7 @@ export default function DeskAiBar({
       const focusIndex = cashSessionFocusIndex(weekday);
       const names = overnightBiasIndices(weekday, activeIndex).slice(0, 3);
       const today = todayIST();
-      const [st, outRes, evRes, posRes, extrasRes, journalRes, memRes, ...oiPacks] = await Promise.all([
+      const [st, outRes, evRes, posRes, extrasRes, journalRes, memRes, marketMemoryRes, ...oiPacks] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
         api.get("/desk-outside", { params: activeIndex ? { index: activeIndex } : {} }).catch(() => ({ data: null })),
         api.get(`/events/${focusIndex}`).catch(() => ({ data: null })),
@@ -62,6 +62,7 @@ export default function DeskAiBar({
         fetchExtras().catch(() => null),
         isAdmin ? fetchJournalPeriod(daysAgoIST(30, today), today, "ALL").catch(() => null) : Promise.resolve(null),
         isAdmin ? api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+        api.get(`/market-memory/${focusIndex}`).catch(() => ({ data: null })),
         ...names.map((idx) => fetchOIChange(idx, 15, { also: "session" }).catch(() => null)),
       ]);
       setMeta(st.data);
@@ -114,6 +115,7 @@ export default function DeskAiBar({
         oi,
         journal,
         memory,
+        market_memory: marketMemoryRes?.data || null,
         sells,
         outside: rawOut,
       });
@@ -123,7 +125,7 @@ export default function DeskAiBar({
     } finally {
       setBusy(false);
     }
-  }, [activeIndex, visible, askAi, variant, isAdmin]);
+  }, [activeIndex, visible, askAi, isAdmin]);
 
   useEffect(() => {
     if (!visible || !open) return undefined;

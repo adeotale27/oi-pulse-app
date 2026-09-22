@@ -1334,6 +1334,14 @@ class OITracker:
                 # The persist_snapshot helper already logs and updates metrics.
                 pass
 
+            # Market Memory derives compact events from this already-collected
+            # OI/Kite snapshot; it never opens a second market-data feed.
+            try:
+                import market_memory
+                await market_memory.capture(self.db, idx, snap)
+            except Exception as e:
+                logger.debug("market memory capture %s: %s", idx, e)
+
             # persist straddle samples for the chosen expiry (admin-selected indices only)
             try:
                 straddle_enabled = self.settings.get("straddle_enabled_indices") or ["NIFTY", "SENSEX"]

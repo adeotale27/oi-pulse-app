@@ -1032,6 +1032,15 @@ async def loop(db_fn, stop: asyncio.Event) -> None:
                     await db[STATE_COL].update_one({"_id": "loop"}, {"$set": patch}, upsert=True)
                 if not result.get("ok") and reason == "ist_open":
                     logger.warning("09:15 IST ADR refresh failed; last successful data kept")
+            # Global Markets shares this one Twelve Data loop and the same credit
+            # limiter/client.  One instrument per turn keeps Basic plans safe.
+            try:
+                import global_markets
+                await global_markets.poll_next(db)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.debug("global markets refresh: %s", e)
         except asyncio.CancelledError:
             raise
         except Exception as e:

@@ -6411,6 +6411,7 @@ class DeskGuideIn(BaseModel):
     outside: Optional[Dict[str, Any]] = None
     journal: Optional[Dict[str, Any]] = None
     memory: Optional[Dict[str, Any]] = None
+    market_memory: Optional[Dict[str, Any]] = None
     sells: Optional[List[Any]] = None
     index: Optional[str] = None
     session_focus: Optional[str] = None
@@ -6525,6 +6526,10 @@ import market_intel_api
 market_intel_api.mount(api_router, require_admin=require_admin, require_desk_user=require_desk_user)
 import adr_api
 adr_api.mount(api_router, require_admin=require_admin, require_desk_user=require_desk_user)
+import global_markets_api
+global_markets_api.mount(api_router, require_desk_user=require_desk_user)
+import market_memory_api
+market_memory_api.mount(api_router, require_desk_user=require_desk_user)
 app.include_router(api_router)
 
 
@@ -6830,6 +6835,13 @@ async def _boot_rest():
         adr_task, adr_stop = _adr.start_loop(lambda: db)
     except Exception as e:
         logger.warning("adr loop: %s", e)
+    try:
+        import global_markets as _global_markets
+        import market_memory as _market_memory
+        await _global_markets.ensure_indexes(db)
+        await _market_memory.ensure_indexes(db)
+    except Exception as e:
+        logger.warning("global markets / market memory indexes: %s", e)
     logger.info(
         "Started browser-independent OI/straddle writers + market-day poll watchdog"
     )
