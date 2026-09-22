@@ -26,7 +26,8 @@ import OvernightGapBrief from "@/components/OvernightGapBrief";
 import CasIepPopup from "@/components/CasIepPopup";
 import DeskAiMobileSheet from "@/components/DeskAiMobileSheet";
 import MarketIntelPage from "@/components/MarketIntelPage";
-import AdrPage from "@/components/AdrPage";
+import GlobalMarketsPage from "@/components/GlobalMarketsPage";
+import MarketMemoryCard from "@/components/MarketMemoryCard";
 import AdrAdminModal from "@/components/AdrAdminModal";
 import MarketIntelPopup from "@/components/MarketIntelPopup";
 import WriterDefenseMap from "@/components/WriterDefenseMap";
@@ -109,7 +110,7 @@ const DASHBOARD_PAGES = [
   { v: "index-events", l: "Index Risk" },
   { v: "cas", l: "CAS" },
   { v: "market-intel", l: "Mkt Intel" },
-  { v: "adrs", l: "ADRs" },
+  { v: "adrs", l: "Global Markets" },
 ];
 
 // Threshold on aggregate |PE - CE| change relative to base OI that triggers a
@@ -3089,7 +3090,7 @@ export default function Dashboard() {
                   )}
                   {(tabOn("adrs")) && (
                     <TabsContent value="adrs" className="mt-0">
-                      <AdrPage
+                      <GlobalMarketsPage
                         isAdmin={!!authState.is_admin}
                         userKey={authState.admin_username || authState.guest_name || (authState.is_admin ? "admin" : "guest")}
                         onOpenAdmin={() => setAdrAdminOpen(true)}
@@ -3099,6 +3100,7 @@ export default function Dashboard() {
 
                 {(activeTab === "oi-change" || activeTab === "open-interest") && (
                 <div className="mt-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2 flex-wrap">
+                  {activeTab === "oi-change" && oiSettings.showMarketMemory !== false ? <div className="w-full"><MarketMemoryCard index={activeIndex} /></div> : null}
                   <div data-testid="footer-refresh">
                     OI last pulled —{" "}
                     <span className="font-mono-data text-slate-900">

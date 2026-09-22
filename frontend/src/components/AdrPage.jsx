@@ -36,7 +36,7 @@ const SUMMARY_TILES = (summary) => ([
   ["US Market", summary.us_market],
 ]);
 
-export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin }) {
+export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin, embedded = false }) {
   const phone = useIsPhone();
   const [snap, setSnap] = useState(() => readAdrSnapshot());
   const [err, setErr] = useState(null);
@@ -57,7 +57,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
       setSnap(data);
       setErr(null);
     } catch (e) {
-      setErr(e?.response?.data?.detail || e?.message || "Could not load ADRs");
+      setErr(e?.response?.data?.detail || e?.message || "Could not load ADR Monitor");
     } finally {
       setLoading(false);
     }
@@ -141,7 +141,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
   return (
     <div className={`space-y-2 md:space-y-3 ${phone ? "pb-2" : ""}`} data-testid="adr-page">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <PageBrandTitle kicker={phone ? null : "Indian ADR Market Monitor"} title="ADRs" testId="adr-title" />
+        {!embedded ? <PageBrandTitle kicker={phone ? null : "Global Markets · Indian ADR Monitor"} title="Global Markets" testId="adr-title" /> : null}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-semibold" data-testid="adr-us-status">
             {snap?.us_market_label || "US Market"}
@@ -175,7 +175,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
       <div className="flex flex-wrap items-center gap-2">
         <div className={`relative min-w-[8rem] flex-1 ${phone ? "" : "max-w-xs"}`}>
           <Search className="w-3.5 h-3.5 absolute left-2 top-2.5 text-slate-400" />
-          <Input data-testid="adr-search" className="h-8 pl-7 text-xs" placeholder="Search ADRs…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input data-testid="adr-search" className="h-8 pl-7 text-xs" placeholder="Search ADR Monitor…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -218,13 +218,13 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
         ) : null}
       </div>
 
-      {loading && !snap ? <p className="text-sm text-slate-500">Loading ADR quotes…</p> : null}
-      {err ? <p className="text-sm text-rose-600" data-testid="adr-error">Could not load ADRs: {String(err)}</p> : null}
+      {loading && !snap ? <p className="text-sm text-slate-500">Loading ADR Monitor quotes…</p> : null}
+      {err ? <p className="text-sm text-rose-600" data-testid="adr-error">Could not load ADR Monitor: {String(err)}</p> : null}
       {!loading && !err && configured === 0 ? (
         <div className="rounded-md border border-slate-200 p-6 text-center" data-testid="adr-empty">
-          <p className="text-sm font-semibold">No ADRs configured</p>
+          <p className="text-sm font-semibold">No ADR Monitor instruments configured</p>
           {isAdmin ? (
-            <Button type="button" size="sm" className="mt-2 rounded-sm" onClick={onOpenAdmin}>Configure ADRs</Button>
+            <Button type="button" size="sm" className="mt-2 rounded-sm" onClick={onOpenAdmin}>Configure Global Markets</Button>
           ) : (
             <p className="text-xs text-slate-500 mt-1">Ask an admin to enable the Indian ADR universe.</p>
           )}

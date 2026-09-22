@@ -14,7 +14,7 @@ export const DOCK_CATALOG = [
   { id: "open-interest", label: "Open Interest", tab: "open-interest" },
   { id: "holidays", label: "Events", tab: "holidays" },
   { id: "market-intel", label: "Mkt Intel", tab: "market-intel" },
-  { id: "adrs", label: "ADRs", tab: "adrs" },
+  { id: "adrs", label: "Global Markets", tab: "adrs" },
   { id: "desk", label: "Desk", action: "desk" },
 ];
 

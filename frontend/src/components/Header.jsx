@@ -711,7 +711,7 @@ export default function Header({
           </Button>
           <Button data-testid="btn-mobile-adr-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenAdrSettings)}>
             <Globe2 className="w-4 h-4 mr-1.5" />
-            ADRs
+            Global Markets
           </Button>
           <Button
             data-testid="btn-mobile-fresh-pull"
@@ -1092,7 +1092,7 @@ export default function Header({
                   onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenAdrSettings?.(); }}
                 >
                   <Globe2 className="w-4 h-4" />
-                  ADRs
+                  Global Markets
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
@@ -1258,7 +1258,7 @@ export default function Header({
           </Button>
           <Button data-testid="btn-tablet-adr-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenAdrSettings)}>
             <Globe2 className="w-4 h-4 mr-1.5" />
-            ADRs
+            Global Markets
           </Button>
           <Button
             data-testid="btn-tablet-fresh-pull"

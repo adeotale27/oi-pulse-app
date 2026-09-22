@@ -573,7 +573,7 @@ def mark_twelve_data_rate_limited(seconds: float = TD_RATE_LIMIT_BACKOFF_S) -> N
     _rate_limited_until = time.monotonic() + max(30.0, float(seconds))
 
 
-async def fetch_quotes(api_key: str, specs: List[Any]) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+async def fetch_quotes(api_key: str, specs: List[Any], *, source: str = "adr") -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
     if not api_key:
         return {}, "not_configured"
     if not specs:
@@ -601,18 +601,18 @@ async def fetch_quotes(api_key: str, specs: List[Any]) -> Tuple[Dict[str, Dict[s
         except Exception as e:
             import httpx
             kind = "Timeout" if isinstance(e, httpx.TimeoutException) else type(e).__name__
-            await record_error(source="adr", message=redact(str(e))[:400], path="/quote", kind=kind)
+            await record_error(source=source, message=redact(str(e))[:400], path="/quote", kind=kind)
             err = "timeout" if kind == "Timeout" else "provider_unavailable"
             continue
         if r.status_code in (401, 403):
-            await record_error(source="adr", message=f"Client error {r.status_code} Unauthorized", path="/quote", kind="AuthError")
+            await record_error(source=source, message=f"Client error {r.status_code} Unauthorized", path="/quote", kind="AuthError")
             return out, "unauthorized"
         if r.status_code == 429:
             mark_twelve_data_rate_limited()
-            await record_error(source="adr", message="Client error 429 Too Many Requests", path="/quote", kind="RateLimit")
+            await record_error(source=source, message="Client error 429 Too Many Requests", path="/quote", kind="RateLimit")
             return out, "rate_limited"
         if r.status_code >= 500:
-            await record_error(source="adr", message=f"Client error {r.status_code} Internal Server Error", path="/quote", kind="ProviderError")
+            await record_error(source=source, message=f"Client error {r.status_code} Internal Server Error", path="/quote", kind="ProviderError")
             err = "provider_unavailable"
             continue
         try:
@@ -624,13 +624,13 @@ async def fetch_quotes(api_key: str, specs: List[Any]) -> Tuple[Dict[str, Dict[s
             msg = str(payload.get("message") or "quote error")
             if "rate" in msg.lower() or "limit" in msg.lower():
                 mark_twelve_data_rate_limited()
-                await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="RateLimit")
+                await record_error(source=source, message=redact(msg)[:400], path="/quote", kind="RateLimit")
                 return out, "rate_limited"
             if "symbol" in msg.lower() and "invalid" in msg.lower() or "figi" in msg.lower():
-                await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="BadSymbol")
+                await record_error(source=source, message=redact(msg)[:400], path="/quote", kind="BadSymbol")
                 err = err or "bad_symbol"
                 continue
-            await record_error(source="adr", message=redact(msg)[:400], path="/quote", kind="ProviderError")
+            await record_error(source=source, message=redact(msg)[:400], path="/quote", kind="ProviderError")
             err = "provider_error"
             continue
         raw = payload
@@ -1032,6 +1032,15 @@ async def loop(db_fn, stop: asyncio.Event) -> None:
                     await db[STATE_COL].update_one({"_id": "loop"}, {"$set": patch}, upsert=True)
                 if not result.get("ok") and reason == "ist_open":
                     logger.warning("09:15 IST ADR refresh failed; last successful data kept")
+            # Global Markets shares this one Twelve Data loop and the same credit
+            # limiter/client.  One instrument per turn keeps Basic plans safe.
+            try:
+                import global_markets
+                await global_markets.poll_next(db)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.debug("global markets refresh: %s", e)
         except asyncio.CancelledError:
             raise
         except Exception as e:

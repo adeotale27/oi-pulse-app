@@ -45,6 +45,7 @@ HOSTS = {
 
 MODULE_HINTS = {
     "adr.py": ("ADR Monitor", "Fetch Indian ADR quotes, listings and history for the ADR desk."),
+    "global_markets.py": ("Global Markets", "Fetch the enabled global indices, FX, commodities, crypto and macro instruments."),
     "market_intel.py": ("Market Intel", "Ingest and rank market news used by Market Intelligence and carry context."),
     "desk_outside.py": ("Desk Outside", "Fetch market-news context and fallback constituent prices for the desk."),
     "fii_dii_service.py": ("FII / DII", "Fetch official FII and DII flows shown on the desk."),

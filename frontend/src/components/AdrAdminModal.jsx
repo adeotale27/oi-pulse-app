@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Pencil, Power, Trash2 } from "lucide-react";
+import GlobalMarketsSettings from "@/components/GlobalMarketsSettings";
 
 const blank = {
   company_name: "", indian_symbol: "", adr_symbol: "", exchange: "NYSE",
@@ -69,7 +70,7 @@ export default function AdrAdminModal({ open, onOpenChange }) {
   if (!prefs && open) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent><DialogHeader><DialogTitle>ADRs</DialogTitle></DialogHeader><div className="text-sm text-slate-500">Loading…</div></DialogContent>
+        <DialogContent><DialogHeader><DialogTitle>Global Markets</DialogTitle></DialogHeader><div className="text-sm text-slate-500">Loading…</div></DialogContent>
       </Dialog>
     );
   }
@@ -78,8 +79,8 @@ export default function AdrAdminModal({ open, onOpenChange }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="adr-admin-modal" className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0">
         <DialogHeader>
-          <DialogTitle>ADRs</DialogTitle>
-          <DialogDescription>Twelve Data quotes for Indian ADRs. The API key stays in the vault and is never returned to the browser.</DialogDescription>
+          <DialogTitle>Global Markets</DialogTitle>
+          <DialogDescription>Twelve Data quotes power Global Markets; ADR Monitor uses the Indian ADR universe. The API key stays in the vault and is never returned to the browser.</DialogDescription>
         </DialogHeader>
 
         <section className="space-y-2 rounded-md border p-3">
@@ -105,10 +106,12 @@ export default function AdrAdminModal({ open, onOpenChange }) {
               savePrefs(patch).then(() => setKeyDraft(""));
             }}>Save provider</Button>
             <Button type="button" size="sm" variant="outline" data-testid="adr-test-api" onClick={test}>Test API Connection</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => savePrefs({ discover: true }).then(load)}>Sync Indian ADRs</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => savePrefs({ discover: true }).then(load)}>Sync ADR Monitor</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => api.post("/adrs/poll").then(() => toast.success("Poll queued"))}>Poll now</Button>
           </div>
         </section>
+
+        <GlobalMarketsSettings active={open} />
 
         <section className="space-y-2 rounded-md border p-3">
           <div className="text-[11px] font-semibold uppercase tracking-widest">Market Session</div>

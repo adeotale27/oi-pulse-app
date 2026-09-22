@@ -110,6 +110,7 @@ Public vs desk book: guests never see publisher positions, journal, or header To
 - Preserve old paths. Additive JSON keys only.
 - Admin vs public: `Depends(require_admin)` vs existing guest rules.
 - Document in [ABOUT.md](./ABOUT.md) if it is user-facing.
+- **API Configuration is automatic:** add the provider URL in its backend module and the running source inventory will include it in Admin → API Configuration. Add its hostname metadata in `backend/external_api_registry.py` when it is a new provider, and use the shared HTTP telemetry wrapper; never create a separate hand-maintained API-settings list.
 
 ## Add a Mongo collection
 
