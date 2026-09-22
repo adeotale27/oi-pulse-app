@@ -1,46 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
+import { GripVertical, Settings2 } from "lucide-react";
 import PageBrandTitle from "@/components/PageBrandTitle";
 import AdrPage from "@/components/AdrPage";
 import { fetchGlobalMarkets } from "@/lib/globalMarketsSnapshot";
 
 const CATEGORY_ORDER = ["GLOBAL INDICES", "FX / FOREX", "COMMODITIES", "CRYPTO", "ADR MONITOR", "MACRO"];
+const fmt = (value, precision = 2) => value == null ? "—" : Number(value).toLocaleString("en-US", { minimumFractionDigits: precision, maximumFractionDigits: precision });
+const tone = (value) => Number(value) > 0 ? "text-emerald-600" : Number(value) < 0 ? "text-rose-600" : "text-slate-500";
+function localTime(timezone, tick) { void tick; try { return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()); } catch { return "—"; } }
 
-function clock(timezone, tick) {
-  void tick;
-  try { return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()); } catch { return "—"; }
-}
-function fmt(value, precision) {
-  return value == null ? "No Data" : Number(value).toLocaleString("en-US", { minimumFractionDigits: precision, maximumFractionDigits: precision });
-}
-function tone(value) { return Number(value) > 0 ? "text-emerald-600" : Number(value) < 0 ? "text-rose-600" : "text-slate-500"; }
-function statusTone(status) { return status === "LIVE" || status === "24/7" ? "text-emerald-600" : status === "PRE-MARKET" ? "text-amber-600" : "text-slate-500"; }
-
-function InstrumentRow({ item, tick }) {
-  const status = item.available ? item.marketStatus : "NO DATA";
-  return <div className="grid grid-cols-[minmax(9rem,1.35fr)_minmax(5rem,.8fr)_minmax(5rem,.75fr)] gap-2 border-t border-slate-100 dark:border-slate-800 px-2 py-2.5 text-xs first:border-t-0" data-testid={`global-market-row-${item.id}`}>
-    <div className="min-w-0"><div className="font-semibold tracking-wide truncate">{item.symbol}</div><div className="text-[10px] text-slate-500 truncate">{item.displayName}</div></div>
-    <div className="font-mono-data text-right tabular-nums"><div>{fmt(item.price, item.precision)}</div><div className={`text-[10px] ${tone(item.changePercent)}`}>{item.change == null ? "" : `${Number(item.change) >= 0 ? "+" : ""}${fmt(item.change, item.precision)} · ${Number(item.changePercent) >= 0 ? "+" : ""}${Number(item.changePercent).toFixed(2)}%`}</div></div>
-    <div className={`text-right text-[10px] font-semibold ${statusTone(status)}`}><div>● {status}</div><div className="font-mono-data font-normal text-slate-400">{clock(item.timezone, tick)}</div>{item.stale ? <div className="text-amber-600">STALE</div> : null}</div>
-  </div>;
+function GlobalMarketTable({ items, tick }) {
+  return <div className="overflow-x-auto rounded-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"><table className="w-full min-w-[48rem] text-[11px]"><thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500 dark:bg-slate-800"><tr><th className="px-2 py-2 text-left">Instrument</th><th className="px-2 py-2 text-right">Last</th><th className="px-2 py-2 text-right">Change</th><th className="px-2 py-2 text-right">Chg. %</th><th className="px-2 py-2 text-right">High</th><th className="px-2 py-2 text-right">Low</th><th className="px-2 py-2 text-right">Volume</th><th className="px-2 py-2 text-left">Market Status</th><th className="px-2 py-2 text-right">Last Updated</th></tr></thead><tbody>{items.map((item) => { const unavailable = !item.available && item.stale; const status = unavailable ? "UNAVAILABLE" : item.available ? item.marketStatus : "PENDING"; return <tr key={item.id} className="border-t border-slate-100 dark:border-slate-800" data-testid={`global-market-row-${item.id}`}><td className="px-2 py-2"><b className="tracking-wide">{item.symbol}</b><div className="text-[10px] text-slate-500">{item.displayName}</div></td><td className="px-2 py-2 text-right font-mono-data">{fmt(item.price, item.precision)}</td><td className={`px-2 py-2 text-right font-mono-data ${tone(item.change)}`}>{item.change == null ? "—" : `${Number(item.change) >= 0 ? "+" : ""}${fmt(item.change, item.precision)}`}</td><td className={`px-2 py-2 text-right font-mono-data ${tone(item.changePercent)}`}>{item.changePercent == null ? "—" : `${Number(item.changePercent) >= 0 ? "+" : ""}${Number(item.changePercent).toFixed(2)}%`}</td><td className="px-2 py-2 text-right font-mono-data">{fmt(item.high, item.precision)}</td><td className="px-2 py-2 text-right font-mono-data">{fmt(item.low, item.precision)}</td><td className="px-2 py-2 text-right font-mono-data">{item.volume == null ? "—" : Number(item.volume).toLocaleString()}</td><td className={status === "LIVE" || status === "24/7" ? "px-2 py-2 font-medium text-emerald-600" : status === "UNAVAILABLE" ? "px-2 py-2 font-medium text-amber-600" : "px-2 py-2 font-medium text-slate-500"}>● {status}</td><td className="px-2 py-2 text-right font-mono-data text-slate-500">{item.timestamp ? localTime(item.timezone, tick) : "—"}{item.stale ? <div className="text-[9px] text-amber-600">CHECK PROVIDER</div> : null}</td></tr>; })}</tbody></table></div>;
 }
 
 export default function GlobalMarketsPage({ isAdmin = false, userKey = "desk", onOpenAdmin }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [tick, setTick] = useState(0);
+  const [data, setData] = useState(null); const [error, setError] = useState(""); const [tick, setTick] = useState(0); const [dragged, setDragged] = useState(null); const [configRevision, setConfigRevision] = useState(0);
+  const layoutKey = `striklenz.global-market-layout.${userKey || "desk"}`;
+  const [order, setOrder] = useState(() => { try { const saved = JSON.parse(localStorage.getItem(layoutKey) || "[]"); const valid = Array.isArray(saved) ? saved.filter((x) => CATEGORY_ORDER.includes(x)) : []; return [...valid, ...CATEGORY_ORDER.filter((x) => !valid.includes(x))]; } catch { return CATEGORY_ORDER; } });
   useEffect(() => { const id = window.setInterval(() => setTick((n) => n + 1), 1000); return () => window.clearInterval(id); }, []);
-  useEffect(() => {
-    let live = true;
-    const load = () => fetchGlobalMarkets().then((next) => { if (live) { setData(next); setError(""); } }).catch(() => live && setError("Global market quotes are temporarily unavailable."));
-    load(); const id = window.setInterval(load, 60_000); return () => { live = false; window.clearInterval(id); };
-  }, []);
-  const groups = useMemo(() => {
-    const items = data?.items || [];
-    return Object.fromEntries(CATEGORY_ORDER.map((category) => [category, category === "MACRO" ? items.filter((item) => item.category === category || item.macro) : items.filter((item) => item.category === category)]));
-  }, [data]);
-  return <div className="space-y-4" data-testid="global-markets-page">
-    <PageBrandTitle kicker="Unified market monitor" title="Global Markets" testId="global-markets-title" />
-    {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-    {CATEGORY_ORDER.map((category) => category === "ADR MONITOR" ? <section key={category} className="pt-1"><h2 className="mb-2 text-[11px] font-semibold tracking-widest uppercase text-slate-500">ADR Monitor</h2><AdrPage embedded isAdmin={isAdmin} userKey={userKey} onOpenAdmin={onOpenAdmin} /></section> : <section key={category}><h2 className="mb-1 text-[11px] font-semibold tracking-widest uppercase text-slate-500">{category}</h2><div className="rounded-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">{groups[category]?.length ? groups[category].map((item) => <InstrumentRow key={item.id} item={item} tick={tick} />) : <div className="px-2 py-3 text-xs text-slate-400">No instruments configured.</div>}</div></section>)}
-  </div>;
+  useEffect(() => { let live = true; const load = () => fetchGlobalMarkets({ force: configRevision > 0 }).then((next) => { if (live) { setData(next); setError(""); } }).catch(() => live && setError("Global market quotes are temporarily unavailable.")); load(); const id = window.setInterval(load, 60_000); return () => { live = false; window.clearInterval(id); }; }, [configRevision]);
+  useEffect(() => { const refresh = () => setConfigRevision((value) => value + 1); window.addEventListener("global-markets-config-saved", refresh); return () => window.removeEventListener("global-markets-config-saved", refresh); }, []);
+  const groups = useMemo(() => Object.fromEntries(CATEGORY_ORDER.map((category) => [category, (data?.items || []).filter((item) => item.category === category)])), [data]);
+  const shown = order.filter((category) => category === "ADR MONITOR" || groups[category]?.length);
+  const moveCategory = (from, to) => { if (!from || from === to) return; setOrder((previous) => { const next = previous.filter((x) => x !== from); next.splice(next.indexOf(to), 0, from); try { localStorage.setItem(layoutKey, JSON.stringify(next)); } catch (_) {} return next; }); };
+  return <div className="space-y-4" data-testid="global-markets-page"><div className="flex items-start justify-between gap-3"><PageBrandTitle kicker="Unified market monitor" title="Global Markets" testId="global-markets-title" />{isAdmin ? <button type="button" onClick={onOpenAdmin} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"><Settings2 className="h-3.5 w-3.5" />Configure</button> : null}</div>{error ? <p className="text-sm text-rose-600">{error}</p> : null}{shown.map((category) => <section key={category} className="group" draggable onDragStart={() => setDragged(category)} onDragOver={(event) => event.preventDefault()} onDrop={() => { moveCategory(dragged, category); setDragged(null); }}><div className="mb-1 flex items-center gap-1"><GripVertical className="h-3.5 w-3.5 cursor-grab text-slate-300 group-hover:text-slate-500" /><h2 className="text-[11px] font-semibold tracking-widest uppercase text-slate-500">{category}</h2><span className="text-[9px] text-slate-400">drag to reorder</span></div>{category === "ADR MONITOR" ? <AdrPage embedded isAdmin={isAdmin} userKey={userKey} onOpenAdmin={onOpenAdmin} /> : <GlobalMarketTable items={groups[category]} tick={tick} />}</section>)}</div>;
 }

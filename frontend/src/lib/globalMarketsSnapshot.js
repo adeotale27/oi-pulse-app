@@ -13,3 +13,10 @@ export async function fetchGlobalMarkets({ force = false } = {}) {
     .finally(() => { inFlight = null; });
   return inFlight;
 }
+
+if (typeof window !== "undefined") {
+  window.addEventListener("global-markets-config-saved", () => {
+    cached = null;
+    cachedAt = 0;
+  });
+}

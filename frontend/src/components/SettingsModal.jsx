@@ -688,6 +688,10 @@ export default function SettingsModal({
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
                   Data collection
                 </div>
+                <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div><div className="text-xs font-medium text-slate-800">Market Memory</div><div className="text-[10px] text-slate-500">Show the OI-derived level memory above the refresh status on OI Change.</div></div>
+                  <Switch checked={local.showMarketMemory !== false} onCheckedChange={(checked) => setLocalField("showMarketMemory", !!checked)} data-testid="show-market-memory" />
+                </div>
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
                     OI Data Pull Interval
@@ -918,6 +922,7 @@ export default function SettingsModal({
                 </label>
               </section>
           ) : null}
+
           {pane === "signals" ? (
           <>
           <section className="space-y-3 pt-2">

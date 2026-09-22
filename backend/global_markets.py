@@ -11,8 +11,13 @@ from typing import Any, Dict, List, Optional
 
 import adr
 
+# Provider metadata for the automatic API Configuration inventory. Requests
+# still use the centralized ADR client/rate limiter below.
+PROVIDER_QUOTE_URL = "https://api.twelvedata.com/quote"
 LATEST_COL = "global_market_latest"
 STATE_COL = "global_market_state"
+CFG_COL = "settings"
+CFG_ID = "global_markets_prefs"
 
 # Add a market by adding one row here.  displaySymbol is never sent upstream.
 INSTRUMENTS: List[Dict[str, Any]] = [
@@ -49,6 +54,33 @@ CATEGORY_ORDER = ("GLOBAL INDICES", "FX / FOREX", "COMMODITIES", "CRYPTO", "ADR 
 
 def instruments() -> List[Dict[str, Any]]:
     return [dict(item) for item in INSTRUMENTS]
+
+
+async def configured_instruments(db) -> List[Dict[str, Any]]:
+    """Admin enables each instrument explicitly; unsupported symbols stay hidden."""
+    doc = await db[CFG_COL].find_one({"_id": CFG_ID}) if db is not None else None
+    overrides = (doc or {}).get("instruments") if isinstance((doc or {}).get("instruments"), dict) else {}
+    rows = []
+    for base in INSTRUMENTS:
+        override = overrides.get(base["id"], {}) if isinstance(overrides.get(base["id"], {}), dict) else {}
+        rows.append({**base, "enabled": bool(override.get("enabled", False)), "providerSymbol": str(override.get("providerSymbol") or base["providerSymbol"]).strip()})
+    return rows
+
+
+async def save_instrument_config(db, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    allowed = {item["id"]: item for item in INSTRUMENTS}
+    current_doc = await db[CFG_COL].find_one({"_id": CFG_ID}) if db is not None else None
+    patch = dict((current_doc or {}).get("instruments") or {})
+    for row in rows:
+        item = allowed.get(str(row.get("id") or ""))
+        if not item:
+            continue
+        symbol = str(row.get("providerSymbol") or item["providerSymbol"]).strip()
+        # Never let a blank provider token become an upstream BadSymbol call.
+        patch[item["id"]] = {"enabled": bool(row.get("enabled")) and bool(symbol), "providerSymbol": symbol or item["providerSymbol"]}
+    if db is not None:
+        await db[CFG_COL].update_one({"_id": CFG_ID}, {"$set": {"instruments": patch}}, upsert=True)
+    return await configured_instruments(db)
 
 
 def _status(item: Dict[str, Any], quote: Optional[Dict[str, Any]]) -> tuple[str, bool]:
@@ -90,7 +122,7 @@ async def overview(db) -> Dict[str, Any]:
     if db is not None:
         async for row in db[LATEST_COL].find({}, {"_id": 0}):
             latest[row.get("id")] = row
-    rows = [normalize(item, latest.get(item["id"])) for item in INSTRUMENTS]
+    rows = [normalize(item, latest.get(item["id"])) for item in await configured_instruments(db) if item["enabled"]]
     return {"categories": CATEGORY_ORDER, "items": rows, "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
@@ -100,12 +132,12 @@ async def poll_next(db) -> None:
     if not key:
         return
     state = await db[STATE_COL].find_one({"_id": "cursor"}) if db is not None else None
-    enabled = [item for item in INSTRUMENTS if item["enabled"]]
+    enabled = [item for item in await configured_instruments(db) if item["enabled"]]
     if not enabled:
         return
     cursor = int((state or {}).get("position") or 0) % len(enabled)
     item = enabled[cursor]
-    quotes, error = await adr.fetch_quotes(key, [(item["id"], item["providerSymbol"], item["exchange"])])
+    quotes, error = await adr.fetch_quotes(key, [(item["id"], item["providerSymbol"], item["exchange"])], source="global_market")
     quote = quotes.get(item["id"].upper())
     if db is not None:
         if quote:

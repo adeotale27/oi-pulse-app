@@ -537,7 +537,7 @@ export default function StraddleChart({
         <div className="px-1 pt-2 pb-1 md:px-4 md:pt-3 md:pb-2 h-[280px] md:h-[460px] bg-white relative">
           <ResponsiveContainer>
             <LineChart data={chartPoints} margin={{ top: 28, right: 12, left: 0, bottom: 18 }}>
-              <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical={false} />
+              <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical horizontal />
               <XAxis
                 dataKey="ts"
                 type="number"

@@ -85,6 +85,7 @@ export function errorSourceLabel(src) {
     straddle: "Straddle",
     kite: "Kite",
     adr: "Global Markets",
+    global_market: "Global Market",
     ui: "UI",
     api: "API",
     ws: "WS",

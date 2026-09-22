@@ -1,6 +1,6 @@
 import asyncio
 
-from external_api_registry import build_registry, classify_external_url
+from external_api_registry import _source_rows, build_registry, classify_external_url
 
 
 def test_classifies_only_known_external_providers():
@@ -16,3 +16,8 @@ def test_registry_is_source_derived_and_contains_live_integrations():
     assert "Twelve Data" in providers
     assert any(endpoint["endpoint"] == "/quote" for endpoint in providers["Kite Connect"]["endpoints"])
     assert registry["summary"]["endpoints"] >= 1
+
+
+def test_global_markets_is_discovered_by_the_api_configuration_inventory():
+    rows = list(_source_rows())
+    assert any(row["module"] == "Global Markets" and row["provider_id"] == "twelve-data" for row in rows)

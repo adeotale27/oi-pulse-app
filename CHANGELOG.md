@@ -1,5 +1,9 @@
 # Changelog
 
+## V12.01 — 2026-09-22
+
+Global Markets now starts with every instrument disabled and exposes its provider, per-instrument mapping, ADR universe, and whole-category switches only in its dedicated admin-only **Global Markets → Configure** window. Unsupported or plan-gated vendor symbols never appear or consume polling credits until deliberately enabled; turning a category off removes its desk component entirely. Non-ADR categories now use the same dense quote-table treatment as ADR Monitor, and their section layout is drag-reorderable and saved per desk user. Global Market fetch failures are recorded under the distinct `global_market` source rather than ADR. Market Memory is a per-user Desk setting and sits above the OI Change auto-refresh footer when enabled. Straddle now draws both horizontal and vertical gridlines. The automatic API Configuration inventory labels Global Markets and the development checklist documents the source-discovery path for every new provider.
+
 ## V12.00 — 2026-09-22
 
 **Global Markets** replaces the ADRs navigation surface while preserving the ADR Monitor within it. A centrally configured Twelve Data registry now normalizes Global Indices, FX, commodities, crypto and macro instruments through the existing shared client/rate limiter, with local exchange clocks and honest unavailable/stale states. **Market Memory** records deterministic touch, rejection and breakout interactions from the existing Kite/OI snapshots, exposes compact desk context, and supplies structured context to Desk AI.

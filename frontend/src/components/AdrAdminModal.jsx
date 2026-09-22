@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Pencil, Power, Trash2 } from "lucide-react";
+import GlobalMarketsSettings from "@/components/GlobalMarketsSettings";
 
 const blank = {
   company_name: "", indian_symbol: "", adr_symbol: "", exchange: "NYSE",
@@ -109,6 +110,8 @@ export default function AdrAdminModal({ open, onOpenChange }) {
             <Button type="button" size="sm" variant="outline" onClick={() => api.post("/adrs/poll").then(() => toast.success("Poll queued"))}>Poll now</Button>
           </div>
         </section>
+
+        <GlobalMarketsSettings active={open} />
 
         <section className="space-y-2 rounded-md border p-3">
           <div className="text-[11px] font-semibold uppercase tracking-widest">Market Session</div>

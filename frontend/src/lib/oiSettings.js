@@ -22,6 +22,9 @@ export const DEFAULT_OI_SETTINGS = {
   instPremiumCr: 10, // ₹10 Cr notional premium value of the OI
   // Lot sizes (Indian F&O standard as configured by user).
   lotSize: { NIFTY: 65, SENSEX: 20, BANKNIFTY: 30 },
+  // A personal desk preference: Market Memory is derived from the same OI
+  // snapshots, but it should not take space unless the user asks for it.
+  showMarketMemory: true,
 };
 
 export function loadOISettings() {

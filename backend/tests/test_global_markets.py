@@ -1,4 +1,6 @@
-from global_markets import INSTRUMENTS, normalize
+import asyncio
+
+from global_markets import INSTRUMENTS, configured_instruments, normalize
 from market_memory import _levels
 
 
@@ -16,6 +18,12 @@ def test_normalized_crypto_is_247_and_unavailable_quote_is_honest():
     quote = normalize(btc, {"last_price": 100.0, "change": 1, "change_percent": 1})
     assert quote["available"] is True
     assert quote["price"] == 100.0
+
+
+def test_global_instruments_are_opt_in_until_admin_enables_them():
+    rows = asyncio.run(configured_instruments(None))
+    assert rows
+    assert all(row["enabled"] is False for row in rows)
 
 
 def test_memory_levels_are_derived_from_existing_snapshot_fields():

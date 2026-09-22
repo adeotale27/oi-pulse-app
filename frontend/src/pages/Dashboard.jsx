@@ -2636,7 +2636,6 @@ export default function Dashboard() {
                         )}
                       </div>
                     </div>
-                    <div className="mb-3 max-w-xs"><MarketMemoryCard index={activeIndex} /></div>
                     {replayOpen && (
                       <div className="mb-2">
                         <ReplayScrubber
@@ -3101,6 +3100,7 @@ export default function Dashboard() {
 
                 {(activeTab === "oi-change" || activeTab === "open-interest") && (
                 <div className="mt-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2 flex-wrap">
+                  {activeTab === "oi-change" && oiSettings.showMarketMemory !== false ? <div className="w-full"><MarketMemoryCard index={activeIndex} /></div> : null}
                   <div data-testid="footer-refresh">
                     OI last pulled —{" "}
                     <span className="font-mono-data text-slate-900">

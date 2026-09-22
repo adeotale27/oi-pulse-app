@@ -6527,7 +6527,7 @@ market_intel_api.mount(api_router, require_admin=require_admin, require_desk_use
 import adr_api
 adr_api.mount(api_router, require_admin=require_admin, require_desk_user=require_desk_user)
 import global_markets_api
-global_markets_api.mount(api_router, require_desk_user=require_desk_user)
+global_markets_api.mount(api_router, require_desk_user=require_desk_user, require_admin=require_admin)
 import market_memory_api
 market_memory_api.mount(api_router, require_desk_user=require_desk_user)
 app.include_router(api_router)
