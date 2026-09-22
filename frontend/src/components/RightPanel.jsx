@@ -11,6 +11,7 @@ import MarketIntelPage from "@/components/MarketIntelPage";
 import OIChart from "@/components/OIChart";
 import EventRiskWidget from "@/components/EventRiskWidget";
 import StraddleChart from "@/components/StraddleChart";
+import AdrPage from "@/components/AdrPage";
 
 // Content picker options for the right (side-by-side) panel.
 // pageId maps to the same dashboard-visible_page keys used by settings.
@@ -26,6 +27,7 @@ export const RIGHT_PANEL_VIEWS = [
   { key: "straddle", label: "Straddle", pageId: "straddle" },
   { key: "index-events", label: "Index Risk", pageId: "index-events" },
   { key: "market-intel", label: "Mkt Intel", pageId: "market-intel" },
+  { key: "adrs", label: "ADRs", pageId: "adrs" },
 ];
 
 export default function RightPanel({
@@ -79,6 +81,7 @@ export default function RightPanel({
   onDeskAiPositions,
   onDeskAiRadar,
   onOpenTelegramPrefs,
+  adrUserKey = "desk",
 }) {
   const allowedViews = useMemo(
     () => RIGHT_PANEL_VIEWS.filter((item) => {
@@ -272,6 +275,9 @@ export default function RightPanel({
           )}
           {selectedView === "market-intel" && (
             <MarketIntelPage compact />
+          )}
+          {selectedView === "adrs" && (
+            <AdrPage isAdmin={isAdmin} userKey={adrUserKey} />
           )}
         </div>
 

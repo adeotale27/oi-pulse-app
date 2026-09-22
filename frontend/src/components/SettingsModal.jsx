@@ -54,6 +54,10 @@ function normalizeLoadedSettings(d) {
     "market_intel_retention_days",
     "market_intel_min_history_days",
     "admin_session_ttl_minutes",
+    "alert_toast_opacity",
+    "overnight_popup_opacity",
+    "market_intel_popup_opacity",
+    "indicative_popup_opacity",
   ]) {
     if (next[key] == null || next[key] === "") continue;
     const n = key === "threshold_pct" ? parseFloat(next[key]) : parseInt(next[key], 10);
@@ -129,6 +133,10 @@ export default function SettingsModal({
           show_chart_signals: false,
           position_mark_glow_after_close: true,
           position_mark_glow_pct: 1,
+          alert_toast_opacity: 88,
+          overnight_popup_opacity: 92,
+          market_intel_popup_opacity: 92,
+          indicative_popup_opacity: 92,
         });
       });
     setLocal(loadOISettings());
@@ -238,7 +246,14 @@ export default function SettingsModal({
           show_suggestion: settings.show_suggestion,
           show_chart_signals: settings.show_chart_signals,
           position_mark_glow_after_close: settings.position_mark_glow_after_close !== false,
-          position_mark_glow_pct: settings.position_mark_glow_pct ?? 1,
+          position_mark_glow_pct: (() => {
+            const v = Number(settings.position_mark_glow_pct);
+            return Number.isFinite(v) && v >= 0.01 ? v : 1;
+          })(),
+          alert_toast_opacity: settings.alert_toast_opacity ?? 88,
+          overnight_popup_opacity: settings.overnight_popup_opacity ?? 92,
+          market_intel_popup_opacity: settings.market_intel_popup_opacity ?? 92,
+          indicative_popup_opacity: settings.indicative_popup_opacity ?? 92,
           market_intel_ingest_seconds: settings.market_intel_ingest_seconds,
           market_intel_retention_days: settings.market_intel_retention_days,
           market_intel_min_history_days: settings.market_intel_min_history_days,
@@ -482,6 +497,39 @@ export default function SettingsModal({
                 ))}
               </div>
             </div>
+            {isAdmin ? (
+              <div className="space-y-3">
+                <div className="flex justify-between mb-1">
+                  <Label className="text-xs uppercase tracking-wider text-slate-500">Desktop alert opacity</Label>
+                  <span className="text-xs font-mono-data font-semibold">{settings.alert_toast_opacity ?? 88}%</span>
+                </div>
+                <Slider
+                  data-testid="slider-alert-toast-opacity"
+                  min={60}
+                  max={100}
+                  step={1}
+                  value={[settings.alert_toast_opacity ?? 88]}
+                  onValueChange={(v) => setSettings({ ...settings, alert_toast_opacity: v[0] })}
+                />
+                <p className="mt-1 text-[10px] text-slate-500">Affects ordinary desktop alerts only. Mobile keeps a readable bottom tray; Huge OI Shift stays separate.</p>
+                <div className="pt-2 border-t border-slate-100">
+                  <Label className="text-xs uppercase tracking-wider text-slate-500">Floating popup opacity</Label>
+                  <div className="mt-2 space-y-2.5">
+                    {[
+                      ["Overnight carry", "overnight_popup_opacity"],
+                      ["Market Intel", "market_intel_popup_opacity"],
+                      ["Indicative price", "indicative_popup_opacity"],
+                    ].map(([label, key]) => (
+                      <div key={key}>
+                        <div className="flex justify-between text-[11px] text-slate-600"><span>{label}</span><span className="font-mono-data font-semibold">{settings[key] ?? 92}%</span></div>
+                        <Slider min={60} max={100} step={1} value={[settings[key] ?? 92]} onValueChange={(v) => setSettings({ ...settings, [key]: v[0] })} data-testid={`slider-${key}`} />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500">Applies to each docked popup and its minimized chip on desktop and mobile.</p>
+                </div>
+              </div>
+            ) : null}
           </section>
           ) : null}
 
@@ -597,14 +645,17 @@ export default function SettingsModal({
                   <Input
                     data-testid="position-mark-glow-pct"
                     type="number"
-                    min={0.1}
+                    min={0.01}
                     max={5}
-                    step={0.1}
+                    step={0.01}
                     value={settings.position_mark_glow_pct ?? 1}
-                    onChange={(e) => setSettings({ ...settings, position_mark_glow_pct: Number(e.target.value) || 1 })}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setSettings({ ...settings, position_mark_glow_pct: raw === "" ? "" : Number(raw) });
+                    }}
                     className="h-8 font-mono-data"
                   />
-                  <p className="mt-1 text-[10px] text-slate-500">Only marks within this percentage of the live spot get the slow red S / blue L aura. Default: 1%.</p>
+                  <p className="mt-1 text-[10px] text-slate-500">0.01%–5%. Only marks within this distance of the live spot get the slow red S / blue L aura. Default: 1%.</p>
                 </div>
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
                   <Checkbox

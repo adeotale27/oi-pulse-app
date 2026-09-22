@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip as ReTooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown, ChevronRight, Columns3, Search, SlidersHorizontal, Clock } from "lucide-react";
 import { api } from "@/lib/api";
@@ -12,7 +12,7 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
+import { fetchAdrSnapshot, readAdrSnapshot, subscribeAdrSnapshot } from "@/lib/adrSnapshot";
 import {
   ADR_COLUMNS, ADR_FILTERS, ADR_PHONE_COL_IDS, filterAdrRows, formatAdrCell, formatIstStamp, isAdrSessionOpen, listingCountryCode, loadAdrColumns, moveTone, resetAdrColumns, saveAdrColumns, sortAdrRows, toneClass, usdPrice, usdSigned, pctSigned, fmtVolume,
 } from "@/lib/adr";
@@ -38,9 +38,9 @@ const SUMMARY_TILES = (summary) => ([
 
 export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin }) {
   const phone = useIsPhone();
-  const [snap, setSnap] = useState(null);
+  const [snap, setSnap] = useState(() => readAdrSnapshot());
   const [err, setErr] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !readAdrSnapshot());
   const [q, setQ] = useState("");
   const [filt, setFilt] = useState("all");
   const [sortKey, setSortKey] = useState("company");
@@ -51,9 +51,9 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
   const [range, setRange] = useState("1D");
   const [statsOpen, setStatsOpen] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
-      const { data } = await api.get("/adrs", { timeout: 15000 });
+      const data = await fetchAdrSnapshot();
       setSnap(data);
       setErr(null);
     } catch (e) {
@@ -61,9 +61,21 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useQuiescentAwarePolling(load, 20000, [], { immediate: true, allowDuringQuiescent: true, dedupeKey: "adr-desk" });
+  useEffect(() => {
+    const unsubscribe = subscribeAdrSnapshot((data) => {
+      setSnap(data);
+      setErr(null);
+      setLoading(false);
+    });
+    load();
+    const intervalId = window.setInterval(load, 20000);
+    return () => {
+      unsubscribe();
+      window.clearInterval(intervalId);
+    };
+  }, [load]);
 
   useEffect(() => {
     setCols(loadAdrColumns(userKey));

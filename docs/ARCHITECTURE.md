@@ -64,6 +64,7 @@ Admin password → `admin_sessions` → `X-Admin-Token`. Remember-me IP-bound. G
 - **Kite** — instruments CSV, quote (OI, LTP, OHLC, depth), positions, margins.
 - **Telegram** — optional alerts / 15:15 IST wrap (never the book).
 - **Optional LLM** — desk guide; see [AI.md](./AI.md).
+- **API Configuration** — Admin Settings derives its external-provider inventory from backend source plus configured Market Intel sources. Safe outbound HTTP telemetry records only route, method, status and duration in `external_api_telemetry`; it never stores credentials, headers, bodies or responses.
 
 ## Deployment
 

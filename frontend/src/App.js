@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AuthGate from "@/components/AuthGate";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
+import MobileAlertTray from "@/components/MobileAlertTray";
 import PwaNotifyPrompt from "@/components/PwaNotifyPrompt";
 import { installDeskErrorLog } from "@/lib/errorLog";
 
@@ -48,6 +49,7 @@ function App() {
         <AboutAppModal />
       </Suspense>
       <Toaster />
+      <MobileAlertTray />
       <PwaNotifyPrompt />
     </div>
   );

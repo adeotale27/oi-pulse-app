@@ -899,6 +899,10 @@ class SettingsIn(BaseModel):
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
     position_mark_glow_after_close: Optional[bool] = None  # Keep near-ATM position ring after configured close
     position_mark_glow_pct: Optional[float] = None  # Glow S/L only within this % of spot
+    alert_toast_opacity: Optional[int] = None  # Desktop in-app alert translucency
+    overnight_popup_opacity: Optional[int] = None
+    market_intel_popup_opacity: Optional[int] = None
+    indicative_popup_opacity: Optional[int] = None
     desk_ai_show: Optional[bool] = None  # Header: Desk AI on/off for the whole desk
     desk_ai_ask: Optional[bool] = None  # Kept for compat; on whenever Desk AI is on
     desk_ai_positions: Optional[bool] = None  # Positions page intelligence strip
@@ -1604,9 +1608,16 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         patch["positions_poll_interval_seconds"] = v
     if "position_mark_glow_pct" in patch:
         v = float(patch["position_mark_glow_pct"])
-        if v < 0.1 or v > 5:
-            raise HTTPException(400, "position_mark_glow_pct must be between 0.1 and 5")
+        if v < 0.01 or v > 5:
+            raise HTTPException(400, "position_mark_glow_pct must be between 0.01 and 5")
         patch["position_mark_glow_pct"] = v
+    for key in ("alert_toast_opacity", "overnight_popup_opacity", "market_intel_popup_opacity", "indicative_popup_opacity"):
+        if key not in patch:
+            continue
+        v = int(patch[key])
+        if v < 60 or v > 100:
+            raise HTTPException(400, f"{key} must be between 60 and 100")
+        patch[key] = v
     if "market_intel_ingest_seconds" in patch:
         v = int(patch["market_intel_ingest_seconds"])
         if v < 60 or v > 3600:
@@ -2967,12 +2978,17 @@ async def list_error_log(
     _admin: bool = Depends(require_admin),
     limit: int = Query(80, ge=1, le=200),
     source: Optional[str] = None,
+    hide_market_intel_news: bool = False,
 ):
     if db is None:
         raise HTTPException(503, "Database unavailable")
     query: Dict[str, Any] = {}
     if source:
         query["source"] = str(source)[:32]
+    if hide_market_intel_news:
+        # Keep Market Intel application failures visible; hide only individual
+        # external-source pulls (free RSS/API providers can be noisy).
+        query["$nor"] = [{"source": "market_intel", "path": {"$regex": "^/market-intel/source/"}}]
     docs = await db.error_logs.find(query, {"_id": 0}).sort("ts", -1).to_list(length=limit)
     try:
         sources = sorted(s for s in (await db.error_logs.distinct("source")) if s)
@@ -2981,6 +2997,15 @@ async def list_error_log(
     from error_log import store_stats
     stats = await store_stats(db)
     return {"count": len(docs), "errors": docs, "sources": sources, **stats}
+
+
+@api_router.get("/external-api-registry")
+async def external_api_registry(_admin: bool = Depends(require_admin)):
+    """Admin-only live inventory of outbound providers, routes and safe telemetry."""
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    from external_api_registry import build_registry
+    return await build_registry(db)
 
 
 @api_router.get("/errors/unseen-count")
@@ -3078,6 +3103,10 @@ async def get_config():
         "show_chart_signals": bool(s.get("show_chart_signals", False)),
         "position_mark_glow_after_close": s.get("position_mark_glow_after_close", True) is not False,
         "position_mark_glow_pct": float(s.get("position_mark_glow_pct") or 1.0),
+        "alert_toast_opacity": max(60, min(100, int(s.get("alert_toast_opacity") or 88))),
+        "overnight_popup_opacity": max(60, min(100, int(s.get("overnight_popup_opacity") or 92))),
+        "market_intel_popup_opacity": max(60, min(100, int(s.get("market_intel_popup_opacity") or 92))),
+        "indicative_popup_opacity": max(60, min(100, int(s.get("indicative_popup_opacity") or 92))),
         **resolve_desk_ai(s),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "universe": catalog_public(),
@@ -6660,6 +6689,9 @@ async def _boot():
     try:
         bind_error_log(db)
         install_logging_handler()
+        from external_api_telemetry import bind as bind_external_api_telemetry, install_http_telemetry
+        bind_external_api_telemetry(db)
+        install_http_telemetry()
     except Exception:
         pass
     tracker = OITracker(db)
@@ -6710,6 +6742,8 @@ async def _ensure_mongo_indexes():
         await db.error_logs.create_index([("created_at", -1)])
         await db.error_logs.create_index([("fingerprint", 1), ("created_at", -1)])
         await db.error_logs.create_index("source")
+        await db.external_api_telemetry.create_index([("ts", -1)])
+        await db.external_api_telemetry.create_index([("provider_id", 1), ("endpoint", 1), ("ts", -1)])
         await db.admin_ui_state.create_index("username")
     except Exception as e:
         logger.warning(f"index creation warn: {e}")

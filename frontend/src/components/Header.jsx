@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
-import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText, Newspaper, Globe2 } from "lucide-react";
+import { KeyRound, Bell, BellOff, Settings2, Download, Moon, Sun, PanelLeftClose, PanelLeftOpen, Volume2, Send, Database, UploadCloud, SlidersHorizontal, Shield, UserCheck, LogOut, X, BookOpen, Sparkles, Layers, ScrollText, Newspaper, Globe2, ServerCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import DeskAiConfigMenu from "@/components/DeskAiConfigMenu";
@@ -168,6 +168,7 @@ export default function Header({
   onOpenIndexManager,
   onOpenJournal,
   onOpenErrorLog,
+  onOpenApiConfiguration,
   onDownloadCsv,
   onOpenSounds,
   onOpenUpload,
@@ -745,6 +746,10 @@ export default function Header({
             Error log
             <ErrorLogBadge count={errorUnseen} />
           </Button>
+          <Button data-testid="btn-mobile-api-configuration" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenApiConfiguration)}>
+            <ServerCog className="w-4 h-4 mr-1.5" />
+            API Configuration
+          </Button>
           <Button data-testid="btn-mobile-sounds" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />
             Sounds
@@ -1044,6 +1049,13 @@ export default function Header({
                   <ErrorLogBadge count={errorUnseen} />
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  data-testid="menu-open-api-configuration"
+                  onSelect={(e) => { e.preventDefault(); setAdminMenuOpen(false); onOpenApiConfiguration?.(); }}
+                >
+                  <ServerCog className="w-4 h-4" />
+                  API Configuration
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   data-testid="menu-open-settings"
                   onSelect={(e) => {
                     e.preventDefault();
@@ -1280,6 +1292,10 @@ export default function Header({
             <ScrollText className="w-4 h-4 mr-1.5" />
             Error log
             <ErrorLogBadge count={errorUnseen} />
+          </Button>
+          <Button data-testid="btn-tablet-api-configuration" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenApiConfiguration)}>
+            <ServerCog className="w-4 h-4 mr-1.5" />
+            API Configuration
           </Button>
           <Button data-testid="btn-tablet-sounds" variant="outline" size="sm" className="rounded-sm" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />

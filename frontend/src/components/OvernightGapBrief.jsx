@@ -123,6 +123,7 @@ export default function OvernightGapBrief({
   indices = DESK_IDS,
   vix = null,
   activeIndex = null,
+  popupOpacity = 92,
 }) {
   const { bringToFront, zIndexClass } = useFloatingDockFocus("overnight", true);
   const [now, setNow] = useState(() => new Date());
@@ -596,10 +597,10 @@ export default function OvernightGapBrief({
           }
           expand();
         }}
-        className={`fixed ${zIndexClass} md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
+        className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 flex items-center rounded-full border-2 shadow-lg text-xs font-semibold touch-none ${bandCls} ${
           iconOnly ? "p-2.5" : "gap-2 px-3 py-2"
         } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
-        style={carryPosStyle}
+        style={{ ...carryPosStyle, "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100) }}
         onPointerDown={(e) => onCarryPointerDown(e, "both")}
         onPointerMove={onCarryPointerMove}
         onPointerUp={onCarryPointerUp}
@@ -624,11 +625,12 @@ export default function OvernightGapBrief({
       data-testid="overnight-gap-brief"
       ref={boxRef}
       data-dock={dockHint}
-      className={`fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${
+        className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 shadow-lg ${bandCls} ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
         ...carryPosStyle,
+        "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100),
         ...(phoneOpen
           ? {}
           : {

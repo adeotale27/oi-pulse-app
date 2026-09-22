@@ -1,5 +1,17 @@
 # Changelog
 
+## V11.24 — 2026-09-22
+
+Error Log now hides only noisy external Market Intel source/API failures by default, with a one-click switch to show them; genuine Market Intel application errors remain visible. API Configuration moved from Admin configuration to the Admin Desk tools menu on desktop, tablet, and phone.
+
+## V11.23 — 2026-09-22
+
+Admin Settings now opens an **API Configuration** control-center window. It audits the live backend source for external providers and exact routes, groups each endpoint by module/purpose/code reference, and records safe outbound HTTP telemetry from this version forward. It supports provider/module views, search, filters, drill-down, and handoff to Error Log. ADR page and ADR right panel now share one short-lived client snapshot instead of leaving the second view loading. Admin can also set opacity for the Overnight, Market Intel, and Indicative Price floating panels independently.
+
+## V11.22 — 2026-09-22
+
+Ordinary phone alerts now use a single bottom tray above navigation, leaving the OI desk visible; the Huge OI Shift dialog remains in place with a subtle phone translucency. Admin can set desktop ordinary-alert opacity. The S/L glow threshold now persists correctly and accepts 0.01%–5%; glow shapes remain stable while live OI/spot updates arrive. OI Change no longer transitions its full container on each pull, and ADRs are available in the desktop right-panel picker.
+
 ## V11.21 — 2026-09-22
 
 The S/L chart aura now takes a calm eight-second rise-and-fade cycle. Positions status no longer uses boxed badges: **Too close** is clean red text and **OK** clean green text, with enough column room to stay on one line.

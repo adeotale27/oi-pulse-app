@@ -5,6 +5,11 @@ import { api } from "@/lib/api";
 import { errorSourceLabel, notifyErrorLogUnseenChanged } from "@/lib/errorLog";
 import { toast } from "sonner";
 
+const MI_NEWS_FILTER_KEY = "oiHideMarketIntelNewsErrors";
+function readHideMarketIntelNewsErrors() {
+  try { return localStorage.getItem(MI_NEWS_FILTER_KEY) !== "0"; } catch { return true; }
+}
+
 function fmtTs(iso) {
   if (!iso) return "—";
   const s = String(iso).replace("T", " ").replace("Z", "");
@@ -16,7 +21,7 @@ function fmtDay(iso) {
   return String(iso).slice(0, 10);
 }
 
-export default function ErrorLogModal({ open, onOpenChange }) {
+export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }) {
   const [rows, setRows] = useState([]);
   const [sources, setSources] = useState([]);
   const [srcFilter, setSrcFilter] = useState("");
@@ -26,6 +31,7 @@ export default function ErrorLogModal({ open, onOpenChange }) {
   const [oldest, setOldest] = useState(null);
   const [newest, setNewest] = useState(null);
   const [purgeDays, setPurgeDays] = useState(1);
+  const [hideMarketIntelNews, setHideMarketIntelNews] = useState(readHideMarketIntelNewsErrors);
 
   const applyMeta = (data) => {
     if (typeof data?.stored === "number") setStored(data.stored);
@@ -33,12 +39,13 @@ export default function ErrorLogModal({ open, onOpenChange }) {
     setNewest(data?.newest || null);
   };
 
-  const load = async (source = srcFilter) => {
+  const load = async (source = srcFilter, hideNews = hideMarketIntelNews) => {
     setLoading(true);
     setErr("");
     try {
       const params = { limit: 80 };
       if (source) params.source = source;
+      if (hideNews) params.hide_market_intel_news = true;
       const r = await api.get("/errors", { params, timeout: 8000 });
       setRows(r.data?.errors || []);
       applyMeta(r.data);
@@ -60,12 +67,22 @@ export default function ErrorLogModal({ open, onOpenChange }) {
   };
 
   useEffect(() => {
-    if (open) load(srcFilter);
-  }, [open]);
+    if (!open) return;
+    const source = initialSource || srcFilter;
+    if (source !== srcFilter) setSrcFilter(source);
+    load(source);
+  }, [open, initialSource]);
 
   const pickSrc = (src) => {
     setSrcFilter(src);
     load(src);
+  };
+
+  const toggleMarketIntelNews = () => {
+    const next = !hideMarketIntelNews;
+    setHideMarketIntelNews(next);
+    try { localStorage.setItem(MI_NEWS_FILTER_KEY, next ? "1" : "0"); } catch { /* noop */ }
+    load(srcFilter, next);
   };
 
   const flushAll = async () => {
@@ -137,6 +154,17 @@ export default function ErrorLogModal({ open, onOpenChange }) {
               {errorSourceLabel(src)}
             </Button>
           ))}
+          <Button
+            type="button"
+            size="sm"
+            variant={hideMarketIntelNews ? "default" : "outline"}
+            className="h-7 px-2 text-[11px]"
+            data-testid="error-hide-market-intel-news"
+            onClick={toggleMarketIntelNews}
+            title="Only external Market Intel source failures are hidden; Market Intel application errors remain visible."
+          >
+            {hideMarketIntelNews ? "News API errors hidden" : "Show news API errors"}
+          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 shrink-0 text-[11px]">
           <span>Delete from {fmtDay(oldest)}</span>
