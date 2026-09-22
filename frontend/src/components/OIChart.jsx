@@ -31,6 +31,8 @@ function formatTime(iso) {
 
 export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp, expiry: expiryProp, keepPositionMarkGlowAfterClose = true, positionMarkGlowPct = 1 }) {
   const spotPrice = current?.price ?? null;
+  const spotPriceRef = useRef(spotPrice);
+  spotPriceRef.current = spotPrice;
   const [book, setBook] = useState(() => readPositionsBook());
   const [hoverMark, setHoverMark] = useState(null);
   const [, setClockTick] = useState(0);
@@ -125,7 +127,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     const make = (segment, side) => (props) => (
       <g>
         <BarSeg {...props} />
-        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} spotPrice={spotPrice} showGlow={showGlow} positionMarkGlowPct={positionMarkGlowPct} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
+        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} spotPriceRef={spotPriceRef} showGlow={showGlow} positionMarkGlowPct={positionMarkGlowPct} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
       </g>
     );
     return {
@@ -138,7 +140,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
       ce_down: make("ce_down", "CE"),
       ce_delta: make("ce_delta", "CE"),
     };
-  }, [showOI, compact, spotPrice, showGlow, positionMarkGlowPct]);
+  }, [showOI, compact, showGlow, positionMarkGlowPct]);
 
   if (!current) {
     return (
@@ -372,7 +374,7 @@ function pinHover(wrapRef, el, mark, onHover) {
   });
 }
 
-function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, spotPrice, showGlow, positionMarkGlowPct, wrapRef, onHover, dataRef }) {
+function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, spotPriceRef, showGlow, positionMarkGlowPct, wrapRef, onHover, dataRef }) {
   const row = payload || dataRef?.current?.[index];
   if (!row || x == null || y == null || !Number.isFinite(Number(x))) return null;
   const pos = side === "CE" ? row.ce_pos : row.pe_pos;
@@ -387,7 +389,8 @@ function PosMark({ x, y, width, height, payload, index, segment, side, showOI, c
   let cy = topY - r - 2;
   if (cy < r + 1) cy = r + 1;
   const sold = pos.tag === "S";
-  const nearAtm = isMarkNearAtm(pos, spotPrice, Number(positionMarkGlowPct || 1) / 100);
+  const configuredPct = Number(positionMarkGlowPct);
+  const nearAtm = isMarkNearAtm(pos, spotPriceRef?.current, (Number.isFinite(configuredPct) && configuredPct > 0 ? configuredPct : 1) / 100);
   return (
     <g
       data-testid={`oi-pos-mark-${pos.side}-${pos.strike}`}

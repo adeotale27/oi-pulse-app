@@ -8,6 +8,14 @@ export function deskTabHidden() {
   return typeof document !== "undefined" && document.hidden;
 }
 
+function deskPhone() {
+  try { return window.matchMedia("(max-width: 767px)").matches; } catch { return false; }
+}
+
+function showPhoneAlert(detail) {
+  try { window.dispatchEvent(new CustomEvent("oi-mobile-alert", { detail })); } catch { /* noop */ }
+}
+
 export function surfaceAlert({
   toastFn,
   title,
@@ -30,6 +38,14 @@ export function surfaceAlert({
     return "queued";
   }
   if (!skipToast) {
+    // OI alerts need to be readable without hiding the mobile index/header
+    // workspace. The app-owned tray retains a compact alert count instead of
+    // stacking normal Sonner notifications from the top edge.
+    if (deskPhone()) {
+      showPhoneAlert({ title, description, duration });
+      try { if (soundKind) playSound?.(soundKind); } catch { /* noop */ }
+      return "shown";
+    }
     toastFn(title, { description, duration });
   }
   try { if (soundKind) playSound?.(soundKind); } catch { /* noop */ }
@@ -45,9 +61,15 @@ export function flushHiddenAlerts({ toast, playSound }) {
   hiddenLast = null;
   pendingSound = null;
   if (n === 1 && last) {
-    last.toastFn(last.title, { description: last.description, duration: last.duration });
+    if (deskPhone()) showPhoneAlert(last);
+    else last.toastFn(last.title, { description: last.description, duration: last.duration });
   } else if (last) {
-    toast.message(`${n} alerts while you were away`, {
+    if (deskPhone()) showPhoneAlert({
+      title: `${n} alerts while you were away`,
+      description: last.title,
+      duration: 9000,
+    });
+    else toast.message(`${n} alerts while you were away`, {
       description: last.title,
       duration: 9000,
     });

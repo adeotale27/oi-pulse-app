@@ -18,9 +18,9 @@ const Toaster = ({
   return (
     <Sonner
       theme={theme}
-      className="toaster group pointer-events-auto"
-      position={mobile ? "top-center" : "top-right"}
-      offset={mobile ? 72 : 16}
+      className="toaster oi-alert-toaster group pointer-events-auto"
+      position={mobile ? "bottom-center" : "top-right"}
+      offset={mobile ? 80 : 16}
       visibleToasts={1}
       closeButton
       richColors

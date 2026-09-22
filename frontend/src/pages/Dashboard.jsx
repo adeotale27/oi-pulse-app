@@ -39,6 +39,7 @@ import SettingsModal from "@/components/SettingsModal";
 import IndexManagementModal from "@/components/IndexManagementModal";
 import TradeJournalModal from "@/components/TradeJournalModal";
 import ErrorLogModal from "@/components/ErrorLogModal";
+import ApiConfigurationModal from "@/components/ApiConfigurationModal";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import HolidaysTab from "@/components/HolidaysTab";
 import PositionsPanel from "@/components/PositionsPanel";
@@ -257,6 +258,8 @@ export default function Dashboard() {
   const [indexManagerOpen, setIndexManagerOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [errorLogOpen, setErrorLogOpen] = useState(false);
+  const [errorLogSource, setErrorLogSource] = useState("");
+  const [apiConfigurationOpen, setApiConfigurationOpen] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(loadNotifEnabled);
   const [flash, setFlash] = useState(false);
   const [expiries, setExpiries] = useState([]);
@@ -332,6 +335,14 @@ export default function Dashboard() {
   const [replayJumpTs, setReplayJumpTs] = useState(null);
   const clearReplayJump = useCallback(() => setReplayJumpTs(null), []);
   useEffect(() => {
+    const openFilteredErrorLog = (event) => {
+      setErrorLogSource(event?.detail?.source || "");
+      setErrorLogOpen(true);
+    };
+    window.addEventListener("oi-open-error-log", openFilteredErrorLog);
+    return () => window.removeEventListener("oi-open-error-log", openFilteredErrorLog);
+  }, []);
+  useEffect(() => {
     if (!replayOpen) setReplayFrame(null);
   }, [replayOpen]);
   const [vixSessionOpen, setVixSessionOpen] = useState(() => {
@@ -355,6 +366,7 @@ export default function Dashboard() {
     startIst: "15:20",
     endIst: "15:30",
   });
+  const [popupOpacity, setPopupOpacity] = useState({ overnight: 92, marketIntel: 92, indicative: 92 });
   const [iepClockMin, setIepClockMin] = useState(() => istMinutesOfDay());
   const iepKeepRef = useRef(false);
   // Warm cache for ALL enabled indices so switching NIFTY ↔ SENSEX is instant.
@@ -1385,6 +1397,15 @@ export default function Dashboard() {
     if (typeof d.show_chart_signals === "boolean") setShowChartSignals(d.show_chart_signals);
     if (typeof d.position_mark_glow_after_close === "boolean") setKeepPositionMarkGlowAfterClose(d.position_mark_glow_after_close);
     if (Number.isFinite(Number(d.position_mark_glow_pct))) setPositionMarkGlowPct(Number(d.position_mark_glow_pct));
+    const toastOpacity = Number(d.alert_toast_opacity);
+    if (Number.isFinite(toastOpacity)) {
+      document.documentElement.style.setProperty("--oi-alert-toast-opacity", String(Math.max(60, Math.min(100, toastOpacity)) / 100));
+    }
+    setPopupOpacity({
+      overnight: Math.max(60, Math.min(100, Number(d.overnight_popup_opacity) || 92)),
+      marketIntel: Math.max(60, Math.min(100, Number(d.market_intel_popup_opacity) || 92)),
+      indicative: Math.max(60, Math.min(100, Number(d.indicative_popup_opacity) || 92)),
+    });
     if ("cas_iep_enabled" in d || "cas_iep_force" in d || "cas_iep_start_ist" in d || "cas_iep_end_ist" in d) {
       setCasIepCfg((prev) => ({
         enabled: d.cas_iep_enabled !== false,
@@ -2244,11 +2265,13 @@ export default function Dashboard() {
         indices={enabledIndices.length ? enabledIndices : INDICES}
         vix={current?.vix || status?.vix}
         activeIndex={activeIndex}
+        popupOpacity={popupOpacity.overnight}
       />
       <CasIepPopup
         enabled={!!casIepPopup && iepWindowOn}
         quotes={tickerQuotes}
         endLabel={casIepCfg.endIst}
+        popupOpacity={popupOpacity.indicative}
       />
       <Header
         status={status}
@@ -2270,6 +2293,7 @@ export default function Dashboard() {
         }}
         onOpenJournal={() => { if (authState.is_admin) setJournalOpen(true); }}
         onOpenErrorLog={() => { if (authState.is_admin) setErrorLogOpen(true); }}
+        onOpenApiConfiguration={() => { if (authState.is_admin) setApiConfigurationOpen(true); }}
         onOpenSounds={() => setSoundsOpen(true)}
         onOpenUpload={() => { if (authState.is_admin) setUploadOpen(true); }}
         onDownloadCsv={() => downloadOICsv(current, previous, activeIndex)}
@@ -2526,7 +2550,7 @@ export default function Dashboard() {
                   );
                 })()}
                 <div
-                  className={`oi-panel oi-3d-stage oi-rise p-4 transition-all duration-700 ${
+                  className={`oi-panel oi-3d-stage oi-rise p-4 transition-[box-shadow,border-color,background-color] duration-200 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
                   } ${
                     activeTab === "oi-change" && changeSummary
@@ -2975,6 +2999,7 @@ export default function Dashboard() {
                       onDeskAiRadar={(on) => patchDeskAi({ desk_ai_radar: !!on })}
                       tickerByIndex={tickerQuotes}
                       onOpenTelegramPrefs={authState.is_admin ? () => setTelegramPrefsOpen(true) : undefined}
+                      adrUserKey={authState.admin_username || authState.guest_name || (authState.is_admin ? "admin" : "guest")}
                       onAdjustmentAlert={(payload) => {
                         pushActivity({
                           type: "adjust-watch",
@@ -3248,6 +3273,7 @@ export default function Dashboard() {
 
       <MarketIntelPopup
         enabled={!!(authState.is_admin || authState.is_guest)}
+        popupOpacity={popupOpacity.marketIntel}
         onOpenPage={() => {
           if (tabOn("market-intel")) setActiveTab("market-intel");
         }}
@@ -3282,7 +3308,10 @@ export default function Dashboard() {
         />
       )}
       {authState.is_admin && (
-        <ErrorLogModal open={errorLogOpen} onOpenChange={setErrorLogOpen} />
+        <ErrorLogModal open={errorLogOpen} onOpenChange={setErrorLogOpen} initialSource={errorLogSource} />
+      )}
+      {authState.is_admin && (
+        <ApiConfigurationModal open={apiConfigurationOpen} onOpenChange={setApiConfigurationOpen} />
       )}
 
       <HugeShiftModal

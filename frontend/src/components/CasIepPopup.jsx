@@ -45,7 +45,7 @@ function fmtPx(v) {
 }
 
 /** Docked NIFTY 50 + SENSEX indicative prices during the CAS IEP window. */
-export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }) {
+export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30", popupOpacity = 92 }) {
   const { bringToFront, zIndexClass } = useFloatingDockFocus("indicative-price", enabled);
   const [minimized, setMinimized] = useState(() => {
     try { return localStorage.getItem(MIN_KEY) === "1"; } catch { return false; }
@@ -177,10 +177,10 @@ export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }
           }
           expand();
         }}
-        className={`fixed ${zIndexClass} md:bottom-3 flex items-center rounded-full border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
+        className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 flex items-center rounded-full border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
           bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
         }`}
-        style={posStyle}
+        style={{ ...posStyle, "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100) }}
         onPointerDown={(e) => onPointerDown(e, "both")}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -196,11 +196,12 @@ export default function CasIepPopup({ enabled, quotes = {}, endLabel = "15:30" }
 
   return (
     <div
-      className={`fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg pointer-events-auto ${
+      className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 border-emerald-400 bg-emerald-50 text-emerald-950 shadow-lg pointer-events-auto ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
         ...posStyle,
+        "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100),
         ...(phoneOpen
           ? {}
           : {

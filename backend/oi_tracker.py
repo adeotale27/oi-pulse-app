@@ -230,6 +230,12 @@ DEFAULT_SETTINGS = {
     # Chart S/L aura appears only when its strike is this close to the live spot.
     # Stored as a human-facing percentage (1.0 = one percent), Admin-only.
     "position_mark_glow_pct": 1.0,
+    # Desktop toast transparency. Phone toasts use their own high-contrast tray.
+    "alert_toast_opacity": 88,
+    # Floating desk panels keep their own opacity, separately from alert toasts.
+    "overnight_popup_opacity": 92,
+    "market_intel_popup_opacity": 92,
+    "indicative_popup_opacity": 92,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",
@@ -251,9 +257,10 @@ _INT_SETTING_KEYS = (
     "market_intel_retention_days",
     "market_intel_min_history_days",
     "admin_session_ttl_minutes",
-    "cas_iep_interval_seconds",
+    "cas_iep_interval_seconds", "alert_toast_opacity", "overnight_popup_opacity",
+    "market_intel_popup_opacity", "indicative_popup_opacity",
 )
-_FLOAT_SETTING_KEYS = ("threshold_pct",)
+_FLOAT_SETTING_KEYS = ("threshold_pct", "position_mark_glow_pct")
 
 
 def coerce_settings_types(settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -508,7 +515,9 @@ class OITracker:
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",
             "show_strike_range", "show_writer_defense", "show_suggestion",
-            "show_chart_signals", "position_mark_glow_after_close",
+            "show_chart_signals", "position_mark_glow_after_close", "position_mark_glow_pct",
+            "alert_toast_opacity",
+            "overnight_popup_opacity", "market_intel_popup_opacity", "indicative_popup_opacity",
             "desk_ai_show", "desk_ai_ask", "desk_ai_positions", "desk_ai_radar",
             "desk_ai_carry",
             "desk_ai_admin", "desk_ai_public",

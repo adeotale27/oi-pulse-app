@@ -135,6 +135,26 @@ input[type="number"] {
   appearance: textfield;
 }
 
+:root { --oi-alert-toast-opacity: 0.88; }
+
+/* Ordinary alerts stay visible without taking over a live desk. Huge OI Shift
+   uses its dedicated dialog and is intentionally not governed by this rule. */
+.oi-alert-toaster [data-sonner-toast] {
+  opacity: var(--oi-alert-toast-opacity);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 767px) {
+  .oi-alert-toaster [data-sonner-toast] {
+    opacity: 0.96;
+    max-width: calc(100vw - 1rem);
+    backdrop-filter: blur(10px);
+  }
+  .huge-shift-dialog { backdrop-filter: blur(9px); }
+  .huge-shift-dialog.huge-shift-emerald { background-color: rgba(236, 253, 245, 0.9) !important; }
+  .huge-shift-dialog.huge-shift-rose { background-color: rgba(255, 241, 242, 0.9) !important; }
+}
+
 @layer components {
   .oi-shell {
     background-color: var(--oi-shell);
@@ -423,35 +443,22 @@ input[type="number"] {
 }
 
 @keyframes oi-position-mark-glow {
-  0% {
-    opacity: 0.15;
-    transform: scale(0.95);
-    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.25));
-  }
+  0%, 100% { opacity: 0.04; transform: scale(0.92); }
+  38% { opacity: 0.36; transform: scale(1.22); }
+  66% { opacity: 0.20; transform: scale(1.48); }
+  82% { opacity: 0.03; transform: scale(1.72); }
+}
 
-  35% {
-    opacity: 0.85;
-    transform: scale(1.12);
-    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.9));
-  }
-
-  60% {
-    opacity: 0.55;
-    transform: scale(1.28);
-    filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
-  }
-
-  100% {
-    opacity: 0;
-    transform: scale(1.45);
-    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0));
-  }
+.oi-configurable-popup {
+  opacity: var(--oi-popup-opacity, 0.92);
+  backdrop-filter: blur(10px);
 }
 
 .oi-position-mark-glow {
-  animation: oi-position-mark-glow 4s ease-out infinite;
+  animation: oi-position-mark-glow 8s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
   transform-box: fill-box;
   transform-origin: center;
+  will-change: transform, opacity;
 }
 .oi-position-mark-glow-short { filter: drop-shadow(0 0 3px rgba(220, 38, 38, 0.62)); }
 .oi-position-mark-glow-long { filter: drop-shadow(0 0 3px rgba(37, 99, 235, 0.62)); }

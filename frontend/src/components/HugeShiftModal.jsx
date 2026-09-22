@@ -16,7 +16,7 @@ function fmt(v) {
 export default function HugeShiftModal({ shift, onClose, onCloseAll, onReplayAtMoment }) {
   if (!shift) return null;
   const meta = hugeShiftCopy(shift.side, shift.value);
-  const toneBg = meta.tone === "emerald" ? "bg-emerald-50 border-emerald-300" : "bg-rose-50 border-rose-300";
+  const toneBg = meta.tone === "emerald" ? "bg-emerald-50 border-emerald-300 huge-shift-emerald" : "bg-rose-50 border-rose-300 huge-shift-rose";
   const toneText = meta.tone === "emerald" ? "text-emerald-800" : "text-rose-800";
   const bookmarkTs = shift.snapshotTs || shift.at;
   let jumpLabel = "";
@@ -33,7 +33,7 @@ export default function HugeShiftModal({ shift, onClose, onCloseAll, onReplayAtM
       <DialogContent
         data-testid="huge-shift-modal"
         hideClose={false}
-        className={`max-w-lg border-2 ${toneBg} rounded-xl shadow-2xl max-h-[min(90dvh,42rem)] overflow-y-auto max-md:w-[calc(100vw-1.25rem)] max-md:max-w-none max-md:p-4`}
+        className={`huge-shift-dialog max-w-lg border-2 ${toneBg} rounded-xl shadow-2xl max-h-[min(90dvh,42rem)] overflow-y-auto max-md:w-[calc(100vw-1.25rem)] max-md:max-w-none max-md:p-4`}
       >
         <DialogHeader>
           <DialogTitle className={`flex items-center gap-2 ${toneText} text-xl`}>
