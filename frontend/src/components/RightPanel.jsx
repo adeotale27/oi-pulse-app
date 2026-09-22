@@ -59,6 +59,7 @@ export default function RightPanel({
   status,
   showOI,
   keepPositionMarkGlowAfterClose = true,
+  positionMarkGlowPct = 1,
   suggestion,
   // straddle poll interval (ms) supplied by parent/dashboard
   straddlePollMs = 15000,
@@ -232,6 +233,7 @@ export default function RightPanel({
               index={activeIndex}
               expiry={selectedExpiry}
               keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
+              positionMarkGlowPct={positionMarkGlowPct}
             />
           )}
           {selectedView === "oi-change" && (
@@ -246,6 +248,7 @@ export default function RightPanel({
               index={activeIndex}
               expiry={selectedExpiry}
               keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
+              positionMarkGlowPct={positionMarkGlowPct}
             />
           )}
           {selectedView === "straddle" && (

@@ -430,10 +430,10 @@ function StatusChip({ breached, isShortOpt, exited }) {
     return (
       <span
         title="Market walked near this sold strike — hedge, roll, or exit"
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-rose-300 bg-rose-100 text-rose-800 text-[10px] font-semibold"
+        className="inline-flex whitespace-nowrap text-[10px] font-semibold leading-5 tracking-wide text-rose-600 dark:text-rose-400"
         data-testid="status-too-close"
       >
-        <AlertTriangle className="w-3 h-3" /> Too close
+        Too close
       </span>
     );
   }
@@ -441,7 +441,7 @@ function StatusChip({ breached, isShortOpt, exited }) {
     return (
       <span
         title="Market still away from this sold strike — OK to hold for now"
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-semibold"
+        className="inline-flex whitespace-nowrap text-[10px] font-semibold leading-5 tracking-wide text-emerald-600 dark:text-emerald-400"
         data-testid="status-ok"
       >
         OK
@@ -2309,8 +2309,8 @@ export default function PositionsPanel({
                   }
                   if (id === "status") {
                     return (
-                      <td key={id} className="px-2 py-1">
-                        <div className="flex flex-wrap items-center gap-1">
+                      <td key={id} className="px-3 py-1.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
                           <GreeksHealthChip health={r.greeksHealth} />
                           <StatusChip breached={r.breachedAdjust} isShortOpt={!r.exited && r.isShort && r.isOpt} exited={r.exited} />
                           {!r.exited && !r.breachedAdjust && !(r.isShort && r.isOpt) && (!r.greeksHealth || r.greeksHealth === "ok") ? "—" : null}
