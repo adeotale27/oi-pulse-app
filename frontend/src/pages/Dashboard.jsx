@@ -872,6 +872,7 @@ export default function Dashboard() {
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [showChartSignals, setShowChartSignals] = useState(false);
   const [keepPositionMarkGlowAfterClose, setKeepPositionMarkGlowAfterClose] = useState(true);
+  const [positionMarkGlowPct, setPositionMarkGlowPct] = useState(1);
   const [deskAiShow, setDeskAiShow] = useState(false);
   const [deskAiPositions, setDeskAiPositions] = useState(false);
   const [deskAiRadar, setDeskAiRadar] = useState(false);
@@ -1383,6 +1384,7 @@ export default function Dashboard() {
     if (typeof d.show_suggestion === "boolean") setShowSuggestion(d.show_suggestion);
     if (typeof d.show_chart_signals === "boolean") setShowChartSignals(d.show_chart_signals);
     if (typeof d.position_mark_glow_after_close === "boolean") setKeepPositionMarkGlowAfterClose(d.position_mark_glow_after_close);
+    if (Number.isFinite(Number(d.position_mark_glow_pct))) setPositionMarkGlowPct(Number(d.position_mark_glow_pct));
     if ("cas_iep_enabled" in d || "cas_iep_force" in d || "cas_iep_start_ist" in d || "cas_iep_end_ist" in d) {
       setCasIepCfg((prev) => ({
         enabled: d.cas_iep_enabled !== false,
@@ -2527,6 +2529,10 @@ export default function Dashboard() {
                   className={`oi-panel oi-3d-stage oi-rise p-4 transition-all duration-700 ${
                     pulsePull && activeTab === "oi-change" ? "ring-2 ring-emerald-300 border-emerald-300" : ""
                   } ${
+                    activeTab === "oi-change" && changeSummary
+                      ? (changeSummary.bullish ? "oi-change-tone-bull" : "oi-change-tone-bear")
+                      : ""
+                  } ${
                     !showRightPanel ? "max-w-[min(72rem,100%)] mx-auto w-full" : ""
                   }`}
                   data-testid="oi-change-card"
@@ -2534,12 +2540,9 @@ export default function Dashboard() {
                     // Bias wash is OI-Change only — Positions / other tabs stay clean & independent.
                     activeTab === "oi-change" && changeSummary
                       ? {
-                          backgroundColor: changeSummary.bullish
-                            ? `rgba(22,163,74,${(changeSummary.intensity * 0.16).toFixed(3)})`
-                            : `rgba(220,38,38,${(changeSummary.intensity * 0.16).toFixed(3)})`,
-                          boxShadow: changeSummary.intensity > 0.5
-                            ? `0 0 0 2px ${changeSummary.bullish ? "rgba(22,163,74,0.35)" : "rgba(220,38,38,0.35)"} inset`
-                            : undefined,
+                          "--oi-change-wash": changeSummary.bullish
+                            ? `rgba(22,163,74,${Math.max(0.10, changeSummary.intensity * 0.24).toFixed(3)})`
+                            : `rgba(220,38,38,${Math.max(0.10, changeSummary.intensity * 0.24).toFixed(3)})`,
                         }
                       : undefined
                   }
@@ -2688,6 +2691,7 @@ export default function Dashboard() {
                       prevTime={(replayFrame || previous)?.timestamp}
                       signalsMap={showChartSignals ? perStrikeSignals : null}
                       keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
+                      positionMarkGlowPct={positionMarkGlowPct}
                     />
                     {marketIntel && (
                       <div
@@ -2863,6 +2867,7 @@ export default function Dashboard() {
                       mode={status?.mode}
                       chartKey={`${activeIndex}-abs`}
                       keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
+                      positionMarkGlowPct={positionMarkGlowPct}
                     />
                   </TabsContent>
                   )}
@@ -3139,6 +3144,7 @@ export default function Dashboard() {
                       status={status}
                       showOI={showOI}
                       keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
+                      positionMarkGlowPct={positionMarkGlowPct}
                       // pass configured straddle poll interval (ms)
                       straddlePollMs={straddlePollMs}
                       uploadRefreshKey={uploadRefreshKey}
@@ -3326,7 +3332,7 @@ function IntelCell({ label, value, hint, tone = "slate", tip }) {
         : "text-slate-800 dark:text-slate-100";
   return (
     <div
-      className="oi-panel px-3 py-2.5 flex flex-col leading-tight"
+      className="oi-insight-tile px-3 py-2.5 flex flex-col leading-tight"
       data-testid={`intel-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       <span className="uppercase tracking-widest text-[9px] text-slate-400 flex items-center gap-1 font-semibold">

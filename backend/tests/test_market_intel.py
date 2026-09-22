@@ -71,6 +71,13 @@ def test_noise_deprioritized():
     assert impact_band(impact_score("What to watch this week: opinion recap explained")) in ("NOISE", "LOW")
 
 
+def test_india_desk_impact_grades_prioritise_policy_over_generic_commentary():
+    assert impact_score("RBI cuts repo rate after policy decision") >= 55
+    assert impact_score("SEBI issues margin circular for equity derivatives") >= 55
+    assert impact_score("Analyst says Nifty may rally this week") < STORE_MIN_IMPACT
+    assert impact_score("Apple previews its next phone") < STORE_MIN_IMPACT
+
+
 def test_dedup_and_cluster():
     a = "Fed cuts rates 50bps"
     b = "Federal Reserve cuts rates"

@@ -1,5 +1,13 @@
 # Changelog
 
+## V11.21 — 2026-09-22
+
+The S/L chart aura now takes a calm eight-second rise-and-fade cycle. Positions status no longer uses boxed badges: **Too close** is clean red text and **OK** clean green text, with enough column room to stay on one line.
+
+## V11.20 — 2026-09-22
+
+The desk now uses a more restrained layered depth across OI Change, Positions, Straddle, Market Intelligence and the Events tiles, while keeping the existing palette. OI Change restores its selected-window red/green wash under that depth. Chart S/L marks have a slow, filled back-origin aura and the Admin-only **S / L glow distance from spot (%)** setting controls which strikes receive it. Phone tabs keep their original selected-pill shape. Market Intel now recalibrates stored headlines to India-index desk grades on refresh, including retained index-constituent relevance.
+
 ## V11.19 — 2026-09-22
 
 Admin Market timing now labels the near-ATM position glow markers: red `S` for short and blue `L` for long. Desk panels and interactive Positions / Market Intelligence surfaces have a more visible layered depth treatment, without changing the color palette.

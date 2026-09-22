@@ -227,6 +227,9 @@ DEFAULT_SETTINGS = {
     # Keep the near-ATM position ring visible after the configured F&O close.
     # The close itself remains market_close_ist; this only chooses the after-close policy.
     "position_mark_glow_after_close": True,
+    # Chart S/L aura appears only when its strike is this close to the live spot.
+    # Stored as a human-facing percentage (1.0 = one percent), Admin-only.
+    "position_mark_glow_pct": 1.0,
     # Index F&O / CAS: poll through 15:40 (configurable in Admin Settings)
     "market_open_ist": "09:15",
     "market_close_ist": "15:40",

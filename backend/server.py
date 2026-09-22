@@ -898,6 +898,7 @@ class SettingsIn(BaseModel):
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
     position_mark_glow_after_close: Optional[bool] = None  # Keep near-ATM position ring after configured close
+    position_mark_glow_pct: Optional[float] = None  # Glow S/L only within this % of spot
     desk_ai_show: Optional[bool] = None  # Header: Desk AI on/off for the whole desk
     desk_ai_ask: Optional[bool] = None  # Kept for compat; on whenever Desk AI is on
     desk_ai_positions: Optional[bool] = None  # Positions page intelligence strip
@@ -1601,6 +1602,11 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
         if v < 5 or v > 3600:
             raise HTTPException(400, "positions_poll_interval_seconds must be between 5 and 3600")
         patch["positions_poll_interval_seconds"] = v
+    if "position_mark_glow_pct" in patch:
+        v = float(patch["position_mark_glow_pct"])
+        if v < 0.1 or v > 5:
+            raise HTTPException(400, "position_mark_glow_pct must be between 0.1 and 5")
+        patch["position_mark_glow_pct"] = v
     if "market_intel_ingest_seconds" in patch:
         v = int(patch["market_intel_ingest_seconds"])
         if v < 60 or v > 3600:
@@ -3071,6 +3077,7 @@ async def get_config():
         "show_suggestion": bool(s.get("show_suggestion", True)),
         "show_chart_signals": bool(s.get("show_chart_signals", False)),
         "position_mark_glow_after_close": s.get("position_mark_glow_after_close", True) is not False,
+        "position_mark_glow_pct": float(s.get("position_mark_glow_pct") or 1.0),
         **resolve_desk_ai(s),
         "gift_kite_symbol": "NSEIX:GIFT NIFTY",
         "universe": catalog_public(),
