@@ -29,7 +29,7 @@ function formatTime(iso) {
   }
 }
 
-export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp, expiry: expiryProp, keepPositionMarkGlowAfterClose = true }) {
+export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp, expiry: expiryProp, keepPositionMarkGlowAfterClose = true, positionMarkGlowPct = 1 }) {
   const spotPrice = current?.price ?? null;
   const [book, setBook] = useState(() => readPositionsBook());
   const [hoverMark, setHoverMark] = useState(null);
@@ -125,7 +125,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     const make = (segment, side) => (props) => (
       <g>
         <BarSeg {...props} />
-        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} spotPrice={spotPrice} showGlow={showGlow} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
+        <PosMark {...props} segment={segment} side={side} showOI={showOI} compact={compact} spotPrice={spotPrice} showGlow={showGlow} positionMarkGlowPct={positionMarkGlowPct} wrapRef={wrapRef} dataRef={dataRef} onHover={setHoverMark} />
       </g>
     );
     return {
@@ -138,7 +138,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
       ce_down: make("ce_down", "CE"),
       ce_delta: make("ce_delta", "CE"),
     };
-  }, [showOI, compact, spotPrice, showGlow]);
+  }, [showOI, compact, spotPrice, showGlow, positionMarkGlowPct]);
 
   if (!current) {
     return (
@@ -372,7 +372,7 @@ function pinHover(wrapRef, el, mark, onHover) {
   });
 }
 
-function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, spotPrice, showGlow, wrapRef, onHover, dataRef }) {
+function PosMark({ x, y, width, height, payload, index, segment, side, showOI, compact, spotPrice, showGlow, positionMarkGlowPct, wrapRef, onHover, dataRef }) {
   const row = payload || dataRef?.current?.[index];
   if (!row || x == null || y == null || !Number.isFinite(Number(x))) return null;
   const pos = side === "CE" ? row.ce_pos : row.pe_pos;
@@ -387,7 +387,7 @@ function PosMark({ x, y, width, height, payload, index, segment, side, showOI, c
   let cy = topY - r - 2;
   if (cy < r + 1) cy = r + 1;
   const sold = pos.tag === "S";
-  const nearAtm = isMarkNearAtm(pos, spotPrice);
+  const nearAtm = isMarkNearAtm(pos, spotPrice, Number(positionMarkGlowPct || 1) / 100);
   return (
     <g
       data-testid={`oi-pos-mark-${pos.side}-${pos.strike}`}
@@ -404,11 +404,10 @@ function PosMark({ x, y, width, height, payload, index, segment, side, showOI, c
         <circle
           cx={cx}
           cy={cy}
-          r={r + (compact ? 3 : 4)}
-          fill="none"
-          stroke={sold ? "#DC2626" : "#2563EB"}
-          strokeWidth={compact ? 2 : 2.5}
+          r={r + (compact ? 1.5 : 2)}
+          fill={sold ? "#DC2626" : "#2563EB"}
           className={`oi-position-mark-glow ${sold ? "oi-position-mark-glow-short" : "oi-position-mark-glow-long"}`}
+          data-testid={`oi-pos-mark-${pos.side}-${pos.strike}-aura`}
         />
       ) : null}
       <circle cx={cx} cy={cy} r={r} fill={sold ? "#DC2626" : "#2563EB"} stroke="#fff" strokeWidth={1.4} />

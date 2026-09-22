@@ -343,18 +343,58 @@ def classify_event_type(text: str) -> str:
 
 
 def impact_score(title: str, summary: str = "") -> int:
+    """Score the likely *Indian index-options* relevance of a verified headline.
+
+    The old additive keyword counter could give a routine international mention a
+    surprisingly high number while underweighting an RBI/SEBI/NSE development.
+    These bands are deliberately calibrated for an Indian index desk: 90+ is a
+    potential gap/volatility shock, 75+ can materially move the session, and
+    55+ deserves a trader's attention but is not automatically a trade signal.
+    """
     t = _blob(title, summary)
     if _hits(t, _NOISE) and not _hits(t, _CRIT + _HIGH):
         return 22
-    score = 28
-    score += 28 * _hits(t, _CRIT)
-    score += 14 * _hits(t, _HIGH)
-    if re.search(r"\b(cpi|ppi|nonfarm|fomc|federal reserve|us cpi)\b", t):
+    score = 18
+
+    # Direct India market-policy and index-flow news outranks generic overseas
+    # business coverage. A routine mention stays MODERATE at most; an actual
+    # decision/release earns a HIGH band.
+    india_policy = _hits(t, (
+        r"\brbi\b", r"\bsebi\b", r"\bnse\b", r"\bbse\b", r"\brepo rate\b",
+        r"\bbudget\b", r"\bgst\b", r"\bcpi\b.{0,35}\bindia\b", r"\bwpi\b", r"\biip\b",
+        r"\bfii\b", r"\bdii\b", r"\brupee\b", r"\binr\b",
+    ))
+    if india_policy:
+        score += 30
+        if _hits(t, (r"\b(decision|policy|circular|release|data|holds|cuts|hikes|raises|slashes)\b", r"\bnet (buy|sell)\b")):
+            score += 12
+
+    # Global macro matters to India through USD, yields, risk appetite and
+    # crude. It is important, but it needs an actual release/decision or shock
+    # to become HIGH rather than merely consuming the feed.
+    if _hits(t, (r"\bfomc\b", r"\bfederal reserve\b", r"\b(cpi|ppi|nonfarm|jobs report)\b", r"\b(ecb|boj|boe)\b")):
+        score += 26
+    if _hits(t, (r"\b(opec|brent|wti|crude|oil)\b",)):
+        score += 16
+        if _hits(t, (r"\b(cut|output|production|supply disruption|embargo|hormuz|blockade)\b",)):
+            score += 16
+    if _hits(t, (r"\b(tariff|sanction|trade war)\b",)):
+        score += 18
+    if _hits(t, (r"\b(war|conflict|invasion|military strike|missile attack|shipping lane)\b",)):
+        score += 18
+
+    # Event outcomes and discontinuities—not commentary—are what make option
+    # premium and overnight risk materially different.
+    if _hits(t, _CRIT):
+        score += 24
+    if re.search(r"\b(50\s*bp|emergency|default|bankruptcy|market halt|circuit(?:\s|-)?breaker)\b", t):
+        score += 22
+    if re.search(r"\b(surprise|above (forecast|expectations?)|below (forecast|expectations?)|misses|plunges|soars)\b", t):
         score += 12
-    if re.search(r"\b(surprise|above (forecast|expectations?)|misses|plunges|soars|emergency)\b", t):
+    if _hits(t, (r"\b(nifty|sensex|bank nifty|banknifty)\b",)) and _hits(t, (r"\b(falls|rises|plunges|surges|selloff|rally)\b",)):
         score += 12
-    if re.search(r"\b(commentary|says|may|could|might)\b", t) and not _hits(t, _CRIT):
-        score -= 10
+    if re.search(r"\b(commentary|says|may|could|might|outlook|preview)\b", t) and not _hits(t, _CRIT):
+        score -= 14
     return int(max(0, min(100, score)))
 
 
@@ -849,6 +889,9 @@ async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str
         row = enrich_item(raw, src)
         hit, extra = constituent_boost(_blob(row.get("title"), row.get("summary")), terms)
         if hit:
+            # Persist this so later score-calibration refreshes retain the
+            # index-constituent relevance that was present at ingest time.
+            row["constituent_boost"] = extra
             row["impact_score"] = min(100, _safe_int(row.get("impact_score"), 0) + extra)
             row["impact_band"] = impact_band(row["impact_score"])
             row["india_relevance_score"] = min(100, _safe_int(row.get("india_relevance_score"), 0) + 18)
@@ -886,6 +929,41 @@ async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str
     return stats
 
 
+async def rescore_stored_articles(db, limit: int = 500) -> int:
+    """Apply the current India-desk calibration to retained Market Intel rows.
+
+    Refreshing sources used to leave recently stored cards on obsolete scoring
+    rules because duplicate headlines were skipped. Re-score the small retained
+    window before each full ingest so the numbers visible to the desk match the
+    current grades without changing any source content.
+    """
+    if db is None:
+        return 0
+    rows = await db[ART_COL].find(
+        {"status": {"$ne": "gone"}},
+        {"_id": 1, "title": 1, "summary": 1, "constituent_boost": 1},
+    ).sort("discovered_at", -1).to_list(limit)
+    changed = 0
+    for row in rows:
+        title = str(row.get("title") or "")
+        summary = str(row.get("summary") or "")
+        constituent_extra = max(0, _safe_int(row.get("constituent_boost"), 0))
+        impact = min(100, impact_score(title, summary) + constituent_extra)
+        india = min(100, india_relevance_score(title, summary) + (18 if constituent_extra else 0))
+        event_type = classify_event_type(_blob(title, summary))
+        patch = {
+            "impact_score": impact,
+            "impact_band": impact_band(impact),
+            "india_relevance_score": india,
+            "event_type": event_type,
+            "potential": potential_impact_lines(event_type, india),
+            "status": "ok" if should_store_article(impact) else "noise",
+        }
+        await db[ART_COL].update_one({"_id": row["_id"]}, {"$set": patch})
+        changed += 1
+    return changed
+
+
 async def update_source_health(db, src_id: str, stats: Dict[str, Any]) -> None:
     now = datetime.now(timezone.utc).isoformat()
     err = stats.get("error")
@@ -910,9 +988,13 @@ async def update_source_health(db, src_id: str, stats: Dict[str, Any]) -> None:
 
 
 async def run_all_sources(db, settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    summary = {"ran": 0, "ok": 0, "failed": 0, "fetched": 0, "accepted": 0, "duplicates": 0}
+    summary = {"ran": 0, "ok": 0, "failed": 0, "fetched": 0, "accepted": 0, "duplicates": 0, "rescored": 0}
     if db is None:
         return summary
+    try:
+        summary["rescored"] = await rescore_stored_articles(db)
+    except Exception as e:
+        logger.warning("mi rescore: %s", redact(e))
     cur = db[SRC_COL].find({"enabled": True})
     async for src in cur:
         summary["ran"] += 1

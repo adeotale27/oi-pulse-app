@@ -128,6 +128,7 @@ export default function SettingsModal({
           show_suggestion: true,
           show_chart_signals: false,
           position_mark_glow_after_close: true,
+          position_mark_glow_pct: 1,
         });
       });
     setLocal(loadOISettings());
@@ -237,6 +238,7 @@ export default function SettingsModal({
           show_suggestion: settings.show_suggestion,
           show_chart_signals: settings.show_chart_signals,
           position_mark_glow_after_close: settings.position_mark_glow_after_close !== false,
+          position_mark_glow_pct: settings.position_mark_glow_pct ?? 1,
           market_intel_ingest_seconds: settings.market_intel_ingest_seconds,
           market_intel_retention_days: settings.market_intel_retention_days,
           market_intel_min_history_days: settings.market_intel_min_history_days,
@@ -589,6 +591,20 @@ export default function SettingsModal({
                 </label>
                 <div className="text-[10px] text-slate-500 -mt-1 pl-6">
                   Off stops the chart ring at the Market close time above; it does not add a second clock.
+                </div>
+                <div className="ml-6 max-w-xs">
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">S / L glow distance from spot (%)</Label>
+                  <Input
+                    data-testid="position-mark-glow-pct"
+                    type="number"
+                    min={0.1}
+                    max={5}
+                    step={0.1}
+                    value={settings.position_mark_glow_pct ?? 1}
+                    onChange={(e) => setSettings({ ...settings, position_mark_glow_pct: Number(e.target.value) || 1 })}
+                    className="h-8 font-mono-data"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-500">Only marks within this percentage of the live spot get the slow red S / blue L aura. Default: 1%.</p>
                 </div>
                 <label className="flex items-center gap-2 py-1 cursor-pointer">
                   <Checkbox

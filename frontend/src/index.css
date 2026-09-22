@@ -153,7 +153,9 @@ input[type="number"] {
 
   .oi-panel {
     background-color: var(--oi-panel);
-    background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.82) 66%, rgba(234, 245, 250, 0.78) 100%);
+    background-image:
+      linear-gradient(122deg, var(--oi-change-wash, transparent) 0%, transparent 58%),
+      linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.82) 66%, rgba(234, 245, 250, 0.78) 100%);
     border: 1px solid var(--oi-panel-border);
     border-radius: var(--radius);
     box-shadow:
@@ -166,7 +168,9 @@ input[type="number"] {
   }
 
   .dark .oi-panel {
-    background-image: linear-gradient(145deg, rgba(20, 43, 55, 0.94) 0%, rgba(12, 28, 38, 0.9) 72%, rgba(9, 39, 48, 0.92) 100%);
+    background-image:
+      linear-gradient(122deg, var(--oi-change-wash, transparent) 0%, transparent 58%),
+      linear-gradient(145deg, rgba(20, 43, 55, 0.94) 0%, rgba(12, 28, 38, 0.9) 72%, rgba(9, 39, 48, 0.92) 100%);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.04) inset,
       0 -1px 0 rgba(0, 0, 0, 0.18) inset,
@@ -238,15 +242,96 @@ input[type="number"] {
     background: linear-gradient(120deg, rgba(125, 211, 252, 0.055), transparent 30%, transparent 68%, rgba(16, 185, 129, 0.06));
   }
 
-  /* The tab deck is intentionally shallow: it separates workspaces without
-     turning the navigation into another card stack. */
-  .oi-shell [role="tab"][aria-selected="true"] {
-    border-radius: 0.42rem 0.42rem 0 0;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.92) inset, 0 -2px 0 rgba(5, 150, 105, 0.08) inset;
+  .oi-change-tone-bull {
+    border-color: rgba(16, 185, 129, 0.58);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.96) inset,
+      0 0 0 1px rgba(16, 185, 129, 0.12) inset,
+      0 3px 0 -2px rgba(5, 150, 105, 0.26),
+      0 8px 0 -6px rgba(5, 150, 105, 0.28),
+      0 24px 42px -28px rgba(15, 55, 70, 0.62);
   }
 
-  .dark .oi-shell [role="tab"][aria-selected="true"] {
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.045) inset, 0 -2px 0 rgba(52, 211, 153, 0.12) inset;
+  .oi-change-tone-bear {
+    border-color: rgba(244, 63, 94, 0.56);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.96) inset,
+      0 0 0 1px rgba(244, 63, 94, 0.12) inset,
+      0 3px 0 -2px rgba(225, 29, 72, 0.24),
+      0 8px 0 -6px rgba(225, 29, 72, 0.24),
+      0 24px 42px -28px rgba(15, 55, 70, 0.62);
+  }
+
+  .dark .oi-change-tone-bull {
+    border-color: rgba(52, 211, 153, 0.46);
+    box-shadow: 0 1px 0 rgba(255,255,255,.045) inset, 0 0 0 1px rgba(52,211,153,.12) inset, 0 18px 32px -22px rgba(0,0,0,.82);
+  }
+
+  .dark .oi-change-tone-bear {
+    border-color: rgba(251, 113, 133, 0.46);
+    box-shadow: 0 1px 0 rgba(255,255,255,.045) inset, 0 0 0 1px rgba(251,113,133,.12) inset, 0 18px 32px -22px rgba(0,0,0,.82);
+  }
+
+  /* Insight tiles use an etched lower edge and highlight, never a cast shadow. */
+  .oi-insight-tile {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(15, 55, 70, 0.11);
+    border-bottom-color: rgba(2, 132, 199, 0.34);
+    border-radius: var(--radius);
+    background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(245,250,252,.84));
+    box-shadow: none;
+  }
+
+  .oi-insight-tile::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    box-shadow: 0 1px 0 rgba(255,255,255,.96) inset, 0 -2px 0 rgba(2,132,199,.10) inset;
+  }
+
+  .dark .oi-insight-tile {
+    border-color: rgba(148, 210, 200, 0.14);
+    border-bottom-color: rgba(56,189,248,.35);
+    background: linear-gradient(145deg, rgba(24,48,60,.9), rgba(12,28,38,.88));
+  }
+
+  /* The four desk-event tiles remain compact but no longer look flat. */
+  .oi-info-tile {
+    position: relative;
+    border-bottom-width: 2px;
+    border-bottom-color: rgba(2, 132, 199, 0.22);
+    background-image: linear-gradient(145deg, rgba(255,255,255,.98), rgba(239,247,251,.86));
+    box-shadow: 0 1px 0 rgba(255,255,255,.96) inset, 0 8px 16px -15px rgba(15,55,70,.52);
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .oi-info-tile:hover {
+      transform: translateY(-1px);
+      border-bottom-color: rgba(2, 132, 199, 0.42);
+      box-shadow: 0 1px 0 rgba(255,255,255,1) inset, 0 13px 20px -17px rgba(15,55,70,.62);
+    }
+  }
+
+  .dark .oi-info-tile {
+    border-bottom-color: rgba(56,189,248,.3);
+    background-image: linear-gradient(145deg, rgba(27,50,61,.92), rgba(12,28,38,.9));
+    box-shadow: 0 1px 0 rgba(255,255,255,.045) inset, 0 10px 18px -16px rgba(0,0,0,.85);
+  }
+
+  /* Desktop tabs get a shallow deck edge; phone navigation keeps its original pill shape. */
+  @media (min-width: 768px) {
+    .oi-shell [role="tab"][aria-selected="true"] {
+      border-radius: 0.42rem 0.42rem 0 0;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.92) inset, 0 -2px 0 rgba(5, 150, 105, 0.08) inset;
+    }
+
+    .dark .oi-shell [role="tab"][aria-selected="true"] {
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.045) inset, 0 -2px 0 rgba(52, 211, 153, 0.12) inset;
+    }
   }
 
   .oi-header {
@@ -338,18 +423,38 @@ input[type="number"] {
 }
 
 @keyframes oi-position-mark-glow {
-  0%, 100% { opacity: 0.28; stroke-width: 1.25px; }
-  50% { opacity: 0.78; stroke-width: 2.5px; }
+  0% {
+    opacity: 0.15;
+    transform: scale(0.95);
+    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.25));
+  }
+
+  35% {
+    opacity: 0.85;
+    transform: scale(1.12);
+    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.9));
+  }
+
+  60% {
+    opacity: 0.55;
+    transform: scale(1.28);
+    filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0));
+  }
 }
 
 .oi-position-mark-glow {
-  animation: oi-position-mark-glow 1.8s ease-in-out infinite;
+  animation: oi-position-mark-glow 4s ease-out infinite;
   transform-box: fill-box;
   transform-origin: center;
 }
-
-.oi-position-mark-glow-short { filter: drop-shadow(0 0 2px rgba(220, 38, 38, 0.75)); }
-.oi-position-mark-glow-long { filter: drop-shadow(0 0 2px rgba(37, 99, 235, 0.75)); }
+.oi-position-mark-glow-short { filter: drop-shadow(0 0 3px rgba(220, 38, 38, 0.62)); }
+.oi-position-mark-glow-long { filter: drop-shadow(0 0 3px rgba(37, 99, 235, 0.62)); }
 
 @media (prefers-reduced-motion: reduce) {
   .oi-brand-pulse,
