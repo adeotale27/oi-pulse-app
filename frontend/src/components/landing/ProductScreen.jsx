@@ -1,187 +1,200 @@
-import React from "react";
+import React, { useMemo } from "react";
 
+const L = (n) => `${(Number(n) / 100000).toFixed(2)}L`;
 const fmt = (n) => Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const k = (n) => {
-  const s = n < 0 ? "-" : "+";
-  const a = Math.abs(n);
-  return `${s}${(a / 1000).toFixed(1)}K`;
-};
 
-function IndexTile({ label, data, accent }) {
-  const up = (data?.changePct ?? 0) >= 0;
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold tracking-wide text-slate-300">{label}</span>
-        <span className="slz-live-dot" />
-      </div>
-      <div className="slz-mono mt-1 text-lg font-semibold text-white slz-num-flash">{fmt(data?.price)}</div>
-      <div className={`slz-mono text-xs font-semibold ${up ? "text-emerald-400" : "text-rose-400"}`}>
-        {up ? "▲" : "▼"} {up ? "+" : ""}{(data?.changePct ?? 0).toFixed(2)}%
-      </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10" style={{ background: accent }} />
-    </div>
-  );
+// Dense OI-change bar series that drifts with the live snapshot, styled to match
+// the real Striklenz light terminal (green = Put OI, red = Call OI, hollow = change).
+function useSeries(snap) {
+  const atm = snap?.chain?.atm || 74800;
+  const pressure = snap?.pressure ?? 60;
+  return useMemo(() => {
+    const rows = [];
+    for (let i = -13; i <= 12; i++) {
+      const strike = atm + i * 100;
+      const puttish = i <= 0;
+      const dist = Math.abs(i);
+      const base = 8 + Math.max(0, 20 - dist * 1.6);
+      const jitter = ((strike + pressure) % 7) * 1.3;
+      const pe = puttish ? base + jitter : base * 0.35 + jitter * 0.4;
+      const ce = !puttish ? base + jitter : base * 0.35 + jitter * 0.4;
+      rows.push({
+        strike,
+        atm: strike === atm,
+        pe: Math.max(1.5, pe),
+        ce: Math.max(1.5, ce),
+        peChg: Math.max(0.5, pe * (0.25 + ((strike % 5) / 12))),
+        ceChg: Math.max(0.5, ce * (0.25 + ((strike % 4) / 12))),
+      });
+    }
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atm, Math.round(pressure / 4)]);
 }
 
-function ChainScreen({ snap, index = "NIFTY", accent = "#10b981" }) {
-  const chain = snap?.chain;
-  const rows = chain?.rows || [];
-  const maxOi = Math.max(1, ...rows.map((r) => Math.max(r.ce_oi, r.pe_oi)));
-  const px = snap?.indices?.[index]?.price;
+function OIChart({ snap }) {
+  const rows = useSeries(snap);
+  const max = Math.max(...rows.map((r) => Math.max(r.pe, r.ce)));
+  const spot = snap?.indices?.SENSEX?.price ?? 84928;
+  const atm = snap?.chain?.atm || 74800;
+  const atmIdx = rows.findIndex((r) => r.atm);
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="slz-chip" style={{ background: "rgba(16,185,129,0.16)", color: "#6ee7b7" }}>{index}</span>
-          <span className="slz-mono text-sm font-semibold text-white">{fmt(px)}</span>
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-1 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-700">
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-emerald-500 text-[9px] text-white">S</span>
+          OI Change · Live
         </div>
-        <span className="slz-chip" style={{ background: "rgba(148,163,184,0.12)", color: "#cbd5e1" }}>PCR {snap?.pcr?.toFixed(2)}</span>
+        <span className="slz-mono text-[10px] text-slate-400">ATM {atm} · PCR {snap?.pcr?.toFixed(2)}</span>
       </div>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 text-[10px]">
-        <div className="text-right text-rose-300">CALL OI</div>
-        <div className="text-center text-slate-400">STRIKE</div>
-        <div className="text-left text-emerald-300">PUT OI</div>
-        {rows.map((r) => (
-          <React.Fragment key={r.strike}>
-            <div className="flex items-center justify-end gap-1.5">
-              <span className="slz-mono text-[10px] text-rose-200">{k(r.ce_chg)}</span>
-              <div className="slz-bar h-2.5" style={{ width: `${(r.ce_oi / maxOi) * 70 + 8}px`, background: "linear-gradient(90deg,#fb7185,#f43f5e)" }} />
+      <div className="relative flex h-[150px] items-end gap-[3px]">
+        {rows.map((r, i) => (
+          <div key={i} className="relative flex flex-1 flex-col items-center justify-end">
+            {/* change (hollow) cap */}
+            <div className="w-full" style={{ height: `${(Math.max(r.peChg, r.ceChg) / max) * 40}px` }}>
+              <div className="mx-auto h-full w-[70%] rounded-t-sm border" style={{ borderColor: r.pe >= r.ce ? "#16a34a" : "#ef4444" }} />
             </div>
-            <div className={`slz-mono text-center text-[11px] ${r.atm ? "rounded bg-white/10 px-1 font-bold text-white" : "text-slate-300"}`}>{r.strike}</div>
-            <div className="flex items-center gap-1.5">
-              <div className="slz-bar h-2.5" style={{ width: `${(r.pe_oi / maxOi) * 70 + 8}px`, background: "linear-gradient(90deg,#34d399,#10b981)" }} />
-              <span className="slz-mono text-[10px] text-emerald-200">{k(r.pe_chg)}</span>
-            </div>
-          </React.Fragment>
+            {/* filled OI */}
+            <div className="slz-bar w-full rounded-t-sm" style={{ height: `${(Math.max(r.pe, r.ce) / max) * 100}px`, background: r.pe >= r.ce ? "#16a34a" : "#ef4444" }} />
+            {r.atm && <span className="absolute -top-3 whitespace-nowrap slz-mono text-[8px] font-bold text-slate-500">ATM</span>}
+          </div>
         ))}
+        {atmIdx >= 0 && (
+          <div className="pointer-events-none absolute bottom-0 top-0 border-l border-dashed border-slate-400" style={{ left: `${(atmIdx / rows.length) * 100}%` }} />
+        )}
+      </div>
+      <div className="mt-1.5 flex items-center gap-3 text-[9px] text-slate-500">
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-500" /> Put OI</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-red-500" /> Call OI</span>
+        <span className="ml-auto slz-mono">Spot {fmt(spot)}</span>
       </div>
     </div>
   );
 }
 
-function DashboardScreen({ snap }) {
+function StatCards({ snap }) {
+  const spot = snap?.indices?.SENSEX?.price ?? 84928;
+  const res = Math.ceil(spot / 100) * 100 + 100;
+  const sup = Math.floor(spot / 100) * 100 - 200;
+  const cards = [
+    ["BIAS", (snap?.pressure ?? 50) < 50 ? "Bearish" : "Bullish", (snap?.pressure ?? 50) < 50 ? "text-rose-600" : "text-emerald-600"],
+    ["PCR", snap?.pcr?.toFixed(2), "text-slate-800"],
+    ["MAX PAIN", (Math.round(spot / 100) * 100).toString(), "text-slate-800"],
+    ["SUPPORT", sup.toString(), "text-emerald-600"],
+    ["RESIST", res.toString(), "text-rose-600"],
+  ];
   return (
-    <div>
-      <div className="grid grid-cols-3 gap-2">
-        <IndexTile label="NIFTY 50" data={snap?.indices?.NIFTY} accent="linear-gradient(90deg,#10b981,#34d399)" />
-        <IndexTile label="BANK NIFTY" data={snap?.indices?.BANKNIFTY} accent="linear-gradient(90deg,#4f46e5,#818cf8)" />
-        <IndexTile label="SENSEX" data={snap?.indices?.SENSEX} accent="linear-gradient(90deg,#f59e0b,#fbbf24)" />
-      </div>
-      <div className="mt-3 grid grid-cols-[1.4fr_1fr] gap-3">
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300"><span>NIFTY · OI Distribution</span><span className="text-emerald-400">LIVE</span></div>
-          <div className="flex h-24 items-end gap-1.5">
-            {(snap?.chain?.rows || []).map((r, i) => (
-              <div key={i} className="flex flex-1 flex-col items-center justify-end gap-0.5">
-                <div className="slz-bar w-full" style={{ height: `${(r.ce_oi / 130000) * 100}%`, background: "#f43f5e" }} />
-                <div className="slz-bar w-full" style={{ height: `${(r.pe_oi / 130000) * 100}%`, background: "#10b981" }} />
-              </div>
-            ))}
-          </div>
+    <div className="mt-2 grid grid-cols-5 gap-1.5">
+      {cards.map(([t, v, c]) => (
+        <div key={t} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+          <div className="text-[8px] font-semibold uppercase tracking-wide text-slate-400">{t}</div>
+          <div className={`slz-mono text-[11px] font-bold ${c}`}>{v}</div>
         </div>
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <div className="text-[11px] text-slate-300">Strike Pressure</div>
-          <div className="slz-mono mt-1 text-2xl font-bold text-white">{snap?.pressure}</div>
-          <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="slz-bar h-full" style={{ width: `${snap?.pressure}%`, background: "linear-gradient(90deg,#10b981,#4f46e5)" }} />
-          </div>
-          <div className="mt-3 text-[11px] text-slate-300">PCR</div>
-          <div className="slz-mono text-lg font-semibold text-white">{snap?.pcr?.toFixed(2)}</div>
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
 
-function PressureScreen({ snap }) {
+const POS = [
+  ["SENSEX 69500 PE", "PUT", 340, 0.85, 0.70, -238],
+  ["SENSEX 73500 PE", "PUT", 280, 9.94, 5.75, 1174],
+  ["SENSEX 75800 CE", "CALL", 340, 14.15, 6.30, 2669],
+  ["SENSEX 76000 CE", "CALL", 220, 9.48, 4.35, 1129],
+  ["SENSEX 78600 CE", "CALL", 200, 0.90, 1.10, 40],
+  ["SENSEX 79400 CE", "CALL", 240, 0.83, 0.65, -156],
+];
+
+function Positions({ snap }) {
+  const drift = Math.round((snap?.pressure ?? 50) - 50) * 3;
+  const total = POS.reduce((a, p) => a + p[5], 0) + drift;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+        <span className="text-[11px] font-semibold text-slate-700">Live Positions · 6 open</span>
+        <span className={`slz-mono text-[11px] font-bold ${total >= 0 ? "text-emerald-600" : "text-rose-600"}`}>P&amp;L {total >= 0 ? "+" : ""}₹{Math.abs(total).toLocaleString("en-IN")}</span>
+      </div>
+      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 px-3 py-1 text-[8px] font-semibold uppercase text-slate-400">
+        <span>Instrument</span><span className="text-right">Avg</span><span className="text-right">LTP</span><span className="text-right">P&amp;L</span>
+      </div>
+      {POS.map((p, i) => {
+        const pnl = p[5] + (i % 2 === 0 ? drift : -drift);
+        return (
+          <div key={p[0]} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-2 border-t border-slate-50 px-3 py-1.5">
+            <div className="flex items-center gap-1.5 truncate">
+              <span className={`rounded px-1 py-0.5 text-[8px] font-bold ${p[1] === "PUT" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{p[1]}</span>
+              <span className="truncate text-[10px] text-slate-700">{p[0]}</span>
+              <span className="slz-mono text-[8px] text-slate-400">×{p[2]}</span>
+            </div>
+            <span className="slz-mono text-right text-[10px] text-slate-500">{p[3].toFixed(2)}</span>
+            <span className="slz-mono text-right text-[10px] text-slate-700">{p[4].toFixed(2)}</span>
+            <span className={`slz-mono text-right text-[10px] font-bold ${pnl >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{pnl >= 0 ? "+" : ""}{pnl}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function IndexTiles({ snap }) {
+  const items = [["NIFTY", snap?.indices?.NIFTY, "#16a34a"], ["BANKNIFTY", snap?.indices?.BANKNIFTY, "#4f46e5"], ["SENSEX", snap?.indices?.SENSEX, "#f59e0b"]];
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {items.map(([label, d, c]) => {
+        const up = (d?.changePct ?? 0) >= 0;
+        return (
+          <div key={label} className="rounded-lg border border-slate-200 bg-white p-2.5">
+            <div className="text-[10px] font-semibold text-slate-500">{label}</div>
+            <div className="slz-mono text-sm font-bold text-slate-900">{fmt(d?.price)}</div>
+            <div className={`slz-mono text-[10px] font-semibold ${up ? "text-emerald-600" : "text-rose-600"}`}>{up ? "▲" : "▼"} {Math.abs(d?.changePct ?? 0).toFixed(2)}%</div>
+            <div className="mt-1.5 h-1 rounded-full" style={{ background: c }} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Pressure({ snap }) {
   const p = snap?.pressure ?? 50;
   const bull = p >= 50;
   return (
-    <div className="flex flex-col items-center py-2">
-      <div className="text-[11px] uppercase tracking-widest text-slate-400">Strike Pressure</div>
-      <div className="relative mt-3 flex h-28 w-full items-end justify-center gap-1">
-        {Array.from({ length: 24 }).map((_, i) => {
-          const active = i < Math.round((p / 100) * 24);
-          return <div key={i} className="slz-bar w-2 rounded-sm" style={{ height: `${20 + (i % 8) * 9}px`, background: active ? (bull ? "#10b981" : "#f43f5e") : "rgba(148,163,184,0.18)" }} />;
+    <div className="flex flex-col items-center rounded-lg border border-slate-200 bg-white py-4">
+      <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Strike Pressure</div>
+      <div className="mt-2 flex h-20 items-end gap-1">
+        {Array.from({ length: 20 }).map((_, i) => {
+          const on = i < Math.round((p / 100) * 20);
+          return <div key={i} className="slz-bar w-2 rounded-sm" style={{ height: `${18 + (i % 7) * 8}px`, background: on ? (bull ? "#16a34a" : "#ef4444") : "#e2e8f0" }} />;
         })}
       </div>
-      <div className={`slz-mono mt-3 text-3xl font-bold ${bull ? "text-emerald-400" : "text-rose-400"}`}>{p}</div>
-      <div className="text-xs text-slate-400">{bull ? "Put writers in control — bullish tilt" : "Call writers in control — bearish tilt"}</div>
+      <div className={`slz-mono mt-2 text-2xl font-bold ${bull ? "text-emerald-600" : "text-rose-600"}`}>{p}</div>
+      <div className="text-[11px] text-slate-500">{bull ? "Put writers in control" : "Call writers in control"}</div>
     </div>
   );
 }
 
-function StructureScreen({ snap }) {
-  const px = snap?.indices?.NIFTY?.price ?? 25800;
-  const res = Math.ceil(px / 50) * 50 + 50;
-  const sup = Math.floor(px / 50) * 50 - 50;
-  return (
-    <div className="py-1">
-      <div className="mb-2 text-[11px] uppercase tracking-widest text-slate-400">Market Structure · NIFTY</div>
-      {[{ t: "Resistance", v: res, c: "#f43f5e" }, { t: "Spot", v: px, c: "#e5edf7" }, { t: "Support", v: sup, c: "#10b981" }].map((r) => (
-        <div key={r.t} className="mb-2 flex items-center gap-3">
-          <span className="w-20 text-xs text-slate-400">{r.t}</span>
-          <div className="h-px flex-1" style={{ background: `linear-gradient(90deg, ${r.c}, transparent)` }} />
-          <span className="slz-mono text-sm font-semibold" style={{ color: r.c }}>{fmt(r.v)}</span>
-        </div>
-      ))}
-      <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-2 text-[11px] text-slate-300">Range read: price coiling between support and resistance — OI walls are holding.</div>
-    </div>
-  );
-}
-
-function PositionsScreen({ snap }) {
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between text-[11px] text-slate-300">
-        <span>Your Positions</span>
-        <span className={`slz-mono font-bold ${(snap?.totalPnl ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>P&amp;L {(snap?.totalPnl ?? 0) >= 0 ? "+" : ""}₹{Math.abs(snap?.totalPnl ?? 0).toLocaleString("en-IN")}</span>
-      </div>
-      <div className="space-y-1.5">
-        {(snap?.positions || []).map((p) => (
-          <div key={p.sym} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">
-            <div className="flex items-center gap-2">
-              <span className={`slz-chip !px-2 !py-0.5 ${p.side === "SHORT" ? "text-rose-200" : "text-emerald-200"}`} style={{ background: p.side === "SHORT" ? "rgba(244,63,94,0.16)" : "rgba(16,185,129,0.16)" }}>{p.side}</span>
-              <span className="text-xs text-slate-200">{p.sym}</span>
-            </div>
-            <div className="flex items-center gap-3 slz-mono text-[11px]">
-              <span className="text-slate-400">{p.ltp}</span>
-              <span className={`font-bold ${p.pnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{p.pnl >= 0 ? "+" : ""}{p.pnl.toLocaleString("en-IN")}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BrainScreen({ snap }) {
+function Brain() {
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-[11px] text-indigo-300"><span className="h-2 w-2 rounded-full bg-indigo-400" /> POSITION BRAIN</div>
-      <div className="rounded-lg border border-indigo-400/20 bg-indigo-400/[0.06] p-3 text-xs leading-relaxed text-slate-200">
-        Your <b className="text-white">NIFTY 25900 CE short</b> sits right under the heaviest call wall. OI is <span className="text-emerald-300">building</span> at 25900 — writers defending. Net delta of the book is <b className="text-white">mildly short</b>; a close above 25900 would pressure the position.
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-600"><span className="h-2 w-2 rounded-full bg-indigo-500" /> POSITION BRAIN</div>
+      <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-xs leading-relaxed text-slate-700">
+        Your <b className="text-slate-900">SENSEX 75800 CE short</b> sits just under the heaviest call wall. OI is <span className="text-emerald-600">building</span> at 75800 — writers defending. The book is <b>seller-friendly</b>; theta is working for you.
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        {[["Risk", "Moderate", "#f59e0b"], ["Max Loss", "₹12,400", "#f43f5e"], ["Theta/day", "+₹3,150", "#10b981"]].map(([t, v, c]) => (
-          <div key={t} className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-            <div className="text-[10px] text-slate-400">{t}</div>
-            <div className="slz-mono text-xs font-bold" style={{ color: c }}>{v}</div>
-          </div>
+        {[["Risk", "Contained", "text-emerald-600"], ["Score", "75 / 100", "text-slate-800"], ["Theta/day", "+₹6,152", "text-emerald-600"]].map(([t, v, c]) => (
+          <div key={t} className="rounded-lg border border-slate-200 bg-white p-2"><div className="text-[9px] text-slate-400">{t}</div><div className={`slz-mono text-[11px] font-bold ${c}`}>{v}</div></div>
         ))}
       </div>
     </div>
   );
 }
 
-function DeskAiScreen() {
+function DeskAi() {
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-[11px] text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-400" /> DESK AI</div>
-      <div className="ml-auto max-w-[80%] rounded-2xl rounded-tr-sm bg-emerald-500/15 p-2.5 text-xs text-emerald-50">Should I hold my NIFTY short strangle into expiry?</div>
-      <div className="mr-auto max-w-[88%] rounded-2xl rounded-tl-sm bg-white/[0.05] p-2.5 text-xs leading-relaxed text-slate-200">
-        Both wings are outside the current OI walls (25800 / 25900) and theta is working for you (+₹3,150/day). Keep it unless NIFTY closes beyond a wall — then roll the tested side. Want me to draft the adjustment?
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500" /> DESK AI</div>
+      <div className="ml-auto max-w-[80%] rounded-2xl rounded-tr-sm bg-emerald-500/10 p-2.5 text-xs text-emerald-800">Is my SENSEX book safe into expiry?</div>
+      <div className="mr-auto max-w-[88%] rounded-2xl rounded-tl-sm border border-slate-200 bg-white p-2.5 text-xs leading-relaxed text-slate-700">
+        Both wings sit outside the active OI walls (75800 / 76000) and theta earns +₹6,152/day. Hold unless SENSEX closes beyond a wall — then roll the tested side. Want the adjustment?
       </div>
     </div>
   );
@@ -189,15 +202,31 @@ function DeskAiScreen() {
 
 export default function ProductScreen({ id = "dashboard", snap }) {
   switch (id) {
-    case "chain-nifty": return <ChainScreen snap={snap} index="NIFTY" />;
-    case "chain-banknifty": return <ChainScreen snap={snap} index="BANKNIFTY" />;
-    case "chain-sensex": return <ChainScreen snap={snap} index="SENSEX" />;
-    case "pressure": return <PressureScreen snap={snap} />;
-    case "structure": return <StructureScreen snap={snap} />;
-    case "positions": return <PositionsScreen snap={snap} />;
-    case "brain": return <BrainScreen snap={snap} />;
-    case "deskai": return <DeskAiScreen snap={snap} />;
+    case "oi":
+    case "chain-nifty":
+    case "chain-banknifty":
+    case "chain-sensex":
+      return <div><OIChart snap={snap} /><StatCards snap={snap} /></div>;
+    case "positions":
+      return <Positions snap={snap} />;
+    case "pressure":
+      return <Pressure snap={snap} />;
+    case "structure":
+      return <div><StatCards snap={snap} /><div className="mt-2"><OIChart snap={snap} /></div></div>;
+    case "brain":
+      return <Brain />;
+    case "deskai":
+      return <DeskAi />;
     case "dashboard":
-    default: return <DashboardScreen snap={snap} />;
+    default:
+      return (
+        <div className="space-y-2">
+          <IndexTiles snap={snap} />
+          <div className="grid grid-cols-[1.6fr_1fr] gap-2">
+            <OIChart snap={snap} />
+            <Pressure snap={snap} />
+          </div>
+        </div>
+      );
   }
 }

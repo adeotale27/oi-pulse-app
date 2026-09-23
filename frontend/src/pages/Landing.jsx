@@ -8,7 +8,7 @@ import {
 import "@/styles/landing.css";
 import useLiveDemo from "@/hooks/useLiveDemo";
 import OiPulseLogo from "@/components/OiPulseLogo";
-import ShotFrame from "@/components/landing/ShotFrame";
+import BrowserMock from "@/components/landing/BrowserMock";
 import ShotTour from "@/components/landing/ShotTour";
 import ProductScreen from "@/components/landing/ProductScreen";
 import { BRAND, NAV_LINKS, FREE_FEATURES, PREMIUM_FEATURES, FAQS, PRICING_FALLBACK, money } from "@/config/site";
@@ -136,14 +136,14 @@ function Hero({ snap }) {
             animate={{ y: [0, -12, 0] }}
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
           >
-            <ShotFrame src="/shots/terminal-full.jpg" snap={snap} title="Market Dashboard" chipIndex="SENSEX" />
+            <BrowserMock id="dashboard" snap={snap} title="Market Dashboard" chipIndex="SENSEX" />
           </motion.div>
           <motion.div
             className="slz-tilt-soft absolute -bottom-10 -left-6 w-60 md:w-72"
             animate={{ y: [0, 10, 0] }}
             transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
           >
-            <ShotFrame src="/shots/longshort-oi.png" snap={snap} title="Long / Short on OI" showChip={false} />
+            <BrowserMock id="oi" snap={snap} title="OI Change" showChip={false} />
           </motion.div>
         </div>
       </div>
@@ -248,18 +248,18 @@ function PremiumShowcase({ snap }) {
         <div className="mt-12 grid gap-6 lg:grid-cols-[1.15fr_1fr]">
           <motion.div {...reveal}>
             <div className="mb-3 text-sm font-semibold text-indigo-200">Active Long / Short on the OI chart</div>
-            <ShotFrame src="/shots/oi-change.png" snap={snap} title="Positions on the OI wall" chipIndex="SENSEX" />
+            <BrowserMock id="oi" snap={snap} title="Positions on the OI wall" chipIndex="SENSEX" />
             <div className="mt-4 text-sm font-semibold text-indigo-200">Live Positions &amp; P&amp;L</div>
-            <div className="mt-3"><ShotFrame src="/shots/positions.png" snap={snap} title="Live Positions" showChip={false} /></div>
+            <div className="mt-3"><BrowserMock id="positions" snap={snap} title="Live Positions" showChip={false} /></div>
           </motion.div>
           <div className="grid gap-6">
             <motion.div {...reveal}>
               <div className="mb-3 text-sm font-semibold text-indigo-200">Position Brain</div>
-              <div className="slz-browser"><div className="slz-screen-body"><ProductScreen id="brain" snap={snap} /></div></div>
+              <BrowserMock id="brain" snap={snap} title="Position Brain" showChip={false} />
             </motion.div>
             <motion.div {...reveal} transition={{ duration: 0.6, delay: 0.08 }}>
               <div className="mb-3 text-sm font-semibold text-indigo-200">Desk AI</div>
-              <div className="slz-browser"><div className="slz-screen-body"><ProductScreen id="deskai" snap={snap} /></div></div>
+              <BrowserMock id="deskai" snap={snap} title="Desk AI" showChip={false} />
             </motion.div>
           </div>
         </div>
