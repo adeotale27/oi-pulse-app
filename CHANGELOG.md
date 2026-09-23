@@ -1,5 +1,121 @@
 # Changelog
 
+## V14.26 — 2026-09-23
+
+Unified the login and maintenance footers while preserving the original desk features, restored live chart candles, improved the robot's circular eyes and glowing chest logo, added a clearer open-laptop silhouette and coffee mug handle, moved the workflow copy into a dedicated readable treatment, and clarified Market Memory reaction and distance metrics.
+
+## V14.25 — 2026-09-23
+
+Refined the entry and maintenance visuals: reduced warm/orange status styling, removed duplicate login slogans and decorative candle/bar graphics, improved readability of the discipline workflow, added a rotating maintenance wrench, upgraded the robot coffee mug silhouette, clarified Live Positions, removed the unnecessary ticker arrow, and refreshed the footer with Global Market, World Market News, Straddle, and Events.
+
+## V14.24 — 2026-09-23
+
+Improved the login desk readability and hierarchy, moved Desk P&L above the desk scene, placed VIX and GIFT NIFTY before the main indices in the live ticker, connected the login OI pulse to the live NIFTY snapshot, refreshed Global Markets immediately after FMP connection testing, and tightened the Straddle near-zero outlier guard.
+
+## V14.23 — 2026-09-23
+
+Audited the recent desk changes, connected the login ticker and monitor to the live public ticker feed with a safe fallback, replaced alert exclamation icons with the StrikLenz pulse mark using notification tone colors, and removed broker-provider branding from user-facing positions and connection copy.
+
+## V14.22 — 2026-09-23
+
+Cleaned up the maintenance screen by removing legacy duplicate coffee and status-caption elements, keeping the shared robot scene as the single visual treatment, and centering the footer message across desktop and mobile layouts.
+
+## V14.21 — 2026-09-23
+
+Fixed the authentication scene runtime error caused by the missing Coffee icon import.
+
+## V14.20 — 2026-09-23
+
+Unified the login and maintenance experiences around the reusable StrikLenz robot mascot. Added the discipline-focused trading-desk hero, lightweight NIFTY candlestick/MA monitor, decorative Desk P&L card, happy robot animation, generic brewing laptop state, shared reduced-motion handling, and responsive premium terminal styling without changing authentication behavior.
+
+## V14.19 — 2026-09-23
+
+Changed the admin login heading to “Welcome”, redesigned the auth robot with smiling arc eyes and no tear-like glow, and restored both horizontal and vertical Straddle chart grid lines with stronger visible contrast.
+
+## V14.18 — 2026-09-23
+
+Added explicit horizontal Straddle chart guides with stable y-axis ticks. Reduced chart-opening and live-update work by isolating the refresh countdown from Recharts and bounding display-only points for long sessions while retaining the full series in state.
+
+## V14.17 — 2026-09-23
+
+Made away-alert handling consistent across desktop and phone views. The alert indicator now opens every queued alert, closes on outside click or X, and clears once dismissed. Improved the auth-scene robot with a clear smiling, happy expression.
+
+## V14.16 — 2026-09-23
+
+Rebuilt the admin and guest authentication screens to match the supplied StrikLenz trading-studio reference: market ticker rail, animated 3D-style robot and coffee scene, live chart monitors, branded glass login card, and responsive phone layout.
+
+## V14.15 — 2026-09-23
+
+Changed the mobile alert summary into an expandable alert list. Clicking the alert count now shows every queued alert, and closing the expanded tray dismisses the full visited set instead of leaving the count behind.
+
+## V14.14 — 2026-09-23
+
+Made Global Markets provider polling explicitly selection-driven: FMP and Twelve Data calls are skipped when no enabled instrument is assigned to that provider. Manual FMP testing is also disabled unless an enabled FMP instrument exists.
+
+## V14.13 — 2026-09-23
+
+Corrected provider switching so an instrument moved from Twelve Data to FMP automatically receives its documented FMP default symbol instead of retaining a stale Twelve Data symbol. Deliberate custom FMP symbols remain unchanged.
+
+## V14.12 — 2026-09-23
+
+Synchronized the Global Markets master switch with both public and admin dashboard page visibility lists, so disabling removes the page from both views and enabling restores it to both.
+
+## V14.11 — 2026-09-23
+
+Fixed the Global Markets switch to use an explicit local controlled state and the persisted backend response. Added final provider-call guards before both FMP and Twelve Data requests, and blocked manual FMP testing while Global Markets is disabled.
+
+## V14.10 — 2026-09-23
+
+Fixed Global Markets visibility by adding a lightweight enabled-status endpoint and gating the dashboard tab from that persisted flag. Moved the master switch to the top of the Global Markets admin modal and deferred full quote loading until the section is active.
+
+## V14.09 — 2026-09-23
+
+Aligned Global Markets tables with the compact ADR grid: consistent row spacing, nowrap columns, hover treatment, and a live/closed clock indicator for every instrument.
+
+## V14.08 — 2026-09-23
+
+Fixed toast text visibility with explicit high-contrast title, description, and icon colors. Neutral informational notices no longer use the red error treatment, while OI alerts keep readable red or green semantic text.
+
+## V14.07 — 2026-09-23
+
+Improved toast readability across the app by forcing title, description, and icon colors to inherit the toast semantic color. The guest-access notice is now a neutral informational toast instead of an error-styled notification.
+
+## V14.06 — 2026-09-23
+
+Fixed the Global Markets master switch so disabling it immediately hides the dashboard section and invalidates its cached snapshot. GIFT NIFTY now uses the existing internal Kite-backed ticker feed and is no longer routed through Twelve Data or FMP.
+
+## V14.05 — 2026-09-23
+
+Positioned the Sonner close icon as a small, clearly visible control in the upper-right corner of every toast, with a transparent background and a larger click target.
+
+## V14.04 — 2026-09-23
+
+Added an admin Global Markets master switch that stops provider polling and removes the desk section when disabled. Upgraded maintenance and authentication scenes with animated code/data activity and a market copilot robot. Toast close controls are now small, transparent, square hit targets positioned inside the upper-right corner.
+
+## V14.03 — 2026-09-23
+
+Fixed Financial Modeling Prep polling for selected pairs by batching configured symbols, using provider-specific commodity defaults, retaining per-symbol failures, and throttling the shared FMP request to a six-minute cadence suitable for the common daily request tier. Toast cards now remain white with only their text, icons, borders, and close controls using semantic colors.
+
+## V14.02 — 2026-09-23
+
+Added configurable weekday dashboard defaults, automatic Wednesday/Thursday SENSEX focus, separated ADR and Global Markets provider key sections, standardized toast opacity, and corrected toast close-button containment.
+
+## V14.01 — 2026-09-23
+
+Reworked the unavailable/maintenance screen into a branded brewing scene with animated coffee steam, a coding robot, responsive phone layout, and a clearer retry path.
+
+## V14.00 — 2026-09-23
+
+Added the first-class maintenance/unavailable screen with admin-controlled recovery, responsive API Configuration and Market Memory views, stable Market Intelligence positioning, and light semantic stacked browser alerts.
+
+## V13.01 — 2026-09-23
+
+Browser OI alerts now use the restored stacked desktop surface with light semantic red/green styling, readable direction colors, and close controls. Global Markets includes a dedicated FMP connection test against the current stable quote endpoint.
+
+## V13.00 — 2026-09-23
+
+Desktop OI alerts now retain the earlier multi-toast desk surface, while phone alerts remain in the compact tray with red/green direction styling. Global Markets adds Financial Modeling Prep as a secure per-instrument provider alongside Twelve Data, including encrypted admin key configuration, provider-aware polling, custom instruments, and removal of entries such as TOTAL2.
+
 ## V12.01 — 2026-09-22
 
 Global Markets now starts with every instrument disabled and exposes its provider, per-instrument mapping, ADR universe, and whole-category switches only in its dedicated admin-only **Global Markets → Configure** window. Unsupported or plan-gated vendor symbols never appear or consume polling credits until deliberately enabled; turning a category off removes its desk component entirely. Non-ADR categories now use the same dense quote-table treatment as ADR Monitor, and their section layout is drag-reorderable and saved per desk user. Global Market fetch failures are recorded under the distinct `global_market` source rather than ADR. Market Memory is a per-user Desk setting and sits above the OI Change auto-refresh footer when enabled. Straddle now draws both horizontal and vertical gridlines. The automatic API Configuration inventory labels Global Markets and the development checklist documents the source-discovery path for every new provider.

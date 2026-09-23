@@ -15,8 +15,11 @@ export async function fetchGlobalMarkets({ force = false } = {}) {
 }
 
 if (typeof window !== "undefined") {
-  window.addEventListener("global-markets-config-saved", () => {
+  window.addEventListener("global-markets-config-saved", (event) => {
     cached = null;
     cachedAt = 0;
+    if (event?.detail && event.detail.enabled === false) {
+      cached = { categories: [], items: [], enabled: false, updatedAt: new Date().toISOString() };
+    }
   });
 }

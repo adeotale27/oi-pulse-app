@@ -685,6 +685,17 @@ async def _get_public_access_state():
     return open_, expires_at_iso
 
 
+async def _get_maintenance_state() -> bool:
+    """Return the persisted public maintenance switch without leaking DB errors."""
+    if db is None:
+        return False
+    try:
+        doc = await _find_one_capped(db.settings, {"_id": "maintenance_mode"}) or {}
+        return bool(doc.get("enabled", False))
+    except Exception:
+        return False
+
+
 async def _get_guest_require_approval() -> bool:
     if db is None:
         return False
@@ -893,6 +904,7 @@ class SettingsIn(BaseModel):
     expire_admin_on_market_close: Optional[bool] = None
     admin_session_ttl_minutes: Optional[int] = None
     alert_enabled_indices: Optional[List[str]] = None  # weekday-defaulted alert focus
+    weekday_dashboard_defaults: Optional[Dict[str, str]] = None  # Mon..Fri default desk index
     show_strike_range: Optional[bool] = None  # sidebar Strike Range steppers
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
@@ -3103,7 +3115,7 @@ async def get_config():
         "show_chart_signals": bool(s.get("show_chart_signals", False)),
         "position_mark_glow_after_close": s.get("position_mark_glow_after_close", True) is not False,
         "position_mark_glow_pct": float(s.get("position_mark_glow_pct") or 1.0),
-        "alert_toast_opacity": max(60, min(100, int(s.get("alert_toast_opacity") or 88))),
+        "alert_toast_opacity": max(60, min(100, int(s.get("alert_toast_opacity") or 90))),
         "overnight_popup_opacity": max(60, min(100, int(s.get("overnight_popup_opacity") or 92))),
         "market_intel_popup_opacity": max(60, min(100, int(s.get("market_intel_popup_opacity") or 92))),
         "indicative_popup_opacity": max(60, min(100, int(s.get("indicative_popup_opacity") or 92))),
@@ -3292,6 +3304,8 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
       (no second approval), unless admin explicitly removed them (requires_reapproval).
     • Blocked IP → soft refusal message.
     """
+    if await _get_maintenance_state():
+        raise HTTPException(503, "Desk is preparing for a short update. Please try again soon.")
     open_, _ = await _get_public_access_state()
     if not open_:
         raise HTTPException(403, "Public access is not open. Please ask the admin to give access.")
@@ -3594,6 +3608,7 @@ async def auth_state(request: Request):
         return {
             "requires_login": False,
             "public_access_open": True,
+            "maintenance_mode": False,
             "public_access_expires_at": None,
             "is_admin": False,
             "is_guest": False,
@@ -3605,6 +3620,7 @@ async def auth_state(request: Request):
             "is_ip_blocked": False,
         }
     open_, expires_at_iso = await _get_public_access_state()
+    maintenance_mode = await _get_maintenance_state()
     admin_sess = await _admin_from_request(request)
     is_admin = admin_sess is not None
     guest_sess = None if is_admin else (await _guest_from_request(request))
@@ -3648,7 +3664,7 @@ async def auth_state(request: Request):
         except Exception:
             pass
         try:
-            auto = await _try_auto_guest_for_ip(ip, request)
+            auto = None if maintenance_mode else await _try_auto_guest_for_ip(ip, request)
             if auto and auto.get("token"):
                 auto_guest_token = auto["token"]
                 auto_guest_name = auto.get("name") or suggested_guest_name
@@ -3665,6 +3681,7 @@ async def auth_state(request: Request):
     return {
         "requires_login": requires_login,
         "public_access_open": open_,
+        "maintenance_mode": maintenance_mode,
         "public_access_expires_at": expires_at_iso,
         "is_admin": is_admin,
         "is_guest": is_guest,
@@ -3697,6 +3714,34 @@ async def auth_state(request: Request):
 class PublicAccessIn(BaseModel):
     open: Optional[bool] = None
     require_approval: Optional[bool] = None
+
+
+class MaintenanceModeIn(BaseModel):
+    enabled: bool
+
+
+@api_router.post("/auth/maintenance", dependencies=[])
+async def auth_toggle_maintenance(payload: MaintenanceModeIn, request: Request):
+    """Admin-only public maintenance switch; admin sessions remain valid."""
+    if not await _is_admin_request(request):
+        raise HTTPException(401, "Admin only")
+    if db is None:
+        raise HTTPException(503, "Service unavailable")
+    try:
+        await db.settings.update_one(
+            {"_id": "maintenance_mode"},
+            {
+                "$set": {
+                    "enabled": bool(payload.enabled),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": ADMIN_USERNAME,
+                }
+            },
+            upsert=True,
+        )
+    except Exception:
+        raise HTTPException(503, "Service unavailable")
+    return {"ok": True, "maintenance_mode": bool(payload.enabled)}
 
 
 @api_router.post("/auth/public-access", dependencies=[])

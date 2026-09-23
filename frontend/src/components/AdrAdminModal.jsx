@@ -80,8 +80,10 @@ export default function AdrAdminModal({ open, onOpenChange }) {
       <DialogContent data-testid="adr-admin-modal" className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0">
         <DialogHeader>
           <DialogTitle>Global Markets</DialogTitle>
-          <DialogDescription>Twelve Data quotes power Global Markets; ADR Monitor uses the Indian ADR universe. The API key stays in the vault and is never returned to the browser.</DialogDescription>
+          <DialogDescription>Global Markets can use Twelve Data or Financial Modeling Prep per instrument. ADR Monitor uses the Indian ADR universe and Twelve Data. API keys stay in the vault and are never returned to the browser.</DialogDescription>
         </DialogHeader>
+
+        <GlobalMarketsSettings active={open} />
 
         <section className="space-y-2 rounded-md border p-3">
           <div className="text-[11px] font-semibold uppercase tracking-widest">ADR Provider</div>
@@ -103,15 +105,13 @@ export default function AdrAdminModal({ open, onOpenChange }) {
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => {
               const patch = { poll_interval_seconds: prefs.poll_interval_seconds };
               if (keyDraft.trim()) patch.api_key = keyDraft.trim();
-              savePrefs(patch).then(() => setKeyDraft(""));
+              savePrefs(patch).then(() => { setKeyDraft(""); });
             }}>Save provider</Button>
             <Button type="button" size="sm" variant="outline" data-testid="adr-test-api" onClick={test}>Test API Connection</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => savePrefs({ discover: true }).then(load)}>Sync ADR Monitor</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => api.post("/adrs/poll").then(() => toast.success("Poll queued"))}>Poll now</Button>
           </div>
         </section>
-
-        <GlobalMarketsSettings active={open} />
 
         <section className="space-y-2 rounded-md border p-3">
           <div className="text-[11px] font-semibold uppercase tracking-widest">Market Session</div>

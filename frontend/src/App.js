@@ -5,6 +5,7 @@ import AuthGate from "@/components/AuthGate";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
 import MobileAlertTray from "@/components/MobileAlertTray";
+import DesktopAlertInbox from "@/components/DesktopAlertInbox";
 import PwaNotifyPrompt from "@/components/PwaNotifyPrompt";
 import { installDeskErrorLog } from "@/lib/errorLog";
 
@@ -50,6 +51,7 @@ function App() {
       </Suspense>
       <Toaster />
       <MobileAlertTray />
+      <DesktopAlertInbox />
       <PwaNotifyPrompt />
     </div>
   );

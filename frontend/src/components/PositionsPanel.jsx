@@ -153,7 +153,7 @@ function priv(privacy, visible) {
   return privacy ? PRIVACY_MASK : visible;
 }
 
-/** Kite equity margins. Tile uses Available margin (`equity.net`).
+/** Account equity margins. Tile uses Available margin (`equity.net`).
  *  Percent-of-account uses wallet capital (`funds.total` / `funds.base` = opening + collateral), never SPAN.
  */
 function fundsBreakdown(funds) {
@@ -417,7 +417,7 @@ function ExpiryLeftoverSettleBtn({ count, onSettle, busy }) {
         onSettle?.();
       }}
       disabled={busy}
-      title="Zerodha already squares 0.05 expiry hedges after close. Book them here so Profit booked / journal match Today P&L. Does not place a Kite order."
+      title="The broker already squares 0.05 expiry hedges after close. Book them here so Profit booked / journal match Today P&L. Does not place an order."
     >
       {busy ? "Booking…" : `Square ${count} leftover${count === 1 ? "" : "s"} in book`}
     </button>
@@ -738,7 +738,7 @@ export default function PositionsPanel({
     const maintenance =
       data.maintenance === true
       || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""));
-    // Keep last good book on transient Kite blips — do not wipe the table.
+    // Keep last good book on transient broker blips — do not wipe the table.
     if (next.length > 0 || !data.error || hard) {
       setPositions(next);
       if (hard && (data.kite_connected === false || data.token_issue === true)) {
@@ -755,7 +755,7 @@ export default function PositionsPanel({
       if (data.oi && typeof data.oi === "object") setOiByIndex(data.oi);
     }
     if (data.maintenance || /zerodha maintenance|under maintenance|scheduled maintenance/i.test(String(data.error || ""))) {
-      setError(data.error || "Zerodha / Kite maintenance");
+      setError(data.error || "Broker maintenance");
       setErrorHard(false);
     } else if (data.error) {
       setError(data.error);
@@ -1343,9 +1343,9 @@ export default function PositionsPanel({
     return (
       <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center space-y-3" data-testid="positions-kite-required">
         <PlugZap className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-        <div className="text-sm font-semibold text-slate-700">Kite Live mode required</div>
+        <div className="text-sm font-semibold text-slate-700">Live market mode required</div>
         <div className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-          Connect Zerodha Kite to pull your open F&amp;O positions here. Trade journal still reads booked days from our database.
+          Connect your broker account to pull your open F&amp;O positions here. Trade journal still reads booked days from our database.
         </div>
         <div className="flex items-center justify-center gap-2 flex-wrap">
           {typeof onOpenKite === "function" && (
@@ -1356,7 +1356,7 @@ export default function PositionsPanel({
               data-testid="btn-positions-reconnect-kite"
             >
               <PlugZap className="w-3.5 h-3.5 mr-1.5" />
-              Connect Kite
+              Connect broker
             </Button>
           )}
           <Button
@@ -1381,9 +1381,9 @@ export default function PositionsPanel({
         <PlugZap className="w-8 h-8 mx-auto text-emerald-700 mb-2" />
         <div className="text-sm font-semibold text-slate-800">Connect your Zerodha</div>
         <div className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
-          Log in with your Kite account to load <b>your</b> positions. Charts still use the publisher OI feed.
+          Log in with your broker account to load <b>your</b> positions. Charts still use the publisher OI feed.
           Tokens expire around 06:00 IST — reconnect each morning.
-          If Kite says the user is not enabled for the app, the desk owner must add your user_id in developers.kite.tech (or publish the app).
+          If your broker says the user is not enabled for the app, contact the desk owner.
           {guestKiteId ? ` Last login: ${guestKiteId}.` : ""}
         </div>
         <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
@@ -1409,7 +1409,7 @@ export default function PositionsPanel({
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
           <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md shrink-0" pulse={false} />
-          <div className="text-sm font-semibold text-slate-900 leading-tight">Kite Positions</div>
+          <div className="text-sm font-semibold text-slate-900 leading-tight">Live Positions</div>
           <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
             {stats.openCount} open
           </span>
@@ -1727,7 +1727,7 @@ export default function PositionsPanel({
               ? error
               : /zerodha maintenance|under maintenance/i.test(String(error || ""))
                 ? error
-                : `Temporary Kite hiccup — keeping last book. ${error}`}
+                : `Temporary broker hiccup — keeping last book. ${error}`}
           </span>
           {errorHard && typeof onOpenKite === "function" && (
             <Button
@@ -1797,7 +1797,7 @@ export default function PositionsPanel({
           tip={(
             <div className="space-y-1.5">
               <p>
-                <b>Today P&amp;L</b> matches Kite <b>Total P&amp;L</b> = Booked + Unbooked.
+                <b>Today P&amp;L</b> matches the broker <b>Total P&amp;L</b> = Booked + Unbooked.
                 Booked is realised on closed and partial legs; Unbooked is open MTM.
               </p>
               {!privacyMode && (
@@ -1839,7 +1839,7 @@ export default function PositionsPanel({
           tip={(
             <div className="space-y-1.5">
               <p>
-                Same as Kite <b>Available margin</b> — leftover for <em>new</em> trades.
+                Same as broker <b>Available margin</b> — leftover for <em>new</em> trades.
                 Day % uses <b>wallet</b> (opening cash + collateral), not this leftover, not SPAN on hedges.
               </p>
               {!privacyMode && (
@@ -1864,7 +1864,7 @@ export default function PositionsPanel({
             <p>
               Rough ₹ from time passing if the market stays put — capped to premium still left in
               each option (so expiry-day Black–Scholes cannot show fake −₹10k on a ₹500 long).
-              This is <b>not</b> your P&amp;L; P&amp;L matches Kite in the P&amp;L column.
+              This is <b>not</b> your P&amp;L; P&amp;L matches the broker in the P&amp;L column.
             </p>
           )}
         />

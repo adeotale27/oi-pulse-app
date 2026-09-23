@@ -31,8 +31,8 @@ export default function KiteCallback() {
     const status = params.get("status");
     const token = params.get("request_token");
     if (status && status !== "success") {
-      setMsg("Kite login was cancelled.");
-      toast.error("Kite login cancelled");
+      setMsg("Broker login was cancelled.");
+      toast.error("Broker login cancelled");
       const t = setTimeout(() => navigate("/", { replace: true }), 1200);
       return () => clearTimeout(t);
     }
@@ -45,7 +45,7 @@ export default function KiteCallback() {
       try {
         const data = await completeUserKiteSession(token);
         if (cancelled) return;
-        toast.success(`Zerodha connected${data?.kite_user_id ? ` · ${data.kite_user_id}` : ""}`);
+        toast.success(`Broker connected${data?.kite_user_id ? ` · ${data.kite_user_id}` : ""}`);
         navigate("/?kite=connected", { replace: true });
       } catch (e) {
         if (cancelled) return;

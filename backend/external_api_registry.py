@@ -15,6 +15,7 @@ URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 
 HOSTS = {
     "api.twelvedata.com": ("twelve-data", "Twelve Data", "Market Data", "API key"),
+    "financialmodelingprep.com": ("financial-modeling-prep", "Financial Modeling Prep", "Market Data", "API key"),
     "www.nseindia.com": ("nse-india", "NSE India", "Market Data", "Public session"),
     "api.kite.trade": ("kite-connect", "Kite Connect", "Broker / Market Data", "API key + access token"),
     "api.telegram.org": ("telegram", "Telegram Bot API", "Notifications", "Bot token"),

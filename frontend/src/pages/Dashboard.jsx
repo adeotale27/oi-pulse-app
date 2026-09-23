@@ -231,7 +231,12 @@ function resolveMinutes(tf) {
 }
 
 export default function Dashboard() {
-  const [activeIndex, setActiveIndex] = useState("NIFTY");
+  const [activeIndex, setActiveIndex] = useState(() => {
+    try {
+      const day = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", weekday: "short" }).format(new Date());
+      return day === "Wed" || day === "Thu" ? "SENSEX" : "NIFTY";
+    } catch { return "NIFTY"; }
+  });
   const [timeframe, setTimeframe] = useState(15);
   const [current, setCurrent] = useState(null);
   const [previous, setPrevious] = useState(null);
@@ -289,6 +294,7 @@ export default function Dashboard() {
   const [activity, setActivity] = useState([]);       // unusual activity feed events
   const [activityFilter, setActivityFilter] = useState("all");
   const [activeTab, setActiveTab] = useState(HOME_PAGE);
+  const [globalMarketsEnabled, setGlobalMarketsEnabled] = useState(null);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("darkMode") === "1"; } catch { return false; }
   });
@@ -335,6 +341,17 @@ export default function Dashboard() {
   const [chromeSlim, setChromeSlim] = useState(false);
   const [replayJumpTs, setReplayJumpTs] = useState(null);
   const clearReplayJump = useCallback(() => setReplayJumpTs(null), []);
+  useEffect(() => {
+    let live = true;
+    api.get("/global-markets/status", { timeout: 5000 })
+      .then(({ data }) => { if (live) setGlobalMarketsEnabled(data?.enabled !== false); })
+      .catch(() => { if (live) setGlobalMarketsEnabled(true); });
+    const onSaved = (event) => {
+      if (typeof event?.detail?.enabled === "boolean") setGlobalMarketsEnabled(event.detail.enabled);
+    };
+    window.addEventListener("global-markets-config-saved", onSaved);
+    return () => { live = false; window.removeEventListener("global-markets-config-saved", onSaved); };
+  }, []);
   useEffect(() => {
     const openFilteredErrorLog = (event) => {
       setErrorLogSource(event?.detail?.source || "");
@@ -697,13 +714,18 @@ export default function Dashboard() {
   }, [status]);
 
   const tabOn = useCallback(
-    (id) => pageAllowed(id, {
+    (id) => id !== "adrs" && pageAllowed(id, {
       isAdmin: !!authState.is_admin,
       visiblePages,
       adminPages: adminVisiblePages,
       pagesReady,
-    }),
-    [authState.is_admin, visiblePages, adminVisiblePages, pagesReady],
+    }) || (id === "adrs" && globalMarketsEnabled === true && pageAllowed(id, {
+      isAdmin: !!authState.is_admin,
+      visiblePages,
+      adminPages: adminVisiblePages,
+      pagesReady,
+    })),
+    [authState.is_admin, visiblePages, adminVisiblePages, pagesReady, globalMarketsEnabled],
   );
 
   useEffect(() => {
@@ -1269,6 +1291,7 @@ export default function Dashboard() {
         });
         surfaceAlert({
           toastFn,
+          variant: isBullish ? "success" : "error",
           title,
           description: desc || [
             a.index,
@@ -1386,7 +1409,10 @@ export default function Dashboard() {
     if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
       const next = normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on);
       setEnabledIndices(next);
-      setActiveIndex((cur) => (next.includes(cur) ? cur : next[0]));
+      const day = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", weekday: "short" }).format(new Date());
+      const dayKey = ({ Mon: "0", Tue: "1", Wed: "2", Thu: "3", Fri: "4" })[day];
+      const configured = d.weekday_dashboard_defaults?.[dayKey];
+      setActiveIndex((cur) => configured && next.includes(configured) ? configured : (next.includes(cur) ? cur : next[0]));
     }
     if (d.indices && typeof d.indices === "object") setIndexMeta(d.indices);
     if (Array.isArray(d.alert_enabled_indices) && d.alert_enabled_indices.length) {
@@ -1834,6 +1860,7 @@ export default function Dashboard() {
       });
       surfaceAlert({
         toastFn: changeSummary.bullish ? toast.success : toast.error,
+        variant: changeSummary.bullish ? "success" : "error",
         title: msg,
         description: desc,
         duration: 6000,
@@ -1883,6 +1910,7 @@ export default function Dashboard() {
       const isBull = (which === "PE" && pctVal >= 0) || (which === "CE" && pctVal < 0);
       surfaceAlert({
         toastFn: isBull ? toast.success : toast.error,
+        variant: isBull ? "success" : "error",
         title,
         description: desc,
         duration: 7000,
@@ -1918,6 +1946,7 @@ export default function Dashboard() {
     });
     surfaceAlert({
       toastFn: toast.error,
+      variant: "error",
       title: copy.title,
       description: copy.description,
       duration: 8000,
@@ -2972,7 +3001,7 @@ export default function Dashboard() {
 
                   {(tabOn("positions")) && (
                     <TabsContent value="positions" forceMount className={activeTab === "positions" ? "mt-0" : "hidden"}>
-                    <div className="text-sm font-semibold mb-2">My Kite Positions</div>
+                    <div className="text-sm font-semibold mb-2">My Positions</div>
                     <PositionsPanel
                       isKiteMode={authState.is_admin ? kiteLiveConnected : true}
                       isGuest={!!authState.is_guest}
@@ -3093,6 +3122,7 @@ export default function Dashboard() {
                       <GlobalMarketsPage
                         isAdmin={!!authState.is_admin}
                         userKey={authState.admin_username || authState.guest_name || (authState.is_admin ? "admin" : "guest")}
+                        active={activeTab === "adrs"}
                         onOpenAdmin={() => setAdrAdminOpen(true)}
                       />
                     </TabsContent>

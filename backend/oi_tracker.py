@@ -231,7 +231,7 @@ DEFAULT_SETTINGS = {
     # Stored as a human-facing percentage (1.0 = one percent), Admin-only.
     "position_mark_glow_pct": 1.0,
     # Desktop toast transparency. Phone toasts use their own high-contrast tray.
-    "alert_toast_opacity": 88,
+    "alert_toast_opacity": 90,
     # Floating desk panels keep their own opacity, separately from alert toasts.
     "overnight_popup_opacity": 92,
     "market_intel_popup_opacity": 92,
@@ -486,7 +486,13 @@ class OITracker:
         override_date = self.settings.get("alert_indices_override_date")
         if override_date == today and self.settings.get("alert_enabled_indices"):
             return  # keep today's explicit choice
+        configured = self.settings.get("weekday_dashboard_defaults")
         defaults = default_alert_indices_for_today()
+        if isinstance(configured, dict):
+            key = str(now_ist().weekday())
+            selected = str(configured.get(key) or "").upper()
+            if selected in {"NIFTY", "SENSEX", "BANKNIFTY"}:
+                defaults = [selected]
         prev = self.settings.get("alert_enabled_indices")
         prev_override = self.settings.get("alert_indices_override_date")
         self.settings["alert_enabled_indices"] = defaults

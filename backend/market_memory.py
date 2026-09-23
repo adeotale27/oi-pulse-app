@@ -7,6 +7,12 @@ from typing import Any, Dict, List
 EVENTS_COL = "market_memory_events"
 STATE_COL = "market_memory_state"
 TRACKED = frozenset({"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX"})
+STRUCTURE = {
+    "NIFTY": (50, 10),
+    "SENSEX": (100, 10),
+    "BANKNIFTY": (100, 15),
+    "FINNIFTY": (50, 10),
+}
 
 
 def _number(value):
@@ -132,20 +138,40 @@ async def summary(db, index: str) -> Dict[str, Any]:
     docs = await db[EVENTS_COL].find({"index": index}, {"_id": 0}).sort("timestamp", -1).to_list(500) if db is not None else []
     by_level: Dict[float, List[Dict[str, Any]]] = {}
     now = datetime.now(timezone.utc)
+    step, tolerance = STRUCTURE.get(index, (50, 10))
     for event in docs:
-        by_level.setdefault(float(event["level"]), []).append(event)
+        raw = _number(event.get("level"))
+        if raw is None:
+            continue
+        anchor = round(raw / step) * step
+        if abs(raw - anchor) <= tolerance:
+            by_level.setdefault(float(anchor), []).append({**event, "rawLevel": raw})
     levels = []
     for level, events in by_level.items():
         dated = [(event, datetime.fromisoformat(str(event["timestamp"]).replace("Z", "+00:00"))) for event in events]
         count5 = sum(1 for _, stamp in dated if stamp >= now - timedelta(days=5))
         count20 = sum(1 for _, stamp in dated if stamp >= now - timedelta(days=20))
-        kinds = {kind: sum(1 for event in events if event["interactionType"] == kind) for kind in ("TOUCH", "REJECTION", "BREAKOUT", "FAILED_BREAKOUT")}
+        meaningful = []
+        for event, stamp in sorted(dated, key=lambda item: item[1]):
+            if not meaningful or (stamp - meaningful[-1][1]).total_seconds() >= 300:
+                meaningful.append((event, stamp))
+        kinds = {kind: sum(1 for event, _ in meaningful if event["interactionType"] == kind) for kind in ("TOUCH", "REJECTION", "BREAKOUT", "FAILED_BREAKOUT")}
         reactions = [abs(_number(event.get("reaction5m")) or 0) for event in events if event.get("reaction5m") is not None]
         last = events[0]
-        levels.append({"level": level, "levelType": last.get("levelType"), "todayCount": sum(1 for _, stamp in dated if stamp.date() == now.date()), "5DayCount": count5, "20DayCount": count20,
+        recency = max(0.0, 1.0 - (now - dated[-1][1]).total_seconds() / 21600)
+        score = min(100, round(20 + min(30, kinds["REJECTION"] * 8 + kinds["FAILED_BREAKOUT"] * 6)
+                              + min(25, kinds["TOUCH"] * 5) + recency * 25))
+        if score < 30:
+            continue
+        role = "SUPPORT" if price is not None and level <= price and kinds["REJECTION"] else (
+            "RESISTANCE" if kinds["REJECTION"] else "STRUCTURAL")
+        levels.append({"level": level, "zoneLow": level - tolerance, "zoneHigh": level + tolerance,
+                       "levelType": role, "strength": "HIGH" if score >= 70 else "MEDIUM",
+                       "relevanceScore": score, "todayCount": sum(1 for _, stamp in dated if stamp.date() == now.date()), "5DayCount": count5, "20DayCount": count20,
                        "touchCount": kinds["TOUCH"], "rejectionCount": kinds["REJECTION"], "breakoutCount": kinds["BREAKOUT"], "failedBreakoutCount": kinds["FAILED_BREAKOUT"],
                        "averageReaction": round(sum(reactions) / len(reactions), 2) if reactions else None, "largestReaction": max(reactions) if reactions else None,
                        "lastInteraction": last.get("timestamp"), "lastInteractionType": last.get("interactionType"), "currentDistance": round(price - level, 2) if price is not None else None,
-                       "memoryStrength": count20 + kinds["REJECTION"] * 2 + kinds["FAILED_BREAKOUT"] * 2})
-    levels.sort(key=lambda row: (abs(row["currentDistance"]) if row["currentDistance"] is not None else float("inf"), -row["memoryStrength"]))
-    return {"index": index, "price": price, "levels": levels[:24], "interactions": docs[:100]}
+                       "memoryStrength": score})
+    levels.sort(key=lambda row: (abs(row["currentDistance"]) if row["currentDistance"] is not None else float("inf"), -row["relevanceScore"]))
+    return {"index": index, "price": price, "structure": {"step": step, "tolerance": tolerance},
+            "levels": levels[:6], "interactions": docs[:100]}

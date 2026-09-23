@@ -125,6 +125,7 @@ export default function SettingsModal({
           expire_admin_on_market_close: false,
           admin_session_ttl_minutes: 480,
           alert_enabled_indices: ["NIFTY"],
+          weekday_dashboard_defaults: { "0": "NIFTY", "1": "NIFTY", "2": "SENSEX", "3": "SENSEX", "4": "NIFTY" },
           show_strike_range: false,
           visible_pages: DASHBOARD_PAGES.filter((p) => !p.hardAdmin && p.id !== "cas").map((p) => p.id),
           admin_visible_pages: ALL_PAGE_IDS,
@@ -133,7 +134,7 @@ export default function SettingsModal({
           show_chart_signals: false,
           position_mark_glow_after_close: true,
           position_mark_glow_pct: 1,
-          alert_toast_opacity: 88,
+          alert_toast_opacity: 90,
           overnight_popup_opacity: 92,
           market_intel_popup_opacity: 92,
           indicative_popup_opacity: 92,
@@ -226,6 +227,7 @@ export default function SettingsModal({
           enabled_indices: settings.enabled_indices,
           straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => knownIndices.includes(i)),
           alert_enabled_indices: (settings.alert_enabled_indices || []).filter((i) => knownIndices.includes(i)),
+          weekday_dashboard_defaults: settings.weekday_dashboard_defaults || { "0": "NIFTY", "1": "NIFTY", "2": "SENSEX", "3": "SENSEX", "4": "NIFTY" },
           lot_sizes: local.lotSize || {},
           oi_poll_interval_seconds: settings.oi_poll_interval_seconds,
           straddle_poll_interval_seconds: settings.straddle_poll_interval_seconds,
@@ -250,7 +252,7 @@ export default function SettingsModal({
             const v = Number(settings.position_mark_glow_pct);
             return Number.isFinite(v) && v >= 0.01 ? v : 1;
           })(),
-          alert_toast_opacity: settings.alert_toast_opacity ?? 88,
+          alert_toast_opacity: settings.alert_toast_opacity ?? 90,
           overnight_popup_opacity: settings.overnight_popup_opacity ?? 92,
           market_intel_popup_opacity: settings.market_intel_popup_opacity ?? 92,
           indicative_popup_opacity: settings.indicative_popup_opacity ?? 92,
@@ -353,6 +355,28 @@ export default function SettingsModal({
           <section className="space-y-4">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
               Server-side OI reversal engine
+            </div>
+            <div>
+              {isAdmin ? (
+                <div className="mt-3 rounded-md border border-emerald-100 bg-emerald-50/50 p-3">
+                  <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Dashboard weekday default</Label>
+                  <p className="mb-2 text-[10px] text-slate-500">Choose which index opens first on each trading day. This affects the dashboard only; it does not disable other indices.</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    {[["0", "Mon"], ["1", "Tue"], ["2", "Wed"], ["3", "Thu"], ["4", "Fri"]].map(([key, label]) => (
+                      <label key={key} className="text-[10px] font-semibold text-slate-600">
+                        {label}
+                        <select
+                          className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-1 text-xs"
+                          value={settings.weekday_dashboard_defaults?.[key] || (key === "2" || key === "3" ? "SENSEX" : "NIFTY")}
+                          onChange={(e) => setSettings({ ...settings, weekday_dashboard_defaults: { ...(settings.weekday_dashboard_defaults || {}), [key]: e.target.value } })}
+                        >
+                          {["NIFTY", "SENSEX", "BANKNIFTY"].filter((idx) => knownIndices.includes(idx)).map((idx) => <option key={idx}>{idx}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div>
               <div className="flex justify-between mb-1">
@@ -501,14 +525,14 @@ export default function SettingsModal({
               <div className="space-y-3">
                 <div className="flex justify-between mb-1">
                   <Label className="text-xs uppercase tracking-wider text-slate-500">Desktop alert opacity</Label>
-                  <span className="text-xs font-mono-data font-semibold">{settings.alert_toast_opacity ?? 88}%</span>
+                  <span className="text-xs font-mono-data font-semibold">{settings.alert_toast_opacity ?? 90}%</span>
                 </div>
                 <Slider
                   data-testid="slider-alert-toast-opacity"
                   min={60}
                   max={100}
                   step={1}
-                  value={[settings.alert_toast_opacity ?? 88]}
+                  value={[settings.alert_toast_opacity ?? 90]}
                   onValueChange={(v) => setSettings({ ...settings, alert_toast_opacity: v[0] })}
                 />
                 <p className="mt-1 text-[10px] text-slate-500">Affects ordinary desktop alerts only. Mobile keeps a readable bottom tray; Huge OI Shift stays separate.</p>

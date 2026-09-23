@@ -120,6 +120,21 @@ function StraddleTooltip({ active, payload, label }) {
   );
 }
 
+function StraddleRefreshCountdown({ live, metaTs, pollMs }) {
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!live) return undefined;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [live]);
+
+  if (!live) return "Market closed";
+  if (!metaTs) return "—";
+  const age = Math.max(0, (nowTick - new Date(metaTs).getTime()) / 1000);
+  return straddleRefreshLabel(true, age, pollMs) || "—";
+}
+
 function toIstDateString(ts) {
   const millis = typeof ts === "number" ? ts : Date.parse(ts);
   if (Number.isNaN(millis)) return null;
@@ -297,7 +312,7 @@ export default function StraddleChart({
       if (last?.premium > 0) {
         // Reject both explosive spikes and near-zero drops that create comb charts.
         if (point.premium > Math.max(last.premium * 3, last.premium + 200)) return prev;
-        if (point.premium < Math.min(last.premium * 0.35, last.premium - 50) && last.premium > 40) {
+        if (point.premium < last.premium * 0.35 && point.premium < 10 && last.premium > 20) {
           return prev;
         }
       }
@@ -486,24 +501,19 @@ export default function StraddleChart({
     if (!sessionPoints.length || yDomain[1] <= yDomain[0]) return sessionPoints;
     const hi = yDomain[1] * 1.05;
     // Drop residual outliers from the line so spikes cannot stretch the path.
-    return sessionPoints.filter((p) => Number(p.premium) <= hi);
+    const filtered = sessionPoints.filter((p) => Number(p.premium) <= hi);
+    // Keep the full-resolution series in state, but bound SVG work on long sessions.
+    return filtered.length > 2400 ? downsampleToBuckets(filtered, 30_000) : filtered;
   }, [sessionPoints, yDomain]);
 
   const lastPoint = chartPoints.length ? chartPoints[chartPoints.length - 1] : null;
   const dte = daysToExpiryLabel(expiry);
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    if (!liveRefresh) return undefined;
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [liveRefresh]);
-  const lastUpdated = liveRefresh
-    ? (() => {
-        if (!meta?.ts) return null;
-        const age = Math.max(0, (nowTick - new Date(meta.ts).getTime()) / 1000);
-        return straddleRefreshLabel(true, age, livePollMs);
-      })()
-    : "Market closed";
+  const yTicks = useMemo(() => {
+    const [lo, hi] = yDomain;
+    const span = Math.max(1, hi - lo);
+    const step = span / 4;
+    return Array.from({ length: 5 }, (_, index) => lo + step * index);
+  }, [yDomain]);
 
   return (
     <div className="w-full" data-testid="straddle-chart">
@@ -537,7 +547,13 @@ export default function StraddleChart({
         <div className="px-1 pt-2 pb-1 md:px-4 md:pt-3 md:pb-2 h-[280px] md:h-[460px] bg-white relative">
           <ResponsiveContainer>
             <LineChart data={chartPoints} margin={{ top: 28, right: 12, left: 0, bottom: 18 }}>
-              <CartesianGrid stroke="rgba(148, 163, 184, 0.22)" vertical horizontal />
+              <CartesianGrid
+                stroke="#dbe5ea"
+                strokeOpacity={0.9}
+                strokeDasharray="3 3"
+                vertical
+                horizontal
+              />
               <XAxis
                 dataKey="ts"
                 type="number"
@@ -559,6 +575,7 @@ export default function StraddleChart({
                 axisLine={false}
                 tickLine={false}
                 domain={yDomain}
+                ticks={yTicks}
                 width={44}
                 tickFormatter={(v) => Number(v).toFixed(0)}
               />
@@ -649,7 +666,7 @@ export default function StraddleChart({
               {liveRefresh ? "Next refresh" : "Session"}
             </div>
             <div className="font-mono font-semibold text-slate-800 text-[11px]" data-testid="straddle-refresh-label">
-              {liveRefresh ? (lastUpdated ?? "—") : "Market closed"}
+              <StraddleRefreshCountdown live={liveRefresh} metaTs={meta?.ts} pollMs={livePollMs} />
             </div>
           </div>
         </div>

@@ -32,7 +32,7 @@ export default function GuestBanner({
             {" · "}
             OI charts use the publisher feed. Your positions need your own Zerodha login.
           </span>
-          <span className="sm:hidden text-amber-800/90"> · Guest · your Kite for Positions</span>
+          <span className="sm:hidden text-amber-800/90"> · Guest · your broker for Positions</span>
         </span>
       </div>
       <div className="flex items-center gap-2 shrink-0">

@@ -307,6 +307,22 @@ export default function AdminControls({
     }
   };
 
+  const toggleMaintenance = async (enabled) => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/auth/maintenance", { enabled: !!enabled });
+      setState((prev) => ({ ...(prev || {}), is_admin: true, maintenance_mode: !!data?.maintenance_mode }));
+      window.dispatchEvent(new CustomEvent("oi-maintenance-state", {
+        detail: { maintenance_mode: !!data?.maintenance_mode },
+      }));
+      toast.success(enabled ? "Maintenance mode enabled" : "Desk is live again");
+    } catch (e) {
+      toast.error("Could not update maintenance mode");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const publicToggle = (
     <div
       className={
@@ -402,8 +418,38 @@ export default function AdminControls({
     >
       {publicToggle}
 
+      {!isPanel && (
+        <label
+          className="inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+          title="Guests see the maintenance screen; admin access remains available"
+          data-testid="admin-maintenance-inline"
+        >
+          <span className="hidden xl:inline">Maintenance</span>
+          <Switch
+            checked={!!state?.maintenance_mode}
+            onCheckedChange={toggleMaintenance}
+            disabled={busy}
+            data-testid="admin-maintenance-toggle"
+            className="scale-75"
+          />
+        </label>
+      )}
+
       {isPanel && (
         <div className="flex flex-col gap-1.5 w-full">
+          <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[12px] text-amber-950">
+            <div>
+              <div className="font-semibold">Maintenance mode</div>
+              <div className="text-[10px] text-amber-800">Guests see the Brewing screen; admin stays open.</div>
+            </div>
+            <Switch
+              checked={!!state?.maintenance_mode}
+              onCheckedChange={toggleMaintenance}
+              disabled={busy}
+              data-testid="admin-maintenance-toggle"
+              className="scale-90"
+            />
+          </div>
           <Button
             data-testid="admin-menu-guests"
             variant="outline"

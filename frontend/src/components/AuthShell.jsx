@@ -1,185 +1,196 @@
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Activity, BellRing, Globe2, Landmark, Lock, Radio } from "lucide-react";
+import { Activity } from "lucide-react";
 import OiPulseLogo from "@/components/OiPulseLogo";
+import StrikLenzRobot from "@/components/StrikLenzRobot";
+import AuthFeatureFooter from "@/components/AuthFeatureFooter";
 import { APP_NAME, APP_VERSION_LABEL, openAboutApp } from "@/lib/appVersion";
+import { fetchExtras, fetchOI, fetchTickers } from "@/lib/api";
+
+const tickerItems = [
+  ["NIFTY 50", "23,427.95", "+0.42%", "up"],
+  ["SENSEX", "74,864.65", "+0.45%", "up"],
+  ["BANKNIFTY", "56,374.20", "+0.28%", "up"],
+  ["FINNIFTY", "26,183.10", "+0.31%", "up"],
+  ["INDIAVIX", "18.35", "-5.91%", "down"],
+  ["GIFT NIFTY", "23,433.80", "+0.46%", "up"],
+];
+
+function MarketScreen({ title, rows = false, chart = false, tickerRows = tickerItems, bars = null, price = null }) {
+  return (
+    <div className="oi-auth-screen">
+      <div className="oi-auth-screen-title">{title}</div>
+      {chart ? (
+        <svg className="oi-auth-candle-chart" viewBox="0 0 260 120" aria-hidden>
+          <path d={`M0 95 C42 88 58 70 89 78 S135 64 165 48 S211 48 260 ${Number.isFinite(price) ? 18 + Math.max(-5, Math.min(12, (price % 20) / 2)) : 18}`} fill="none" stroke="#1bd7ae" strokeWidth="2" opacity=".7" />
+          {[28, 44, 61, 75, 91, 112, 132, 153, 173, 194, 215, 232].map((x, index) => {
+            const top = [68, 53, 60, 42, 48, 34, 47, 27, 38, 21, 29, 14][index];
+            const height = [16, 22, 14, 25, 18, 26, 19, 30, 20, 28, 17, 25][index];
+            const up = index % 4 !== 1;
+            return <g key={x}><path d={`M${x} ${top - 7}V${top + height + 7}`} stroke={up ? "#35e0ac" : "#fb7185"} strokeWidth="1" /><rect x={x - 3} y={top} width="6" height={height} rx="1" fill={up ? "#13b889" : "#e05c6d"} /></g>;
+          })}
+          <circle cx="232" cy="14" r="3" fill="#73ffe0" />
+        </svg>
+      ) : rows ? (
+        tickerRows.slice(0, 5).map(([name, value, change, tone]) => (
+          <div className="oi-auth-screen-row" key={name}>
+            <span>{name}</span><b>{value}</b><em className={tone}>{change}</em>
+          </div>
+        ))
+      ) : (
+        <div className="oi-auth-bars">
+          {(bars || [22, 31, 28, 44, 38, 53, 47, 68, 61, 78]).map((height, index) => (
+            <i key={index} style={{ height: `${height}%` }} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
- * Shared full-bleed atmosphere for admin + guest entry screens.
- * Brand-forward hero on the left; interactive form slot on the right.
+ * Shared entry atmosphere for admin and guest access.
+ * The scene is deliberately CSS-built so it stays crisp, lightweight, and responsive.
  */
-export default function AuthShell({
-  mode = "admin", // "admin" | "guest"
-  children,
-}) {
+export default function AuthShell({ mode = "admin", children }) {
   const isGuest = mode === "guest";
+  const [liveTickers, setLiveTickers] = useState(null);
+  const [extras, setExtras] = useState(null);
+  const [liveOi, setLiveOi] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [tickerResult, extraResult, oiResult] = await Promise.allSettled([
+          fetchTickers(),
+          fetchExtras(),
+          fetchOI("NIFTY"),
+        ]);
+        const payload = tickerResult.status === "fulfilled" ? tickerResult.value : null;
+        const extraPayload = extraResult.status === "fulfilled" ? extraResult.value : null;
+        const oiPayload = oiResult.status === "fulfilled" ? oiResult.value : null;
+        if (!cancelled && Array.isArray(payload?.tickers) && payload.tickers.length) {
+          setLiveTickers(payload.tickers);
+        }
+        if (!cancelled) {
+          setExtras(extraPayload || null);
+          setLiveOi(oiPayload?.current || null);
+        }
+      } catch (_) {
+        // Keep the decorative fallback while the desk feed is unavailable.
+      }
+    };
+    load();
+    const timer = window.setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const displayTickers = useMemo(() => {
+    const indexRows = Array.isArray(liveTickers) && liveTickers.length ? liveTickers.map((ticker) => {
+      const change = Number(ticker.change_pct);
+      const value = Number(ticker.ltp);
+      return [
+        ticker.label || ticker.index,
+        Number.isFinite(value) ? value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—",
+        Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` : "—",
+        Number.isFinite(change) && change >= 0 ? "up" : "down",
+      ];
+    }) : tickerItems.filter(([name]) => !["INDIAVIX", "GIFT NIFTY"].includes(name));
+    const extraRows = [
+      extras?.vix ? ["INDIAVIX", extras.vix.last ?? extras.vix.ltp, extras.vix.change_pct, Number(extras.vix.change_pct) >= 0 ? "up" : "down"] : null,
+      extras?.gift_nifty ? ["GIFT NIFTY", extras.gift_nifty.last, extras.gift_nifty.change_pct, Number(extras.gift_nifty.change_pct) >= 0 ? "up" : "down"] : null,
+    ].filter(Boolean).map(([name, value, change, tone]) => [
+      name,
+      Number.isFinite(Number(value)) ? Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—",
+      Number.isFinite(Number(change)) ? `${Number(change) >= 0 ? "+" : ""}${Number(change).toFixed(2)}%` : "—",
+      tone,
+    ]);
+    return [...extraRows, ...indexRows];
+  }, [liveTickers, extras]);
+
+  const pulseBars = useMemo(() => {
+    const strikes = Array.isArray(liveOi?.strikes) ? liveOi.strikes : [];
+    if (!strikes.length) return null;
+    const totals = strikes.map((row) => Number(row.ce_oi || 0) + Number(row.pe_oi || 0)).filter(Number.isFinite);
+    const max = Math.max(...totals, 1);
+    return totals.slice(0, 10).map((value) => Math.max(16, Math.round((value / max) * 86)));
+  }, [liveOi]);
 
   return (
     <div
       data-testid={isGuest ? "guest-auth-shell" : "admin-auth-shell"}
-      className="relative min-h-screen overflow-hidden bg-[#061018] text-white"
+      className="oi-auth-shell relative min-h-screen overflow-hidden bg-[#020b0e] text-white"
       style={{ fontFamily: "Outfit, system-ui, sans-serif" }}
     >
-      {/* Atmosphere — dark base with deep forest-green wash (not bright mint) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 80% 60% at 15% 20%, rgba(6,95,70,0.28), transparent 55%)," +
-            "radial-gradient(ellipse 70% 50% at 90% 80%, rgba(4,47,46,0.35), transparent 50%)," +
-            "linear-gradient(160deg, #040d0b 0%, #0a1a16 48%, #061018 100%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.12]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(148,163,184,0.35) 1px, transparent 1px)," +
-            "linear-gradient(90deg, rgba(148,163,184,0.35) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-          maskImage: "radial-gradient(ellipse at center, black 20%, transparent 75%)",
-        }}
-      />
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-emerald-900/40 blur-3xl"
-        animate={{ x: [0, 28, 0], y: [0, -18, 0], opacity: [0.35, 0.55, 0.35] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute -right-16 bottom-1/4 h-80 w-80 rounded-full bg-teal-950/50 blur-3xl"
-        animate={{ x: [0, -22, 0], y: [0, 20, 0], opacity: [0.25, 0.4, 0.25] }}
-        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-      />
+      <div className="oi-auth-ambient" aria-hidden />
 
-      <div className="relative z-10 mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-5 py-10 sm:px-8 lg:grid-cols-2 lg:gap-14 lg:py-16">
-        {/* Brand / hero */}
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: "easeOut" }}
-          className="flex flex-col justify-center"
-        >
-          <div className="mb-5 inline-flex items-center gap-2 self-start rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-            </span>
-            Live market pulse
-          </div>
+      <div className="oi-auth-ticker" aria-label="Market snapshot">
+        {displayTickers.map(([name, value, change, tone]) => (
+          <span className="oi-auth-ticker-item" key={name}>
+            <b>{name}</b><strong>{value}</strong><em className={tone}>{tone === "up" ? "▲" : "▼"} {change}</em>
+          </span>
+        ))}
+        <span className="oi-auth-live"><i /> LIVE</span>
+      </div>
 
-          <button
+      <main className="oi-auth-main">
+        <section className="oi-auth-hero" aria-label="StrikLenz trading desk">
+          <motion.button
             type="button"
             onClick={openAboutApp}
-            className="flex items-center gap-4 text-left rounded-xl hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+            className="oi-auth-brand"
             data-testid="brand-about-trigger"
             title={`About ${APP_NAME} ${APP_VERSION_LABEL}`}
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
           >
-            <OiPulseLogo className="h-14 w-14 shrink-0 shadow-lg shadow-emerald-900/40" />
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{APP_NAME}</h1>
-              <p className="mt-1 text-base text-slate-300 sm:text-lg">
-                {isGuest
-                  ? "Spot the OI surge — read bias before the crowd."
-                  : "Command the desk. Spot bias. Act on OI."}
-              </p>
-              <p className="mt-1 text-xs font-semibold tracking-wider text-emerald-300">{APP_VERSION_LABEL} · click for what’s new</p>
-            </div>
-          </button>
+            <OiPulseLogo className="h-11 w-11 shrink-0" />
+            <span><b>{APP_NAME}</b><small>Command the desk. Spot bias. Act on OI.</small></span>
+          </motion.button>
 
-          <div className="mt-8 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm">
-            <div className="mb-3 flex items-center justify-between text-xs text-slate-300">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <Activity className="h-3.5 w-3.5 text-emerald-400" />
-                Open interest signal
-              </span>
-              <span className="rounded bg-emerald-500/15 px-2 py-0.5 font-semibold uppercase tracking-wider text-emerald-300">
-                Live
-              </span>
-            </div>
-            <svg viewBox="0 0 320 90" className="h-28 w-full" aria-hidden>
-              <defs>
-                <linearGradient id="authPulseFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#34d399" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <motion.path
-                d="M0 70 C40 68, 55 40, 80 48 C110 58, 130 20, 160 28 C190 36, 210 62, 240 44 C270 28, 290 18, 320 22 L320 90 L0 90 Z"
-                fill="url(#authPulseFill)"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 1.1 }}
-              />
-              <motion.path
-                d="M0 70 C40 68, 55 40, 80 48 C110 58, 130 20, 160 28 C190 36, 210 62, 240 44 C270 28, 290 18, 320 22"
-                fill="none"
-                stroke="#34d399"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.8, ease: "easeInOut" }}
-              />
-              <motion.circle
-                cx="320"
-                cy="22"
-                r="4"
-                fill="#6ee7b7"
-                animate={{ opacity: [1, 0.35, 1], scale: [1, 1.35, 1] }}
-                transition={{ duration: 1.6, repeat: Infinity }}
-              />
-            </svg>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[11px] text-slate-300">
-              <div>
-                <div className="text-lg font-semibold text-white">Nifty · BN · SX</div>
-                <div className="opacity-70">Indices covered</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold text-white">ATM±</div>
-                <div className="opacity-70">Strike focus</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold text-white">IST</div>
-                <div className="opacity-70">Session clock</div>
-              </div>
-            </div>
+          <div className="oi-auth-slogan oi-auth-slogan-left">
+            Good Trades<br />Come From<br /><strong>Discipline,<br />Not Emotion.</strong>
+            <small>PLAN · ANALYZE · EXECUTE · IMPROVE</small>
+          </div>
+          <div className="oi-auth-slogan oi-auth-slogan-right">TRADERS&apos; EDGE,<br />ALWAYS ON.</div>
+
+          <div className="oi-auth-city" aria-hidden>
+            <span className="oi-auth-tower tower-one" /><span className="oi-auth-tower tower-two" /><span className="oi-auth-tower tower-three" />
+            <span className="oi-auth-window-light light-one" /><span className="oi-auth-window-light light-two" /><span className="oi-auth-window-light light-three" />
           </div>
 
-          <div className="mt-6 hidden gap-4 text-sm text-slate-300 sm:grid sm:grid-cols-3">
-            {(isGuest
-              ? [
-                  { icon: BellRing, title: "Huge OI alerts", body: "Instant notification on a huge OI shift or unwind" },
-                  { icon: Globe2, title: "Events & impact", body: "Global events + index constituent moves that swing bias" },
-                  { icon: Landmark, title: "FII / DII data", body: "Institutional flow right beside the live OI desk" },
-                ]
-              : [
-                  { icon: Lock, title: "Admin desk", body: "Public access, guests, uploads" },
-                  { icon: Radio, title: "Live OI", body: "Snapshots, straddles, alerts" },
-                  { icon: Activity, title: "Risk lens", body: "Events, holidays, carry brief" },
-                ]
-            ).map(({ icon: Icon, title, body }) => (
-              <div key={title} className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                <Icon className="mb-2 h-4 w-4 text-emerald-400" />
-                <div className="font-semibold text-white">{title}</div>
-                <div className="mt-0.5 text-xs leading-snug text-slate-400">{body}</div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
+          <div className="oi-auth-monitor monitor-back"><MarketScreen title="NIFTY 50 · LIVE CHART" chart price={Number(liveOi?.price)} /></div>
+          <div className="oi-auth-monitor monitor-center"><MarketScreen title="DESK PULSE · LIVE" rows tickerRows={displayTickers} /></div>
+          <div className="oi-auth-monitor monitor-front"><MarketScreen title="LIVE OI PULSE" bars={pulseBars} /></div>
 
-        {/* Form slot */}
-        <motion.div
-          initial={{ opacity: 0, y: 22 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, delay: 0.12, ease: "easeOut" }}
-          className="flex justify-center lg:justify-end"
+          <motion.div
+            className="oi-auth-robot-wrap"
+            animate={{ y: [0, -8, 0], rotate: [-1, 1, -1] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <StrikLenzRobot />
+          </motion.div>
+
+          <div className="oi-auth-laptop"><div className="oi-auth-laptop-logo"><Activity /></div></div>
+          <div className="oi-auth-pnl"><small>DESK P&amp;L</small><b>₹12.84L</b><em>+₹18,420 LIVE</em></div>
+          <div className="oi-auth-desk" />
+        </section>
+
+        <motion.section
+          className="oi-auth-form-slot"
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.55, delay: 0.12 }}
         >
           {children}
-        </motion.div>
-      </div>
+        </motion.section>
+      </main>
+
+      <AuthFeatureFooter />
     </div>
   );
 }

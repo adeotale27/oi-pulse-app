@@ -72,7 +72,7 @@ export default function DownloadTradesButton({
         <div>
           <div className="text-xs font-semibold text-slate-900">Download trades</div>
           <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-            Excel from our database — not a live Kite dump. First sheet is the readable tape
+            Excel from our database — not a live broker dump. First sheet is the readable tape
             (contract, sold/bought, IST clocks, P&amp;L). Fills and a technical sheet are extra.
           </p>
         </div>

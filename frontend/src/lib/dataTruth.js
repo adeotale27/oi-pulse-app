@@ -80,7 +80,7 @@ export function buildDataTruth({
       mode: "NO_DATA",
       badge: "NO DATA",
       asOfLabel: "—",
-      detail: kite ? "Waiting for first snapshot" : "Connect Kite API for live OI",
+      detail: kite ? "Waiting for first snapshot" : "Connect the market feed for live OI",
       tone: "offline",
     };
   }
@@ -90,7 +90,7 @@ export function buildDataTruth({
       mode: "OFFLINE",
       badge: "OFFLINE",
       asOfLabel: asOfClock ? `Live data as of ${asOfClock} IST` : dataDate ? `Session ${dataDate}` : "—",
-      detail: "Kite API required · board is not live",
+      detail: "Market feed required · board is not live",
       tone: "offline",
     };
   }

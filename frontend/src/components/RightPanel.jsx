@@ -277,7 +277,7 @@ export default function RightPanel({
             <MarketIntelPage compact />
           )}
           {selectedView === "adrs" && (
-            <GlobalMarketsPage isAdmin={isAdmin} userKey={adrUserKey} />
+            <GlobalMarketsPage isAdmin={isAdmin} userKey={adrUserKey} active={selectedView === "adrs"} />
           )}
         </div>
 

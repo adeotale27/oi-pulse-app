@@ -74,6 +74,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
   const [forceOpen, setForceOpen] = useState(false);
   const [dockUntilNext, setDockUntilNext] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [positionReady, setPositionReady] = useState(false);
   const [leftPx, setLeftPx] = useState(() => readNum(MI_POPUP_LEFT_KEY));
   const [bottomPx, setBottomPx] = useState(() => readNum(MI_POPUP_BOTTOM_KEY));
   const idxRef = useRef(0);
@@ -107,6 +108,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
         if (next !== prev) writeNum(MI_POPUP_BOTTOM_KEY, next);
         return next;
       });
+      setPositionReady(true);
     };
     apply();
     window.addEventListener("resize", apply);
@@ -301,7 +303,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
         className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 right-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
           bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
         }`}
-        style={{ ...posStyle, "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100) }}
+        style={{ ...posStyle, visibility: positionReady ? "visible" : "hidden", "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100) }}
         onPointerDown={(e) => onPointerDown(e, "both")}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -332,6 +334,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
         ...posStyle,
+        visibility: positionReady ? "visible" : "hidden",
         "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100),
         ...(phoneOpen
           ? {}
