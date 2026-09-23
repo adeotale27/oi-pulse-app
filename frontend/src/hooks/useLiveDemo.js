@@ -35,7 +35,14 @@ function buildChain(price, atmStep) {
   return { atm, rows };
 }
 
-export default function useLiveDemo(intervalMs = 1500) {
+export function isMarketOpenNow(date = new Date()) {
+  const ist = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const day = ist.getDay();
+  const minutes = ist.getHours() * 60 + ist.getMinutes();
+  return day >= 1 && day <= 5 && minutes >= 555 && minutes <= 940;
+}
+
+export default function useLiveDemo(intervalMs = 1500, animate = true) {
   const [snap, setSnap] = useState(() => makeSnapshot(seedState()));
   const stateRef = useRef(seedState());
 
@@ -43,7 +50,7 @@ export default function useLiveDemo(intervalMs = 1500) {
     const reduce = typeof window !== "undefined" && window.matchMedia
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false;
-    if (reduce) return undefined;
+    if (reduce || !animate) return undefined;
     let alive = true;
     const tick = () => {
       if (!alive) return;
@@ -68,7 +75,7 @@ export default function useLiveDemo(intervalMs = 1500) {
     };
     const id = setInterval(tick, intervalMs);
     return () => { alive = false; clearInterval(id); };
-  }, [intervalMs]);
+  }, [intervalMs, animate]);
 
   return snap;
 }
@@ -104,5 +111,6 @@ function makeSnapshot(s) {
     chain: s.chain,
     positions: s.positions.map((p) => ({ ...p })),
     totalPnl: s.positions.reduce((a, p) => a + (p.pnl || 0), 0),
+    oiTick: s.oiTick,
   };
 }

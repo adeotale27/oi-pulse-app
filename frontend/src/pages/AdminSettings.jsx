@@ -147,7 +147,7 @@ export default function AdminSettings() {
             <span className="text-lg font-bold text-slate-900">Strik<span className="text-emerald-600">lenz</span> <span className="text-slate-400">/ Admin Settings</span></span>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/terminal" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"><ArrowLeft className="h-4 w-4" /> Terminal</Link>
+            <Link to="/dashboard" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"><ArrowLeft className="h-4 w-4" /> Dashboard</Link>
             <button onClick={save} disabled={saving} className="slz-btn-primary inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
             </button>

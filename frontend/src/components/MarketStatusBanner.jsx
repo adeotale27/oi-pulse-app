@@ -59,8 +59,9 @@ export default function MarketStatusBanner({ market, lastPulledAt, dataDate = nu
 
   return (
     <div
+      key={phase}
       data-testid="market-status-banner"
-      className={`w-full border-b ${toneCls} px-4 py-1.5`}
+      className={`w-full border-b ${toneCls} px-4 py-1.5 market-status-transition`}
       role="status"
       aria-live="polite"
     >

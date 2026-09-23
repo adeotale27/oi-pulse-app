@@ -94,15 +94,19 @@ export default function AdrAdminModal({ open, onOpenChange }) {
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={prefs?.enabled !== false} onCheckedChange={(ck) => savePrefs({ enabled: !!ck })} />
-            <span className="text-xs">Enabled</span>
+            <span className="text-xs">Use ADR Monitor</span>
           </div>
           <div>
             <Label className="text-xs">Polling interval (seconds)</Label>
-            <Input type="number" min={120} max={3600} className="h-8 mt-1" value={prefs?.poll_interval_seconds ?? 300} onChange={(e) => setPrefs({ ...prefs, poll_interval_seconds: Number(e.target.value) })} />
-            <p className="text-[10px] text-slate-500 mt-1">Twelve Data Basic 8 is 8 credits/min and 800/day. Each ADR quote is 1 credit, paced 7.5s apart. Default 300s stays under the daily cap.</p>
+            <Input type="number" min={1} step={1} className="h-8 mt-1" value={prefs?.poll_interval_seconds ?? 300} onChange={(e) => setPrefs({ ...prefs, poll_interval_seconds: e.target.value === "" ? "" : Number(e.target.value) })} />
+            <p className="text-[10px] text-slate-500 mt-1">Use any positive whole number of seconds. Twelve Data Basic allows 8 credits/min and 800/day; ADR and Global Markets share that quota, so very short intervals can still be rate-limited.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => {
+              if (!Number.isInteger(Number(prefs.poll_interval_seconds)) || Number(prefs.poll_interval_seconds) < 1) {
+                toast.error("Polling interval must be a positive whole number of seconds.");
+                return;
+              }
               const patch = { poll_interval_seconds: prefs.poll_interval_seconds };
               if (keyDraft.trim()) patch.api_key = keyDraft.trim();
               savePrefs(patch).then(() => { setKeyDraft(""); });

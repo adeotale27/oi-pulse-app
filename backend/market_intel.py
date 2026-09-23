@@ -7,8 +7,10 @@ The engine never branches on a website name.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
 import re
+import socket
 import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -680,9 +682,95 @@ def _secret_from_source(src: Dict[str, Any]) -> str:
     return ""
 
 
+def validate_source_url(raw_url: str) -> Optional[str]:
+    """Reject non-HTTP and local-network targets for configurable feeds."""
+    try:
+        parsed = urlparse(str(raw_url or "").strip())
+    except Exception:
+        return "invalid_url"
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return "url_must_use_http"
+    if parsed.username or parsed.password:
+        return "url_credentials_not_allowed"
+    host = parsed.hostname.rstrip(".").lower()
+    if host in {"localhost", "metadata.google.internal"} or host.endswith(".localhost") or host.endswith(".local"):
+        return "local_url_not_allowed"
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if not address.is_global:
+        return "private_url_not_allowed"
+    return None
+
+
+def _validated_addresses(host: str, port: int) -> list[str]:
+    addresses = {
+        result[4][0]
+        for result in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    }
+    if not addresses:
+        raise ValueError("hostname_has_no_addresses")
+    for raw_address in addresses:
+        address = ipaddress.ip_address(raw_address)
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        if not address.is_global:
+            raise ValueError("hostname_resolves_to_private_address")
+    return list(addresses)
+
+
+class _ValidatedNetworkBackend:
+    """Resolve and validate all addresses, then connect only to an approved one."""
+
+    def __init__(self):
+        from httpcore._backends.auto import AutoBackend
+        self._backend = AutoBackend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        addresses = _validated_addresses(host, port)
+        last_error = None
+        for address in addresses:
+            try:
+                return await self._backend.connect_tcp(
+                    address,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except Exception as exc:
+                last_error = exc
+        raise last_error or OSError("validated_connection_failed")
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise OSError("unix_socket_not_allowed")
+
+    async def sleep(self, seconds=0):
+        await self._backend.sleep(seconds)
+
+
+def _validated_http_transport():
+    import httpcore
+    import httpx
+
+    transport = httpx.AsyncHTTPTransport(retries=0)
+    transport._pool = httpcore.AsyncConnectionPool(
+        network_backend=_ValidatedNetworkBackend(),
+        max_connections=10,
+        max_keepalive_connections=5,
+        keepalive_expiry=5.0,
+    )
+    return transport
+
+
 async def _http_json(method: str, url: str, *, headers=None, params=None, json_body=None, timeout=12.0):
     import httpx
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=False,
+        transport=_validated_http_transport(),
+    ) as client:
         r = await client.request(method.upper(), url, headers=headers, params=params, json=json_body)
         return r
 
@@ -710,11 +798,20 @@ async def fetch_source_raw(src: Dict[str, Any], *, test: bool = False) -> Tuple[
     if not url:
         meta["error"] = "missing_url"
         return [], meta
+    url_error = validate_source_url(url)
+    if url_error:
+        meta["error"] = url_error
+        return [], meta
     try:
         if st in ("RSS", "OFFICIAL_FEED"):
             from desk_outside import parse_rss_items, UA
             import httpx
-            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True, headers={"User-Agent": UA}) as client:
+            async with httpx.AsyncClient(
+                timeout=12.0,
+                follow_redirects=False,
+                headers={"User-Agent": UA},
+                transport=_validated_http_transport(),
+            ) as client:
                 r = await client.get(url)
             meta["http_status"] = r.status_code
             r.raise_for_status()

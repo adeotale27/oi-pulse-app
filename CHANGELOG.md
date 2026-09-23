@@ -1,5 +1,93 @@
 # Changelog
 
+## V14.49 — 2026-09-24
+
+Kept configured ADR rows visible while closed, showing CLOSED and last-known data instead of incorrectly prompting for configuration. Closed instruments are skipped only by the polling path.
+
+## V14.48 — 2026-09-24
+
+Gated Global Markets and ADR polling per instrument session so closed venues no longer consume provider credits; closed rows retain their last known observations and show their session state. Added the current release notes to the in-app Version modal.
+
+## V14.47 — 2026-09-24
+
+Added a shared rolling Twelve Data credit limiter across ADR and Global Markets polling to prevent Basic-plan 429 storms while preserving last successful observations and existing provider behavior.
+
+## V14.46 — 2026-09-24
+
+Kept ADR Monitor independently visible and usable when the Global Markets feed is disabled; the master feed toggle now hides only global instrument tables and never controls ADR page availability.
+
+## V14.45 — 2026-09-24
+
+Separated the Global Markets data-feed toggle from ADR page visibility and ADR Monitor enablement. Global Markets settings no longer rewrite dashboard navigation settings, failed toggle saves no longer leave a false local state, and the ADR control now clearly identifies its own scope.
+
+## V14.44 — 2026-09-24
+
+Completed the restrained visual roadmap with data-aware P&L and position-change feedback, Market Memory refresh pulses, Global Markets and ADR live-state surfaces, position heatmap interaction polish, session timeline presentation, and an optional CSS-only landing-page depth scene. All new motion respects reduced-motion preferences and leaves APIs, polling, authentication, trading logic, and OI/S-L behavior unchanged.
+
+## V14.43 — 2026-09-24
+
+Added a shared restrained depth/3D visual system for cards, tabs, dialogs, sheets, and drawers with pointer-safe hover lift and explicit reduced-motion support.
+
+## V14.42 — 2026-09-24
+
+Made source hiding the single Error Log control, removed the legacy News API hide button, and clarified duplicate-looking `UI`/`Boundary` source labels.
+
+## V14.41 — 2026-09-24
+
+Restored the public maintenance screen at the normal local/root entry point when maintenance mode is enabled, while keeping the dedicated admin host and authenticated admin access available.
+
+## V14.40 — 2026-09-24
+
+Changed the admin error log timestamps to IST and added a persisted source-hide dropdown for selectively hiding noisy Global Markets, ADR, news, or other error sources.
+
+## V14.39 — 2026-09-24
+
+Restored smooth bottom-up OI bar growth with a shorter transition and removed mark hover handlers that could interrupt S/L glow animation during pointer movement.
+
+## V14.38 — 2026-09-24
+
+Removed overlapping live OI bar animations that caused the option-chain chart to jitter and render broken intermediate bar states during updates.
+
+## V14.37 — 2026-09-24
+
+Reduced initial dashboard network work by avoiding the delayed OI refresh when the requested multi-window payload is already present.
+
+## V14.36 — 2026-09-24
+
+Expanded the Market Memory detail sheet for all-column explanations, a wider desktop layout, responsive horizontal scrolling, and a sticky level column for easier navigation.
+
+## V14.35 — 2026-09-24
+
+Expanded Market Memory with directional reactions, recent versus historical comparisons, breakout and failed-retest rates, per-interaction market context, and live freshness indicators.
+
+## V14.34 — 2026-09-24
+
+Added Market Memory info guidance explaining interactions, average reaction, distance, strength, and the historical—not predictive—meaning of the panel.
+
+## V14.33 — 2026-09-24
+
+Fixed the maintenance screen for mobile by preventing content overlap, allowing natural scrolling, reducing decorative scene scale, and improving small-screen spacing.
+
+## V14.32 — 2026-09-24
+
+Polished the dedicated admin login with clearer security status, stronger form hierarchy, improved field focus states, refined spacing, and better responsive composition.
+
+## V14.31 — 2026-09-24
+
+Refined the guest login experience with a calmer card layout, clearer hierarchy, improved input treatment, stronger action feedback, and better responsive spacing.
+
+## V14.30 — 2026-09-24
+
+Hide Google sign-in on the guest login page whenever public landing mode is disabled; guest authentication remains available.
+
+## V14.29 — 2026-09-24
+
+Completed the final hardening pass: upgraded Starlette to the first compatible patched release, added DNS-rebinding-resistant Market Intel fetching, and added regression coverage for private DNS targets and authorization boundaries.
+
+## V14.28 — 2026-09-24
+
+Hardened production host and CORS defaults, disabled public API documentation by default, prevented spoofed forwarding headers from controlling IP-based security decisions, and documented the required proxy and production settings.
+
 ## V14.26 — 2026-09-23
 
 Unified the login and maintenance footers while preserving the original desk features, restored live chart candles, improved the robot's circular eyes and glowing chest logo, added a clearer open-laptop silhouette and coffee mug handle, moved the workflow copy into a dedicated readable treatment, and clarified Market Memory reaction and distance metrics.

@@ -185,29 +185,91 @@ async def _telemetry(db, rows: List[Dict[str, Any]]) -> Dict[tuple, Dict[str, An
     if db is None:
         return {}
     start = datetime.combine(datetime.now(IST).date(), time.min, tzinfo=IST).astimezone(timezone.utc).isoformat()
-    docs = await db.external_api_telemetry.find({"ts": {"$gte": start}}, {"_id": 0}).to_list(length=100_000)
-    buckets: Dict[tuple, List[dict]] = defaultdict(list)
-    for doc in docs:
-        buckets[(doc.get("provider_id"), doc.get("endpoint"))].append(doc)
+    telemetry = db.external_api_telemetry
+    stats: Dict[tuple, Dict[str, Any]] = {}
+    try:
+        pipeline = [
+            {"$match": {"ts": {"$gte": start}}},
+            {"$group": {
+                "_id": {"provider_id": "$provider_id", "endpoint": "$endpoint"},
+                "requests_today": {"$sum": 1},
+                "errors_today": {"$sum": {"$cond": [{"$eq": ["$ok", False]}, 1, 0]}},
+                "latency_total": {"$sum": {"$ifNull": ["$latency_ms", 0]}},
+                "last_request": {"$max": "$ts"},
+                "last_success": {"$max": {"$cond": [{"$eq": ["$ok", True]}, "$ts", None]}},
+                "last_error": {"$max": {"$cond": [{"$eq": ["$ok", False]}, "$ts", None]}},
+            }},
+        ]
+        grouped = await telemetry.aggregate(pipeline).to_list(length=max(len(rows) * 2, 100))
+        for item in grouped:
+            key = (item.get("_id", {}).get("provider_id"), item.get("_id", {}).get("endpoint"))
+            count = int(item.get("requests_today") or 0)
+            stats[key] = {
+                "requests_today": count,
+                "errors_today": int(item.get("errors_today") or 0),
+                "avg_latency_ms": round(float(item.get("latency_total") or 0) / count) if count else None,
+                "last_request": item.get("last_request"),
+                "last_success": item.get("last_success"),
+                "last_error": item.get("last_error"),
+            }
+    except (AttributeError, TypeError):
+        # Keep compatibility with lightweight test doubles and older Mongo clients.
+        docs = await telemetry.find({"ts": {"$gte": start}}, {"_id": 0}).sort("ts", -1).to_list(length=20_000)
+        for doc in docs:
+            key = (doc.get("provider_id"), doc.get("endpoint"))
+            entry = stats.setdefault(key, {
+                "requests_today": 0, "errors_today": 0, "latency_total": 0,
+                "last_request": None, "last_success": None, "last_error": None,
+            })
+            entry["requests_today"] += 1
+            entry["errors_today"] += int(not doc.get("ok"))
+            entry["latency_total"] += float(doc.get("latency_ms") or 0)
+            entry["last_request"] = entry["last_request"] or doc.get("ts")
+            if doc.get("ok") and entry["last_success"] is None:
+                entry["last_success"] = doc.get("ts")
+            if not doc.get("ok") and entry["last_error"] is None:
+                entry["last_error"] = doc.get("ts")
+        for entry in stats.values():
+            count = entry.pop("requests_today")
+            entry["requests_today"] = count
+            entry["avg_latency_ms"] = round(entry.pop("latency_total") / count) if count else None
+
+    recent: Dict[tuple, List[dict]] = defaultdict(list)
+    recent_limit = max(len(rows) * 12, 120)
+    try:
+        recent_docs = await telemetry.find(
+            {"ts": {"$gte": start}},
+            {"_id": 0},
+        ).sort("ts", -1).to_list(length=recent_limit)
+    except (AttributeError, TypeError):
+        recent_docs = []
+    for doc in recent_docs:
+        key = (doc.get("provider_id"), doc.get("endpoint"))
+        if len(recent[key]) < 12:
+            recent[key].append(doc)
+
     out: Dict[tuple, Dict[str, Any]] = {}
     for row in rows:
-        samples = buckets.get((row["provider_id"], row["endpoint"]), [])
-        errors = sum(1 for d in samples if not d.get("ok"))
-        latency = round(sum(float(d.get("latency_ms") or 0) for d in samples) / len(samples)) if samples else None
-        if not samples:
+        key = (row["provider_id"], row["endpoint"])
+        aggregate = stats.get(key)
+        samples = recent.get(key, [])
+        requests = int(aggregate.get("requests_today") or 0) if aggregate else 0
+        errors = int(aggregate.get("errors_today") or 0) if aggregate else 0
+        latency = aggregate.get("avg_latency_ms") if aggregate else None
+        if not requests:
             status = "unknown"
-        elif errors >= 3 or (errors / len(samples)) >= 0.2:
+        elif errors >= 3 or (errors / requests) >= 0.2:
             status = "failed"
         elif errors or (latency is not None and latency > 1500):
             status = "warning"
         else:
             status = "healthy"
         out[(row["provider_id"], row["endpoint"], row["method"])] = {
-            "requests_today": len(samples), "errors_today": errors, "avg_latency_ms": latency,
-            "status": status, "last_request": samples[-1].get("ts") if samples else None,
-            "last_success": next((d.get("ts") for d in reversed(samples) if d.get("ok")), None),
-            "last_error": next((d.get("ts") for d in reversed(samples) if not d.get("ok")), None),
-            "recent_requests": list(reversed(samples[-12:])),
+            "requests_today": requests, "errors_today": errors, "avg_latency_ms": latency,
+            "status": status, "last_request": aggregate.get("last_request") if aggregate else None,
+            "last_success": aggregate.get("last_success") if aggregate else None,
+            "last_error": aggregate.get("last_error") if aggregate else None,
+            "recent_requests": samples[:12],
         }
     return out
 

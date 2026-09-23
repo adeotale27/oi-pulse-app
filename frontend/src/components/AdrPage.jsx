@@ -130,7 +130,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
   const summaryTiles = snap?.summary ? (
     <div className={`grid gap-2 text-[11px] ${phone ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-5"}`}>
       {SUMMARY_TILES(snap.summary).map(([k, v]) => (
-        <div key={k} className="rounded-sm border border-slate-200 dark:border-slate-700 px-2 py-1.5 bg-white dark:bg-slate-900">
+        <div key={k} className="oi-card rounded-sm border border-slate-200 dark:border-slate-700 px-2 py-1.5 bg-white dark:bg-slate-900">
           <div className="uppercase tracking-wide text-slate-400 text-[10px]">{k}</div>
           <div className="font-semibold font-mono-data">{v}</div>
         </div>
@@ -281,7 +281,7 @@ export default function AdrPage({ isAdmin = false, userKey = "desk", onOpenAdmin
                 <tr
                   key={row.id}
                   data-testid={`adr-row-${row.adr_symbol}`}
-                  className={`border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 cursor-pointer ${row.large_move ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}
+                  className={`border-t border-slate-100 dark:border-slate-800 transition-colors hover:bg-slate-50/80 cursor-pointer ${row.large_move ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}
                   onClick={() => openRow(row)}
                 >
                   {visibleCols.map((c) => {

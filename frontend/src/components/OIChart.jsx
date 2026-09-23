@@ -281,20 +281,20 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
                 {/* Show OI ON → Sensibull-style stacked bars: solid CURRENT (or PREVIOUS-if-smaller)
                     base + a small "Increase" striped segment OR "Decrease" outlined segment on top.
                     Total height = max(now, prev). Legend has 6 items (Put OI · Increase · Decrease · Call OI · Increase · Decrease). */}
-                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_base : undefined} />
-                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_up : undefined} />
-                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_down : undefined} />
-                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_base : undefined} />
-                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_up : undefined} />
-                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_down : undefined} />
+                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_base : undefined} />
+                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_up : undefined} />
+                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_down : undefined} />
+                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_base : undefined} />
+                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_up : undefined} />
+                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_down : undefined} />
               </>
             ) : (
               <>
                 {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars. Positive = up = increase,
                     Negative = down = decrease. y=0 baseline for clarity. */}
                 <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1} />
-                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.pe_delta : undefined} />
-                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={520} animationEasing="ease-out" shape={hasMarks ? markShape.ce_delta : undefined} />
+                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_delta : undefined} />
+                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_delta : undefined} />
               </>
             )}
           </BarChart>
@@ -395,8 +395,6 @@ function PosMark({ x, y, width, height, payload, index, segment, side, showOI, c
     <g
       data-testid={`oi-pos-mark-${pos.side}-${pos.strike}`}
       style={{ pointerEvents: "auto", cursor: "pointer" }}
-      onMouseEnter={(e) => pinHover(wrapRef, e.currentTarget, pos, onHover)}
-      onMouseLeave={() => onHover?.(null)}
       onClick={(e) => {
         e.stopPropagation();
         pinHover(wrapRef, e.currentTarget, pos, onHover);

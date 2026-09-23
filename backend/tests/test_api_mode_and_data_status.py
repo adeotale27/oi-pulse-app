@@ -3,6 +3,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 import server
@@ -44,22 +45,27 @@ class FakeCollection:
 def test_mode_endpoint_accepts_valid_and_rejects_invalid(monkeypatch):
     ft = FakeTracker()
     monkeypatch.setattr(server, "tracker", ft)
+    async def allow_admin(request: Request):
+        return True
+    server.app.dependency_overrides[server.require_admin] = allow_admin
     client = TestClient(server.app)
+    try:
+        # valid mode: offline
+        r = client.post("/api/mode", json={"mode": "offline"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ok"] is True
+        assert data["mode"] == "offline"
 
-    # valid mode: offline
-    r = client.post("/api/mode", json={"mode": "offline"})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["ok"] is True
-    assert data["mode"] == "offline"
+        # invalid mode should return 400
+        r = client.post("/api/mode", json={"mode": "invalid-mode"})
+        assert r.status_code == 400
 
-    # invalid mode should return 400
-    r = client.post("/api/mode", json={"mode": "invalid-mode"})
-    assert r.status_code == 400
-
-    # request to set kite should fail (simulated missing creds)
-    r = client.post("/api/mode", json={"mode": "kite"})
-    assert r.status_code == 400
+        # request to set kite should fail (simulated missing creds)
+        r = client.post("/api/mode", json={"mode": "kite"})
+        assert r.status_code == 400
+    finally:
+        server.app.dependency_overrides.pop(server.require_admin, None)
 
 
 def test_get_alerts_returns_empty_list_when_mongo_is_unreachable(monkeypatch):
@@ -156,7 +162,7 @@ def test_timeframe_anchor_strict_window(monkeypatch):
 
 def test_change_batches_also_windows(monkeypatch):
     ft = FakeTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime(2026, 9, 23, 5, 30, tzinfo=timezone.utc)
     cur_ts = now.isoformat()
     prev_1 = {"index": "NIFTY", "timestamp": (now - timedelta(minutes=1)).isoformat(), "strikes": []}
     prev_3 = {"index": "NIFTY", "timestamp": (now - timedelta(minutes=3)).isoformat(), "strikes": []}
@@ -282,9 +288,9 @@ def test_tracker_metrics_exist(monkeypatch):
 
 def test_admin_settings_update_and_effect(monkeypatch):
     # Fake admin allow
-    async def allow_admin(request):
+    async def allow_admin(request: Request):
         return True
-    monkeypatch.setattr(server, "require_admin", allow_admin)
+    server.app.dependency_overrides[server.require_admin] = allow_admin
 
     class FakeTrackerForSettings:
         def __init__(self):
@@ -295,18 +301,21 @@ def test_admin_settings_update_and_effect(monkeypatch):
     ft = FakeTrackerForSettings()
     monkeypatch.setattr(server, "tracker", ft)
     client = TestClient(server.app)
-    r = client.post("/api/settings", json={
-        "_id": "alerts",
-        "alert_indices_override_date": "2099-01-01",
-        "oi_poll_interval_seconds": 30,
-        "straddle_poll_interval_seconds": 60,
-        "positions_poll_interval_seconds": 15,
-    })
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert data["oi_poll_interval_seconds"] == 30
-    assert data["positions_poll_interval_seconds"] == 15
-    # GET /api/config should reflect the new poll interval
-    cfg = client.get("/api/config").json()
-    assert cfg["poll_interval_seconds"] == 30
-    assert cfg["positions_poll_interval_seconds"] == 15
+    try:
+        r = client.post("/api/settings", json={
+            "_id": "alerts",
+            "alert_indices_override_date": "2099-01-01",
+            "oi_poll_interval_seconds": 30,
+            "straddle_poll_interval_seconds": 60,
+            "positions_poll_interval_seconds": 15,
+        })
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["oi_poll_interval_seconds"] == 30
+        assert data["positions_poll_interval_seconds"] == 15
+        # GET /api/config should reflect the new poll interval
+        cfg = client.get("/api/config").json()
+        assert cfg["poll_interval_seconds"] == 30
+        assert cfg["positions_poll_interval_seconds"] == 15
+    finally:
+        server.app.dependency_overrides.pop(server.require_admin, None)

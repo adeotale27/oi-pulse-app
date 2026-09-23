@@ -131,6 +131,9 @@ function Hero({ snap }) {
         </motion.div>
 
         <div className="slz-scene relative">
+          <div className="slz-orbit slz-orbit-one" aria-hidden="true" />
+          <div className="slz-orbit slz-orbit-two" aria-hidden="true" />
+          <div className="slz-orbit-core" aria-hidden="true" />
           <motion.div
             className="slz-tilt"
             animate={{ y: [0, -12, 0] }}

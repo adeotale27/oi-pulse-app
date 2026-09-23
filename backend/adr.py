@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import hashlib
 import logging
 import os
@@ -37,7 +38,9 @@ DEFAULT_POLL_SECONDS = 300
 # Twelve Data Basic 8: 8 API credits / minute, 800 / day. /quote is 1 credit per symbol.
 # A comma-batch of 8 symbols still spends 8 credits in one second (dashboard "minutely max").
 TD_CREDITS_PER_MINUTE = 8
-TD_CREDIT_GAP_S = 60.0 / TD_CREDITS_PER_MINUTE
+# Keep one credit in reserve for provider-side rounding and the shared
+# Global Markets poller.
+TD_CREDIT_GAP_S = 8.5
 TD_RATE_LIMIT_BACKOFF_S = 90
 DEFAULT_LARGE_MOVE = 5.0
 DEFAULT_BANKING_MOVE = 5.0
@@ -82,6 +85,8 @@ _stop = None
 _task = None
 _last_quote_credit_at = 0.0
 _rate_limited_until = 0.0
+_td_credit_times = deque()
+_td_credit_lock = None
 
 
 def _now_utc() -> datetime:
@@ -557,15 +562,25 @@ def rate_limit_wait_s(until_mono: float, now_mono: float) -> float:
 
 
 async def _consume_td_credit() -> None:
-    """Serialize Twelve Data calls to Basic-8 (8 credits/min)."""
-    global _last_quote_credit_at, _rate_limited_until
-    now = time.monotonic()
-    extra = rate_limit_wait_s(_rate_limited_until, now)
-    gap = quote_credit_wait_s(_last_quote_credit_at, now + extra)
-    wait = extra + gap
-    if wait > 0:
-        await asyncio.sleep(wait)
-    _last_quote_credit_at = time.monotonic()
+    """Serialize Twelve Data calls within the Basic plan's rolling quota."""
+    global _last_quote_credit_at, _rate_limited_until, _td_credit_lock
+    if _td_credit_lock is None:
+        _td_credit_lock = asyncio.Lock()
+    async with _td_credit_lock:
+        while True:
+            now = time.monotonic()
+            while _td_credit_times and now - _td_credit_times[0] >= 60.0:
+                _td_credit_times.popleft()
+            backoff = rate_limit_wait_s(_rate_limited_until, now)
+            gap = quote_credit_wait_s(_last_quote_credit_at, now)
+            window = max(0.0, 60.0 - (now - _td_credit_times[0])) if len(_td_credit_times) >= TD_CREDITS_PER_MINUTE else 0.0
+            wait = max(backoff, gap, window)
+            if wait <= 0:
+                stamp = time.monotonic()
+                _td_credit_times.append(stamp)
+                _last_quote_credit_at = stamp
+                return
+            await asyncio.sleep(wait)
 
 
 def mark_twelve_data_rate_limited(seconds: float = TD_RATE_LIMIT_BACKOFF_S) -> None:
@@ -578,6 +593,8 @@ async def fetch_quotes(api_key: str, specs: List[Any], *, source: str = "adr") -
         return {}, "not_configured"
     if not specs:
         return {}, None
+    if rate_limit_wait_s(_rate_limited_until, time.monotonic()) > 0:
+        return {}, "rate_limited"
     out: Dict[str, Dict[str, Any]] = {}
     err = None
     seen = []
@@ -760,7 +777,17 @@ def row_view(cfg: Dict[str, Any], latest: Optional[Dict[str, Any]], *, us_open: 
 async def desk_snapshot(db) -> Dict[str, Any]:
     prefs = public_prefs(await load_prefs(db))
     us_open = is_us_equity_session()
+    # Keep configured rows visible after the venue closes.  Session gating
+    # belongs to poll_once; the desk must show CLOSED and last-known values.
     items = await list_universe(db, enabled_only=True)
+    if not items:
+        if db is not None:
+            await db[STATE_COL].update_one(
+                {"_id": "loop"},
+                {"$set": {"last_reason": "markets_closed", "last_checked_at": _now_utc().isoformat()}},
+                upsert=True,
+            )
+        return {"ok": True, "reason": "markets_closed", "stored": 0, "failed": 0, "error": None}
     latest_map = {}
     if db is not None:
         async for row in db[LATEST_COL].find({}, {"_id": 0}):
@@ -897,7 +924,15 @@ async def poll_once(db, *, reason: str = "interval") -> Dict[str, Any]:
         return {"ok": False, "reason": "disabled"}
     key = _api_key_from_doc(prefs_doc)
     await seed_universe(db)
-    items = await list_universe(db, enabled_only=True)
+    # Do not spend quote credits for listings whose venue is closed.  The
+    # configured rows remain visible through desk_snapshot with their last
+    # successful observation and CLOSED status.
+    items = [
+        cfg for cfg in await list_universe(db, enabled_only=True)
+        if is_listing_session_open(cfg.get("exchange"))
+    ]
+    if not items:
+        return {"ok": True, "reason": "markets_closed", "stored": 0, "failed": 0, "error": None}
     specs = [quote_spec(c) for c in items]
     quotes, err = await fetch_quotes(key, specs)
     stored = 0

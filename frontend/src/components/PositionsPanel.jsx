@@ -568,6 +568,11 @@ export default function PositionsPanel({
   const [oiRiskOpen, setOiRiskOpen] = useState(false);
   const [brainOpen, setBrainOpen] = useState(false);
   const [highlightSymbol, setHighlightSymbol] = useState(null);
+  const [pnlPulseSymbols, setPnlPulseSymbols] = useState(() => new Set());
+  const [totalPnlPulse, setTotalPnlPulse] = useState(false);
+  const previousPnlRef = useRef(new Map());
+  const previousTotalPnlRef = useRef(null);
+  const pnlPulseTimerRef = useRef(null);
   const jumpToPosition = (sym) => {
     setHighlightSymbol(sym);
     const nodes = document.querySelectorAll(`[data-position-symbol="${CSS.escape(sym)}"]`);
@@ -1140,6 +1145,31 @@ export default function PositionsPanel({
       wallet: funds?.base ?? funds?.total ?? null,
     };
   }, [rows, pnlToday, funds]);
+
+  useEffect(() => {
+    const changed = new Set();
+    rows.forEach((row) => {
+      const value = Number(row.pnl);
+      if (!Number.isFinite(value)) return;
+      const previous = previousPnlRef.current.get(row.tradingsymbol);
+      if (previous != null && previous !== value) changed.add(row.tradingsymbol);
+      previousPnlRef.current.set(row.tradingsymbol, value);
+    });
+    const total = Number(stats.netPnl);
+    const totalChanged = Number.isFinite(total)
+      && previousTotalPnlRef.current != null
+      && previousTotalPnlRef.current !== total;
+    previousTotalPnlRef.current = Number.isFinite(total) ? total : previousTotalPnlRef.current;
+    if (!changed.size && !totalChanged) return undefined;
+    setPnlPulseSymbols(changed);
+    setTotalPnlPulse(totalChanged);
+    clearTimeout(pnlPulseTimerRef.current);
+    pnlPulseTimerRef.current = setTimeout(() => {
+      setPnlPulseSymbols(new Set());
+      setTotalPnlPulse(false);
+    }, 900);
+    return () => clearTimeout(pnlPulseTimerRef.current);
+  }, [rows, stats.netPnl]);
 
   const dayCap = useMemo(
     () =>
@@ -1789,6 +1819,7 @@ export default function PositionsPanel({
           label="Today P&L"
           value={priv(privacyMode, "₹ " + fmt(stats.netPnl))}
           tone={privacyMode ? "slate" : stats.netPnl >= 0 ? "emerald" : "rose"}
+          pulse={totalPnlPulse && !privacyMode}
           hint={
             privacyMode
               ? "Masked"
@@ -2032,7 +2063,7 @@ export default function PositionsPanel({
                 </div>
                 <div>
                   <div className="text-[9px] uppercase text-slate-400">P&amp;L</div>
-                  <div className={`font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""}`}>
+                  <div className={`font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-70" : ""} ${pnlPulseSymbols.has(r.tradingsymbol) && !privacyMode ? "pnl-value-flash" : ""}`}>
                     {privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}
                   </div>
                   {!privacyMode && positionPnlPercent(r) != null ? <div className="text-[10px] text-slate-400">{positionPnlPercent(r).toFixed(1)}%</div> : null}
@@ -2223,6 +2254,8 @@ export default function PositionsPanel({
                 className={`border-b border-slate-100/80 ${
                   highlightSymbol && r.tradingsymbol === highlightSymbol
                     ? "ring-2 ring-emerald-400 bg-emerald-50/80"
+                    : pnlPulseSymbols.has(r.tradingsymbol) && !privacyMode
+                    ? "position-change-flash"
                     : r.exited
                     ? "bg-slate-100/70 text-slate-400 opacity-[0.58]"
                     : r.breachedAdjust
@@ -2261,7 +2294,7 @@ export default function PositionsPanel({
                     const pct = positionPnlPercent(r);
                     return (
                       <td key={id} className={`text-right px-2 py-1 font-semibold ${privacyMode ? "text-slate-500" : r.pnl >= 0 ? "text-emerald-600" : "text-rose-600"} ${r.exited ? "opacity-80" : ""}`}>
-                        <div>{privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}</div>
+                        <div className={pnlPulseSymbols.has(r.tradingsymbol) && !privacyMode ? "pnl-value-flash" : ""}>{privacyMode ? PRIVACY_MASK : `${r.pnl >= 0 ? "+" : ""}${fmt(r.pnl, 0)}`}</div>
                         {!privacyMode && pct != null ? <div className="text-[10px] font-normal text-slate-400">{pct.toFixed(1)}%</div> : null}
                       </td>
                     );
@@ -2866,7 +2899,7 @@ function BookRadarPanel({ open, onClose, children }) {
   );
 }
 
-function StatBox({ label, value, tone = "slate", hint, tip }) {
+function StatBox({ label, value, tone = "slate", hint, tip, pulse = false }) {
   const cls = tone === "emerald"
     ? "border-emerald-300 bg-emerald-50 text-emerald-950"
     : tone === "rose"
@@ -2878,7 +2911,7 @@ function StatBox({ label, value, tone = "slate", hint, tip }) {
   const isMoney = typeof value === "string" && value.includes("₹") || typeof value === "number";
 
   return (
-    <div className={`border px-2 py-1.5 h-full min-h-[4.2rem] md:min-h-[4.2rem] flex flex-col gap-0.5 shadow-[0_1px_0_rgba(15,23,42,0.02)] rounded-[10px] ${cls}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
+    <div className={`border px-2 py-1.5 h-full min-h-[4.2rem] md:min-h-[4.2rem] flex flex-col gap-0.5 shadow-[0_1px_0_rgba(15,23,42,0.02)] rounded-[10px] ${cls} ${pulse ? "pnl-total-flash" : ""}`} data-testid={`stat-${label.replace(/\s|&|₹|\+|\//g, "-").toLowerCase()}`}>
       <div className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600 leading-none">
         <span>{label}</span>
         {tip && (

@@ -155,8 +155,8 @@ def test_should_poll_us_open_interval_and_close():
 
 def test_twelve_data_credit_gap():
     assert quote_credit_wait_s(0, 100) == 0
-    assert quote_credit_wait_s(100.0, 100.0) == 7.5
-    assert quote_credit_wait_s(100.0, 108.0) == 0.0
+    assert quote_credit_wait_s(100.0, 100.0) == 8.5
+    assert quote_credit_wait_s(100.0, 108.0) == 0.5
 
 
 def test_ist_open_refresh_once():

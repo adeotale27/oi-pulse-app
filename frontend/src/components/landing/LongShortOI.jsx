@@ -15,7 +15,7 @@ export default function LongShortOI({ snap }) {
         <span className="slz-dot" style={{ background: "#ff5f57" }} />
         <span className="slz-dot" style={{ background: "#febc2e" }} />
         <span className="slz-dot" style={{ background: "#28c840" }} />
-        <span className="slz-url slz-mono">🔒 striklenz.com/terminal · positions on OI</span>
+        <span className="slz-url slz-mono">🔒 striklenz.com/dashboard · positions on OI</span>
       </div>
       <div className="slz-screen-body">
         <div className="mb-3 flex items-center justify-between">

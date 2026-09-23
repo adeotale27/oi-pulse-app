@@ -191,6 +191,8 @@ export default function Header({
   /** Parent (Dashboard) already resolved admin — don't wait on a second /auth/state. */
   assumedAdmin = false,
   publicAccessOpen = null,
+  publicLandingEnabled = false,
+  onTogglePublicLanding,
   /** Slim one-line index + VIX/GIFT rail instead of tall ticker tiles. */
   headerRail = false,
   onToggleHeaderRail,
@@ -222,6 +224,7 @@ export default function Header({
     is_admin: !!assumedAdmin,
     is_guest: false,
     public_access_open: !!publicAccessOpen,
+    public_landing_enabled: !!publicLandingEnabled,
   });
   // Auth state — Dashboard owns /auth/state. When assumedAdmin, only listen
   // for shared broadcasts (no duplicate poll).
@@ -261,8 +264,9 @@ export default function Header({
       ...(assumedAdmin ? { is_admin: true, is_guest: false } : {}),
       public_access_open:
         publicAccessOpen != null ? !!publicAccessOpen : prev.public_access_open,
+      public_landing_enabled: !!publicLandingEnabled,
     }));
-  }, [assumedAdmin, publicAccessOpen]);
+  }, [assumedAdmin, publicAccessOpen, publicLandingEnabled]);
 
   // Dev override: allow forcing admin UI without X-Admin-Token for local debugging.
   const devForce = (typeof window !== "undefined") && (process.env.NODE_ENV !== "production") && (
@@ -681,6 +685,25 @@ export default function Header({
             onChange={onToggleCasIepPopup}
             testId="mobile-toggle-iep-popup"
           />
+          <Button
+            data-testid="btn-mobile-public-landing"
+            variant="outline"
+            size="sm"
+            className="rounded-sm min-h-11"
+            onClick={() => onTogglePublicLanding?.(!publicLandingEnabled)}
+          >
+            Public landing: {publicLandingEnabled ? "ON" : "OFF"}
+          </Button>
+          <Button
+            data-testid="btn-mobile-platform-settings"
+            variant="outline"
+            size="sm"
+            className="rounded-sm min-h-11"
+            onClick={() => window.location.assign("https://striklenz.com/admin/settings")}
+          >
+            <Settings2 className="w-4 h-4 mr-1.5" />
+            Admin / Settings
+          </Button>
           <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration
@@ -1002,6 +1025,25 @@ export default function Header({
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
                   Desk tools
                 </DropdownMenuLabel>
+                <DropdownMenuItem
+                  data-testid="menu-open-platform-settings"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setAdminMenuOpen(false);
+                    window.location.assign("https://striklenz.com/admin/settings");
+                  }}
+                >
+                  <Settings2 className="w-4 h-4" />
+                  Admin / Settings
+                </DropdownMenuItem>
+                <DropdownMenuCheckboxItem
+                  checked={!!publicLandingEnabled}
+                  onCheckedChange={(ck) => onTogglePublicLanding?.(!!ck)}
+                  onSelect={(e) => e.preventDefault()}
+                  data-testid="menu-toggle-public-landing"
+                >
+                  Public landing page
+                </DropdownMenuCheckboxItem>
                 <DropdownMenuCheckboxItem
                   checked={!!casIepPopup}
                   onCheckedChange={(ck) => onToggleCasIepPopup?.(!!ck)}
@@ -1228,6 +1270,25 @@ export default function Header({
             onChange={onToggleCasIepPopup}
             testId="tablet-toggle-iep-popup"
           />
+          <Button
+            data-testid="btn-tablet-public-landing"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={() => onTogglePublicLanding?.(!publicLandingEnabled)}
+          >
+            Public landing: {publicLandingEnabled ? "ON" : "OFF"}
+          </Button>
+          <Button
+            data-testid="btn-tablet-platform-settings"
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+            onClick={() => window.location.assign("https://striklenz.com/admin/settings")}
+          >
+            <Settings2 className="w-4 h-4 mr-1.5" />
+            Admin / Settings
+          </Button>
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
             Admin configuration

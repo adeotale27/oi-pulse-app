@@ -20,6 +20,7 @@ from market_intel import (
     retention_cutoff,
     should_store_article,
     similar_titles,
+    validate_source_url,
 )
 
 
@@ -98,6 +99,29 @@ def test_api_field_mapping():
     payload = {"results": [{"title": "Hello", "url": "https://x.test", "description": "d", "published_at": "2026-09-15"}]}
     rows = map_records(payload, {"list": "results", "title": "title", "url": "url", "description": "description", "published_at": "published_at"})
     assert rows[0]["title"] == "Hello"
+
+
+def test_configurable_source_urls_reject_local_targets():
+    assert validate_source_url("http://127.0.0.1:8000/feed") == "private_url_not_allowed"
+    assert validate_source_url("http://169.254.169.254/latest/meta-data") == "private_url_not_allowed"
+    assert validate_source_url("http://localhost/feed") == "local_url_not_allowed"
+    assert validate_source_url("file:///etc/passwd") == "url_must_use_http"
+    assert validate_source_url("https://example.com/feed") is None
+
+
+def test_dns_resolution_rejects_private_addresses(monkeypatch):
+    import market_intel
+
+    monkeypatch.setattr(
+        market_intel.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, None, ("127.0.0.1", 80))],
+    )
+    try:
+        market_intel._validated_addresses("feed.example", 80)
+        assert False, "expected private DNS result to be rejected"
+    except ValueError as exc:
+        assert str(exc) == "hostname_resolves_to_private_address"
 
 
 def test_retention_five_day_window():
@@ -313,4 +337,3 @@ def test_popup_feed_dates_overnight_vs_session():
     assert len(popup_feed_dates(fri_pm)) == 2
     assert ist_today(fri_pm) in popup_feed_dates(fri_pm)
     assert len(popup_feed_dates(pre)) == 2
-

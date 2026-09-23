@@ -79,9 +79,10 @@ export default function DeskStatusRail({
   return (
     <div
       data-testid="desk-status-rail"
+      data-truth-mode={truth.mode}
       role="status"
       aria-live="polite"
-      className={`w-full border-b ${tone.bar} py-0.5`}
+      className={`w-full border-b ${tone.bar} py-0.5 status-${truth.mode.toLowerCase()}`}
     >
       <div className={`flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-nowrap px-1.5 ${mobileTicker ? "overflow-hidden" : "overflow-x-auto overscroll-x-contain oi-hover-scroll"}`}>
         <span
@@ -121,7 +122,8 @@ export default function DeskStatusRail({
           <>
             <span className="opacity-50 hidden md:inline ml-auto">·</span>
             <span
-              className="hidden md:inline-flex items-center gap-1 opacity-95 shrink-0"
+              key={phase}
+              className="hidden md:inline-flex items-center gap-1 opacity-95 shrink-0 market-status-transition"
               data-testid="market-status-banner"
             >
               {(() => {

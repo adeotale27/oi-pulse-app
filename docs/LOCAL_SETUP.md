@@ -46,6 +46,8 @@ ADMIN_PASSWORD=change-me
 # DESK_GUIDE_MODEL=gpt-4o-mini
 
 CORS_ORIGINS=http://localhost:3000
+TRUSTED_HOSTS=localhost,127.0.0.1
+API_DOCS_ENABLED=true
 # ENABLE_DEV_MOCK=true   # only for local fake OI without Kite
 ```
 
