@@ -13,7 +13,7 @@ export default function ShotFrame({ src, alt = "Striklenz", title = "Striklenz T
         <span className="slz-dot" style={{ background: "#ff5f57" }} />
         <span className="slz-dot" style={{ background: "#febc2e" }} />
         <span className="slz-dot" style={{ background: "#28c840" }} />
-        <span className="slz-url slz-mono">🔒 striklenz.com/terminal</span>
+        <span className="slz-url slz-mono">🔒 striklenz.com/dashboard</span>
         <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400"><span className="slz-live-dot" /> LIVE</span>
       </div>
       <div className="relative bg-white">

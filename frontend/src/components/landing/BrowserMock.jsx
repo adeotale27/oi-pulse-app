@@ -3,7 +3,7 @@ import ProductScreen from "@/components/landing/ProductScreen";
 
 // Light Striklenz terminal frame (mirrors the real product UI) with a floating
 // live SENSEX chip overlay for that "live terminal" feel.
-export default function BrowserMock({ id = "dashboard", snap, title = "Striklenz Terminal", className = "", showChip = true, chipIndex = "SENSEX" }) {
+export default function BrowserMock({ id = "dashboard", snap, title = "Striklenz Terminal", className = "", showChip = true, chipIndex = "SENSEX", marketOpen = true }) {
   const d = snap?.indices?.[chipIndex];
   const up = (d?.changePct ?? 0) >= 0;
   return (
@@ -12,8 +12,8 @@ export default function BrowserMock({ id = "dashboard", snap, title = "Striklenz
         <span className="slz-dot" style={{ background: "#ff5f57" }} />
         <span className="slz-dot" style={{ background: "#febc2e" }} />
         <span className="slz-dot" style={{ background: "#28c840" }} />
-        <span className="slz-url slz-mono">🔒 striklenz.com/terminal</span>
-        <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400"><span className="slz-live-dot" /> LIVE</span>
+        <span className="slz-url slz-mono">🔒 striklenz.com/dashboard</span>
+        <span className={`flex items-center gap-1 text-[10px] font-semibold ${marketOpen ? "text-emerald-400" : "text-slate-400"}`}><span className={marketOpen ? "slz-live-dot" : "h-1.5 w-1.5 rounded-full bg-slate-500"} /> {marketOpen ? "MARKET LIVE" : "MARKET CLOSED"}</span>
       </div>
       <div className="relative bg-white p-3">
         <div className="mb-2 flex items-center justify-between">

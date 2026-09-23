@@ -1,19 +1,34 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { api } from "@/lib/api";
 import { errorSourceLabel, notifyErrorLogUnseenChanged } from "@/lib/errorLog";
 import { toast } from "sonner";
 
-const MI_NEWS_FILTER_KEY = "oiHideMarketIntelNewsErrors";
-function readHideMarketIntelNewsErrors() {
-  try { return localStorage.getItem(MI_NEWS_FILTER_KEY) !== "0"; } catch { return true; }
+const HIDDEN_SOURCES_KEY = "oiHiddenErrorSources";
+function readHiddenSources() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_SOURCES_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter(Boolean) : [];
+  } catch { return []; }
 }
 
 function fmtTs(iso) {
   if (!iso) return "—";
-  const s = String(iso).replace("T", " ").replace("Z", "");
-  return s.slice(0, 19);
+  try {
+    return new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(new Date(iso));
+  } catch { return "—"; }
 }
 
 function fmtDay(iso) {
@@ -31,7 +46,8 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
   const [oldest, setOldest] = useState(null);
   const [newest, setNewest] = useState(null);
   const [purgeDays, setPurgeDays] = useState(1);
-  const [hideMarketIntelNews, setHideMarketIntelNews] = useState(readHideMarketIntelNewsErrors);
+  const [hiddenSources, setHiddenSources] = useState(readHiddenSources);
+  const [hideMenuOpen, setHideMenuOpen] = useState(false);
 
   const applyMeta = (data) => {
     if (typeof data?.stored === "number") setStored(data.stored);
@@ -39,13 +55,13 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
     setNewest(data?.newest || null);
   };
 
-  const load = async (source = srcFilter, hideNews = hideMarketIntelNews) => {
+  const load = async (source = srcFilter, hidden = hiddenSources) => {
     setLoading(true);
     setErr("");
     try {
       const params = { limit: 80 };
       if (source) params.source = source;
-      if (hideNews) params.hide_market_intel_news = true;
+      if (hidden.length) params.hide_sources = hidden.join(",");
       const r = await api.get("/errors", { params, timeout: 8000 });
       setRows(r.data?.errors || []);
       applyMeta(r.data);
@@ -78,10 +94,12 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
     load(src);
   };
 
-  const toggleMarketIntelNews = () => {
-    const next = !hideMarketIntelNews;
-    setHideMarketIntelNews(next);
-    try { localStorage.setItem(MI_NEWS_FILTER_KEY, next ? "1" : "0"); } catch { /* noop */ }
+  const toggleHiddenSource = (src) => {
+    const next = hiddenSources.includes(src)
+      ? hiddenSources.filter((item) => item !== src)
+      : [...hiddenSources, src];
+    setHiddenSources(next);
+    try { localStorage.setItem(HIDDEN_SOURCES_KEY, JSON.stringify(next)); } catch { /* noop */ }
     load(srcFilter, next);
   };
 
@@ -154,17 +172,31 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
               {errorSourceLabel(src)}
             </Button>
           ))}
-          <Button
-            type="button"
-            size="sm"
-            variant={hideMarketIntelNews ? "default" : "outline"}
-            className="h-7 px-2 text-[11px]"
-            data-testid="error-hide-market-intel-news"
-            onClick={toggleMarketIntelNews}
-            title="Only external Market Intel source failures are hidden; Market Intel application errors remain visible."
-          >
-            {hideMarketIntelNews ? "News API errors hidden" : "Show news API errors"}
-          </Button>
+          <div className="relative">
+            <Button
+              type="button"
+              size="sm"
+              variant={hiddenSources.length ? "default" : "outline"}
+              className="h-7 px-2 text-[11px]"
+              data-testid="error-hide-sources"
+              onClick={() => setHideMenuOpen((value) => !value)}
+              aria-expanded={hideMenuOpen}
+            >
+              {hideMenuOpen ? <ChevronUp className="mr-1 h-3 w-3" /> : <ChevronDown className="mr-1 h-3 w-3" />}
+              Hide sources{hiddenSources.length ? ` (${hiddenSources.length})` : ""}
+            </Button>
+            {hideMenuOpen ? (
+              <div className="absolute left-0 top-8 z-50 max-h-64 min-w-52 overflow-auto rounded-md border border-slate-200 bg-white p-2 shadow-lg">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Hide from this log</div>
+                {sources.length ? sources.map((src) => (
+                  <label key={src} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[11px] hover:bg-slate-50">
+                    <Checkbox checked={hiddenSources.includes(src)} onCheckedChange={() => toggleHiddenSource(src)} />
+                    <span>{errorSourceLabel(src)}</span>
+                  </label>
+                )) : <div className="px-1 py-1 text-[11px] text-slate-400">No sources found</div>}
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 shrink-0 text-[11px]">
           <span>Delete from {fmtDay(oldest)}</span>
@@ -190,7 +222,7 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
           <table className="w-full min-w-[42rem] table-fixed">
             <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="text-left font-semibold px-2 py-1 w-[9.5rem]">When (UTC)</th>
+                <th className="text-left font-semibold px-2 py-1 w-[9.5rem]">When (IST)</th>
                 <th className="text-left font-semibold px-2 py-1 w-24">Src</th>
                 <th className="text-left font-semibold px-2 py-1 w-36">Kind</th>
                 <th className="text-left font-semibold px-2 py-1">Message</th>

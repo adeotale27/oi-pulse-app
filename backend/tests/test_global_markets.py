@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 
 from global_markets import (
     INSTRUMENTS,
@@ -9,6 +10,7 @@ from global_markets import (
     public_prefs,
     test_fmp_connection as check_fmp_connection,
     fetch_fmp_quotes,
+    instrument_session_open,
 )
 from market_memory import _levels
 
@@ -27,6 +29,15 @@ def test_normalized_crypto_is_247_and_unavailable_quote_is_honest():
     quote = normalize(btc, {"last_price": 100.0, "change": 1, "change_percent": 1})
     assert quote["available"] is True
     assert quote["price"] == 100.0
+
+
+def test_global_market_session_gates_closed_venues():
+    nasdaq = next(item for item in INSTRUMENTS if item["id"] == "nasdaq")
+    crypto = next(item for item in INSTRUMENTS if item["id"] == "btcusd")
+    friday_after_close = datetime(2026, 7, 10, 21, 0, tzinfo=timezone.utc)
+    assert not instrument_session_open(nasdaq, friday_after_close)
+    assert instrument_session_open(crypto, friday_after_close)
+    assert normalize(nasdaq, None)["marketStatus"] == "CLOSED"
 
 
 def test_global_instruments_are_opt_in_until_admin_enables_them():

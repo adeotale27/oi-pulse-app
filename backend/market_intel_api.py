@@ -135,13 +135,17 @@ def mount(api_router, *, require_admin, require_desk_user):
         if st not in mi.SOURCE_TYPES:
             raise HTTPException(400, "source_type must be API, RSS, FIRECRAWL, or OFFICIAL_FEED")
         sid = payload.id or mi.new_source_id()
+        endpoint = (payload.endpoint or payload.url or "").strip()
+        url_error = mi.validate_source_url(endpoint)
+        if url_error:
+            raise HTTPException(400, url_error)
         prev = await db[mi.SRC_COL].find_one({"id": sid}) or {}
         doc = {
             **prev,
             "id": sid,
             "name": payload.name[:80],
             "source_type": st,
-            "endpoint": (payload.endpoint or payload.url or "").strip(),
+            "endpoint": endpoint,
             "method": (payload.method or "GET").upper(),
             "query": payload.query or {},
             "headers": payload.headers or {},

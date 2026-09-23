@@ -6,9 +6,10 @@ cached quotes for the desk surface.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 import os
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 import adr
 
@@ -34,6 +35,13 @@ LATEST_COL = "global_market_latest"
 STATE_COL = "global_market_state"
 CFG_COL = "settings"
 CFG_ID = "global_markets_prefs"
+UTC = timezone.utc
+ET = ZoneInfo("America/New_York")
+BERLIN = ZoneInfo("Europe/Berlin")
+LONDON = ZoneInfo("Europe/London")
+TOKYO = ZoneInfo("Asia/Tokyo")
+HONG_KONG = ZoneInfo("Asia/Hong_Kong")
+SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 # Add a market by adding one row here.  displaySymbol is never sent upstream.
 INSTRUMENTS: List[Dict[str, Any]] = [
@@ -164,12 +172,57 @@ async def save_instrument_config(db, rows: List[Dict[str, Any]]) -> List[Dict[st
 def _status(item: Dict[str, Any], quote: Optional[Dict[str, Any]]) -> tuple[str, bool]:
     if item["session"] == "24/7":
         return "24/7", True
+    if not instrument_session_open(item):
+        return "CLOSED", False
     explicit = (quote or {}).get("is_market_open")
     if explicit is True:
         return "LIVE", True
     if explicit is False:
         return "CLOSED", False
     return "UNKNOWN", False
+
+
+def _weekday_window(dt: datetime, zone: ZoneInfo, start: time, end: time) -> bool:
+    local = (dt if dt.tzinfo else dt.replace(tzinfo=UTC)).astimezone(zone)
+    return local.weekday() < 5 and start <= local.time() < end
+
+
+def instrument_session_open(item: Dict[str, Any], dt: Optional[datetime] = None) -> bool:
+    """Return whether this instrument's venue is open before spending a quote credit."""
+    now = dt or datetime.now(UTC)
+    session = item.get("session")
+    if session == "24/7":
+        return True
+    if session == "equity_us":
+        try:
+            import adr
+            return adr.is_us_equity_session(now)
+        except Exception:
+            return _weekday_window(now, ET, time(9, 30), time(16, 0))
+    if session == "equity_eu":
+        zone = LONDON if item.get("id") == "ftse" else BERLIN
+        return _weekday_window(now, zone, time(8, 0) if zone is LONDON else time(9, 0), time(16, 30) if zone is LONDON else time(17, 30))
+    if session == "equity_asia":
+        zone = TOKYO if item.get("id") == "nikkei" else HONG_KONG if item.get("id") == "hang_seng" else SHANGHAI
+        local = (now if now.tzinfo else now.replace(tzinfo=UTC)).astimezone(zone)
+        if local.weekday() >= 5:
+            return False
+        t = local.time()
+        if item.get("id") == "nikkei":
+            return time(9, 0) <= t < time(15, 30) and not time(11, 30) <= t < time(12, 30)
+        if item.get("id") == "shanghai":
+            return time(9, 30) <= t < time(15, 0) and not time(11, 30) <= t < time(13, 0)
+        return time(9, 30) <= t < time(16, 0)
+    if session == "forex":
+        local = (now if now.tzinfo else now.replace(tzinfo=UTC)).astimezone(ET)
+        if local.weekday() == 5:
+            return False
+        if local.weekday() == 6:
+            return local.time() >= time(17, 0)
+        if local.weekday() == 4 and local.time() >= time(17, 0):
+            return False
+        return True
+    return False
 
 
 def normalize(item: Dict[str, Any], quote: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -187,6 +240,8 @@ def normalize(item: Dict[str, Any], quote: Optional[Dict[str, Any]]) -> Dict[str
         "source": item["provider"], "stale": bool(quote.get("poll_status") in ("failed", "stale")),
         "available": available, "providerSymbol": item["providerSymbol"], "precision": item["precision"],
         "macro": item["displaySymbol"] in {"USDINR", "DXY", "XAUUSD", "BRENT", "USOIL", "US 10Y"},
+        "session": item.get("session"),
+        "sessionOpen": is_open,
     }
 
 
@@ -244,13 +299,14 @@ async def poll_next(db) -> None:
     state = await db[STATE_COL].find_one({"_id": "cursor"}) if db is not None else None
     providers = await enabled_provider_items(db)
     enabled = providers["fmp"] + providers["twelve_data"] + providers["builtin"]
-    if not enabled:
+    open_items = [item for item in enabled if instrument_session_open(item)]
+    if not open_items:
         return
     cursor = int((state or {}).get("position") or 0) % len(enabled)
-    item = enabled[cursor]
+    item = next((candidate for candidate in open_items if enabled.index(candidate) >= cursor), open_items[0])
     # FMP accepts a comma-separated symbol list, so refresh all selected FMP
     # pairs in one request instead of spending one call per pair.
-    fmp_items = providers["fmp"]
+    fmp_items = [row for row in providers["fmp"] if instrument_session_open(row)]
     last_fmp = (state or {}).get("fmp_last_polled_at")
     fmp_due = True
     if last_fmp:
@@ -298,7 +354,7 @@ async def poll_next(db) -> None:
             elif error:
                 await db[LATEST_COL].update_one({"id": item["id"]}, {"$set": {"id": item["id"], "poll_status": "failed", "poll_error": error}}, upsert=True)
     if db is not None:
-        await db[STATE_COL].update_one({"_id": "cursor"}, {"$set": {"position": cursor + 1}}, upsert=True)
+        await db[STATE_COL].update_one({"_id": "cursor"}, {"$set": {"position": (enabled.index(item) + 1) % len(enabled)}}, upsert=True)
 
 
 async def load_prefs(db) -> Dict[str, Any]:

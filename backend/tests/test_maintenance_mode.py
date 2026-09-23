@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from fastapi import Request
 
 import server
 
@@ -39,3 +40,34 @@ def test_maintenance_toggle_requires_admin(monkeypatch):
     monkeypatch.setattr(server, "db", fake_db)
     response = TestClient(server.app).post("/api/auth/maintenance", json={"enabled": True})
     assert response.status_code == 401
+
+
+def test_guest_cannot_toggle_maintenance_but_admin_can(monkeypatch):
+    class WritableSettings(SettingsCollection):
+        async def update_one(self, query, update, upsert=False):
+            self.enabled = bool(update["$set"]["enabled"])
+
+    fake_db = type("DB", (), {"settings": WritableSettings(False)})()
+    monkeypatch.setattr(server, "db", fake_db)
+    monkeypatch.setattr(server, "_admin_from_request", lambda request: _none_async(request))
+    monkeypatch.setattr(server, "_guest_from_request", lambda request: _guest_async(request))
+    client = TestClient(server.app)
+
+    guest_response = client.post("/api/auth/maintenance", json={"enabled": True})
+    assert guest_response.status_code == 401
+
+    async def admin_session(request: Request):
+        return {"token": "test-admin"}
+
+    monkeypatch.setattr(server, "_admin_from_request", admin_session)
+    admin_response = client.post("/api/auth/maintenance", json={"enabled": True})
+    assert admin_response.status_code == 200
+    assert fake_db.settings.enabled is True
+
+
+async def _none_async(request: Request):
+    return None
+
+
+async def _guest_async(request: Request):
+    return {"token": "test-guest"}

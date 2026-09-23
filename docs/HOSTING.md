@@ -133,7 +133,7 @@ Do **not** point production Emergent at Atlas until restore is verified.
 
 1. Ubuntu 22.04/24.04, SSH keys only, firewall: 22 / 80 / 443.
 2. Install Docker **or** Python 3.11 + Node 18 + Caddy.
-3. `git clone` this repo; `backend/.env` with Atlas URI, Fernet key, `CORS_ORIGINS=https://YOUR_DOMAIN`.
+3. `git clone` this repo; `backend/.env` with Atlas URI, Fernet key, `CORS_ORIGINS=https://striklenz.com,https://www.striklenz.com,https://admin.striklenz.com`, `TRUSTED_HOSTS=striklenz.com,www.striklenz.com,admin.striklenz.com`, and `API_DOCS_ENABLED=false`.
 4. `frontend`: `yarn build` with empty `REACT_APP_BACKEND_URL` so the browser uses **same origin** `/api` (see `frontend/src/lib/api.js`).
 5. Reverse proxy:
 
@@ -177,7 +177,7 @@ Do **not** use GoDaddy’s parked/forwarding page. That breaks `/api`.
 
 After DNS:
 
-1. Set `CORS_ORIGINS=https://striklenz.com,https://www.striklenz.com` (real hosts only). Set Kite Connect redirect URL to `https://striklenz.com/kite-callback` (not aaisnamkeen.com).
+1. Set `CORS_ORIGINS=https://striklenz.com,https://www.striklenz.com,https://admin.striklenz.com` (real origins only), `TRUSTED_HOSTS=striklenz.com,www.striklenz.com,admin.striklenz.com`, and `API_DOCS_ENABLED=false`. Set Kite Connect redirect URL to `https://striklenz.com/kite-callback` (not aaisnamkeen.com).
 2. Zerodha developer console: add `https://YOUR_DOMAIN` login/redirect URLs (publisher + guest Kite).
 3. Open the desk, login, Fresh Pull, journal, Positions.
 

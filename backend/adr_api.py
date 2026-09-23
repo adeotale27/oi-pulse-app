@@ -78,8 +78,8 @@ def mount(api_router, *, require_admin, require_desk_user):
         patch = payload.model_dump(exclude_none=True)
         if "poll_interval_seconds" in patch:
             n = int(patch["poll_interval_seconds"])
-            if n < 60 or n > 3600:
-                raise HTTPException(400, "poll_interval_seconds must be 60–3600")
+            if n < 1:
+                raise HTTPException(400, "poll_interval_seconds must be a positive whole number")
             patch["poll_interval_seconds"] = n
         discover = bool(patch.pop("discover", False))
         pub = await adr_mod.save_prefs(_db(), patch)

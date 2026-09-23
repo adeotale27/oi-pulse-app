@@ -10,6 +10,198 @@
   background: var(--oi-shell, #f3f8fb);
   color: #0b1c24;
   font-family: var(--font-ui);
+  --oi-depth-shadow: 0 1px 2px rgba(15, 55, 70, 0.05), 0 8px 24px rgba(15, 55, 70, 0.07);
+  --oi-depth-shadow-hover: 0 2px 4px rgba(15, 55, 70, 0.07), 0 14px 30px rgba(15, 55, 70, 0.12);
+}
+
+.dark .App {
+  --oi-depth-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 26px rgba(0, 0, 0, 0.18);
+  --oi-depth-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.26), 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+/* Shared depth language for desk surfaces. Cards opt in through the reusable
+   Card primitive, while data-heavy custom surfaces can use .oi-depth. */
+.oi-depth,
+.oi-card {
+  position: relative;
+  isolation: isolate;
+  box-shadow: var(--oi-depth-shadow);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .oi-card:hover,
+  .oi-depth:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--oi-depth-shadow-hover);
+  }
+}
+
+.oi-card::after,
+.oi-depth::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 42%);
+  opacity: 0.7;
+}
+
+.dark .oi-card::after,
+.dark .oi-depth::after {
+  background: linear-gradient(135deg, rgba(148, 210, 200, 0.08), transparent 42%);
+}
+
+/* Keep motion consistent for live desk indicators without changing polling or
+   chart animation. Apply these to status/freshness badges only. */
+@keyframes oi-status-breathe {
+  0%, 100% { opacity: 0.72; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.status-live .live-dot,
+.freshness-live .live-dot,
+.oi-status-live::before {
+  animation: oi-status-breathe 1.8s ease-in-out infinite;
+}
+
+.oi-status-live::before,
+.oi-status-stale::before,
+.oi-status-error::before {
+  content: "";
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-right: 0.35rem;
+  border-radius: 999px;
+  vertical-align: 0.05em;
+  background: currentColor;
+}
+
+.oi-status-stale::before {
+  color: #d97706;
+  animation: oi-status-breathe 1.8s ease-in-out infinite;
+}
+
+.oi-status-error::before {
+  color: #dc2626;
+  animation: none;
+}
+
+@keyframes pnl-value-flash {
+  0% { background-color: rgba(250, 204, 21, 0.42); border-radius: 0.2rem; }
+  100% { background-color: transparent; border-radius: 0.2rem; }
+}
+
+.pnl-value-flash {
+  animation: pnl-value-flash 850ms ease-out both;
+}
+
+@keyframes pnl-total-flash {
+  0% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.28), 0 1px 0 rgba(15, 23, 42, 0.02); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0), 0 1px 0 rgba(15, 23, 42, 0.02); }
+}
+
+.pnl-total-flash {
+  animation: pnl-total-flash 850ms ease-out both;
+}
+
+.market-status-transition {
+  animation: oi-rise 220ms ease-out both;
+}
+
+@keyframes market-memory-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.3); }
+  100% { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
+}
+
+.market-memory-pulse {
+  animation: market-memory-pulse 850ms ease-out both;
+}
+
+.market-memory-refresh {
+  animation: market-memory-pulse 850ms ease-out both;
+}
+
+.market-memory-level-refresh {
+  animation: market-memory-level-refresh 850ms ease-out both;
+}
+
+@keyframes market-memory-level-refresh {
+  0% { opacity: 0.72; transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.position-change-flash {
+  animation: position-change-flash 900ms ease-out both;
+}
+
+@keyframes position-change-flash {
+  0% { background-color: rgba(167, 243, 208, 0.58); }
+  100% { background-color: transparent; }
+}
+
+.market-memory-freshness-live {
+  color: #047857;
+  transition: color 220ms ease, opacity 220ms ease;
+}
+
+.market-memory-freshness-stale {
+  color: #b45309;
+  transition: color 220ms ease, opacity 220ms ease;
+}
+
+/* Radix tabs get the same restrained state change across dashboard surfaces. */
+[role="tab"] {
+  transition: color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+[role="tab"]:hover {
+  transform: translateY(-1px);
+}
+
+[role="tab"][data-state="active"] {
+  box-shadow: inset 0 -2px 0 hsl(var(--primary)), 0 3px 10px rgba(15, 55, 70, 0.08);
+}
+
+/* Shared modal depth, complementing Radix/Tailwind enter and exit states. */
+.oi-modal {
+  box-shadow: 0 18px 50px rgba(15, 55, 70, 0.2), 0 3px 12px rgba(15, 55, 70, 0.12);
+  transform-origin: center;
+}
+
+.oi-modal-overlay {
+  backdrop-filter: blur(2px);
+  transition: background-color 180ms ease, backdrop-filter 180ms ease;
+}
+
+.dark .oi-modal {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oi-depth,
+  .oi-card,
+  [role="tab"],
+  .oi-modal-overlay {
+    transition: none;
+  }
+
+  .oi-card:hover,
+  .oi-depth:hover,
+  [role="tab"]:hover {
+    transform: none;
+  }
+
+  .pnl-value-flash,
+  .pnl-total-flash,
+  .market-memory-pulse,
+  .market-memory-level-refresh,
+  .position-change-flash {
+    animation: none;
+  }
 }
 
 .font-mono-data {

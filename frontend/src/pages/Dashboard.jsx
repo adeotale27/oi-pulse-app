@@ -1141,7 +1141,10 @@ export default function Dashboard() {
         }
         setOiLoading(false);
         ensureExpiryForIndex(active).catch(() => {});
-        if (bootLite && first.ok) {
+        const requestedAlsoKeys = alsoFull.split(",").filter(Boolean);
+        const hasRequestedAlso = first.ok
+          && requestedAlsoKeys.every((key) => Object.prototype.hasOwnProperty.call(first.data?.also_windows || {}, key));
+        if (bootLite && first.ok && !hasRequestedAlso) {
           window.setTimeout(() => {
             fetchOIChange(active, minutes, {
               expiry: selectedExpiryRef.current || expiryByIndexRef.current[active]?.selected || undefined,
@@ -2309,6 +2312,15 @@ export default function Dashboard() {
         dataStatus={dataStatus}
         assumedAdmin={!!authState.is_admin}
         publicAccessOpen={!!authState.public_access_open}
+        publicLandingEnabled={!!authState.public_landing_enabled}
+        onTogglePublicLanding={async (enabled) => {
+          try {
+            await api.post("/auth/public-landing", { enabled });
+            window.location.reload();
+          } catch (err) {
+            toast.error(err?.response?.data?.detail || "Could not update public landing setting");
+          }
+        }}
         onOpenCreds={() => { if (authState.is_admin) setCredsOpen(true); }}
         onOpenDeskAiKeys={() => { if (authState.is_admin) setDeskAiKeysOpen(true); }}
         onOpenMiSettings={() => { if (authState.is_admin) setMiSettingsOpen(true); }}

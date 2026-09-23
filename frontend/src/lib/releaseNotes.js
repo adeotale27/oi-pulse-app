@@ -4,6 +4,67 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: "14.49",
+    date: "2026-09-24",
+    user: [
+      "Configured ADRs remain visible after the US market closes, with CLOSED status and the last successful quote.",
+    ],
+    admin: [
+      "Session gating now applies only to polling; the desk snapshot no longer treats closed configured instruments as missing configuration.",
+    ],
+  },
+  {
+    version: "14.48",
+    date: "2026-09-24",
+    user: [
+      "Global Markets and ADR rows now wait for their own venue to open before polling, while closed markets keep their last known quote and show CLOSED.",
+      "Version notes now include the current shipped release.",
+    ],
+    admin: [
+      "Session gating is applied per index, FX pair, commodity, crypto instrument, and ADR before provider calls, preventing closed-market rate-limit usage.",
+    ],
+  },
+  {
+    version: "14.47",
+    date: "2026-09-24",
+    user: [
+      "Global Markets and ADR polling now share a rolling provider-credit guard, reducing rate-limit interruptions while keeping the last good quote visible.",
+    ],
+    admin: [
+      "Twelve Data requests are coordinated across both feeds instead of relying only on a fixed delay.",
+    ],
+  },
+  {
+    version: "14.46",
+    date: "2026-09-24",
+    user: [
+      "ADR Monitor can remain visible and usable independently of the Global Markets feed.",
+    ],
+    admin: [
+      "The Global Markets master switch no longer rewrites dashboard navigation or ADR enablement.",
+    ],
+  },
+  {
+    version: "14.45",
+    date: "2026-09-24",
+    user: [
+      "Global Markets and ADR controls now have separate scopes, so switching one does not unexpectedly switch the other.",
+    ],
+    admin: [
+      "Provider and feed settings now preserve failed-save state instead of presenting a false local toggle.",
+    ],
+  },
+  {
+    version: "14.44",
+    date: "2026-09-24",
+    user: [
+      "Added restrained live-state visuals for Global Markets, ADRs, positions, Market Memory, and the session timeline.",
+    ],
+    admin: [
+      "New motion respects reduced-motion preferences and does not alter polling, authentication, or trading logic.",
+    ],
+  },
+  {
     version: "11.19",
     date: "2026-09-22",
     user: [

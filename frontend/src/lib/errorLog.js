@@ -89,7 +89,7 @@ export function errorSourceLabel(src) {
     ui: "UI",
     api: "API",
     ws: "WS",
-    boundary: "UI",
+    boundary: "Boundary",
   };
   return known[raw] || raw;
 }

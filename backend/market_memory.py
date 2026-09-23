@@ -22,6 +22,16 @@ def _number(value):
         return None
 
 
+def _market_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only small, non-sensitive context already present in the OI snapshot."""
+    context = {}
+    for key in ("price", "pcr", "vix", "expiry", "mode"):
+        value = snapshot.get(key)
+        if value is not None and value != "":
+            context[key] = value
+    return context
+
+
 def _levels(snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Small, explainable level set — all values originate in the OI/Kite snapshot."""
     price = _number(snapshot.get("price"))
@@ -96,7 +106,7 @@ async def capture(db, index: str, snapshot: Dict[str, Any]) -> None:
                      "interactionType": "TOUCH", "priceAtInteraction": price, "approachDirection": approach,
                      "priceBeforeInteraction": previous_price, "reaction5m": None, "reaction15m": None,
                      "reaction30m": None, "volume": None, "oi": row.get("oi"), "oiChange": None,
-                     "source": "kite_oi_snapshot", "dataQuality": "live"}
+                     "context": _market_context(snapshot), "source": "kite_oi_snapshot", "dataQuality": "live"}
             await db[EVENTS_COL].insert_one(event)
             active[key] = {"level": level, "type": level_type, "touch": price, "approach": approach, "timestamp": now}
         elif prior and prior.get("phase") == "breakout":
@@ -109,7 +119,7 @@ async def capture(db, index: str, snapshot: Dict[str, Any]) -> None:
                     "interactionType": "FAILED_BREAKOUT", "priceAtInteraction": price, "approachDirection": approach,
                     "priceBeforeInteraction": prior.get("breakout_price"), "reaction5m": round(price - prior.get("breakout_price", price), 2),
                     "reaction15m": None, "reaction30m": None, "volume": None, "oi": row.get("oi"), "oiChange": None,
-                    "source": "kite_oi_snapshot", "dataQuality": "live"})
+                    "context": _market_context(snapshot), "source": "kite_oi_snapshot", "dataQuality": "live"})
                 active.pop(key, None)
         elif prior and abs(distance) >= reaction:
             approach = prior.get("approach")
@@ -119,7 +129,7 @@ async def capture(db, index: str, snapshot: Dict[str, Any]) -> None:
                      "interactionType": interaction, "priceAtInteraction": price, "approachDirection": approach,
                      "priceBeforeInteraction": prior.get("touch"), "reaction5m": round(price - prior.get("touch", price), 2),
                      "reaction15m": None, "reaction30m": None, "volume": None, "oi": row.get("oi"), "oiChange": None,
-                     "source": "kite_oi_snapshot", "dataQuality": "live"}
+                     "context": _market_context(snapshot), "source": "kite_oi_snapshot", "dataQuality": "live"}
             await db[EVENTS_COL].insert_one(event)
             if interaction == "BREAKOUT":
                 active[key] = {**prior, "phase": "breakout", "breakout_price": price}
@@ -156,7 +166,10 @@ async def summary(db, index: str) -> Dict[str, Any]:
             if not meaningful or (stamp - meaningful[-1][1]).total_seconds() >= 300:
                 meaningful.append((event, stamp))
         kinds = {kind: sum(1 for event, _ in meaningful if event["interactionType"] == kind) for kind in ("TOUCH", "REJECTION", "BREAKOUT", "FAILED_BREAKOUT")}
-        reactions = [abs(_number(event.get("reaction5m")) or 0) for event in events if event.get("reaction5m") is not None]
+        reactions = [_number(event.get("reaction5m")) for event in events if event.get("reaction5m") is not None]
+        reactions = [value for value in reactions if value is not None]
+        recent_reactions = [abs(value) for event, stamp in dated if stamp >= now - timedelta(days=5) for value in [_number(event.get("reaction5m"))] if value is not None]
+        older_reactions = [abs(value) for event, stamp in dated if stamp >= now - timedelta(days=20) for value in [_number(event.get("reaction5m"))] if value is not None]
         last = events[0]
         recency = max(0.0, 1.0 - (now - dated[-1][1]).total_seconds() / 21600)
         score = min(100, round(20 + min(30, kinds["REJECTION"] * 8 + kinds["FAILED_BREAKOUT"] * 6)
@@ -165,13 +178,33 @@ async def summary(db, index: str) -> Dict[str, Any]:
             continue
         role = "SUPPORT" if price is not None and level <= price and kinds["REJECTION"] else (
             "RESISTANCE" if kinds["REJECTION"] else "STRUCTURAL")
+        total_break_tests = kinds["REJECTION"] + kinds["BREAKOUT"] + kinds["FAILED_BREAKOUT"]
+        failed_breakouts = kinds["FAILED_BREAKOUT"]
+        avg_signed = round(sum(reactions) / len(reactions), 2) if reactions else None
         levels.append({"level": level, "zoneLow": level - tolerance, "zoneHigh": level + tolerance,
                        "levelType": role, "strength": "HIGH" if score >= 70 else "MEDIUM",
                        "relevanceScore": score, "todayCount": sum(1 for _, stamp in dated if stamp.date() == now.date()), "5DayCount": count5, "20DayCount": count20,
                        "touchCount": kinds["TOUCH"], "rejectionCount": kinds["REJECTION"], "breakoutCount": kinds["BREAKOUT"], "failedBreakoutCount": kinds["FAILED_BREAKOUT"],
-                       "averageReaction": round(sum(reactions) / len(reactions), 2) if reactions else None, "largestReaction": max(reactions) if reactions else None,
-                       "lastInteraction": last.get("timestamp"), "lastInteractionType": last.get("interactionType"), "currentDistance": round(price - level, 2) if price is not None else None,
+                       "averageReaction": round(sum(abs(value) for value in reactions) / len(reactions), 2) if reactions else None,
+                       "averageSignedReaction": avg_signed,
+                       "averageUpReaction": round(sum(value for value in reactions if value > 0) / len([value for value in reactions if value > 0]), 2) if any(value > 0 for value in reactions) else None,
+                       "averageDownReaction": round(sum(value for value in reactions if value < 0) / len([value for value in reactions if value < 0]), 2) if any(value < 0 for value in reactions) else None,
+                       "recentAverageReaction": round(sum(recent_reactions) / len(recent_reactions), 2) if recent_reactions else None,
+                       "historicalAverageReaction": round(sum(older_reactions) / len(older_reactions), 2) if older_reactions else None,
+                       "largestReaction": max((abs(value) for value in reactions), default=None),
+                       "failureRate": round((kinds["BREAKOUT"] / total_break_tests) * 100, 1) if total_break_tests else None,
+                       "failedBreakoutRate": round((failed_breakouts / (kinds["BREAKOUT"] + failed_breakouts)) * 100, 1) if (kinds["BREAKOUT"] + failed_breakouts) else None,
+                       "lastInteraction": last.get("timestamp"), "lastInteractionType": last.get("interactionType"), "lastContext": last.get("context") or {},
+                       "currentDistance": round(price - level, 2) if price is not None else None,
                        "memoryStrength": score})
     levels.sort(key=lambda row: (abs(row["currentDistance"]) if row["currentDistance"] is not None else float("inf"), -row["relevanceScore"]))
-    return {"index": index, "price": price, "structure": {"step": step, "tolerance": tolerance},
+    updated_at = (state or {}).get("updated_at")
+    freshness_seconds = None
+    if updated_at:
+        try:
+            freshness_seconds = max(0, round((now - datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))).total_seconds()))
+        except (TypeError, ValueError):
+            freshness_seconds = None
+    return {"index": index, "price": price, "updatedAt": updated_at, "freshnessSeconds": freshness_seconds,
+            "structure": {"step": step, "tolerance": tolerance},
             "levels": levels[:6], "interactions": docs[:100]}

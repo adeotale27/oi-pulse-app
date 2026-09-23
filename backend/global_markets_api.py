@@ -30,7 +30,6 @@ def mount(api_router, *, require_desk_user, require_admin):
 
     @api_router.post("/global-markets/config")
     async def global_market_config_save(payload: InstrumentConfigIn, _admin: bool = Depends(require_admin)):
-        import server
         prefs = await global_markets.save_prefs(
             _db(),
             {
@@ -39,30 +38,6 @@ def mount(api_router, *, require_desk_user, require_admin):
                 **({"enabled": payload.enabled} if payload.enabled is not None else {}),
             },
         )
-        if payload.enabled is not None and getattr(server, "tracker", None) is not None:
-            current = dict(getattr(server.tracker, "settings", {}) or {})
-            public_pages = list(current.get("visible_pages") or [
-                "oi-change", "open-interest", "strike-table", "buildup",
-                "positions", "alerts", "activity", "holidays", "straddle",
-                "index-events", "market-intel",
-            ])
-            admin_pages = list(current.get("admin_visible_pages") or [
-                "oi-change", "open-interest", "strike-table", "sell-candidates",
-                "buildup", "positions", "alerts", "activity", "holidays",
-                "straddle", "index-events", "cas", "market-intel",
-            ])
-            if payload.enabled:
-                if "adrs" not in public_pages:
-                    public_pages.append("adrs")
-                if "adrs" not in admin_pages:
-                    admin_pages.append("adrs")
-            else:
-                public_pages = [page for page in public_pages if page != "adrs"]
-                admin_pages = [page for page in admin_pages if page != "adrs"]
-            await server.tracker.save_settings({
-                "visible_pages": public_pages,
-                "admin_visible_pages": admin_pages,
-            })
         return {"items": await global_markets.save_instrument_config(_db(), payload.instruments), "prefs": prefs}
 
     @api_router.post("/global-markets/test")

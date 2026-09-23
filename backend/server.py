@@ -77,7 +77,13 @@ load_dotenv(ROOT_DIR / '.env')
 client = None
 db = None
 
-app = FastAPI(title=APP_NAME)
+_docs_enabled = os.environ.get("API_DOCS_ENABLED", "false").strip().lower() == "true"
+app = FastAPI(
+    title=APP_NAME,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 api_router = APIRouter(prefix="/api")
 
 
@@ -158,6 +164,11 @@ if not ADMIN_TOKEN and ADMIN_PASSWORD:
 
 # 8-hour idle timeout for admin sessions.
 ADMIN_SESSION_TTL_SECONDS = int(os.environ.get("ADMIN_SESSION_TTL_SECONDS", str(8 * 3600)))
+_trusted_proxy_ips = {
+    item.strip()
+    for item in os.environ.get("TRUSTED_PROXY_IPS", "").split(",")
+    if item.strip()
+}
 # Guest sessions expire at next 06:00 IST (not a rolling hour TTL).
 GUEST_DAILY_EXPIRY_HOUR_IST = int(os.environ.get("GUEST_DAILY_EXPIRY_HOUR_IST", "6"))
 # Legacy env kept only as an absolute safety cap (default 36h).
@@ -2993,12 +3004,24 @@ async def list_error_log(
     limit: int = Query(80, ge=1, le=200),
     source: Optional[str] = None,
     hide_market_intel_news: bool = False,
+    hide_sources: Optional[str] = None,
 ):
     if db is None:
         raise HTTPException(503, "Database unavailable")
     query: Dict[str, Any] = {}
     if source:
         query["source"] = str(source)[:32]
+    hidden_sources = [
+        item.strip()[:32]
+        for item in str(hide_sources or "").split(",")
+        if item.strip()
+    ]
+    if hidden_sources:
+        query["source"] = (
+            {"$nin": hidden_sources}
+            if not source
+            else {"$eq": query["source"], "$nin": hidden_sources}
+        )
     if hide_market_intel_news:
         # Keep Market Intel application failures visible; hide only individual
         # external-source pulls (free RSS/API providers can be noisy).
@@ -3138,11 +3161,14 @@ REMEMBER_ME_TTL_SECONDS = 24 * 3600
 
 
 def _client_ip(request: Request) -> Optional[str]:
-    # Prefer first X-Forwarded-For hop when behind a proxy / ingress.
-    xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    if xff:
-        return xff
-    return request.client.host if request.client else None
+    # Only trust forwarding headers from explicitly configured reverse proxies.
+    # Otherwise a caller can spoof X-Forwarded-For to bypass IP controls.
+    peer = request.client.host if request.client else None
+    if peer and peer in _trusted_proxy_ips:
+        xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        if xff:
+            return xff
+    return peer
 
 
 @api_router.post("/auth/login")
@@ -3610,6 +3636,7 @@ async def auth_state(request: Request):
         return {
             "requires_login": False,
             "public_access_open": True,
+            "public_landing_enabled": False,
             "maintenance_mode": False,
             "public_access_expires_at": None,
             "is_admin": False,
@@ -3622,6 +3649,8 @@ async def auth_state(request: Request):
             "is_ip_blocked": False,
         }
     open_, expires_at_iso = await _get_public_access_state()
+    platform_doc = await _load_platform_config()
+    public_landing_enabled = bool((platform_doc or {}).get("public_landing_enabled", False))
     maintenance_mode = await _get_maintenance_state()
     admin_sess = await _admin_from_request(request)
     is_admin = admin_sess is not None
@@ -3683,6 +3712,7 @@ async def auth_state(request: Request):
     return {
         "requires_login": requires_login,
         "public_access_open": open_,
+        "public_landing_enabled": public_landing_enabled,
         "maintenance_mode": maintenance_mode,
         "public_access_expires_at": expires_at_iso,
         "is_admin": is_admin,
@@ -3720,6 +3750,24 @@ class PublicAccessIn(BaseModel):
 
 class MaintenanceModeIn(BaseModel):
     enabled: bool
+
+
+class PublicLandingIn(BaseModel):
+    enabled: bool
+
+
+@api_router.post("/auth/public-landing", dependencies=[])
+async def auth_toggle_public_landing(payload: PublicLandingIn, request: Request):
+    if not await _is_admin_request(request):
+        raise HTTPException(401, "Admin only")
+    if db is None:
+        raise HTTPException(503, "Service unavailable")
+    await db.settings.update_one(
+        {"_id": PLATFORM_CONFIG_ID},
+        {"$set": {"public_landing_enabled": bool(payload.enabled)}},
+        upsert=True,
+    )
+    return {"ok": True, "public_landing_enabled": bool(payload.enabled)}
 
 
 @api_router.post("/auth/maintenance", dependencies=[])
@@ -6724,6 +6772,7 @@ async def admin_platform_config_get(_admin: bool = Depends(require_admin)):
     razorpay = (doc or {}).get("razorpay") or {}
     return {
         "pricing": _platform_pricing(doc),
+        "public_landing_enabled": bool((doc or {}).get("public_landing_enabled", False)),
         "brokers": _admin_brokers(doc),
         "google": {
             "enabled": bool(google.get("enabled")),
@@ -6748,6 +6797,8 @@ async def admin_platform_config_set(payload: dict, _admin: bool = Depends(requir
 
     if isinstance(payload.get("pricing"), dict):
         update["pricing"] = payload["pricing"]
+    if "public_landing_enabled" in payload:
+        update["public_landing_enabled"] = bool(payload["public_landing_enabled"])
 
     if isinstance(payload.get("brokers"), list):
         bstore = dict(_broker_overrides(doc))
@@ -6905,10 +6956,21 @@ app.include_router(api_router)
 
 
 # --- Security: Trusted Host (prevent Host header attacks) ---
-_trusted_hosts_env = os.environ.get('TRUSTED_HOSTS', '').strip()
-if _trusted_hosts_env:
-    _trusted_hosts = [h.strip() for h in _trusted_hosts_env.split(',') if h.strip()]
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts)
+_trusted_hosts_env = os.environ.get("TRUSTED_HOSTS", "").strip()
+_trusted_hosts = (
+    [h.strip() for h in _trusted_hosts_env.split(",") if h.strip()]
+    if _trusted_hosts_env
+    else [
+        "striklenz.com",
+        "www.striklenz.com",
+        "admin.striklenz.com",
+        "localhost",
+        "127.0.0.1",
+        "[::1]",
+        "testserver",
+    ]
+)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts)
 
 # --- Security: HTTP security headers ---
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -6992,7 +7054,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RateLimitMiddleware)
 
 # --- CORS (restricted; wildcard only if explicitly set) ---
-_cors_env = os.environ.get('CORS_ORIGINS', '*').strip()
+_cors_env = os.environ.get(
+    "CORS_ORIGINS",
+    "https://striklenz.com,https://www.striklenz.com,https://admin.striklenz.com,"
+    "http://localhost:3000,http://127.0.0.1:3000",
+).strip()
 _cors_origins = [o.strip() for o in _cors_env.split(',') if o.strip()]
 _cors_regex = os.environ.get('CORS_ORIGIN_REGEX', '').strip() or None
 # Guard: a malformed CORS_ORIGIN_REGEX must never crash the server at boot.

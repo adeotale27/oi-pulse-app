@@ -48,6 +48,15 @@
 
 /* 3D scene */
 .slz-scene { perspective: 1600px; }
+.slz-orbit {
+  position: absolute; inset: 8% 5%; border: 1px solid rgba(16,185,129,0.22);
+  border-radius: 50%; transform-style: preserve-3d; pointer-events: none; z-index: 0;
+}
+.slz-orbit-one { transform: rotateX(66deg) rotateZ(-18deg); animation: slzOrbit 18s linear infinite; }
+.slz-orbit-two { inset: 18% 14%; border-color: rgba(79,70,229,0.18); transform: rotateY(62deg) rotateZ(22deg); animation: slzOrbit 24s linear infinite reverse; }
+.slz-orbit-core { position: absolute; width: 9px; height: 9px; right: 13%; top: 18%; border-radius: 50%; background: #10b981; box-shadow: 0 0 24px 8px rgba(16,185,129,0.25); animation: slzCorePulse 3s ease-in-out infinite; pointer-events: none; z-index: 1; }
+@keyframes slzOrbit { from { transform: rotateX(66deg) rotateZ(-18deg) rotate(0deg); } to { transform: rotateX(66deg) rotateZ(-18deg) rotate(360deg); } }
+@keyframes slzCorePulse { 0%,100% { transform: scale(.85); opacity: .65; } 50% { transform: scale(1.2); opacity: 1; } }
 .slz-tilt {
   transform: rotateY(-16deg) rotateX(7deg) rotateZ(0.5deg);
   transform-style: preserve-3d;
@@ -59,6 +68,13 @@
 @media (max-width: 900px) {
   .slz-tilt, .slz-tilt-soft { transform: none !important; }
   .slz-scene { perspective: none; }
+  .slz-orbit { opacity: .55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slz-orbit-one, .slz-orbit-two, .slz-orbit-core, .slz-aurora::before, .slz-aurora::after, .slz-live-dot, .slz-marquee {
+    animation: none;
+  }
 }
 
 /* Browser frame */
