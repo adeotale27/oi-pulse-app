@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  ArrowRight, Check, Menu, X, TrendingUp, Layers, Gauge, Activity,
-  Brain, Bot, ShieldCheck, Zap, LineChart, Lock, PlugZap,
+  ArrowRight, Check, Menu, X, Layers, Gauge, Activity,
+  Brain, Bot, ShieldCheck, Zap, LineChart, PlugZap,
 } from "lucide-react";
 import "@/styles/landing.css";
 import useLiveDemo from "@/hooks/useLiveDemo";
-import BrowserMock from "@/components/landing/BrowserMock";
-import DemoSlides from "@/components/landing/DemoSlides";
-import LongShortOI from "@/components/landing/LongShortOI";
+import OiPulseLogo from "@/components/OiPulseLogo";
+import ShotFrame from "@/components/landing/ShotFrame";
+import ShotTour from "@/components/landing/ShotTour";
 import ProductScreen from "@/components/landing/ProductScreen";
 import { BRAND, NAV_LINKS, FREE_FEATURES, PREMIUM_FEATURES, FAQS, PRICING_FALLBACK, money } from "@/config/site";
 import { api } from "@/lib/api";
@@ -24,9 +24,7 @@ const reveal = {
 function Logo({ className = "" }) {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-indigo-600 shadow-lg shadow-emerald-500/30">
-        <TrendingUp className="h-5 w-5 text-white" strokeWidth={2.5} />
-      </div>
+      <OiPulseLogo className="h-9 w-9" pulse={false} />
       <span className="text-xl font-bold tracking-tight text-slate-900">
         Strik<span className="text-emerald-600">lenz</span>
       </span>
@@ -138,17 +136,14 @@ function Hero({ snap }) {
             animate={{ y: [0, -12, 0] }}
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
           >
-            <BrowserMock id="dashboard" snap={snap} title="Market Dashboard" />
+            <ShotFrame src="/shots/terminal-full.jpg" snap={snap} title="Market Dashboard" chipIndex="SENSEX" />
           </motion.div>
           <motion.div
-            className="slz-tilt-soft absolute -bottom-8 -left-6 w-52 md:w-60"
+            className="slz-tilt-soft absolute -bottom-10 -left-6 w-60 md:w-72"
             animate={{ y: [0, 10, 0] }}
             transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
           >
-            <div className="slz-browser">
-              <div className="slz-browser-bar"><span className="slz-dot" style={{ background: "#ff5f57" }} /><span className="slz-dot" style={{ background: "#febc2e" }} /><span className="slz-dot" style={{ background: "#28c840" }} /></div>
-              <div className="slz-screen-body !p-3"><ProductScreen id="pressure" snap={snap} /></div>
-            </div>
+            <ShotFrame src="/shots/longshort-oi.png" snap={snap} title="Long / Short on OI" showChip={false} />
           </motion.div>
         </div>
       </div>
@@ -195,10 +190,10 @@ function ProductDemo({ snap }) {
         <motion.div {...reveal} className="mx-auto max-w-2xl text-center">
           <span className="slz-chip mb-3" style={{ background: "rgba(79,70,229,0.1)", color: "#4338ca" }}>Interactive demo</span>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Step inside the terminal</h2>
-          <p className="mt-4 text-slate-600">Click through nine live-updating screens. This is a simulated demo feed — inside Striklenz it's real market data.</p>
+          <p className="mt-4 text-slate-600">Real Striklenz screens — OI change, positions, long/short on the OI wall. Inside the app it's live market data.</p>
         </motion.div>
         <motion.div {...reveal} className="mt-12">
-          <DemoSlides snap={snap} />
+          <ShotTour snap={snap} />
         </motion.div>
       </div>
     </section>
@@ -253,7 +248,9 @@ function PremiumShowcase({ snap }) {
         <div className="mt-12 grid gap-6 lg:grid-cols-[1.15fr_1fr]">
           <motion.div {...reveal}>
             <div className="mb-3 text-sm font-semibold text-indigo-200">Active Long / Short on the OI chart</div>
-            <LongShortOI snap={snap} />
+            <ShotFrame src="/shots/oi-change.png" snap={snap} title="Positions on the OI wall" chipIndex="SENSEX" />
+            <div className="mt-4 text-sm font-semibold text-indigo-200">Live Positions &amp; P&amp;L</div>
+            <div className="mt-3"><ShotFrame src="/shots/positions.png" snap={snap} title="Live Positions" showChip={false} /></div>
           </motion.div>
           <div className="grid gap-6">
             <motion.div {...reveal}>
@@ -415,7 +412,7 @@ export default function Landing() {
   const brokers = cfg?.brokers;
 
   return (
-    <div className="slz min-h-screen">
+    <div className="slz slz-light min-h-screen">
       <Nav />
       <main>
         <Hero snap={snap} />

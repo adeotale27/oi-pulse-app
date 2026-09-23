@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, ArrowLeft, TrendingUp, Loader2, UserRound } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import "@/styles/landing.css";
 import { api, persistGuestAuth } from "@/lib/api";
 import useLiveDemo from "@/hooks/useLiveDemo";
-import BrowserMock from "@/components/landing/BrowserMock";
+import OiPulseLogo from "@/components/OiPulseLogo";
+import ShotFrame from "@/components/landing/ShotFrame";
 
 function GoogleIcon() {
   return (
@@ -118,20 +119,20 @@ export default function Login() {
   }, [pending?.id]);
 
   return (
-    <div className="slz relative flex min-h-screen items-stretch overflow-hidden">
+    <div className="slz slz-light relative flex min-h-screen items-stretch overflow-hidden">
       <div className="slz-aurora" />
       {/* Left brand / product */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-slate-900 p-10 text-white lg:flex">
         <div className="pointer-events-none absolute inset-0 opacity-50" style={{ background: "radial-gradient(40rem 24rem at 70% 0%, rgba(16,185,129,0.35), transparent), radial-gradient(36rem 24rem at 10% 100%, rgba(79,70,229,0.35), transparent)" }} />
         <Link to="/" className="relative flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-indigo-600"><TrendingUp className="h-5 w-5 text-white" strokeWidth={2.5} /></div>
+          <OiPulseLogo className="h-9 w-9" pulse={false} />
           <span className="text-xl font-bold">Strik<span className="text-emerald-400">lenz</span></span>
         </Link>
         <div className="relative">
           <h2 className="text-3xl font-black leading-tight">Read the market.<br />Then read your book.</h2>
           <p className="mt-3 max-w-md text-slate-300">Live OI, Strike Pressure and your positions on the OI wall — the moment you sign in.</p>
           <motion.div className="mt-8 max-w-md" animate={{ y: [0, -8, 0] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}>
-            <BrowserMock id="dashboard" snap={snap} title="Market Dashboard" />
+            <ShotFrame src="/shots/terminal-full.jpg" snap={snap} title="Market Dashboard" chipIndex="SENSEX" />
           </motion.div>
         </div>
         <div className="relative text-xs text-slate-400">Official broker OAuth · we never store your broker password.</div>
@@ -142,7 +143,7 @@ export default function Login() {
         <div className="w-full max-w-md">
           <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /> Back to home</Link>
           <div className="lg:hidden mb-6 flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-indigo-600"><TrendingUp className="h-5 w-5 text-white" strokeWidth={2.5} /></div>
+            <OiPulseLogo className="h-9 w-9" pulse={false} />
             <span className="text-xl font-bold text-slate-900">Strik<span className="text-emerald-600">lenz</span></span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Welcome to Striklenz</h1>

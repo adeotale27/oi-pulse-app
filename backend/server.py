@@ -6653,14 +6653,38 @@ def _platform_pricing(doc: dict) -> dict:
     return pricing
 
 
+def _broker_overrides(doc: dict) -> dict:
+    raw = (doc or {}).get("brokers")
+    if isinstance(raw, dict):
+        return {k: v for k, v in raw.items() if isinstance(v, dict)}
+    if isinstance(raw, list):
+        return {b.get("id"): b for b in raw if isinstance(b, dict) and b.get("id")}
+    return {}
+
+
 def _platform_brokers(doc: dict) -> list:
-    overrides = {b.get("id"): b for b in ((doc or {}).get("brokers") or []) if isinstance(b, dict)}
+    overrides = _broker_overrides(doc)
     out = []
     for base in DEFAULT_BROKERS:
         b = dict(base)
         ov = overrides.get(b["id"])
         if ov and "enabled" in ov:
             b["enabled"] = bool(ov["enabled"])
+        out.append(b)
+    return out
+
+
+def _admin_brokers(doc: dict) -> list:
+    overrides = _broker_overrides(doc)
+    out = []
+    for base in DEFAULT_BROKERS:
+        b = dict(base)
+        ov = overrides.get(b["id"]) or {}
+        if "enabled" in ov:
+            b["enabled"] = bool(ov["enabled"])
+        b["client_id"] = _decrypt_safe(ov.get("client_id_enc"))
+        b["client_secret"] = _mask_secret(ov.get("client_secret_enc"))
+        b["redirect_uri"] = ov.get("redirect_uri") or ""
         out.append(b)
     return out
 
@@ -6700,7 +6724,7 @@ async def admin_platform_config_get(_admin: bool = Depends(require_admin)):
     razorpay = (doc or {}).get("razorpay") or {}
     return {
         "pricing": _platform_pricing(doc),
-        "brokers": _platform_brokers(doc),
+        "brokers": _admin_brokers(doc),
         "google": {
             "enabled": bool(google.get("enabled")),
             "client_id": _decrypt_safe(google.get("client_id_enc")),
@@ -6726,10 +6750,22 @@ async def admin_platform_config_set(payload: dict, _admin: bool = Depends(requir
         update["pricing"] = payload["pricing"]
 
     if isinstance(payload.get("brokers"), list):
-        update["brokers"] = [
-            {"id": b.get("id"), "enabled": bool(b.get("enabled"))}
-            for b in payload["brokers"] if isinstance(b, dict) and b.get("id")
-        ]
+        bstore = dict(_broker_overrides(doc))
+        for b in payload["brokers"]:
+            if not (isinstance(b, dict) and b.get("id")):
+                continue
+            bid = b["id"]
+            cur = dict(bstore.get(bid) or {})
+            if "enabled" in b:
+                cur["enabled"] = bool(b["enabled"])
+            if "client_id" in b:
+                cur["client_id_enc"] = _fernet().encrypt(str(b["client_id"]).encode()).decode() if b.get("client_id") else None
+            if b.get("client_secret") and b.get("client_secret") != "set":
+                cur["client_secret_enc"] = _fernet().encrypt(str(b["client_secret"]).encode()).decode()
+            if "redirect_uri" in b:
+                cur["redirect_uri"] = str(b.get("redirect_uri") or "")
+            bstore[bid] = cur
+        update["brokers"] = bstore
 
     if isinstance(payload.get("google"), dict):
         g = payload["google"]

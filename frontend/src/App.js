@@ -2,6 +2,7 @@ import "@/App.css";
 import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AuthGate from "@/components/AuthGate";
+import AdminGearLink from "@/components/AdminGearLink";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
 import MobileAlertTray from "@/components/MobileAlertTray";
@@ -13,6 +14,7 @@ const Landing = lazy(() => import("@/pages/Landing"));
 const Login = lazy(() => import("@/pages/Login"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
+const AdminSettings = lazy(() => import("@/pages/AdminSettings"));
 const KiteCallback = lazy(() => import("@/pages/KiteCallback"));
 const AboutAppModal = lazy(() => import("@/components/AboutAppModal"));
 
@@ -38,6 +40,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<AdminLogin />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/settings" element={<AdminSettings />} />
           <Route path="/kite-callback" element={<KiteCallback />} />
           <Route
             path="/terminal/*"
@@ -50,6 +53,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>
+        <AdminGearLink />
       </BrowserRouter>
       </ErrorBoundary>
       <Suspense fallback={null}>
