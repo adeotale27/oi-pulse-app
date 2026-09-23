@@ -1,56 +1,56 @@
-import { Link } from "react-router-dom";
-import { Code2, RefreshCw, Wrench } from "lucide-react";
-import OiPulseLogo from "@/components/OiPulseLogo";
-import StrikLenzRobot from "@/components/StrikLenzRobot";
-import AuthFeatureFooter from "@/components/AuthFeatureFooter";
+import React from "react";
+import { motion } from "framer-motion";
+import { RefreshCw, TrendingUp, Wrench, Activity } from "lucide-react";
+import "@/styles/landing.css";
 
 export default function MaintenanceScreen({ onRetry, retrying = false }) {
   return (
-    <div className="oi-maintenance-screen relative flex min-h-screen items-center justify-center overflow-hidden bg-[#041014] px-4 py-8 text-white sm:px-6">
-      <div className="oi-maintenance-grid relative grid w-full max-w-6xl items-center gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
-        <div className="oi-maintenance-copy text-center lg:text-left">
-          <div className="mb-6 flex items-center justify-center gap-3 lg:justify-start">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.07] p-1.5 shadow-2xl shadow-black/30">
-              <OiPulseLogo className="h-full w-full" />
+    <div className="slz relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
+      <div className="slz-aurora" />
+      <div className="absolute inset-0 slz-grid-dots opacity-60" />
+      <div className="relative grid w-full max-w-5xl items-center gap-10 lg:grid-cols-2">
+        <div className="text-center lg:text-left">
+          <div className="mb-6 flex items-center justify-center gap-2 lg:justify-start">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-indigo-600 shadow-lg shadow-emerald-500/30">
+              <TrendingUp className="h-5 w-5 text-white" strokeWidth={2.5} />
             </div>
-            <div>
-              <div className="text-lg font-bold tracking-tight">StrikLenz</div>
-              <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">Command the desk. Spot bias. Act on OI.</div>
-            </div>
+            <span className="text-xl font-bold tracking-tight text-slate-900">Strik<span className="text-emerald-600">lenz</span></span>
           </div>
-          <div className="oi-maintenance-status mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em]">
-            <Wrench className="h-3.5 w-3.5 oi-maintenance-wrench" />
-            System status · Temporarily unavailable
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-amber-700">
+            <Wrench className="h-3.5 w-3.5" /> Temporarily unavailable
           </div>
-          <h1 className="text-4xl font-black leading-[0.98] tracking-tight sm:text-6xl">
-            StrikLenz is<br /><span className="text-emerald-400">Brewing.</span>
+          <h1 className="text-4xl font-black leading-[1.05] tracking-tight text-slate-900 sm:text-5xl">
+            We're tuning the<br /><span className="slz-underline-accent">market engine.</span>
           </h1>
-          <p className="mx-auto mt-5 max-w-md text-sm leading-6 text-slate-300 lg:mx-0">
-            Something unexpected happened behind the scenes.
+          <p className="mx-auto mt-5 max-w-md text-base leading-7 text-slate-600 lg:mx-0">
+            Striklenz is briefly offline while we make it faster and sharper. Hang tight — the desk will be back in a moment.
           </p>
-          <p className="mt-2 max-w-md text-xs leading-5 text-slate-400 lg:mx-0">
-            We&apos;re already looking into it while StrikLenz takes a tiny coffee break.
-          </p>
-          <button type="button" onClick={onRetry} disabled={retrying} data-testid="maintenance-retry" className="mt-7 inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/20 px-6 text-sm font-bold text-emerald-50 shadow-lg shadow-emerald-950/30 transition hover:-translate-y-0.5 hover:bg-emerald-400/30 disabled:opacity-60">
+          <button
+            type="button" onClick={onRetry} disabled={retrying}
+            className="slz-btn-primary mt-7 inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold disabled:opacity-60"
+          >
             <RefreshCw className={retrying ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            {retrying ? "Checking…" : "Try Again"}
+            {retrying ? "Checking…" : "Try again"}
           </button>
-          <div className="mt-6 text-xs text-slate-500">
-            Admin? <Link to="/admin" className="font-semibold text-emerald-300 hover:underline">Sign in here</Link>
-          </div>
+          <div className="mt-6 text-xs text-slate-500">Need help? Reach us at <a href="mailto:support@striklenz.com" className="font-semibold text-emerald-600 hover:underline">support@striklenz.com</a></div>
         </div>
-        <div className="oi-brewing-scene relative mx-auto h-[22rem] w-full max-w-[38rem] sm:h-[29rem]" aria-label="Robot brewing coffee and working on a desk repair">
-          <div className="oi-data-stream oi-data-stream-one"><i /><i /><i /></div>
-          <div className="oi-data-stream oi-data-stream-two"><i /><i /><i /></div>
-          <div className="oi-monitor oi-monitor-back"><div className="oi-code-lines"><i /><i /><i /><i /></div><Code2 className="h-5 w-5 text-emerald-300" /></div>
-          <div className="oi-monitor oi-monitor-front"><div className="oi-chart-line"><span /><span /><span /><span /></div></div>
-          <div className="oi-code-card"><span>STRIKLENZ</span><b>BREWING...</b><small>checking the desk...</small></div>
-          <div className="oi-desk" />
-          <StrikLenzRobot variant="maintenance" />
+        <div className="slz-scene relative mx-auto hidden w-full max-w-md lg:block">
+          <motion.div className="slz-tilt" animate={{ y: [0, -12, 0] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}>
+            <div className="slz-browser">
+              <div className="slz-browser-bar"><span className="slz-dot" style={{ background: "#ff5f57" }} /><span className="slz-dot" style={{ background: "#febc2e" }} /><span className="slz-dot" style={{ background: "#28c840" }} /><span className="slz-url slz-mono">striklenz.com</span></div>
+              <div className="slz-screen-body flex h-56 flex-col items-center justify-center gap-3">
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: "linear" }} className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15">
+                  <Activity className="h-8 w-8 text-emerald-400" />
+                </motion.div>
+                <div className="slz-mono text-sm text-slate-300">recalibrating OI feed…</div>
+                <div className="h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
+                  <motion.div className="h-full bg-emerald-400" animate={{ x: ["-100%", "250%"] }} transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }} style={{ width: "40%" }} />
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </div>
       </div>
-      <AuthFeatureFooter />
-      <div className="oi-maintenance-footer">Meanwhile, our admin has been politely asked to stop drinking coffee and fix things. ☕</div>
     </div>
   );
 }

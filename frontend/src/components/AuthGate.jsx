@@ -454,8 +454,11 @@ export default function AuthGate({ children }) {
     clearGuestAuth();
   }
 
-  // Public access open → prompt for guest full name
+  // Not authenticated → route everyone to the branded /login page.
   if (state.needs_guest_name || state.public_access_open) {
+    return <Navigate to="/login" replace />;
+  }
+  if (typeof window === "undefined") {
     return (
       <AuthShell mode="guest">
         <div className="oi-auth-login-card w-full max-w-md rounded-2xl border border-emerald-300/35 p-7 text-white shadow-2xl shadow-black/50 sm:p-8">
@@ -570,6 +573,6 @@ export default function AuthGate({ children }) {
     );
   }
 
-  // Default → redirect to dedicated admin login page
-  return <Navigate to="/admin" replace />;
+  // Default → branded login page
+  return <Navigate to="/login" replace />;
 }

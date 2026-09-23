@@ -38,7 +38,7 @@ export default function AdminLogin() {
               sessionStorage.setItem("oi_admin_token", data.token);
               try { localStorage.removeItem("oi_admin_token"); } catch (_) {}
               toast.success(`Welcome back, ${data.username}`);
-              navigate("/", { replace: true });
+              navigate("/terminal", { replace: true });
               return;
             }
           } catch (err) {
@@ -50,7 +50,7 @@ export default function AdminLogin() {
         }
         const { data } = await api.get("/auth/state");
         if (data?.is_admin) {
-          navigate("/", { replace: true });
+          navigate("/terminal", { replace: true });
         }
       } catch (_) { /* ignore */ }
     })();
@@ -90,7 +90,7 @@ export default function AdminLogin() {
       setCardState("success");
       toast.success(`Welcome back, ${data.username}`);
       setTimeout(() => {
-        navigate("/", { replace: true });
+        navigate("/terminal", { replace: true });
         setTimeout(() => window.location.reload(), 100);
       }, 350);
     } catch (err) {
@@ -185,7 +185,7 @@ export default function AdminLogin() {
                     return;
                   }
                   if (data?.public_access_open) {
-                    navigate("/", { replace: true });
+                    navigate("/terminal", { replace: true });
                     return;
                   }
                   toast.message("Ask Admin to give access", {

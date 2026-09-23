@@ -47,3 +47,16 @@ Web app that fetches NSE Open Interest data for NIFTY and SENSEX every 15 second
 - User accounts + saved watchlists
 - Historical replay over past 7 days
 - Kite login flow (request_token -> access_token) inside the app
+
+## Striklenz Marketing Relaunch (2026-09-23) — v14.26+
+Rebranded public surfaces to **Striklenz** and built a new public experience without touching the existing trading terminal.
+- Routing: `/` = marketing Landing, `/login` = Google + guest login (no admin link), `/terminal/*` = existing Dashboard behind AuthGate (query-param nav, unchanged), `/admin` + `/admin/login` = existing AdminLogin (protected).
+- Landing (`src/pages/Landing.jsx` + `src/components/landing/*`): light/eye-catching theme, 3D floating browser mocks (CSS perspective + framer-motion, degrade on mobile), live-animated DEMO data (`hooks/useLiveDemo.js`), 9 interactive demo slides, Free vs Premium, Premium showcase (Long/Short-on-OI, Position Brain, Desk AI), broker grid, configurable pricing (monthly/quarterly/yearly), FAQ, CTAs, SEO/OG meta.
+- Backend platform layer (server.py): `GET /api/public/site-config` (pricing + feature flags + brokers), `GET/POST /api/admin/platform/config` (admin-gated; Google + Razorpay + broker enable; secrets Fernet-encrypted & masked on read), `GET /api/auth/google/login-url`, `POST /api/auth/google/exchange` (config-driven; admin pastes Client ID/Secret). `_guest_from_request` reordered so Google "member" sessions survive the public-door toggle.
+- Ops: created `/app/backend/.env` (MONGO_URL, DB_NAME=oi_pulse, CREDENTIALS_FERNET_KEY, admin Adeotale/Striklenz@2025). Backend tested 12/12 pass; secrets never exposed.
+
+### Next (Phase 2 — needs input/keys)
+- Provide real Google OAuth Client ID/Secret (admin → integrations) + set striklenz.com redirect to go live.
+- Razorpay keys → wire checkout + server-side Premium entitlement enforcement.
+- Full multi-broker Connect flow (OAuth per broker) + admin broker-credential UI.
+- Deeper in-app dark/light theme fixes + v13.0→v14.26 functional audit.

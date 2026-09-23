@@ -33,7 +33,7 @@ export default function KiteCallback() {
     if (status && status !== "success") {
       setMsg("Broker login was cancelled.");
       toast.error("Broker login cancelled");
-      const t = setTimeout(() => navigate("/", { replace: true }), 1200);
+      const t = setTimeout(() => navigate("/terminal", { replace: true }), 1200);
       return () => clearTimeout(t);
     }
     if (!token) {
@@ -46,7 +46,7 @@ export default function KiteCallback() {
         const data = await completeUserKiteSession(token);
         if (cancelled) return;
         toast.success(`Broker connected${data?.kite_user_id ? ` · ${data.kite_user_id}` : ""}`);
-        navigate("/?kite=connected", { replace: true });
+        navigate("/terminal?kite=connected", { replace: true });
       } catch (e) {
         if (cancelled) return;
         const detail = friendlyKiteConnectError(e?.response?.data?.detail || e.message || "Could not complete Kite login");
