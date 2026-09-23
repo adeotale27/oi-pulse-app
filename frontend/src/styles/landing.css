@@ -1,0 +1,117 @@
+/* Striklenz marketing — light, premium, eye-catching. Dark terminal screens
+   pop against a light page. GPU-friendly transforms only. */
+
+.slz {
+  --slz-ink: #0b1220;  --slz-muted: #64748b;
+  --slz-emerald: #059669;
+  --slz-emerald-2: #10b981;
+  --slz-indigo: #4f46e5;
+  --slz-line: rgba(15, 23, 42, 0.08);
+  --slz-screen: #0b1220;
+  font-family: "Outfit", system-ui, sans-serif;
+}
+
+.slz-light {
+  color: var(--slz-ink);
+  background: #f6f9fc;
+  overflow-x: hidden;
+}
+
+.slz-mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+/* Aurora / mesh background */
+.slz-aurora {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0;
+}
+.slz-aurora::before, .slz-aurora::after {
+  content: ""; position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.5;
+}
+.slz-aurora::before {
+  width: 42rem; height: 42rem; left: -8rem; top: -10rem;
+  background: radial-gradient(circle at 30% 30%, rgba(16,185,129,0.55), transparent 60%);
+  animation: slzFloat 16s ease-in-out infinite;
+}
+.slz-aurora::after {
+  width: 38rem; height: 38rem; right: -8rem; top: 4rem;
+  background: radial-gradient(circle at 60% 40%, rgba(79,70,229,0.35), transparent 60%);
+  animation: slzFloat 20s ease-in-out infinite reverse;
+}
+@keyframes slzFloat {
+  0%,100% { transform: translate3d(0,0,0) scale(1); }
+  50% { transform: translate3d(20px,26px,0) scale(1.06); }
+}
+
+.slz-grid-dots {
+  background-image: radial-gradient(rgba(15,23,42,0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* 3D scene */
+.slz-scene { perspective: 1600px; }
+.slz-tilt {
+  transform: rotateY(-16deg) rotateX(7deg) rotateZ(0.5deg);
+  transform-style: preserve-3d;
+  transition: transform 0.5s ease;
+  will-change: transform;
+}
+.slz-tilt-soft { transform: rotateY(-9deg) rotateX(5deg); }
+.slz-scene:hover .slz-tilt { transform: rotateY(-8deg) rotateX(4deg); }
+@media (max-width: 900px) {
+  .slz-tilt, .slz-tilt-soft { transform: none !important; }
+  .slz-scene { perspective: none; }
+}
+
+/* Browser frame */
+.slz-browser {
+  border-radius: 16px; overflow: hidden;
+  background: var(--slz-screen);
+  border: 1px solid rgba(148,163,184,0.18);
+  box-shadow: 0 40px 80px -30px rgba(2,12,27,0.55), 0 12px 30px -12px rgba(2,12,27,0.35);
+}
+.slz-browser-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: #0f1a2b; border-bottom: 1px solid rgba(148,163,184,0.14);
+}
+.slz-dot { width: 11px; height: 11px; border-radius: 50%; }
+.slz-url {
+  flex: 1; margin-left: 8px; font-size: 11px; color: #94a3b8;
+  background: #0b1524; border: 1px solid rgba(148,163,184,0.14);
+  border-radius: 999px; padding: 5px 12px; text-align: center;
+}
+.slz-screen-body { padding: 16px; color: #e5edf7; }
+
+.slz-glass {
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--slz-line);
+}
+
+.slz-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  padding: 5px 11px; border-radius: 999px;
+}
+
+.slz-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 0 rgba(52,211,153,0.6); animation: slzPulse 1.6s infinite; }
+@keyframes slzPulse { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.55);} 70% { box-shadow: 0 0 0 8px rgba(52,211,153,0);} 100%{ box-shadow:0 0 0 0 rgba(52,211,153,0);} }
+
+.slz-num-flash { transition: color 0.25s ease; }
+
+/* OI bars */
+.slz-bar { border-radius: 3px; transition: height 0.6s cubic-bezier(.2,.8,.2,1), width 0.6s ease; }
+
+/* marquee ticker */
+.slz-marquee { display: flex; gap: 2.5rem; animation: slzMarquee 30s linear infinite; white-space: nowrap; }
+.slz-marquee:hover { animation-play-state: paused; }
+@keyframes slzMarquee { from { transform: translateX(0);} to { transform: translateX(-50%);} }
+
+.slz-reveal { opacity: 0; transform: translateY(22px); }
+.slz-reveal.in { opacity: 1; transform: none; transition: opacity 0.7s ease, transform 0.7s ease; }
+
+.slz-underline-accent { background: linear-gradient(90deg, var(--slz-emerald), var(--slz-indigo)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.slz-btn-primary {
+  background: linear-gradient(180deg, #10b981, #059669);
+  color: #fff; box-shadow: 0 10px 24px -8px rgba(5,150,105,0.6);
+}
+.slz-btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); }

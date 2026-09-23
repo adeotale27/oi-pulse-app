@@ -575,13 +575,15 @@ async def _guest_from_request(request: Request):
     tok = _extract_bearer(request, "x-guest-token")
     if not tok:
         return None
-    # Guests are only valid while public access is open.
-    open_, _ = await _get_public_access_state()
-    if not open_:
-        return None
     sess = await _find_one_capped(db.guest_sessions, {"_id": tok})
     if not sess:
         return None
+    # Guests are only valid while public access is open. Signed-in members
+    # (e.g. Google login) keep their session regardless of the public-door toggle.
+    if not sess.get("is_member"):
+        open_, _ = await _get_public_access_state()
+        if not open_:
+            return None
     if sess.get("revoked_at"):
         return None
     ip = _client_ip(request)
@@ -6575,6 +6577,330 @@ import global_markets_api
 global_markets_api.mount(api_router, require_desk_user=require_desk_user, require_admin=require_admin)
 import market_memory_api
 market_memory_api.mount(api_router, require_desk_user=require_desk_user)
+# ---------------------------------------------------------------------------
+# Striklenz platform layer: public site-config, admin integrations (Google OAuth
+# + Razorpay + broker registry), and Google sign-in (config-driven, admin-managed).
+# All secrets are encrypted at rest and NEVER returned to the client.
+# ---------------------------------------------------------------------------
+PLATFORM_CONFIG_ID = "striklenz_platform"
+
+DEFAULT_BROKERS = [
+    {"id": "zerodha", "name": "Zerodha", "enabled": True, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "funds", "pnl", "fno", "oauth"], "note": "Live"},
+    {"id": "upstox", "name": "Upstox", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "funds", "pnl", "fno", "oauth"], "note": "Coming soon"},
+    {"id": "angelone", "name": "Angel One", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "funds", "pnl", "fno", "oauth"], "note": "Coming soon"},
+    {"id": "dhan", "name": "Dhan", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "funds", "pnl", "fno"], "note": "Coming soon"},
+    {"id": "groww", "name": "Groww", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "pnl", "fno"], "note": "Coming soon"},
+    {"id": "fyers", "name": "Fyers", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "funds", "pnl", "fno", "oauth"], "note": "Coming soon"},
+    {"id": "5paisa", "name": "5paisa", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "pnl", "fno"], "note": "Coming soon"},
+    {"id": "icicidirect", "name": "ICICI Direct", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "funds", "pnl", "fno"], "note": "Coming soon"},
+    {"id": "kotak", "name": "Kotak Neo", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "funds", "pnl", "fno"], "note": "Coming soon"},
+    {"id": "aliceblue", "name": "Alice Blue", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "pnl", "fno"], "note": "Coming soon"},
+    {"id": "motilaloswal", "name": "Motilal Oswal", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "pnl", "fno"], "note": "Coming soon"},
+    {"id": "iifl", "name": "IIFL Securities", "enabled": False, "auth_type": "oauth",
+     "capabilities": ["positions", "holdings", "orders", "pnl", "fno"], "note": "Coming soon"},
+]
+
+DEFAULT_PRICING = {
+    "currency": "INR",
+    "free": {"price": 0, "label": "Free"},
+    "premium": {
+        "monthly": 999,
+        "quarterly": 2499,
+        "yearly": 7999,
+        "label": "Premium",
+        "billing_default": "monthly",
+    },
+}
+
+
+def _mask_secret(val: Optional[str]) -> Optional[str]:
+    if not val:
+        return None
+    return "set"
+
+
+async def _load_platform_config() -> dict:
+    if db is None:
+        return {}
+    try:
+        return await _find_one_capped(db.settings, {"_id": PLATFORM_CONFIG_ID}) or {}
+    except Exception:
+        return {}
+
+
+def _platform_pricing(doc: dict) -> dict:
+    pricing = dict(DEFAULT_PRICING)
+    stored = (doc or {}).get("pricing") or {}
+    if isinstance(stored, dict):
+        merged = {k: (dict(v) if isinstance(v, dict) else v) for k, v in DEFAULT_PRICING.items()}
+        for k, v in stored.items():
+            if isinstance(v, dict) and isinstance(merged.get(k), dict):
+                merged[k].update(v)
+            else:
+                merged[k] = v
+        pricing = merged
+    return pricing
+
+
+def _broker_overrides(doc: dict) -> dict:
+    raw = (doc or {}).get("brokers")
+    if isinstance(raw, dict):
+        return {k: v for k, v in raw.items() if isinstance(v, dict)}
+    if isinstance(raw, list):
+        return {b.get("id"): b for b in raw if isinstance(b, dict) and b.get("id")}
+    return {}
+
+
+def _platform_brokers(doc: dict) -> list:
+    overrides = _broker_overrides(doc)
+    out = []
+    for base in DEFAULT_BROKERS:
+        b = dict(base)
+        ov = overrides.get(b["id"])
+        if ov and "enabled" in ov:
+            b["enabled"] = bool(ov["enabled"])
+        out.append(b)
+    return out
+
+
+def _admin_brokers(doc: dict) -> list:
+    overrides = _broker_overrides(doc)
+    out = []
+    for base in DEFAULT_BROKERS:
+        b = dict(base)
+        ov = overrides.get(b["id"]) or {}
+        if "enabled" in ov:
+            b["enabled"] = bool(ov["enabled"])
+        b["client_id"] = _decrypt_safe(ov.get("client_id_enc"))
+        b["client_secret"] = _mask_secret(ov.get("client_secret_enc"))
+        b["redirect_uri"] = ov.get("redirect_uri") or ""
+        out.append(b)
+    return out
+
+
+def _decrypt_safe(enc: Optional[str]) -> Optional[str]:
+    if not enc:
+        return None
+    try:
+        return _fernet().decrypt(enc.encode()).decode()
+    except Exception:
+        return None
+
+
+@api_router.get("/public/site-config")
+async def public_site_config():
+    """Public marketing config — pricing, feature flags, broker registry. No secrets."""
+    doc = await _load_platform_config()
+    google = (doc or {}).get("google") or {}
+    razorpay = (doc or {}).get("razorpay") or {}
+    google_enabled = bool(google.get("enabled") and google.get("client_id_enc"))
+    razorpay_enabled = bool(razorpay.get("enabled") and razorpay.get("key_id_enc"))
+    return {
+        "app_name": APP_NAME,
+        "pricing": _platform_pricing(doc),
+        "features": {
+            "google_login_enabled": google_enabled,
+            "razorpay_enabled": razorpay_enabled,
+        },
+        "brokers": _platform_brokers(doc),
+    }
+
+
+@api_router.get("/admin/platform/config")
+async def admin_platform_config_get(_admin: bool = Depends(require_admin)):
+    doc = await _load_platform_config()
+    google = (doc or {}).get("google") or {}
+    razorpay = (doc or {}).get("razorpay") or {}
+    return {
+        "pricing": _platform_pricing(doc),
+        "brokers": _admin_brokers(doc),
+        "google": {
+            "enabled": bool(google.get("enabled")),
+            "client_id": _decrypt_safe(google.get("client_id_enc")),
+            "client_secret": _mask_secret(google.get("client_secret_enc")),
+            "redirect_uri": google.get("redirect_uri") or "",
+        },
+        "razorpay": {
+            "enabled": bool(razorpay.get("enabled")),
+            "key_id": _decrypt_safe(razorpay.get("key_id_enc")),
+            "key_secret": _mask_secret(razorpay.get("key_secret_enc")),
+        },
+    }
+
+
+@api_router.post("/admin/platform/config")
+async def admin_platform_config_set(payload: dict, _admin: bool = Depends(require_admin)):
+    if db is None:
+        raise HTTPException(503, "DB unavailable")
+    doc = await _load_platform_config()
+    update: dict = {}
+
+    if isinstance(payload.get("pricing"), dict):
+        update["pricing"] = payload["pricing"]
+
+    if isinstance(payload.get("brokers"), list):
+        bstore = dict(_broker_overrides(doc))
+        for b in payload["brokers"]:
+            if not (isinstance(b, dict) and b.get("id")):
+                continue
+            bid = b["id"]
+            cur = dict(bstore.get(bid) or {})
+            if "enabled" in b:
+                cur["enabled"] = bool(b["enabled"])
+            if "client_id" in b:
+                cur["client_id_enc"] = _fernet().encrypt(str(b["client_id"]).encode()).decode() if b.get("client_id") else None
+            if b.get("client_secret") and b.get("client_secret") != "set":
+                cur["client_secret_enc"] = _fernet().encrypt(str(b["client_secret"]).encode()).decode()
+            if "redirect_uri" in b:
+                cur["redirect_uri"] = str(b.get("redirect_uri") or "")
+            bstore[bid] = cur
+        update["brokers"] = bstore
+
+    if isinstance(payload.get("google"), dict):
+        g = payload["google"]
+        gcfg = dict((doc or {}).get("google") or {})
+        if "enabled" in g:
+            gcfg["enabled"] = bool(g["enabled"])
+        if g.get("client_id"):
+            gcfg["client_id_enc"] = _fernet().encrypt(str(g["client_id"]).encode()).decode()
+        if g.get("client_secret") and g.get("client_secret") != "set":
+            gcfg["client_secret_enc"] = _fernet().encrypt(str(g["client_secret"]).encode()).decode()
+        if "redirect_uri" in g:
+            gcfg["redirect_uri"] = str(g.get("redirect_uri") or "")
+        update["google"] = gcfg
+
+    if isinstance(payload.get("razorpay"), dict):
+        r = payload["razorpay"]
+        rcfg = dict((doc or {}).get("razorpay") or {})
+        if "enabled" in r:
+            rcfg["enabled"] = bool(r["enabled"])
+        if r.get("key_id"):
+            rcfg["key_id_enc"] = _fernet().encrypt(str(r["key_id"]).encode()).decode()
+        if r.get("key_secret") and r.get("key_secret") != "set":
+            rcfg["key_secret_enc"] = _fernet().encrypt(str(r["key_secret"]).encode()).decode()
+        update["razorpay"] = rcfg
+
+    if update:
+        await db.settings.update_one({"_id": PLATFORM_CONFIG_ID}, {"$set": update}, upsert=True)
+    return {"ok": True}
+
+
+@api_router.get("/auth/google/login-url")
+async def google_login_url(redirect_uri: str = Query(""), state: str = Query("")):
+    """Return the Google OAuth consent URL if admin has configured credentials."""
+    doc = await _load_platform_config()
+    google = (doc or {}).get("google") or {}
+    client_id = _decrypt_safe(google.get("client_id_enc"))
+    if not (google.get("enabled") and client_id):
+        return {"configured": False}
+    ru = (google.get("redirect_uri") or "").strip() or redirect_uri
+    if not ru:
+        return {"configured": False}
+    from urllib.parse import urlencode
+    params = {
+        "client_id": client_id,
+        "redirect_uri": ru,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "include_granted_scopes": "true",
+        "prompt": "select_account",
+        "state": state or secrets.token_urlsafe(12),
+    }
+    return {
+        "configured": True,
+        "url": "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params),
+        "redirect_uri": ru,
+    }
+
+
+@api_router.post("/auth/google/exchange")
+async def google_exchange(payload: dict, request: Request):
+    """Exchange a Google auth code for a Striklenz member session."""
+    doc = await _load_platform_config()
+    google = (doc or {}).get("google") or {}
+    client_id = _decrypt_safe(google.get("client_id_enc"))
+    client_secret = _decrypt_safe(google.get("client_secret_enc"))
+    if not (google.get("enabled") and client_id and client_secret):
+        raise HTTPException(400, "Google sign-in is not configured")
+    code = (payload or {}).get("code")
+    redirect_uri = (payload or {}).get("redirect_uri") or (google.get("redirect_uri") or "")
+    if not code or not redirect_uri:
+        raise HTTPException(400, "Missing code/redirect_uri")
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            tok = await client.post("https://oauth2.googleapis.com/token", data={
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            })
+            tok.raise_for_status()
+            access = tok.json().get("access_token")
+            if not access:
+                raise HTTPException(400, "Google token exchange failed")
+            info = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {access}"},
+            )
+            info.raise_for_status()
+            profile = info.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("google_exchange failed: %s", e)
+        raise HTTPException(400, "Google sign-in failed. Please try again.")
+
+    email = (profile.get("email") or "").lower().strip()
+    name = profile.get("name") or (email.split("@")[0] if email else "Member")
+    if not email:
+        raise HTTPException(400, "Google account has no email")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        await db.members.update_one(
+            {"_id": email},
+            {"$set": {"email": email, "name": name, "picture": profile.get("picture"),
+                      "last_login_at": now_iso, "provider": "google"},
+             "$setOnInsert": {"created_at": now_iso, "is_premium": False}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning("member upsert failed: %s", e)
+
+    ip = _client_ip(request)
+    ua = request.headers.get("user-agent", "")
+    guest = await _admit_guest_immediate(name, ip, ua, reason="google_login")
+    try:
+        await db.guest_sessions.update_one(
+            {"_id": guest["token"]},
+            {"$set": {"is_member": True, "member_email": email, "name": name}},
+        )
+    except Exception:
+        pass
+    return {
+        "token": guest["token"],
+        "name": name,
+        "email": email,
+        "expires_in_seconds": guest.get("expires_in_seconds"),
+        "expires_at": guest.get("expires_at"),
+    }
+
+
+
 app.include_router(api_router)
 
 

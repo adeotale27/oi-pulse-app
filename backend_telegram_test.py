@@ -15,7 +15,7 @@ import sys
 import time
 
 # Use the external preview URL for regression testing
-EXTERNAL_URL = "https://strike-preview-1.preview.emergentagent.com"
+EXTERNAL_URL = "https://striklenz-live.preview.emergentagent.com"
 BASE_URL = EXTERNAL_URL
 
 # For local testing (not used in this test as we need to test external URL)
