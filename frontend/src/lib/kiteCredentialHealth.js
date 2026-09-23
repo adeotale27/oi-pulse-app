@@ -26,6 +26,6 @@ export function isKiteCredentialProblem(status) {
 }
 
 export function kiteCredentialTitle(status) {
-  if (!status?.has_kite_credentials) return "Kite not connected";
-  return "Kite token issue";
+  if (!status?.has_kite_credentials) return "Market feed not connected";
+  return "Market feed session issue";
 }

@@ -106,34 +106,34 @@ export default function AdminLogin() {
     <AuthShell mode="admin">
       <div
         className={[
-          "w-full max-w-md rounded-2xl border bg-white p-7 text-slate-900 shadow-2xl shadow-black/40 sm:p-8",
-          cardState === "error" ? "border-rose-400 ring-2 ring-rose-200" : "border-white/20",
-          cardState === "success" ? "ring-2 ring-emerald-300" : "",
+          "oi-auth-login-card w-full max-w-md rounded-2xl border p-7 text-white shadow-2xl shadow-black/50 sm:p-8",
+          cardState === "error" ? "border-rose-400/80 ring-2 ring-rose-300/30" : "border-emerald-300/35",
+          cardState === "success" ? "ring-2 ring-emerald-300/60" : "",
         ].join(" ")}
       >
         <div className="mb-6 flex items-center gap-3">
           <OiPulseLogo className="h-11 w-11" />
           <div>
-            <h2 className="text-xl font-semibold tracking-tight">Admin sign in</h2>
-            <p className="text-sm text-slate-500">Manage OI, guests, and desk settings</p>
+            <h2 className="text-xl font-semibold tracking-tight">Welcome</h2>
+            <p className="text-sm text-slate-300">Login to access your trading dashboard</p>
           </div>
         </div>
 
         <form onSubmit={doLogin} className="space-y-4" data-testid="admin-login-form">
           <div>
-            <Label className="text-[11px] uppercase tracking-wider text-slate-500">Login ID</Label>
+            <Label className="text-[11px] uppercase tracking-wider text-slate-300">Login ID</Label>
             <Input
               data-testid="admin-login-username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Administrator"
               autoComplete="username"
-              className="mt-1 h-11"
+              className="oi-auth-login-input mt-1 h-11"
             />
           </div>
 
           <div>
-            <Label className="text-[11px] uppercase tracking-wider text-slate-500">Password</Label>
+            <Label className="text-[11px] uppercase tracking-wider text-slate-300">Password</Label>
             <div className="relative mt-1">
               <Input
                 data-testid="admin-login-password"
@@ -142,12 +142,12 @@ export default function AdminLogin() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 autoComplete="current-password"
-                className="h-11 pr-16"
+                className="oi-auth-login-input h-11 pr-16"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                className="absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded px-2 py-1 text-xs text-slate-300 hover:bg-white/10 hover:text-white"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -158,7 +158,7 @@ export default function AdminLogin() {
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
             <label
-              className="flex items-center gap-2 text-sm text-slate-600"
+              className="flex items-center gap-2 text-sm text-slate-300"
               title="Stay signed in on this machine (same IP) for 24 hours"
             >
               <input
@@ -173,7 +173,7 @@ export default function AdminLogin() {
             <button
               type="button"
               data-testid="continue-as-guest"
-              className="text-sm font-medium text-emerald-700 underline-offset-2 hover:underline"
+              className="text-sm font-medium text-emerald-300 underline-offset-2 hover:underline"
               onClick={async () => {
                 try {
                   const { data } = await api.get("/auth/state");
@@ -188,12 +188,12 @@ export default function AdminLogin() {
                     navigate("/", { replace: true });
                     return;
                   }
-                  toast.error("Ask Admin to give access", {
+                  toast.message("Ask Admin to give access", {
                     description: "Public access is currently off. Ask the admin to turn Public access ON, then try again.",
                     duration: 6000,
                   });
                 } catch (_) {
-                  toast.error("Ask Admin to give access");
+                  toast.message("Ask Admin to give access");
                 }
               }}
             >

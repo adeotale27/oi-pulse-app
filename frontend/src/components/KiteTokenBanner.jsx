@@ -16,8 +16,8 @@ export default function KiteTokenBanner({ status, isAdmin = false, onOpenCreds }
   const phase = market.phase;
   const preOpen = phase === "pre_open" || phase === "open";
   const title = !status.has_kite_credentials
-    ? "Kite not connected — live OI will not update"
-    : "Kite token looks dead — reconnect before the session";
+    ? "Market feed not connected — live OI will not update"
+    : "Market feed session needs attention — reconnect before the session";
 
   const detail = !status.has_kite_credentials
     ? "Add API key + access token in Credentials. Access tokens usually expire each morning (~6 AM IST)."
@@ -25,7 +25,7 @@ export default function KiteTokenBanner({ status, isAdmin = false, onOpenCreds }
       ? String(status.last_error).slice(0, 160)
       : preOpen
         ? "Fix credentials now so NIFTY / SENSEX are warm at the open."
-        : "Reconnect Kite to resume live snapshots.";
+        : "Reconnect the market feed to resume live snapshots.";
 
   return (
     <div

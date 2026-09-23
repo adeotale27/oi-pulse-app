@@ -318,10 +318,10 @@ export default function Header({
   }
   // Admin-only: when Kite is live, show the connected Zerodha user id on the button.
   const kiteUserId = isAdmin && status?.kite_user_id ? String(status.kite_user_id) : null;
-  const kiteBtnLabel = kiteUserId || "Kite API";
+  const kiteBtnLabel = kiteUserId || "Market Feed";
   const kiteBtnTitle = kiteUserId
-    ? `Kite live as ${kiteUserId} — open credentials`
-    : "Connect / refresh Kite API credentials";
+    ? `Live market feed as ${kiteUserId} — open credentials`
+    : "Connect / refresh market feed credentials";
   // Match Admin button / desk emerald green when showing the logged-in user id.
   const kiteBtnCls = kiteUserId
     ? "rounded-sm h-8 border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400 font-semibold"
@@ -870,7 +870,7 @@ export default function Header({
               <span
                 data-testid="offline-hint-chip"
                 className="hidden sm:inline-flex text-[10px] font-mono-data text-center text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
-                title="Kite API key required for live updates. Connect via Kite API."
+                title="Market feed credentials are required for live updates."
               >
                 Needs API key
               </span>
@@ -1206,7 +1206,7 @@ export default function Header({
                 ? "bg-slate-900 text-white hover:bg-slate-800"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
-            title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings: Public access, Admin configuration, Kite API, Fresh Pull"}
+            title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings: Public access, Admin configuration, market feed, Fresh Pull"}
           >
             <Settings2 className="w-4 h-4" />
             <span className="sr-only">Settings</span>

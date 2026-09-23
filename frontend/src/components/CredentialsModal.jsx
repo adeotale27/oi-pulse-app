@@ -174,30 +174,30 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
       const w = window.open(url, "_blank", "noopener,noreferrer");
       if (!w) {
         try { await navigator.clipboard.writeText(url); } catch { /* noop */ }
-        toast.error("Popup blocked. Kite login URL copied — paste it in a new tab.");
+        toast.error("Popup blocked. Broker login URL copied — paste it in a new tab.");
       }
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Could not open Kite login");
+      toast.error(err?.response?.data?.detail || "Could not open broker login");
     }
   };
 
   const submit = async () => {
     if (genMode) {
       if (!requestToken.trim()) {
-        toast.error("Paste the request_token from the Kite login redirect URL");
+        toast.error("Paste the request_token from the broker login redirect URL");
         return;
       }
       setSaving(true);
       try {
         const req = extractRequestToken(requestToken);
         if (!req) {
-          toast.error("Paste the request_token from the Kite login redirect URL");
+          toast.error("Paste the request_token from the broker login redirect URL");
           setSaving(false);
           return;
         }
         if (keyStored && secretStored && !apiKey.trim() && !apiSecret.trim()) {
           const r = await refreshKiteSession(req);
-          toast.success(`LIVE mode active. Kite user: ${r.user_id || "ok"}`);
+          toast.success(`LIVE mode active. User: ${r.user_id || "ok"}`);
           onSaved?.();
           onOpenChange(false);
           return;
@@ -210,7 +210,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
             request_token: req,
             remember: true,
           });
-          toast.success(`LIVE mode active. Kite user: ${r.data.user_id}`);
+          toast.success(`LIVE mode active. User: ${r.data.user_id}`);
           setApiKey("");
           setApiSecret("");
           onSaved?.();
@@ -220,7 +220,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
         if ((keyStored || apiKey.trim()) && (secretStored || apiSecret.trim())) {
           await persistKeySecretIfTyped();
           const r = await refreshKiteSession(req);
-          toast.success(`LIVE mode active. Kite user: ${r.user_id || "ok"}`);
+          toast.success(`LIVE mode active. User: ${r.user_id || "ok"}`);
           onSaved?.();
           onOpenChange(false);
           return;
@@ -273,7 +273,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-4 h-4" />
-            Zerodha KiteConnect Credentials
+            Broker Connection Credentials
           </DialogTitle>
           <DialogDescription>
             API key and secret are saved encrypted once. Each trading day, click login, paste the
@@ -336,7 +336,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
                 stored={secretStored && !apiSecret}
                 hint={null}
                 onClear={clearApiSecret}
-                placeholder="from your Kite Connect app"
+                placeholder="from your broker app"
               />
               <div>
                 <Label className="text-xs uppercase tracking-wider text-slate-500">Request Token</Label>
@@ -344,7 +344,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
                   data-testid="input-request-token"
                   value={requestToken}
                   onChange={(e) => setRequestToken(e.target.value)}
-                  placeholder="paste request_token or the whole Kite URL"
+                  placeholder="paste request_token or the whole broker URL"
                   className="font-mono-data mt-1"
                   autoComplete="off"
                 />
@@ -440,10 +440,10 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
               data-testid="btn-kite-signout"
               disabled={saving}
               className="rounded-sm border-rose-200 text-rose-800 hover:bg-rose-50 hover:text-rose-900"
-              title="Wipe vaulted Kite key/secret/token and go offline"
+              title="Wipe vaulted broker key/secret/token and go offline"
               onClick={async () => {
                 const ok = window.confirm(
-                  `Sign out of Kite / broker?\n\nThis clears the saved API key, secret, and access token on this server and switches ${APP_NAME} to offline. You can connect again anytime.`,
+                  `Sign out of broker?\n\nThis clears the saved API key, secret, and access token on this server and switches ${APP_NAME} to offline. You can connect again anytime.`,
                 );
                 if (!ok) return;
                 setSaving(true);
@@ -468,7 +468,7 @@ export default function CredentialsModal({ open, onOpenChange, onSaved }) {
               }}
             >
               <LogOut className="w-3.5 h-3.5 mr-1.5" />
-              Sign out of Kite
+              Sign out of broker
             </Button>
           )}
         </div>

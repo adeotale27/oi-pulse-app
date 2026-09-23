@@ -1,7 +1,7 @@
 const KITE_DUMP_TIMEOUT =
-  "Kite dump took too long — tap Refresh, wait, then Enable again (first load can take a minute)";
+  "Market feed took too long — tap Refresh, wait, then Enable again (first load can take a minute)";
 const MI_TIMEOUT =
-  "Market intelligence took too long. Tap Refresh — this feed is stored news, not a Kite dump.";
+  "Market intelligence took too long. Tap Refresh — this feed is stored news, not a live market feed.";
 
 function requestPath(e) {
   return `${e?.config?.url || ""} ${e?.config?.baseURL || ""}`;

@@ -10,6 +10,7 @@ import { UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import AuthShell from "@/components/AuthShell";
+import MaintenanceScreen from "@/components/MaintenanceScreen";
 
 /**
  * AuthGate — three modes:
@@ -140,7 +141,7 @@ export default function AuthGate({ children }) {
       if (isTransientHttpError(err)) {
         let last = null;
         try { last = window.__oi_last_auth_state; } catch (_) { /* noop */ }
-        if (last && (last.is_admin || last.is_guest)) {
+        if (last?.is_admin) {
           setState({ loading: false, ...last });
           return;
         }
@@ -178,13 +179,13 @@ export default function AuthGate({ children }) {
       setState((s) => {
         if (!s.loading) return s;
         const stored = storedDeskSession();
-        if (stored) {
+        if (stored?.is_admin) {
           return {
             loading: false,
             requires_login: false,
             public_access_open: true,
             is_admin: !!stored.is_admin,
-            is_guest: !!stored.is_guest,
+            is_guest: false,
             needs_guest_name: false,
           };
         }
@@ -415,18 +416,17 @@ export default function AuthGate({ children }) {
   }
 
   if (state.auth_unavailable) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#061018] px-6">
-        <div className="text-sm text-slate-300">Desk is busy — not signed out.</div>
-        <button
-          type="button"
-          className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm text-white"
-          onClick={() => { setState((s) => ({ ...s, loading: true, auth_unavailable: false })); refresh(); }}
-        >
-          Retry
-        </button>
-      </div>
-    );
+    return <MaintenanceScreen retrying={state.loading} onRetry={() => {
+      setState((s) => ({ ...s, loading: true, auth_unavailable: false }));
+      refresh();
+    }} />;
+  }
+
+  if (state.maintenance_mode && !state.is_admin) {
+    return <MaintenanceScreen retrying={state.loading} onRetry={() => {
+      setState((s) => ({ ...s, loading: true }));
+      refresh();
+    }} />;
   }
 
   if (state.ip_blocked && !state.is_admin) {
@@ -458,12 +458,12 @@ export default function AuthGate({ children }) {
   if (state.needs_guest_name || state.public_access_open) {
     return (
       <AuthShell mode="guest">
-        <div className="w-full max-w-md rounded-2xl border border-white/20 bg-white p-7 text-slate-900 shadow-2xl shadow-black/40 sm:p-8">
+        <div className="oi-auth-login-card w-full max-w-md rounded-2xl border border-emerald-300/35 p-7 text-white shadow-2xl shadow-black/50 sm:p-8">
           <div className="mb-6 flex items-center gap-3">
             <OiPulseLogo className="h-11 w-11" />
             <div>
-              <h2 className="text-xl font-semibold tracking-tight">Guest access</h2>
-              <p className="text-sm text-slate-500">
+              <h2 className="text-xl font-semibold tracking-tight">Welcome to StrikLenz</h2>
+              <p className="text-sm text-slate-300">
                 {state.guest_require_approval === false
                   ? "Enter your full name to open the desk"
                   : "Request read-only entry to the desk"}
@@ -473,9 +473,9 @@ export default function AuthGate({ children }) {
 
           <form onSubmit={doGuest} className="space-y-4" data-testid="guest-form">
             <div>
-              <Label className="text-[11px] uppercase tracking-wider text-slate-500">Full name</Label>
+              <Label className="text-[11px] uppercase tracking-wider text-slate-300">Full name</Label>
               {state.suggested_guest_name ? (
-                <p className="mb-1.5 text-xs text-emerald-700" data-testid="guest-welcome-back">
+                <p className="mb-1.5 text-xs text-emerald-300" data-testid="guest-welcome-back">
                   Welcome back — we remembered your name from this device.
                 </p>
               ) : null}
@@ -486,7 +486,7 @@ export default function AuthGate({ children }) {
                 placeholder="e.g. Rahul Sharma"
                 autoFocus
                 disabled={!!pendingRequest}
-                className="mt-1 h-11"
+                className="oi-auth-login-input mt-1 h-11"
               />
             </div>
 
@@ -552,16 +552,16 @@ export default function AuthGate({ children }) {
               </Button>
             )}
 
-            <p className="text-center text-xs text-slate-500">
+            <p className="text-center text-xs text-slate-300">
               {state.guest_require_approval === false
                 ? "Your name is recorded. You get the guest pages immediately. Blocked networks cannot enter."
                 : "New guests need admin approval. Returning guests on this network enter immediately when the same name was approved before."}
             </p>
           </form>
 
-          <div className="mt-5 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+          <div className="mt-5 border-t border-white/10 pt-4 text-center text-xs text-slate-300">
             Admin?{" "}
-            <Link to="/admin" className="font-medium text-emerald-700 hover:underline">
+            <Link to="/admin" className="font-medium text-emerald-300 hover:underline">
               Sign in here
             </Link>
           </div>
