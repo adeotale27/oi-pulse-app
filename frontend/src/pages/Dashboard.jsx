@@ -3154,9 +3154,15 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="text-slate-500 inline-flex items-center gap-2">
-                    Auto-refresh every {Math.round(pollMs / 1000)}s
+                    {status?.market?.is_market_open === true
+                      ? `Auto-refresh every ${Math.round(pollMs / 1000)}s`
+                      : "Auto-refresh stopped"}
                     <span className="inline-flex items-center rounded-sm bg-white border border-slate-200 px-1.5 py-0.5 font-mono-data text-emerald-800 dark:bg-slate-900 dark:border-slate-700 dark:text-emerald-300">
-                      {status?.mode === "kite" ? "Live" : "Offline"}
+                      {status?.market?.is_market_open === false
+                        ? "Market closed"
+                        : status?.mode === "kite"
+                          ? "Live"
+                          : "Offline"}
                     </span>
                   </div>
                 </div>

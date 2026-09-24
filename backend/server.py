@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 
 # Delay motor client creation until startup to avoid heavy connection objects during import.
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import AutoReconnect, ServerSelectionTimeoutError
 
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
 from ws_close import close_ws_quietly, ws_client_gone
@@ -217,7 +218,13 @@ def _pw_hash(password: str, salt: bytes, iterations: int = 600_000) -> str:
 
 async def _verify_admin_password(password: str) -> bool:
     """Check password against DB-stored hash if it exists, else env-provided override."""
-    doc = await db.settings.find_one({"_id": "admin_credentials"})
+    if db is None:
+        raise HTTPException(503, "Database is unavailable. Please retry in a moment.")
+    try:
+        doc = await db.settings.find_one({"_id": "admin_credentials"})
+    except (AutoReconnect, ServerSelectionTimeoutError) as exc:
+        logger.error("Admin password lookup failed because MongoDB is unavailable: %s", exc)
+        raise HTTPException(503, "Database is unavailable. Please retry in a moment.") from exc
     if doc and doc.get("password_hash") and doc.get("salt_hex"):
         salt = bytes.fromhex(doc["salt_hex"])
         iters = int(doc.get("pbkdf2_iters") or 120_000)
@@ -3185,13 +3192,17 @@ async def auth_login(payload: LoginIn, request: Request):
             ttl_min = int(tracker.settings["admin_session_ttl_minutes"])
     except Exception:
         pass
-    await db.admin_sessions.insert_one({
-        "_id": token,
-        "created_at": now_utc.isoformat(),
-        "ip": ip,
-        "user_agent": request.headers.get("user-agent", "")[:200],
-        "ttl_seconds": max(60, ttl_min * 60),
-    })
+    try:
+        await db.admin_sessions.insert_one({
+            "_id": token,
+            "created_at": now_utc.isoformat(),
+            "ip": ip,
+            "user_agent": request.headers.get("user-agent", "")[:200],
+            "ttl_seconds": max(60, ttl_min * 60),
+        })
+    except (AutoReconnect, ServerSelectionTimeoutError) as exc:
+        logger.error("Admin session creation failed because MongoDB is unavailable: %s", exc)
+        raise HTTPException(503, "Database is unavailable. Please retry in a moment.") from exc
     remember_token = None
     if payload.remember_me:
         remember_token = secrets.token_urlsafe(32)
@@ -3232,7 +3243,13 @@ async def auth_remember_login(payload: RememberLoginIn, request: Request):
     tok = (payload.remember_token or "").strip()
     if not tok:
         raise HTTPException(401, "Missing remember token")
-    doc = await db.admin_remember_devices.find_one({"_id": tok})
+    if db is None:
+        raise HTTPException(503, "Database is unavailable. Please retry in a moment.")
+    try:
+        doc = await db.admin_remember_devices.find_one({"_id": tok})
+    except (AutoReconnect, ServerSelectionTimeoutError) as exc:
+        logger.error("Remember-token lookup failed because MongoDB is unavailable: %s", exc)
+        raise HTTPException(503, "Database is unavailable. Please retry in a moment.") from exc
     if not doc:
         raise HTTPException(401, "Remember token invalid")
     try:
@@ -3259,14 +3276,18 @@ async def auth_remember_login(payload: RememberLoginIn, request: Request):
     session_tok = secrets.token_urlsafe(32)
     now_utc = datetime.now(timezone.utc)
     ttl_min = int((tracker.settings or {}).get("admin_session_ttl_minutes", 480) if tracker else 480)
-    await db.admin_sessions.insert_one({
-        "_id": session_tok,
-        "created_at": now_utc.isoformat(),
-        "ip": ip,
-        "user_agent": request.headers.get("user-agent", "")[:200],
-        "ttl_seconds": max(60, ttl_min * 60),
-        "from_remember": True,
-    })
+    try:
+        await db.admin_sessions.insert_one({
+            "_id": session_tok,
+            "created_at": now_utc.isoformat(),
+            "ip": ip,
+            "user_agent": request.headers.get("user-agent", "")[:200],
+            "ttl_seconds": max(60, ttl_min * 60),
+            "from_remember": True,
+        })
+    except (AutoReconnect, ServerSelectionTimeoutError) as exc:
+        logger.error("Remember-session creation failed because MongoDB is unavailable: %s", exc)
+        raise HTTPException(503, "Database is unavailable. Please retry in a moment.") from exc
     market_exp = _session_market_expiry_utc(now_utc)
     return {
         "ok": True, "token": session_tok, "is_admin": True, "username": ADMIN_USERNAME,
@@ -7146,6 +7167,10 @@ async def _ensure_mongo_indexes():
             [("index", 1), ("expiry", 1), ("timestamp", 1)],
             unique=True,
             name="uniq_index_expiry_ts",
+        )
+        await db.oi_snapshots.create_index(
+            [("index", 1), ("timestamp", 1)],
+            name="idx_index_timestamp",
         )
         await db.oi_snapshots.create_index([("index", 1), ("created_at", 1)])
         await db.oi_snapshots.create_index("created_at")

@@ -12,6 +12,7 @@ import StrikLenzRobot from "@/components/StrikLenzRobot";
 import AuthFeatureFooter from "@/components/AuthFeatureFooter";
 import { fetchExtras, fetchTickers } from "@/lib/api";
 import useLiveDemo, { isMarketOpenNow } from "@/hooks/useLiveDemo";
+import { APP_VERSION_LABEL } from "@/lib/appVersion";
 import "@/styles/landing.css";
 
 /**
@@ -29,6 +30,7 @@ export default function AdminLogin() {
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [cardState, setCardState] = useState("idle"); // idle | busy | success | error
+  const dedicatedAdminHost = typeof window !== "undefined" && window.location.hostname === "admin.striklenz.com";
 
   useEffect(() => {
     (async () => {
@@ -153,12 +155,14 @@ export default function AdminLogin() {
   ));
 
   return (
-    <div className="slz relative flex min-h-screen flex-col overflow-hidden bg-slate-950 text-white">
+    <div className="slz admin-login-page relative flex min-h-screen flex-col overflow-hidden bg-slate-950 text-white">
       <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: "radial-gradient(48rem 30rem at 20% 0%, rgba(16,185,129,0.22), transparent), radial-gradient(40rem 28rem at 95% 100%, rgba(16,185,129,0.14), transparent)" }} />
 
       {/* Live ticker */}
-      <div className="relative z-10 flex items-center gap-4 overflow-hidden border-b border-white/10 bg-black/30 px-5 py-2 slz-mono text-xs">
-        {headerTick.map(([label, d]) => {
+      <div className="admin-login-ticker relative z-10 overflow-hidden border-b border-white/10 bg-black/30 px-5 py-2 slz-mono text-xs">
+        <div className="admin-login-ticker-track">
+          {[0, 1].map((copy) => <div className="admin-login-ticker-copy" key={copy}>
+          {headerTick.map(([label, d]) => {
           const up = (d?.changePct ?? 0) >= 0;
           return (
             <span key={label} className="flex items-center gap-1.5 text-slate-200">
@@ -169,9 +173,11 @@ export default function AdminLogin() {
           );
         })}
         <span className={`ml-auto flex items-center gap-1 ${marketOpen ? "text-emerald-400" : "text-slate-400"}`}><span className={marketOpen ? "slz-live-dot" : "h-1.5 w-1.5 rounded-full bg-slate-500"} /> {marketOpen ? "MARKET LIVE" : "MARKET CLOSED"}</span>
+        </div>)}
+        </div>
       </div>
 
-      <div className="relative z-10 mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-5 py-8 sm:px-8 lg:grid-cols-[1.04fr_.96fr] lg:gap-14 lg:px-10">
+      <div className="admin-login-main relative z-10 mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-5 py-8 sm:px-8 lg:grid-cols-[1.04fr_.96fr] lg:gap-14 lg:px-10">
         {/* Live market scene */}
         <div className="relative hidden min-h-[35rem] lg:block">
           <div className="mb-5 flex items-center gap-2">
@@ -245,14 +251,14 @@ export default function AdminLogin() {
         </div>
 
         {/* Login card */}
-        <div className="mx-auto w-full max-w-md">
+        <div className="admin-login-card-shell mx-auto w-full max-w-md">
           <div className="mb-6 flex items-center gap-2 lg:hidden">
             <OiPulseLogo className="h-9 w-9" pulse={false} />
             <span className="text-xl font-bold">Strik<span className="text-emerald-400">lenz</span></span>
           </div>
           <div
             className={[
-              "relative w-full overflow-hidden rounded-[1.75rem] border bg-slate-900/80 p-6 text-white shadow-[0_30px_90px_-35px_rgba(0,0,0,.9)] backdrop-blur-xl sm:p-8",
+              "admin-login-card relative w-full overflow-hidden rounded-[1.75rem] border bg-slate-900/80 p-6 text-white shadow-[0_30px_90px_-35px_rgba(0,0,0,.9)] backdrop-blur-xl sm:p-8",
               cardState === "error" ? "border-rose-400/80 ring-2 ring-rose-300/30" : "border-white/15",
               cardState === "success" ? "ring-2 ring-emerald-300/60" : "",
             ].join(" ")}
@@ -323,7 +329,7 @@ export default function AdminLogin() {
                   />
                   <span>Remember me (24h)</span>
                 </label>
-                <button
+                {!dedicatedAdminHost && <button
                   type="button"
                   data-testid="continue-as-guest"
                   className="text-xs font-semibold text-emerald-300 underline-offset-2 hover:underline"
@@ -351,13 +357,13 @@ export default function AdminLogin() {
                   }}
                 >
                   Continue as guest
-                </button>
+                </button>}
               </div>
 
               <Button
                 data-testid="admin-login-submit"
                 type="submit"
-                className="slz-btn-primary h-12 w-full rounded-xl text-sm font-semibold shadow-[0_12px_30px_-10px_rgba(16,185,129,.75)]"
+                className="admin-login-submit slz-btn-primary h-12 w-full rounded-xl text-sm font-semibold shadow-[0_12px_30px_-10px_rgba(16,185,129,.75)]"
                 disabled={busy}
               >
                 <span className="inline-flex items-center justify-center gap-2">
@@ -373,7 +379,7 @@ export default function AdminLogin() {
           </div>
         </div>
       </div>
-      <AuthFeatureFooter />
+      <AuthFeatureFooter version={APP_VERSION_LABEL} />
     </div>
   );
 }
