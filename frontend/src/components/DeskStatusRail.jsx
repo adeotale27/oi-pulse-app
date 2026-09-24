@@ -95,9 +95,11 @@ export default function DeskStatusRail({
           {truth.badge}
         </span>
         {mobileTicker && truth.detail ? (
-          <span className="opacity-95 shrink-0 whitespace-nowrap font-semibold" data-testid="data-truth-detail">
-            {truth.detail}
-          </span>
+          truth.mode === "LIVE" && truth.refreshInSeconds != null ? (
+            <span className="opacity-95 shrink-0 whitespace-nowrap font-semibold" data-testid="data-truth-detail">
+              {truth.refreshInSeconds}s
+            </span>
+          ) : null
         ) : null}
         <span
           className={`hidden md:inline font-mono-data font-semibold tracking-tight shrink-0 ${mobileTicker || truth.mode === "LIVE" ? "md:hidden" : ""}`}

@@ -56,6 +56,10 @@ def test_get_oi_change_lookbacks_are_gathered():
     assert "_load_instruments" not in src
 
 
+def test_history_has_index_for_time_window_queries():
+    assert '[("index", 1), ("timestamp", 1)]' in SERVER
+
+
 def test_get_config_does_not_reload_mongo():
     i = SERVER.index("async def get_config")
     j = SERVER.index("\n@api_router.", i + 1)
@@ -71,6 +75,15 @@ def test_poll_loop_does_not_reload_settings_every_tick():
 def test_auth_state_survives_missing_db():
     src = _fn(SERVER, "auth_state")
     assert "if db is None" in src
+
+
+def test_admin_auth_returns_service_unavailable_when_mongo_is_down():
+    verify = _fn(SERVER, "_verify_admin_password")
+    remember = _fn(SERVER, "auth_remember_login")
+    assert "HTTPException(503" in verify
+    assert "HTTPException(503" in remember
+    assert "ServerSelectionTimeoutError" in verify
+    assert "ServerSelectionTimeoutError" in remember
 
 
 def test_positions_kite_call_is_capped():

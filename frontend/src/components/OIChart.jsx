@@ -44,6 +44,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
   const showGlow = isPositionMarkGlowActive(keepPositionMarkGlowAfterClose);
   const indexName = indexProp || current?.index;
   const chartExpiry = expiryProp || current?.expiry;
+  const chartAnimationId = `${currentTime || current?.timestamp || ""}|${prevTime || previous?.timestamp || ""}|${showOI ? "oi" : "change"}`;
   const posMarks = useMemo(() => {
     if (!book || book.kite_connected === false || book.token_issue) return [];
     return openOiMarks(book?.positions, indexName, chartExpiry);
@@ -188,7 +189,7 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
         onMouseLeave={() => setHoverMark(null)}
         onLostPointerCapture={endPressHold}
       >
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" debounce={50}>
           <BarChart
             key={chartKey || undefined}
             data={data}
@@ -281,20 +282,20 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
                 {/* Show OI ON → Sensibull-style stacked bars: solid CURRENT (or PREVIOUS-if-smaller)
                     base + a small "Increase" striped segment OR "Decrease" outlined segment on top.
                     Total height = max(now, prev). Legend has 6 items (Put OI · Increase · Decrease · Call OI · Increase · Decrease). */}
-                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_base : undefined} />
-                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_up : undefined} />
-                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_down : undefined} />
-                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_base : undefined} />
-                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_up : undefined} />
-                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_down : undefined} />
+                <Bar dataKey="pe_base" stackId="pe" name="Put OI" fill={PUT_GREEN} isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.pe_base : undefined} />
+                <Bar dataKey="pe_up" stackId="pe" name="Put Increase" fill="url(#pe-stripes)" isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.pe_up : undefined} />
+                <Bar dataKey="pe_down" stackId="pe" name="Put Decrease" fill="rgba(255,255,255,0)" stroke={PUT_GREEN} strokeWidth={1.5} isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.pe_down : undefined} />
+                <Bar dataKey="ce_base" stackId="ce" name="Call OI" fill={CALL_RED} isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.ce_base : undefined} />
+                <Bar dataKey="ce_up" stackId="ce" name="Call Increase" fill="url(#ce-stripes)" isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.ce_up : undefined} />
+                <Bar dataKey="ce_down" stackId="ce" name="Call Decrease" fill="rgba(255,255,255,0)" stroke={CALL_RED} strokeWidth={1.5} isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.ce_down : undefined} />
               </>
             ) : (
               <>
                 {/* Show OI OFF → render ONLY the CHANGE (signed delta) bars. Positive = up = increase,
                     Negative = down = decrease. y=0 baseline for clarity. */}
                 <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1} />
-                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.pe_delta : undefined} />
-                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationDuration={280} animationEasing="ease-out" shape={hasMarks ? markShape.ce_delta : undefined} />
+                <Bar dataKey="pe_delta" name="Put OI Change" fill={PUT_GREEN} isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.pe_delta : undefined} />
+                <Bar dataKey="ce_delta" name="Call OI Change" fill={CALL_RED} isAnimationActive animationId={chartAnimationId} animationDuration={420} animationEasing="ease-out" shape={hasMarks ? markShape.ce_delta : undefined} />
               </>
             )}
           </BarChart>

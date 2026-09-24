@@ -86,6 +86,9 @@ export default function DataTruthStrip({
         {mobileTicker ? (
           <div className="min-w-0 flex-1 overflow-hidden">
             {mobileTicker}
+            {truth.mode === "LIVE" && truth.refreshInSeconds != null ? (
+              <span className="ml-2 shrink-0 whitespace-nowrap font-semibold">{truth.refreshInSeconds}s</span>
+            ) : null}
           </div>
         ) : null}
         {truth.mode !== "LAST_SESSION" && truth.detail ? (

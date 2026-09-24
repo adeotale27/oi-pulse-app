@@ -74,7 +74,21 @@ function App() {
         <Suspense fallback={<BootFallback />}>
         <Routes>
           {isAdminHost ? (
-            <Route path="*" element={<AdminLogin />} />
+            <>
+              <Route path="/" element={<AdminLogin />} />
+              <Route path="/admin" element={<AdminLogin />} />
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route
+                path="/dashboard/*"
+                element={
+                  <AuthGate>
+                    <Dashboard />
+                  </AuthGate>
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </>
           ) : (
             <>
               <Route path="/" element={<PublicEntry />} />

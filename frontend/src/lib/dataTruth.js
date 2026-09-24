@@ -103,6 +103,7 @@ export function buildDataTruth({
       badge: "LIVE",
       asOfLabel: asOfClock ? `Live data as of ${asOfClock} IST` : "Live data as of —",
       detail: `Market Open · ${ageNote}`,
+      refreshInSeconds: left,
       tone: "live",
     };
   }

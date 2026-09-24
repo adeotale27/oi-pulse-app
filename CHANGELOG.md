@@ -1,5 +1,29 @@
 # Changelog
 
+## V14.55 — 2026-09-24
+
+Restored smooth OI and OI-change bar animation with a short update-aware transition keyed to snapshot timestamps, avoiding unnecessary replay during unchanged chart rerenders.
+
+## V14.54 — 2026-09-24
+
+Updated Motor and PyMongo for the Python 3.14 runtime and made admin authentication return a clear temporary database-unavailable response when MongoDB cannot complete a connection.
+
+## V14.53 — 2026-09-24
+
+Removed the guest-login action from the dedicated admin login, made the mobile admin login fit the viewport without page scrolling, added a version footer, and enabled a continuous mobile market ticker loop.
+
+## V14.52 — 2026-09-24
+
+Made OI and OI-change bars redraw immediately instead of replaying multiple animated Recharts layers on every live poll, while preserving the Sensibull-style green put/red call and increase/decrease treatments.
+
+## V14.51 — 2026-09-24
+
+Improved mobile admin tools layering, reduced the live status rail to seconds on phones, and clearly shows that OI auto-refresh is stopped when the market is closed.
+
+## V14.50 — 2026-09-24
+
+Fixed the dedicated admin host route so a successful sign-in reaches the authenticated dashboard instead of rendering the login page again.
+
 ## V14.49 — 2026-09-24
 
 Kept configured ADR rows visible while closed, showing CLOSED and last-known data instead of incorrectly prompting for configuration. Closed instruments are skipped only by the polling path.

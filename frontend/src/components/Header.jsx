@@ -521,7 +521,7 @@ export default function Header({
   return (
     <header
       data-testid="dashboard-header"
-      className={`oi-header w-full relative z-50 ${headerRail ? "oi-header-slim" : "oi-header-desk"}`}
+      className={`oi-header w-full relative ${adminMenuOpen || mobileToolsOpen ? "z-[100]" : "z-50"} ${headerRail ? "oi-header-slim" : "oi-header-desk"}`}
       data-density={headerRail ? "slim" : "desk"}
     >
       {(adminMenuOpen || mobileToolsOpen) && typeof document !== "undefined" && createPortal(
@@ -663,7 +663,7 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="mobile-admin-tools"
-          className="relative z-[50] md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
+          className="relative z-[101] md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
         >
           <div className="w-full flex items-center justify-between gap-2 px-0.5">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
