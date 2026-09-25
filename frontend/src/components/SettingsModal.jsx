@@ -535,7 +535,7 @@ export default function SettingsModal({
                   value={[settings.alert_toast_opacity ?? 90]}
                   onValueChange={(v) => setSettings({ ...settings, alert_toast_opacity: v[0] })}
                 />
-                <p className="mt-1 text-[10px] text-slate-500">Affects ordinary desktop alerts only. Mobile keeps a readable bottom tray; Huge OI Shift stays separate.</p>
+                <p className="mt-1 text-[10px] text-slate-500">Controls ordinary desktop alerts and the mobile alert tray. Huge OI Shift stays separate.</p>
                 <div className="pt-2 border-t border-slate-100">
                   <Label className="text-xs uppercase tracking-wider text-slate-500">Floating popup opacity</Label>
                   <div className="mt-2 space-y-2.5">

@@ -104,9 +104,6 @@ export default function MarketIntelCard({
   const skipClick = useRef(false);
 
   const movers = filterCashHeavyMovers(outside?.movers || []);
-  const news = outside?.news || [];
-  const corp = outside?.corporate || [];
-  const breadth = outside?.breadth && typeof outside.breadth === "object" ? outside.breadth : {};
   const sections = parseGuideSections(guide?.guide);
   const headline = summaryLine(outside, guide);
   const quoteHint = outside?.quote_source && outside.quote_source !== "none"
@@ -114,6 +111,9 @@ export default function MarketIntelCard({
     : "cash quotes wait on Kite — OI tape still live";
 
   const nodes = useMemo(() => {
+    const news = outside?.news || [];
+    const corp = outside?.corporate || [];
+    const breadth = outside?.breadth && typeof outside.breadth === "object" ? outside.breadth : {};
     const breadthRows = Object.entries(breadth).filter(
       ([id, b]) => b && (b.n || b.adv != null) && (id === "NIFTY" || id === "BANKNIFTY"),
     );
@@ -250,7 +250,9 @@ export default function MarketIntelCard({
         </div>
       ) : empty("Ask AI or wait one poll — coach uses OI, book, VIX, journal, and today's booked %."),
     };
-  }, [movers, news, corp, breadth, compact, oi, book, adjust, journal, sections.do, sections.dont]);
+  }, [movers, compact, oi, book, adjust, journal, sections.do, sections.dont,
+    outside?.briefing, outside?.heavy_count, outside?.note, outside?.news,
+    outside?.corporate, outside?.breadth]);
 
   const visible = order.filter((id) => nodes[id] != null);
 

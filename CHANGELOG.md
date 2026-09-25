@@ -1,5 +1,93 @@
 # Changelog
 
+## V14.77 — 2026-09-25
+
+Refreshed the dark palette from muted blue-gray to a modern deep navy with brighter cyan/emerald accents, clearer surface hierarchy, and improved dark-mode text contrast.
+
+## V14.76 — 2026-09-25
+
+Refined the dark theme to use softened blue-green desk surfaces, stronger but muted separation, readable App text, and matching dark alert panels instead of near-black surfaces.
+
+## V14.75 — 2026-09-25
+
+Made phone Admin tools tile labels compact and overflow-safe so text stays inside each tile on narrow screens.
+
+## V14.74 — 2026-09-25
+
+Reserved the full first row of the phone Admin tools grid for the Admin tools title and close button, moving the toggle tiles to the following row.
+
+## V14.73 — 2026-09-25
+
+Made Indicative popup and Public landing use matching compact ON/OFF tiles on phone and tablet admin tools, eliminating the oversized Indicative popup row.
+
+## V14.72 — 2026-09-25
+
+Compacted the phone admin-tools sheet, reduced maintenance and account-action spacing, and changed the Indicative price popup control to a compact ON/OFF tile matching the Public landing control style.
+
+## V14.71 — 2026-09-25
+
+Improved mobile and tablet admin-tool spacing with consistent two- and three-column grids, full-width controls, aligned headings, and clearer button sizing.
+
+## V14.70 — 2026-09-25
+
+Centered the Global Markets settings header, improved mobile admin-tool spacing, made the indicative-price popup a consistent tile toggle, and opened Broker & Payments in a new tab.
+
+## V14.69 — 2026-09-25
+
+Made API Configuration summary and filters collapsible on mobile, kept Global Markets settings open when optional ADR configuration fails, and renamed the related notification to Global Markets.
+
+## V14.68 — 2026-09-25
+
+Made the frontend lint command warning-free and expanded the canonical AI change checklist with package, dependency, supply-chain, and rollback risk controls.
+
+## V14.67 — 2026-09-25
+
+Added an ESLint 9 flat configuration, separated Jest suites from standalone checks, configured the frontend `@/` Jest alias and shared browser test setup, and made the frontend build script work on Windows shells.
+
+## V14.66 — 2026-09-25
+
+Added the canonical change-maintenance checklist for all human, AI, and agent changes. It defines frontend/backend file locations, meaningful comment rules, stale-comment updates, tests, documentation, versioning, protected-data checks, and shipping steps.
+
+## V14.65 — 2026-09-25
+
+Renamed the external Broker & Payments settings entry and the in-dashboard Admin Configs entry. Wired the configured ordinary-alert opacity to desktop, mobile, and hidden-alert inbox surfaces, with regression coverage for alert routing.
+
+## V14.64 — 2026-09-25
+
+Corrected stale frontend test expectations and clarified the split between standalone Node assertion tests and Jest tests so full validation reports are accurate.
+
+## V14.63 — 2026-09-25
+
+Added a protected live-data change checklist covering OI, Positions, Straddle, CAS, snapshots, and broker-data ownership. Renamed the admin settings menu entry to Broker & Payments and retained API Configuration data between modal opens while bounding recent telemetry loading.
+
+## V14.62 — 2026-09-25
+
+Made the maintenance market strip a full-width continuous loop and retained the last successful VIX/GIFT NIFTY values across temporary extras-feed failures, with faster recovery polling and broader payload field handling.
+
+## V14.61 — 2026-09-25
+
+Fixed the mobile dashboard crash caused by a missing `useCallback` import and added regression coverage for immediate fresh OI polling after a Kite token update.
+
+## V14.60 — 2026-09-25
+
+Made a successful Kite token update trigger an immediate live OI refresh and coordinated dashboard status, chart, positions, and ticker reloads instead of waiting for the next polling interval.
+
+## V14.59 — 2026-09-25
+
+Fixed the maintenance ticker row so all market quotes stay on one horizontal line and loop left-to-right reliably, including when stylesheet ordering or hot reload leaves layout utilities stale.
+
+## V14.58 — 2026-09-25
+
+Made the maintenance page use a compact looping NIFTY/SENSEX strip and the admin-login footer layout, removed its duplicate quote row, and added configurable visibility and drag ordering for the Global Markets session timeline.
+
+## V14.57 — 2026-09-25
+
+Made the market state live from NSE pre-open at 09:00 while keeping OI polling separately gated until the exact 09:15 session open, with holiday-aware pre-open wake-up and no overnight or post-close status polling.
+
+## V14.56 — 2026-09-25
+
+Kept dashboard status polling active outside market hours so the desk transitions into live mode automatically at the configured open, removed silent straddle expiry substitution, and made straddle history session filtering use configured market hours.
+
 ## V14.55 — 2026-09-24
 
 Restored smooth OI and OI-change bar animation with a short update-aware transition keyed to snapshot timestamps, avoiding unnecessary replay during unchanged chart rerenders.

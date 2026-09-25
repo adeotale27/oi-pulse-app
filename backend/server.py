@@ -15,7 +15,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone, timedelta, date, time as dtime
+from datetime import datetime, timezone, timedelta, date
 
 # Delay motor client creation until startup to avoid heavy connection objects during import.
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -1944,7 +1944,7 @@ async def admin_disable_index(
 
 
 def _session_open_utc_for_anchor(anchor: datetime) -> datetime:
-    """Return today's NSE session-open (09:14 IST) in UTC for the anchor's IST day.
+    """Return today's NSE session-open (09:15 IST) in UTC for the anchor's IST day.
 
     Change windows must never reach into the previous trading day — that made
     Full-Day / pre-open deltas look like "yesterday's OI pulled into today".
@@ -2643,11 +2643,9 @@ def _filter_straddle_session_docs(docs: list, trade_date: date) -> list:
 
     Drops overnight / prior-close points that would otherwise draw a diagonal
     gap on the intraday straddle chart. Allows a 1-minute pre-open poll tick
-    (09:14) and clamps it to 09:15 so the series starts at market open.
+    (09:15) and clamps pre-open data to 09:15 so the series starts at market open.
     """
     start_utc, end_utc = session_window_utc(trade_date)
-    # session_window_utc end is close-1min from poll close; prefer explicit 15:40 display close.
-    end_utc = datetime.combine(trade_date, dtime(15, 40), IST).astimezone(timezone.utc)
     preopen_utc = start_utc - timedelta(minutes=1)
     out = []
     for doc in docs or []:
@@ -2681,22 +2679,13 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
         query["created_at"] = {"$gte": cutoff}
     docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=(minutes * 120) if minutes else 5000)
 
-    # Expiry mismatch (UI pin vs sampler) — still return today's series so the
-    # chart is not empty / 2-point sparse while ATM rolls.
-    if not docs and expiry:
-        relaxed = {k: v for k, v in query.items() if k != "expiry"}
-        docs = await db.straddle_samples.find(relaxed, {"_id": 0}).sort("ts", 1).to_list(length=5000)
-
-    # If empty (weekend/holiday after 09:14, or missing samples), fall back to previous trading day.
+    # If empty (weekend/holiday after 09:15, or missing samples), fall back to previous trading day.
     if not docs and date is None:
         previous_date = _previous_trading_day(datetime.now(IST))
         if previous_date.isoformat() != query.get("trade_date"):
             query["trade_date"] = previous_date.isoformat()
             query.pop("created_at", None)
             docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=5000)
-            if not docs and expiry:
-                relaxed = {k: v for k, v in query.items() if k != "expiry"}
-                docs = await db.straddle_samples.find(relaxed, {"_id": 0}).sort("ts", 1).to_list(length=5000)
             target_date = previous_date
 
     # Intraday chart only — never return overnight / prior-close points.

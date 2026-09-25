@@ -137,15 +137,17 @@ def test_pre_market_cas_and_display_open_are_distinct():
     assert is_pre_market(fri(9, 15)) is False
     assert is_display_session_open(fri(9, 14)) is False
     assert is_display_session_open(fri(9, 15)) is True
-    assert is_market_open(fri(9, 14)) is True  # OI poll window
+    assert is_market_open(fri(9, 14)) is False
     assert needs_index_quote_overlay(fri(9, 7)) is True
     assert needs_index_quote_overlay(fri(10, 0)) is False
 
     assert market_status(fri(9, 7))["phase"] == "pre_market"
-    assert market_status(fri(9, 7))["is_market_open"] is False
+    assert market_status(fri(9, 7))["is_market_open"] is True
+    assert market_status(fri(9, 7))["is_oi_polling"] is False
     st_open = market_status(fri(9, 15))
     assert st_open["phase"] == "open"
     assert st_open["is_market_open"] is True
+    assert st_open["is_oi_polling"] is True
 
     assert is_cas_phase(fri(15, 15)) is True
     assert is_cas_iep_window(fri(15, 19)) is False

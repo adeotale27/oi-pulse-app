@@ -192,7 +192,7 @@ function Gauge({ pct }) {
 }
 
 export default function TradeJournalModal({ open, onOpenChange, privacy = false }) {
-  const now = useMemo(() => new Date(), [open]);
+  const now = useMemo(() => new Date(), []);
   const [year, setYear] = useState(() => now.getFullYear());
   const [month, setMonth] = useState(() => now.getMonth() + 1);
   const [tab, setTab] = useState("calendar");

@@ -3,7 +3,7 @@ NSE market hours helper (IST timezone).
 
 Defaults aligned with Index F&O / CAS rules (effective 2026-08-03):
   • Display open  : 09:15 IST
-  • Poll open     : 09:14 IST (1 min pre-open so 15-min compare works at 09:15)
+  • Poll open     : 09:15 IST (regular market open)
   • Poll close    : 15:41 IST (1 min after Index F&O close at 15:40)
 
 Admin Settings can override open/close via configure_hours().
@@ -18,7 +18,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 # Module defaults — mutated by configure_hours() when admin saves settings.
 _DISPLAY_OPEN = dtime(9, 15)
-_POLL_OPEN = dtime(9, 14)
+_POLL_OPEN = dtime(9, 15)
 _POLL_CLOSE = dtime(15, 41)  # Index F&O closes 15:40; keep one tick after
 _PRE_MARKET_OPEN = dtime(9, 0)
 _CAS_PHASE_START = dtime(15, 15)
@@ -701,7 +701,9 @@ def market_status(dt: datetime = None) -> dict:
     )
 
     return {
-        "is_market_open": open_,
+        # The UI is live from NSE pre-open (09:00), while OI polling remains
+        # separately gated by is_oi_polling at the regular 09:15 open.
+        "is_market_open": bool(open_ or is_pre_market(dt)),
         "is_oi_polling": poll_open_flag,
         "is_pre_market": is_pre_market(dt),
         "is_cas_iep_window": is_cas_iep_window(dt),

@@ -200,7 +200,7 @@ export default function SellCandidatesPanel({
     indexName,
     step,
     vrp: useVrp ? vrp : null,
-  }), [current, previous, vixNow, vixOpen, indexName, step, vrp, useVrp, lastComputedAt]);
+  }), [current, previous, vixNow, vixOpen, indexName, step, vrp, useVrp]);
 
   const { verdict, candidates, smile, dealer, ivRank, vix, walls, expiryStale } = result;
   const atm = current?.atm;

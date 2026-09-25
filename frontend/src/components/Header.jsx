@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import BigClock from "@/components/BigClock";
 import GiftSessionsModal from "@/components/GiftSessionsModal";
@@ -53,18 +53,32 @@ function ErrorLogBadge({ count }) {
   );
 }
 
-function IepPopupSwitch({ on, onChange, testId, className = "" }) {
+function AdminToggleTile({ label, on, onChange, testId, className = "" }) {
   return (
-    <label
-      className={`flex items-center justify-between gap-2 px-2 py-1.5 text-sm cursor-pointer ${className}`}
+    <button
+      type="button"
+      aria-pressed={!!on}
+      onClick={() => onChange?.(!on)}
+      className={`flex min-h-9 items-center justify-between gap-1.5 rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-left text-[10px] font-medium cursor-pointer dark:border-slate-700 dark:bg-slate-900 ${className}`}
       data-testid={testId}
     >
-      <span className="text-xs font-medium">Indicative price popup</span>
-      <Switch
-        checked={!!on}
-        onCheckedChange={(ck) => onChange?.(!!ck)}
-      />
-    </label>
+      <span className="truncate text-[10px] font-medium">{label}</span>
+      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${on ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
+        {on ? "ON" : "OFF"}
+      </span>
+    </button>
+  );
+}
+
+function IepPopupSwitch({ on, onChange, testId, className = "" }) {
+  return (
+    <AdminToggleTile
+      label="Indicative"
+      on={on}
+      onChange={onChange}
+      testId={testId}
+      className={className}
+    />
   );
 }
 function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 30_000, className, compact = false }) {
@@ -229,10 +243,9 @@ export default function Header({
   // Auth state — Dashboard owns /auth/state. When assumedAdmin, only listen
   // for shared broadcasts (no duplicate poll).
   {
-    let alive = true;
-    const apply = (data) => {
-      if (alive && data) setAuthState(data);
-    };
+    const apply = useCallback((data) => {
+      if (data) setAuthState(data);
+    }, []);
     const load = async () => {
       if (assumedAdmin) return;
       try {
@@ -252,10 +265,9 @@ export default function Header({
       const onState = (e) => apply(e?.detail);
       window.addEventListener("oi-admin-auth-state", onState);
       return () => {
-        alive = false;
         window.removeEventListener("oi-admin-auth-state", onState);
       };
-    }, []);
+    }, [apply]);
   }
 
   useEffect(() => {
@@ -278,7 +290,7 @@ export default function Header({
   const showHeaderPnl = isAdmin;
   const [errorUnseen, setErrorUnseen] = useState(0);
 
-  const loadErrorUnseen = async () => {
+  const loadErrorUnseen = useCallback(async () => {
     if (!isAdmin) {
       setErrorUnseen(0);
       return;
@@ -289,7 +301,7 @@ export default function Header({
     } catch {
       /* keep last count */
     }
-  };
+  }, [isAdmin]);
 
   useQuiescentAwarePolling(loadErrorUnseen, 60_000, [isAdmin], {
     status,
@@ -307,7 +319,7 @@ export default function Header({
     };
     window.addEventListener(ERROR_LOG_UNSEEN_EVENT, onUnseen);
     return () => window.removeEventListener(ERROR_LOG_UNSEEN_EVENT, onUnseen);
-  }, [isAdmin]);
+  }, [isAdmin, loadErrorUnseen]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -663,9 +675,9 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="mobile-admin-tools"
-          className="relative z-[101] md:hidden px-3 pb-3 flex flex-wrap gap-2 border-b border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
+          className="relative z-[101] md:hidden grid grid-cols-3 gap-1 border-b border-emerald-200 bg-white px-1.5 pb-2 pt-1.5 shadow-lg ring-1 ring-emerald-700/15 dark:border-emerald-800 dark:bg-slate-900 [&>button]:!min-h-9 [&>button]:w-full [&>button]:min-w-0 [&>button]:justify-center [&>button]:overflow-hidden [&>button]:whitespace-nowrap [&>button]:px-0.5 [&>button]:text-[8px] [&>button>svg]:shrink-0 [&>button>svg]:mr-0.5"
         >
-          <div className="w-full flex items-center justify-between gap-2 px-0.5">
+          <div className="col-span-3 flex w-full items-center justify-between gap-2 px-0.5">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
               Admin tools
             </div>
@@ -680,33 +692,31 @@ export default function Header({
             </button>
           </div>
           <IepPopupSwitch
-            className="w-full rounded-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 min-h-11"
+            className="w-full"
             on={casIepPopup}
             onChange={onToggleCasIepPopup}
             testId="mobile-toggle-iep-popup"
           />
-          <Button
-            data-testid="btn-mobile-public-landing"
-            variant="outline"
-            size="sm"
-            className="rounded-sm min-h-11"
-            onClick={() => onTogglePublicLanding?.(!publicLandingEnabled)}
-          >
-            Public landing: {publicLandingEnabled ? "ON" : "OFF"}
-          </Button>
+          <AdminToggleTile
+            label="Public"
+            on={publicLandingEnabled}
+            onChange={(next) => onTogglePublicLanding?.(next)}
+            testId="btn-mobile-public-landing"
+            className="w-full"
+          />
           <Button
             data-testid="btn-mobile-platform-settings"
             variant="outline"
             size="sm"
             className="rounded-sm min-h-11"
-            onClick={() => window.location.assign("https://striklenz.com/admin/settings")}
+            onClick={() => window.open("https://striklenz.com/admin/settings", "_blank", "noopener,noreferrer")}
           >
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Admin / Settings
+            Broker
           </Button>
           <Button data-testid="btn-mobile-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Admin configuration
+            Admin
           </Button>
           <Button
             data-testid="btn-mobile-index-manager"
@@ -716,7 +726,7 @@ export default function Header({
             onClick={() => openAdminSheet(onOpenIndexManager)}
           >
             <Layers className="w-4 h-4 mr-1.5" />
-            Index management
+            Index
           </Button>
           <Button data-testid="btn-mobile-kite" variant="outline" size="sm" className={`${kiteBtnCls} min-h-11`} onClick={onOpenCreds} title={kiteBtnTitle}>
             <KeyRound className={`w-4 h-4 mr-1.5 ${kiteUserId ? "text-emerald-600" : ""}`} />
@@ -726,15 +736,15 @@ export default function Header({
           </Button>
           <Button data-testid="btn-mobile-desk-ai-keys" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenDeskAiKeys)}>
             <Sparkles className="w-4 h-4 mr-1.5" />
-            Desk AI keys
+            AI keys
           </Button>
           <Button data-testid="btn-mobile-mi-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenMiSettings)}>
             <Newspaper className="w-4 h-4 mr-1.5" />
-            Mkt Intel settings
+            Intel
           </Button>
           <Button data-testid="btn-mobile-adr-settings" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenAdrSettings)}>
             <Globe2 className="w-4 h-4 mr-1.5" />
-            Global Markets
+            Global
           </Button>
           <Button
             data-testid="btn-mobile-fresh-pull"
@@ -744,7 +754,7 @@ export default function Header({
             className="rounded-sm min-h-11 bg-rose-600 hover:bg-rose-700 text-white"
           >
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
-            {refreshing ? "Refreshing…" : "Fresh Pull"}
+            {refreshing ? "Refreshing…" : "Fresh"}
           </Button>
           <Button data-testid="btn-mobile-upload" size="sm" onClick={onOpenUpload} className="rounded-sm min-h-11 bg-sky-600 hover:bg-sky-700 text-white">
             <UploadCloud className="w-4 h-4 mr-1.5" />
@@ -756,7 +766,7 @@ export default function Header({
           </Button>
           <Button data-testid="btn-mobile-journal" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenJournal)}>
             <BookOpen className="w-4 h-4 mr-1.5" />
-            Trade journal
+            Journal
           </Button>
           <Button
             data-testid="btn-mobile-error-log"
@@ -766,12 +776,12 @@ export default function Header({
             onClick={() => openAdminSheet(onOpenErrorLog)}
           >
             <ScrollText className="w-4 h-4 mr-1.5" />
-            Error log
+            Errors
             <ErrorLogBadge count={errorUnseen} />
           </Button>
           <Button data-testid="btn-mobile-api-configuration" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenApiConfiguration)}>
             <ServerCog className="w-4 h-4 mr-1.5" />
-            API Configuration
+            API
           </Button>
           <Button data-testid="btn-mobile-sounds" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={onOpenSounds}>
             <Volume2 className="w-4 h-4 mr-1.5" />
@@ -781,7 +791,7 @@ export default function Header({
             <Download className="w-4 h-4 mr-1.5" />
             CSV
           </Button>
-          <div className="w-full basis-full">
+          <div className="col-span-3 w-full">
             <AdminControls
               variant="panel"
               assumedAdmin={isAdmin}
@@ -1034,7 +1044,7 @@ export default function Header({
                   }}
                 >
                   <Settings2 className="w-4 h-4" />
-                  Admin / Settings
+                  Broker & Payments
                 </DropdownMenuItem>
                 <DropdownMenuCheckboxItem
                   checked={!!publicLandingEnabled}
@@ -1106,7 +1116,7 @@ export default function Header({
                   }}
                 >
                   <Settings2 className="w-4 h-4" />
-                  Admin configuration
+                  Admin Configs
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-index-manager"
@@ -1248,7 +1258,7 @@ export default function Header({
                 ? "bg-slate-900 text-white hover:bg-slate-800"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             }`}
-            title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings: Public access, Admin configuration, market feed, Fresh Pull"}
+            title={mobileToolsOpen ? "Settings open — tap again to close" : "Settings: Public access, Broker & Payments, market feed, Fresh Pull"}
           >
             <Settings2 className="w-4 h-4" />
             <span className="sr-only">Settings</span>
@@ -1259,39 +1269,37 @@ export default function Header({
       {isAdmin && mobileToolsOpen && (
         <div
           data-testid="tablet-admin-tools"
-          className="relative z-[50] hidden md:flex lg:hidden px-3 pb-3 flex-wrap gap-2 border-t border-emerald-200 dark:border-emerald-800 pt-2 bg-white shadow-lg ring-1 ring-emerald-700/15 dark:bg-slate-900"
+          className="relative z-[50] hidden grid-cols-3 gap-2.5 border-t border-emerald-200 bg-white px-3 pb-3 pt-2 shadow-lg ring-1 ring-emerald-700/15 dark:border-emerald-800 dark:bg-slate-900 md:grid [&>button]:w-full [&>button]:min-w-0 [&>button]:justify-center [&>button]:text-[11px]"
         >
-          <div className="w-full text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-0.5">
+          <div className="col-span-3 w-full px-0.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
             Admin tools
           </div>
           <IepPopupSwitch
-            className="w-full rounded-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+            className="w-full"
             on={casIepPopup}
             onChange={onToggleCasIepPopup}
             testId="tablet-toggle-iep-popup"
           />
-          <Button
-            data-testid="btn-tablet-public-landing"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            onClick={() => onTogglePublicLanding?.(!publicLandingEnabled)}
-          >
-            Public landing: {publicLandingEnabled ? "ON" : "OFF"}
-          </Button>
+          <AdminToggleTile
+            label="Public landing"
+            on={publicLandingEnabled}
+            onChange={(next) => onTogglePublicLanding?.(next)}
+            testId="btn-tablet-public-landing"
+            className="w-full"
+          />
           <Button
             data-testid="btn-tablet-platform-settings"
             variant="outline"
             size="sm"
             className="rounded-sm"
-            onClick={() => window.location.assign("https://striklenz.com/admin/settings")}
+            onClick={() => window.open("https://striklenz.com/admin/settings", "_blank", "noopener,noreferrer")}
           >
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Admin / Settings
+            Broker & Payments
           </Button>
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Admin configuration
+            Admin Configs
           </Button>
           <Button
             data-testid="btn-tablet-index-manager"

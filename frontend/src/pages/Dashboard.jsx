@@ -84,7 +84,7 @@ import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert, unlockSounds } from "@/lib/sounds";
 import { flushHiddenAlerts, surfaceAlert } from "@/lib/alertSurface";
-import { applyUploadedHolidays, isTradingDayIST } from "@/lib/holidays";
+import { applyUploadedHolidays, isTradingDayIST, nextTradingDayIST, todayIST } from "@/lib/holidays";
 import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
@@ -595,33 +595,6 @@ export default function Dashboard() {
   const openKiteCreds = authState.is_admin ? () => setCredsOpen(true) : startUserKite;
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const qs = new URLSearchParams(window.location.search);
-    const token = qs.get("request_token");
-    if (!token || authState.is_admin || !authState.is_guest) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await completeUserKiteSession(token);
-        if (cancelled) return;
-        toast.success(`Zerodha connected${data?.kite_user_id ? ` · ${data.kite_user_id}` : ""}`);
-        qs.delete("request_token");
-        qs.delete("status");
-        qs.delete("action");
-        const next = qs.toString();
-        window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
-        setActiveTab("positions");
-        notifyKiteConnected();
-        refreshPositionsBook().catch(() => {});
-        loadStatus();
-      } catch (e) {
-        if (!cancelled) toast.error(friendlyKiteConnectError(e?.response?.data?.detail || e.message || "Could not complete Kite login"));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [authState.is_admin, authState.is_guest]);
-
-  useEffect(() => {
     const onSaved = (e) => {
       const settings = e?.detail;
       if (!settings || typeof settings !== "object") return;
@@ -863,6 +836,33 @@ export default function Dashboard() {
     }
     // Auth state is owned by AuthGate / Header — do not re-fetch on every OI poll.
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const qs = new URLSearchParams(window.location.search);
+    const token = qs.get("request_token");
+    if (!token || authState.is_admin || !authState.is_guest) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await completeUserKiteSession(token);
+        if (cancelled) return;
+        toast.success(`Zerodha connected${data?.kite_user_id ? ` · ${data.kite_user_id}` : ""}`);
+        qs.delete("request_token");
+        qs.delete("status");
+        qs.delete("action");
+        const next = qs.toString();
+        window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+        setActiveTab("positions");
+        notifyKiteConnected();
+        refreshPositionsBook().catch(() => {});
+        loadStatus();
+      } catch (e) {
+        if (!cancelled) toast.error(friendlyKiteConnectError(e?.response?.data?.detail || e.message || "Could not complete Kite login"));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authState.is_admin, authState.is_guest, loadStatus]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1193,7 +1193,7 @@ export default function Dashboard() {
         loadOI();
       }
     }
-  }, [oiSettings.hugeShiftWindows, ensureExpiryForIndex, applyOiPayload]);
+  }, [oiSettings.hugeShiftWindows, ensureExpiryForIndex, applyOiPayload, istToday]);
 
   // Load expiries for the active index (hydrate from warm cache when available).
   useEffect(() => {
@@ -1526,8 +1526,34 @@ export default function Dashboard() {
 
   useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 8000 });
 
-  useQuiescentAwarePolling(loadStatus, Math.max(pollMs, 30000), [loadStatus, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-status", delayMs: 800 });
-  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_market_open], { status, dedupeKey: "dash-oi", delayMs: 0 });
+  // Status polling stops after close. A single pre-open wake-up lets the
+  // browser observe the 09:00 live/pre-market transition without polling
+  // throughout the overnight period.
+  useEffect(() => {
+    const now = new Date();
+    const today = todayIST();
+    const tradingDate = isTradingDayIST(today) ? today : nextTradingDayIST(today);
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
+    const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
+    const todayPreOpen = tradingDate === today && hour * 60 + minute < 9 * 60;
+    const targetDate = todayPreOpen ? today : nextTradingDayIST(today);
+    const target = new Date(`${targetDate}T03:30:00.000Z`); // 09:00 IST
+    const delay = Math.max(0, target.getTime() - Date.now());
+    const id = window.setTimeout(() => loadStatus(), delay);
+    return () => window.clearTimeout(id);
+  }, [loadStatus, status?.market?.is_market_open]);
+
+  useQuiescentAwarePolling(loadStatus, 15000, [loadStatus], { status, dedupeKey: "dash-status", delayMs: 800 });
+  const oiStatus = status
+    ? { ...status, market: { ...status.market, is_market_open: status.market?.is_oi_polling === true } }
+    : status;
+  useQuiescentAwarePolling(loadOI, pollMs, [loadOI, pollMs, status?.market?.is_oi_polling], { status: oiStatus, dedupeKey: "dash-oi", delayMs: 0 });
   // Force an IMMEDIATE refetch whenever the user picks a different timeframe,
   // index, or expiry. Skip the first mount (poller already loads) and skip when
   // the expiry picker merely catches up to a snapshot we already painted.
@@ -1937,7 +1963,7 @@ export default function Dashboard() {
       setFlash(true);
       setTimeout(() => setFlash(false), 1800);
     }
-  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, push, changeAlertPct, previous, status?.market, pushActivity, indexInAlertFocus]);
+  }, [changeSummary, lastPulledAt, activeIndex, timeframeLabel, push, changeAlertPct, previous, status, pushActivity, indexInAlertFocus]);
 
   // -------- Huge OI shift monitor (ATM ± 1 across 1/3/5 min windows) --------
   const emitHugeShiftNotify = useCallback((shift) => {
@@ -2246,7 +2272,7 @@ export default function Dashboard() {
       out[idx] = { price, changePts: move.pts, changePct: move.pct, ltp: t?.ltp, iep: t?.indicative_close_price };
     }
     return out;
-  }, [enabledIndices, tickerQuotes, liveSpotPrices, activeIndex, current]);
+  }, [enabledIndices, tickerQuotes, liveSpotPrices, current]);
 
   const mobileIndexTicker = (
     <MobileIndexTicker
@@ -3288,10 +3314,14 @@ export default function Dashboard() {
         <CredentialsModal
           open={credsOpen}
           onOpenChange={setCredsOpen}
-          onSaved={() => {
-            loadStatus();
+          onSaved={async () => {
+            await Promise.allSettled([
+              loadStatus(),
+              loadOI(),
+              refreshPositionsBook(),
+              fetchTickers(),
+            ]);
             notifyKiteConnected();
-            refreshPositionsBook().catch(() => {});
           }}
         />
       )}
@@ -3309,7 +3339,15 @@ export default function Dashboard() {
         <MorningRefreshModal
           open={morningRefreshOpen}
           onOpenChange={setMorningRefreshOpen}
-          onRefreshed={loadStatus}
+          onRefreshed={async () => {
+            await Promise.allSettled([
+              loadStatus(),
+              loadOI(),
+              refreshPositionsBook(),
+              fetchTickers(),
+            ]);
+            notifyKiteConnected();
+          }}
           onNeedFullSetup={() => setCredsOpen(true)}
         />
       )}

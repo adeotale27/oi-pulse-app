@@ -41,7 +41,7 @@ export default function DesktopAlertInbox() {
   return (
     <div ref={ref} className="fixed right-4 top-4 z-[120] hidden w-[min(27rem,calc(100vw-2rem))] md:block" data-testid="desktop-alert-inbox">
       {open ? (
-        <section className="rounded-xl border border-slate-200 bg-white/95 p-3 text-slate-800 shadow-2xl backdrop-blur-md" role="status" aria-live="polite">
+        <section className="rounded-xl border border-slate-200 bg-white/95 p-3 text-slate-800 shadow-2xl backdrop-blur-md" style={{ opacity: "var(--oi-alert-toast-opacity, 0.9)" }} role="status" aria-live="polite">
           <div className="flex items-start gap-2">
             <Bell className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <div className="min-w-0 flex-1">
@@ -68,6 +68,7 @@ export default function DesktopAlertInbox() {
         <button
           type="button"
           className="ml-auto flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 shadow-lg backdrop-blur-md"
+          style={{ opacity: "var(--oi-alert-toast-opacity, 0.9)" }}
           onClick={() => setOpen(true)}
           aria-label={`Show ${alerts.length} alerts`}
         >

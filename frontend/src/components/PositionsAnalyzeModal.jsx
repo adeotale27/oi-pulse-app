@@ -468,7 +468,7 @@ export default function PositionsAnalyzeModal({
     setTargetSpot(v);
   };
 
-  const legs = byIndex.get(activeIndex) || [];
+  const legs = useMemo(() => byIndex.get(activeIndex) || [], [byIndex, activeIndex]);
   const activeLegs = useMemo(
     () => legs.filter((l) => selected.has(l.tradingsymbol) && Number(l.quantity) !== 0),
     [legs, selected],

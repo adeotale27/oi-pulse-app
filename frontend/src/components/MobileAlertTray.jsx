@@ -64,7 +64,7 @@ export default function MobileAlertTray() {
   return (
     <div className="md:hidden fixed inset-x-2 z-[90] pointer-events-none" style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.5rem)" }} data-testid="mobile-alert-tray">
       {open ? (
-        <section className={`pointer-events-auto mx-auto max-w-md rounded-xl border ${tone.border} bg-white/95 px-3 py-2.5 shadow-lg backdrop-blur-md dark:bg-slate-900/95`} role="status" aria-live="polite">
+        <section className={`pointer-events-auto mx-auto max-w-md rounded-xl border ${tone.border} bg-white/95 px-3 py-2.5 shadow-lg backdrop-blur-md dark:bg-slate-900/95`} style={{ opacity: "var(--oi-alert-toast-opacity, 0.9)" }} role="status" aria-live="polite">
           <div className="flex items-start gap-2">
             <Bell className={`mt-0.5 h-4 w-4 shrink-0 ${tone.icon}`} />
             <div className="min-w-0 flex-1">
@@ -85,7 +85,7 @@ export default function MobileAlertTray() {
           </div>
         </section>
       ) : (
-        <button type="button" className={`pointer-events-auto ml-auto flex items-center gap-1.5 rounded-full border ${tone.border} bg-white/95 px-3 py-1.5 text-[11px] font-semibold ${tone.count} shadow-sm backdrop-blur-md dark:bg-slate-900/95`} onClick={() => setOpen(true)}>
+        <button type="button" className={`pointer-events-auto ml-auto flex items-center gap-1.5 rounded-full border ${tone.border} bg-white/95 px-3 py-1.5 text-[11px] font-semibold ${tone.count} shadow-sm backdrop-blur-md dark:bg-slate-900/95`} style={{ opacity: "var(--oi-alert-toast-opacity, 0.9)" }} onClick={() => setOpen(true)}>
           <Bell className={`h-3.5 w-3.5 ${tone.icon}`} /> {label}
         </button>
       )}

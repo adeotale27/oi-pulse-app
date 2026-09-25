@@ -64,7 +64,7 @@ export default function GiftSessionsModal({ open, onOpenChange, windows = [], se
     return () => clearInterval(iv);
   }, [open]);
 
-  const info = useMemo(() => {
+  const info = (() => {
     const nowDate = getIstDate(serverIst ? new Date(serverIst) : new Date());
     const nowMinutes = nowDate.getUTCHours() * 60 + nowDate.getUTCMinutes();
     const nowDay = nowDate.getUTCDay();
@@ -125,7 +125,7 @@ export default function GiftSessionsModal({ open, onOpenChange, windows = [], se
     }
 
     return { activeIndex, nextIndex, minsUntilNext };
-  }, [sessions, serverIst, tick]);
+  })();
 
   return (
     <Dialog open={!!open} onOpenChange={onOpenChange}>

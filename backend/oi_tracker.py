@@ -847,6 +847,30 @@ class OITracker:
             await self.start()
         except Exception as e:
             logger.warning("tracker.start after set_credentials failed: %s", e)
+        self.schedule_live_refresh()
+
+    def schedule_live_refresh(self) -> None:
+        """Fetch a fresh live snapshot promptly after credentials become valid."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        current = getattr(self, "_live_refresh_task", None)
+        if current is not None and not current.done():
+            return
+
+        async def _refresh():
+            try:
+                if self.mode == "kite" and self.kite_service and self.oi_session_open():
+                    if not getattr(self.kite_service, "_loaded", False):
+                        await self.ensure_instruments_fresh()
+                    await self._poll_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning("immediate live refresh failed: %s", e)
+
+        self._live_refresh_task = loop.create_task(_refresh())
 
     async def set_mode(self, mode: str):
         # Supported modes: 'kite' (live) and 'offline' (no live polling).

@@ -92,6 +92,21 @@ if (config.enableHealthCheck) {
 }
 
 let webpackConfig = {
+  jest: {
+    configure: (jestConfig) => ({
+      ...jestConfig,
+      testMatch: ["<rootDir>/src/**/*.spec.js"],
+      testRegex: undefined,
+      moduleNameMapper: {
+        ...jestConfig.moduleNameMapper,
+        "^@/(.*)$": "<rootDir>/src/$1",
+      },
+      setupFilesAfterEnv: [
+        ...(jestConfig.setupFilesAfterEnv || []),
+        "<rootDir>/src/setupTests.js",
+      ],
+    }),
+  },
   eslint: {
     configure: {
       extends: ["plugin:react-hooks/recommended"],

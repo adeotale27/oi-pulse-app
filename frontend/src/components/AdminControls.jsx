@@ -410,7 +410,7 @@ export default function AdminControls({
     <div
       className={
         isPanel
-          ? "flex flex-col gap-3 w-full p-3 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60"
+          ? "flex flex-col gap-2 w-full p-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 md:gap-3 md:p-3"
           : "flex items-center gap-2 pr-2 mr-1 border-r border-slate-200 dark:border-slate-700"
       }
       data-testid="admin-controls"
@@ -436,8 +436,8 @@ export default function AdminControls({
       )}
 
       {isPanel && (
-        <div className="flex flex-col gap-1.5 w-full">
-          <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[12px] text-amber-950">
+        <div className="flex flex-col gap-1 w-full md:gap-1.5">
+          <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-950 md:px-2.5 md:py-2 md:text-[12px]">
             <div>
               <div className="font-semibold">Maintenance mode</div>
               <div className="text-[10px] text-amber-800">Guests see the Brewing screen; admin stays open.</div>
@@ -454,7 +454,7 @@ export default function AdminControls({
             data-testid="admin-menu-guests"
             variant="outline"
             size="sm"
-            className="w-full justify-start h-9"
+            className="w-full justify-start h-8 text-[11px] md:h-9 md:text-sm"
             onClick={openAccess}
           >
             <UserCheck className="w-3.5 h-3.5 mr-2" />
@@ -467,7 +467,7 @@ export default function AdminControls({
             data-testid="admin-menu-change-password"
             variant="outline"
             size="sm"
-            className="w-full justify-start h-9"
+            className="w-full justify-start h-8 text-[11px] md:h-9 md:text-sm"
             onClick={() => {
               try {
                 if (typeof window !== "undefined") window.__oi_password_open_pending = true;
@@ -484,7 +484,7 @@ export default function AdminControls({
             data-testid="admin-menu-logout"
             variant="outline"
             size="sm"
-            className="w-full justify-start h-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+            className="w-full justify-start h-8 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 md:h-9 md:text-sm"
             onClick={logout}
           >
             <LogOut className="w-3.5 h-3.5 mr-2" />

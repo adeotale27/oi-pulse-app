@@ -363,7 +363,7 @@ export default function OvernightGapBrief({
     } finally {
       setLoading(false);
     }
-  }, [active, minimized, activeIndex, ist.weekday]);
+  }, [active, minimized, activeIndex, ist.weekday, vix, vixLive]);
 
   const loadIndexImpacts = useCallback(async () => {
     if (!active || minimized) return;

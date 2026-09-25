@@ -2,6 +2,11 @@
 
 For a first run, follow **[LOCAL_SETUP.md](./LOCAL_SETUP.md)** (venv, yarn, Mongo, `uvicorn`, CRA). This page is the map for changing the system without breaking it.
 
+Before making any change, use the canonical
+[change maintenance checklist](./CHANGE_CHECKLIST.md). It lists the required
+frontend/backend file locations, comment rules, tests, documentation, version
+updates, and shipping steps for every AI or human agent.
+
 ## Prerequisites
 
 Python 3.11+, Node 18+ / Yarn 1.x, MongoDB 6+, optional Kite API key + daily token.
@@ -32,7 +37,8 @@ cd frontend && yarn install && yarn start
 # Tests (from backend/)
 python -m pytest tests/test_universe.py tests/test_fno_symbol.py tests/test_expiry_kind.py tests/test_trade_ledger.py tests/test_market_hours.py tests/test_event_risk.py tests/test_holiday_calendar.py tests/test_guest_access.py tests/test_app_brand.py tests/test_oi_change_lookback.py tests/test_cas_auto_trade.py -q
 
-# Frontend unit (Node can run assert files)
+# Frontend unit (standalone Node assertion files; run individually or via the
+# repository's frontend test harness, not as a Jest glob)
 node frontend/src/lib/universe.test.js
 node frontend/src/lib/expiryKind.test.js
 node frontend/src/lib/dataTruth.test.js
@@ -125,6 +131,25 @@ Public vs desk book: guests never see publisher positions, journal, or header To
 3. Keep `data-testid`s.
 4. Run the nearest tests.
 5. **Admin configuration first.** For any interval, hours, threshold, page tick, or other tunable: search `DEFAULT_SETTINGS` / SettingsModal / `POST /settings` before hardcoding. Wire UI, sampler, REST, WS, and countdowns to the saved value (clamp only to the allowed range, never a tighter secret cap).
+
+## Protected live-data checklist
+
+The following are production-critical and must not be changed as part of UI polish,
+configuration cleanup, or unrelated maintenance:
+
+- [ ] **No OI behavior change** — do not alter Open Interest, OI Change, strike
+  calculations, expiry selection, snapshot ordering, freshness rules, or polling
+  semantics without explicit admin approval for that specific change.
+- [ ] **No Positions behavior change** — do not alter broker-book retrieval,
+  position mapping, P&L, guest/admin token ownership, or position-derived risk
+  calculations without explicit admin approval.
+- [ ] **No Straddle behavior change** — do not alter ATM selection, premium
+  calculation, samples, CAS logic, or trade signals without explicit admin approval.
+- [ ] **No market-data contract change** — preserve existing API paths, response
+  keys, Kite ownership, and stored snapshot fields.
+- [ ] **Safe scope confirmed** — UI labels, layout, accessibility, loading states,
+  and explicitly requested admin-configurable values are the only default-safe
+  changes. If a requested fix crosses this boundary, stop and ask before editing.
 
 ## Add a UI component
 

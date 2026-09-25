@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   ListOrdered,
@@ -60,7 +60,7 @@ export default function MobileBottomNav({
     setIds(loadMobileDock(isAdmin).map((d) => d.id));
   }, [isAdmin]);
 
-  const pageAllowed = (d) => {
+  const pageAllowed = useCallback((d) => {
     if (!d) return false;
     if (!isAdmin && d.adminOnly) return false;
     const pages = isAdmin
@@ -68,7 +68,7 @@ export default function MobileBottomNav({
       : visiblePages;
     if (d.tab && Array.isArray(pages) && !pages.includes(d.tab)) return false;
     return true;
-  };
+  }, [adminPages, isAdmin, visiblePages]);
 
   const items = useMemo(() => {
     const byId = new Map(DOCK_CATALOG.map((d) => [d.id, d]));
@@ -76,7 +76,7 @@ export default function MobileBottomNav({
       .map((id) => byId.get(id))
       .filter(pageAllowed)
       .slice(0, 5);
-  }, [ids, isAdmin, visiblePages, adminPages]);
+  }, [ids, pageAllowed]);
 
   const clearHold = () => {
     if (holdRef.current.timer) {
