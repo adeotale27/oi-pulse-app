@@ -104,3 +104,8 @@ If a value is on the Admin configuration form (`DEFAULT_SETTINGS` / `POST /setti
 ## Comments
 
 Explain *why* (NSE vs MCX hours, token checksum vs used-token). Do not narrate `i += 1`.
+For every major or non-obvious frontend/backend behavior, keep a concise
+comment describing the invariant, external contract, safety guard, or reason
+for the branch. When implementation changes, update nearby comments in the
+same change. Use [`CHANGE_CHECKLIST.md`](./CHANGE_CHECKLIST.md) for the
+mandatory file names and maintenance steps.

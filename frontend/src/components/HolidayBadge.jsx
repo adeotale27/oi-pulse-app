@@ -12,8 +12,8 @@ const MENU_WIDTH = 288;
 export default function HolidayBadge({ onOpenCalendar }) {
   const [calTick, setCalTick] = useState(0);
   useEffect(() => subscribeHolidays(() => setCalTick((n) => n + 1)), []);
-  const info = useMemo(() => nextHolidayInfo(), [calTick]);
-  const upcoming = useMemo(() => upcomingHolidays(), [calTick]);
+  const info = nextHolidayInfo();
+  const upcoming = upcomingHolidays();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
   const panelRef = useRef(null);

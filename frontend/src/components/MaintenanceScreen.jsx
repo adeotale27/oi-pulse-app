@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Activity, Coffee, RefreshCw, Wrench } from "lucide-react";
+import { Link } from "react-router-dom";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import StrikLenzRobot from "@/components/StrikLenzRobot";
 import AuthFeatureFooter from "@/components/AuthFeatureFooter";
-import { fetchExtras } from "@/lib/api";
+import { APP_VERSION_LABEL } from "@/lib/appVersion";
+import { fetchExtras, fetchTickers } from "@/lib/api";
 import useLiveDemo, { isMarketOpenNow } from "@/hooks/useLiveDemo";
+import "@/styles/landing.css";
 
 function formatIndex(value) {
   const number = Number(value);
@@ -47,30 +50,66 @@ function Ticker({ label, data }) {
   const validChange = Number.isFinite(change);
   const up = validChange && change >= 0;
   return (
-    <div className="flex items-center gap-2 whitespace-nowrap border-r border-white/10 pr-4 text-[11px]">
-      <b className="text-slate-300">{label}</b>
-      <strong className="font-mono text-white">{formatIndex(data?.price)}</strong>
-      <span className={validChange ? (up ? "text-emerald-300" : "text-rose-300") : "text-slate-500"}>{validChange ? `${up ? "▲" : "▼"} ${Math.abs(change).toFixed(2)}%` : "—"}</span>
-    </div>
+    <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-slate-200">
+      <b className="font-semibold text-white">{label}</b>
+      <strong className="font-mono">{formatIndex(data?.price)}</strong>
+      <em className={`not-italic font-semibold ${validChange ? (up ? "text-emerald-300" : "text-rose-300") : "text-slate-500"}`}>
+        {validChange ? `${up ? "▲" : "▼"}${Math.abs(change).toFixed(2)}%` : "—"}
+      </em>
+    </span>
   );
 }
 
 export default function MaintenanceScreen({ onRetry, retrying = false }) {
   const marketOpen = isMarketOpenNow();
   const snap = useLiveDemo(1200, marketOpen);
-  const [extras, setExtras] = useState(null);
+  const [liveMarket, setLiveMarket] = useState(null);
   const oiBars = snap.chain.rows.map((row) => Number(row.ce_oi || 0) + Number(row.pe_oi || 0));
 
   useEffect(() => {
     let cancelled = false;
-    fetchExtras().then((data) => {
-      if (!cancelled) setExtras(data);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    const load = async () => {
+      const [tickerResult, extrasResult] = await Promise.allSettled([fetchTickers(), fetchExtras()]);
+      if (cancelled) return;
+      setLiveMarket((previous) => ({
+        tickers: tickerResult.status === "fulfilled"
+          ? tickerResult.value?.tickers
+          : previous?.tickers || null,
+        extras: extrasResult.status === "fulfilled"
+          ? extrasResult.value
+          : previous?.extras || null,
+      }));
+    };
+    load();
+    const timer = window.setInterval(load, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
+  const liveByName = new Map((liveMarket?.tickers || []).map((item) => [
+    String(item.index || item.label).toUpperCase(),
+    { price: Number(item.ltp), changePct: Number(item.change_pct) },
+  ]));
+  const displayedTick = ["NIFTY", "SENSEX", "BANKNIFTY"].map((label) => [
+    label,
+    liveByName.get(label) || snap.indices[label],
+  ]);
+  const vix = liveMarket?.extras?.vix;
+  const gift = liveMarket?.extras?.gift_nifty;
+  const readExtra = (item) => ({
+    price: item?.last ?? item?.ltp ?? item?.value ?? item?.last_price ?? item?.price,
+    changePct: item?.change_pct ?? item?.changePct ?? item?.change_percent,
+  });
+  const headerTick = [
+    ...displayedTick,
+    ["VIX", readExtra(vix)],
+    ["GIFT NIFTY", readExtra(gift)],
+  ];
+
   return (
-    <div className="relative flex min-h-[100dvh] flex-col overflow-x-hidden overflow-y-auto bg-[#020b0e] px-4 py-3 text-white sm:px-8 sm:py-4 lg:h-[100dvh] lg:overflow-hidden">
+    <div className="maintenance-page relative flex h-[100dvh] flex-col overflow-hidden bg-[#020b0e] px-4 py-3 text-white sm:px-8 sm:py-4">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_25%_15%,rgba(16,185,129,.25),transparent_38%),radial-gradient(ellipse_at_82%_90%,rgba(14,116,144,.22),transparent_42%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(66,244,211,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(66,244,211,.16)_1px,transparent_1px)] [background-size:52px_52px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_78%)]" />
 
@@ -90,12 +129,12 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
           {marketOpen ? "Market live" : "Market closed"}
         </div>
       </header>
-      <div className="relative z-10 mx-auto mt-2 flex w-full max-w-7xl shrink-0 gap-5 overflow-hidden border-y border-white/10 py-2 font-mono text-[10px] text-slate-300">
-        <Ticker label="NIFTY" data={snap.indices.NIFTY} />
-        <Ticker label="SENSEX" data={snap.indices.SENSEX} />
-        <Ticker label="BANKNIFTY" data={snap.indices.BANKNIFTY} />
-        <Ticker label="VIX" data={{ price: extras?.vix?.last ?? extras?.vix?.ltp ?? extras?.vix?.value ?? 13.2, changePct: extras?.vix?.change_pct ?? extras?.vix?.changePct ?? 0 }} />
-        <Ticker label="GIFT NIFTY" data={{ price: extras?.gift_nifty?.last ?? extras?.gift_nifty?.ltp ?? extras?.gift_nifty?.value ?? 25880, changePct: extras?.gift_nifty?.change_pct ?? extras?.gift_nifty?.changePct ?? 0 }} />
+      <div className="maintenance-ticker relative z-10 mx-auto mt-2 w-full max-w-7xl overflow-hidden border-y border-white/10 py-2 font-mono text-[10px] text-slate-300">
+        <div className="admin-login-ticker-track">
+          {[0, 1, 2, 3].map((copy) => <div className="admin-login-ticker-copy" key={copy} aria-hidden={copy > 0}>
+            {headerTick.map(([label, data]) => <Ticker label={label} data={data} key={label} />)}
+          </div>)}
+        </div>
       </div>
 
       <main className="relative z-10 mx-auto grid w-full max-w-7xl flex-none items-start gap-5 overflow-visible py-5 lg:flex-1 lg:grid-cols-[.9fr_1.1fr] lg:items-center lg:overflow-hidden lg:py-3">
@@ -114,14 +153,12 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
               <RefreshCw className={retrying ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
               {retrying ? "Checking desk…" : "Try the desk again"}
             </button>
+            <Link to="/admin" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-emerald-300/20 bg-emerald-300/5 px-4 py-3 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10">
+              Admin sign in
+            </Link>
             <div className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
               <Coffee className="h-4 w-4 text-amber-300" /> No action needed. Sip responsibly.
             </div>
-          </div>
-          <div className="mt-4 grid max-w-lg grid-cols-3 gap-2 sm:mt-5">
-            <Ticker label="NIFTY" data={snap.indices.NIFTY} />
-            <Ticker label="BANKNIFTY" data={snap.indices.BANKNIFTY} />
-            <Ticker label="SENSEX" data={snap.indices.SENSEX} />
           </div>
         </section>
 
@@ -152,9 +189,7 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
         </section>
       </main>
       <p className="relative z-10 mx-auto max-w-7xl shrink-0 border-t border-white/10 py-2 text-center text-[9px] leading-4 text-slate-500 sm:text-[10px]">StrikLenz • Traders&apos; edge, always on • Our admin has been politely asked to stop drinking coffee and fix things.</p>
-      <div className="relative z-10 shrink-0">
-        <AuthFeatureFooter />
-      </div>
+      <AuthFeatureFooter version={APP_VERSION_LABEL} />
     </div>
   );
 }

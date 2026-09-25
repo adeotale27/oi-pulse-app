@@ -57,8 +57,6 @@ export default function MobileIndexTicker({
   const [pad, setPad] = useState(1);
   const wrapRef = useRef(null);
   const setRef = useRef(null);
-  const tickers = tickersProp != null ? (Array.isArray(tickersProp) ? tickersProp : []) : tickersLocal;
-
   useEffect(() => {
     if (tickersProp != null) return undefined;
     let cancelled = false;
@@ -89,6 +87,7 @@ export default function MobileIndexTicker({
   }, []);
 
   const items = useMemo(() => {
+    const tickers = tickersProp != null ? (Array.isArray(tickersProp) ? tickersProp : []) : tickersLocal;
     const out = [];
     const vixLast = extras?.vix?.last ?? extras?.vix?.ltp;
     const vixPct = Number(extras?.vix?.change_pct ?? 0);
@@ -127,7 +126,7 @@ export default function MobileIndexTicker({
       });
     }
     return out;
-  }, [extras, tickers, spotPrices, activeIndex, onSelectIndex, indices]);
+  }, [extras, tickersProp, tickersLocal, spotPrices, activeIndex, onSelectIndex, indices]);
 
   useLayoutEffect(() => {
     const measure = () => {

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { apiDetail } from "./apiErrors.js";
 
-const kite = "Kite dump took too long — tap Refresh, wait, then Enable again (first load can take a minute)";
-const mi = "Market intelligence took too long. Tap Refresh — this feed is stored news, not a Kite dump.";
+const kite = "Market feed took too long — tap Refresh, wait, then Enable again (first load can take a minute)";
+const mi = "Market intelligence took too long. Tap Refresh — this feed is stored news, not a live market feed.";
 
 assert.equal(
   apiDetail({ code: "ECONNABORTED", message: "timeout of 10000ms exceeded", config: { url: "/market-intel" } }, "fallback"),

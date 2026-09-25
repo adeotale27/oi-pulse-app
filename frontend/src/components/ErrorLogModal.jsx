@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,13 +49,13 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
   const [hiddenSources, setHiddenSources] = useState(readHiddenSources);
   const [hideMenuOpen, setHideMenuOpen] = useState(false);
 
-  const applyMeta = (data) => {
+  const applyMeta = useCallback((data) => {
     if (typeof data?.stored === "number") setStored(data.stored);
     setOldest(data?.oldest || null);
     setNewest(data?.newest || null);
-  };
+  }, []);
 
-  const load = async (source = srcFilter, hidden = hiddenSources) => {
+  const load = useCallback(async (source = srcFilter, hidden = hiddenSources) => {
     setLoading(true);
     setErr("");
     try {
@@ -80,14 +80,14 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
     } finally {
       setLoading(false);
     }
-  };
+  }, [applyMeta, hiddenSources, srcFilter]);
 
   useEffect(() => {
     if (!open) return;
     const source = initialSource || srcFilter;
     if (source !== srcFilter) setSrcFilter(source);
     load(source);
-  }, [open, initialSource]);
+  }, [open, initialSource, srcFilter, load]);
 
   const pickSrc = (src) => {
     setSrcFilter(src);

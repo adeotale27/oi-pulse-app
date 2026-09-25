@@ -83,7 +83,6 @@ export async function showOsNotification(title, body, { force = false } = {}) {
     /* page Notification fallback */
   }
   try {
-    // eslint-disable-next-line no-new
     new Notification(title || "StrikLenz", opts);
     return true;
   } catch {

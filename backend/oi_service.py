@@ -295,8 +295,8 @@ class KiteService:
         if expiry:
             selected = pd.to_datetime(expiry)
             if selected not in available:
-                logger.warning(f"[get_snapshot:{index_name}] requested expiry {expiry} not available; falling back to {available[0]}")
-                selected = available[0]
+                logger.warning(f"[get_snapshot:{index_name}] requested expiry {expiry} not available")
+                return None
         else:
             selected = available[0]
         expiry_opt = opt_df[opt_df["expiry"] == selected]
@@ -409,7 +409,8 @@ class KiteService:
         if expiry:
             selected = pd.to_datetime(expiry)
             if selected not in available:
-                selected = available[0]
+                logger.warning(f"[atm_straddle:{index_name}] requested expiry {expiry} not available")
+                return None
         else:
             selected = available[0]
         expiry_opt = opt_df[opt_df["expiry"] == selected]

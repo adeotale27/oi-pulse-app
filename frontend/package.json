@@ -1,6 +1,6 @@
 {
   "name": "oi-pulse",
-  "version": "14.55.0",
+  "version": "14.77.0",
   "private": true,
   "dependencies": {
     "@hookform/resolvers": "5.0.1",
@@ -62,8 +62,10 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "CI=false GENERATE_SOURCEMAP=false craco build",
-    "test": "craco test"
+    "build": "craco build",
+    "test": "craco test",
+    "test:jest": "craco test --watchAll=false --runInBand",
+    "lint": "eslint src"
   },
   "browserslist": {
     "production": [

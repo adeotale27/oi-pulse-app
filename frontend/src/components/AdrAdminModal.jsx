@@ -31,7 +31,11 @@ export default function AdrAdminModal({ open, onOpenChange }) {
 
   useEffect(() => {
     if (!open) return;
-    load().catch(() => toast.error("Could not load ADR config"));
+    load().catch(() => {
+      // Keep the combined Global Markets settings usable when optional ADR data is unavailable.
+      setPrefs({});
+      toast.error("Could not load Global Markets settings");
+    });
   }, [open]);
 
   const savePrefs = async (patch) => {
@@ -39,7 +43,7 @@ export default function AdrAdminModal({ open, onOpenChange }) {
     try {
       const { data } = await api.post("/adrs/config", patch);
       setPrefs(data?.prefs || null);
-      toast.success("ADR settings saved");
+      toast.success("Global Markets settings saved");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Save failed");
     } finally { setBusy(false); }
@@ -63,7 +67,7 @@ export default function AdrAdminModal({ open, onOpenChange }) {
       setForm(blank);
       await load();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Could not save ADR");
+      toast.error(e?.response?.data?.detail || "Could not save Global Markets");
     } finally { setBusy(false); }
   };
 
@@ -77,10 +81,10 @@ export default function AdrAdminModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="adr-admin-modal" className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0">
+      <DialogContent data-testid="adr-admin-modal" className="w-[min(94vw,48rem)] max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0">
         <DialogHeader>
-          <DialogTitle>Global Markets</DialogTitle>
-          <DialogDescription>Global Markets can use Twelve Data or Financial Modeling Prep per instrument. ADR Monitor uses the Indian ADR universe and Twelve Data. API keys stay in the vault and are never returned to the browser.</DialogDescription>
+          <DialogTitle className="text-center">Global Markets</DialogTitle>
+          <DialogDescription className="mx-auto max-w-2xl text-center">Global Markets can use Twelve Data or Financial Modeling Prep per instrument. ADR Monitor uses the Indian ADR universe and Twelve Data. API keys stay in the vault and are never returned to the browser.</DialogDescription>
         </DialogHeader>
 
         <GlobalMarketsSettings active={open} />

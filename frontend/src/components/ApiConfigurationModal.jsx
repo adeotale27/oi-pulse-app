@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ExternalLink, RefreshCw, Search, ServerCog, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, RefreshCw, Search, ServerCog, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -45,6 +45,8 @@ export default function ApiConfigurationModal({ open, onOpenChange }) {
   const [status, setStatus] = useState("all");
   const [mode, setMode] = useState("apis");
   const [selected, setSelected] = useState(null);
+  const [mobileMetricsOpen, setMobileMetricsOpen] = useState(false);
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
 
   const load = async () => {
     setLoading(true); setError("");
@@ -56,7 +58,7 @@ export default function ApiConfigurationModal({ open, onOpenChange }) {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => { if (open && !data) load(); }, [open, data]);
   useEffect(() => { if (!open) setSelected(null); }, [open]);
 
   const providers = useMemo(() => {
@@ -103,8 +105,10 @@ export default function ApiConfigurationModal({ open, onOpenChange }) {
         ) : (
           <>
             <DialogHeader><DialogTitle className="flex items-center gap-2"><ServerCog className="w-4 h-4" />API Configuration</DialogTitle><DialogDescription>Monitor external APIs discovered from the running StrikLenz codebase, their modules, exact routes, and safe request telemetry.</DialogDescription></DialogHeader>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200">{[["Providers", summary.providers], ["Endpoints", summary.endpoints], ["Modules", summary.modules], ["Active", summary.active], ["Healthy", summary.healthy], ["Warning", summary.warning], ["Errors today", summary.errors_today], ["Avg latency", fmtLatency(summary.avg_latency_ms)]].map(([label, value]) => <div key={label} className="bg-white px-2 py-2"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-0.5 font-mono-data text-sm font-bold text-slate-800">{value ?? "—"}</div></div>)}</div>
-            <div className="flex flex-wrap items-center gap-2"><div className="relative flex-1 min-w-[12rem]"><Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search APIs, endpoints, modules…" className="h-8 w-full rounded-md border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-emerald-500" /></div><select value={category} onChange={(e) => setCategory(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="all">All categories</option>{categories.map((x) => <option key={x}>{x}</option>)}</select><select value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="all">All health</option><option value="healthy">Healthy</option><option value="warning">Warning</option><option value="failed">Failed</option><option value="unknown">No telemetry</option></select><Button size="sm" variant="outline" onClick={load} disabled={loading}>{loading ? "Loading…" : <><RefreshCw className="w-3.5 h-3.5 mr-1" />Refresh</>}</Button></div>
+            <button type="button" className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-700 md:hidden" onClick={() => setMobileMetricsOpen((open) => !open)} aria-expanded={mobileMetricsOpen}>Summary <ChevronDown className={`h-4 w-4 transition-transform ${mobileMetricsOpen ? "rotate-180" : ""}`} /></button>
+            <div className={`${mobileMetricsOpen ? "grid" : "hidden"} md:grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200`}>{[["Providers", summary.providers], ["Endpoints", summary.endpoints], ["Modules", summary.modules], ["Active", summary.active], ["Healthy", summary.healthy], ["Warning", summary.warning], ["Errors today", summary.errors_today], ["Avg latency", fmtLatency(summary.avg_latency_ms)]].map(([label, value]) => <div key={label} className="bg-white px-2 py-2"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-0.5 font-mono-data text-sm font-bold text-slate-800">{value ?? "—"}</div></div>)}</div>
+            <button type="button" className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-700 md:hidden" onClick={() => setMobileControlsOpen((open) => !open)} aria-expanded={mobileControlsOpen}>Search and filters <ChevronDown className={`h-4 w-4 transition-transform ${mobileControlsOpen ? "rotate-180" : ""}`} /></button>
+            <div className={`${mobileControlsOpen ? "flex" : "hidden"} md:flex flex-wrap items-center gap-2`}><div className="relative flex-1 min-w-[12rem]"><Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search APIs, endpoints, modules…" className="h-8 w-full rounded-md border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-emerald-500" /></div><select value={category} onChange={(e) => setCategory(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="all">All categories</option>{categories.map((x) => <option key={x}>{x}</option>)}</select><select value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="all">All health</option><option value="healthy">Healthy</option><option value="warning">Warning</option><option value="failed">Failed</option><option value="unknown">No telemetry</option></select><Button size="sm" variant="outline" onClick={load} disabled={loading}>{loading ? "Loading…" : <><RefreshCw className="w-3.5 h-3.5 mr-1" />Refresh</>}</Button></div>
             <div className="flex gap-1 border-b border-slate-200"><button className={`px-3 py-1.5 text-xs font-medium border-b-2 ${mode === "apis" ? "border-emerald-600 text-emerald-700" : "border-transparent text-slate-500"}`} onClick={() => setMode("apis")}>APIs</button><button className={`px-3 py-1.5 text-xs font-medium border-b-2 ${mode === "modules" ? "border-emerald-600 text-emerald-700" : "border-transparent text-slate-500"}`} onClick={() => setMode("modules")}>Modules</button></div>
             {error ? <div className="text-xs text-rose-600">{error}</div> : null}
             <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-200 overscroll-contain">

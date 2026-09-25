@@ -150,9 +150,34 @@
   padding-right: 1rem;
   flex-shrink: 0;
 }
+.maintenance-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: maintenanceTickerRight 30s linear infinite;
+  will-change: transform;
+}
+.maintenance-ticker-copy {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  min-width: max-content;
+  padding-right: 1.25rem;
+  flex-shrink: 0;
+}
+.maintenance-ticker-copy > div {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.maintenance-ticker-copy .border-r {
+  padding-right: 1.25rem;
+}
 @keyframes adminLoginTicker {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
+}
+@keyframes maintenanceTickerRight {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
 }
 .oi-auth-footer-version {
   color: #64748b;
@@ -232,10 +257,64 @@
     padding-top: .3rem;
     gap: .25rem;
   }
+  .maintenance-page {
+    padding: .55rem .75rem .65rem;
+  }
+  .maintenance-page > header {
+    gap: .35rem;
+  }
+  .maintenance-page main {
+    min-height: 0;
+    gap: .4rem;
+    padding-top: .7rem;
+    padding-bottom: .35rem;
+  }
+  .maintenance-page main h1 {
+    font-size: 2.35rem;
+  }
+  .maintenance-page main p {
+    margin-top: .55rem;
+    line-height: 1.15rem;
+  }
+  .maintenance-page main button,
+  .maintenance-page main section > div > div {
+    min-height: 2.35rem;
+    padding-top: .55rem;
+    padding-bottom: .55rem;
+  }
+  .maintenance-page > .oi-auth-footer {
+    flex: 0 0 auto;
+    gap: .35rem;
+    padding: .4rem 0 0;
+  }
+  .maintenance-page .oi-auth-footer-features {
+    gap: .3rem .5rem;
+  }
+  .maintenance-page .oi-auth-footer-features > div {
+    gap: .3rem;
+    font-size: .58rem;
+  }
+  .maintenance-page .oi-auth-footer-features svg {
+    width: .8rem;
+    height: .8rem;
+  }
+  .maintenance-page .oi-auth-footer-features small {
+    font-size: .48rem;
+    line-height: 1.1;
+  }
+  .maintenance-page .oi-auth-footer-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-top: .3rem;
+    gap: .25rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .admin-login-ticker-track {
+  .admin-login-ticker-track,
+  .maintenance-ticker-track {
     animation: none;
   }
 }

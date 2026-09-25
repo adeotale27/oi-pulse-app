@@ -253,7 +253,7 @@ async def ensure_indexes(db) -> None:
 async def overview(db) -> Dict[str, Any]:
     prefs = await load_prefs(db)
     if prefs.get("enabled") is False:
-        return {"categories": CATEGORY_ORDER, "items": [], "enabled": False, "updatedAt": datetime.now(timezone.utc).isoformat()}
+        return {"categories": CATEGORY_ORDER, "items": [], "enabled": False, "prefs": public_prefs(prefs), "updatedAt": datetime.now(timezone.utc).isoformat()}
     latest = {}
     if db is not None:
         async for row in db[LATEST_COL].find({}, {"_id": 0}):
@@ -289,7 +289,7 @@ async def overview(db) -> Dict[str, Any]:
             rows.append(row)
         else:
             rows.append(normalize(item, latest.get(item["id"])))
-    return {"categories": CATEGORY_ORDER, "items": rows, "enabled": True, "updatedAt": datetime.now(timezone.utc).isoformat()}
+    return {"categories": CATEGORY_ORDER, "items": rows, "enabled": True, "prefs": public_prefs(prefs), "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
 async def poll_next(db) -> None:

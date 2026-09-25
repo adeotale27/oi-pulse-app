@@ -8,6 +8,7 @@ class InstrumentConfigIn(BaseModel):
     fmp_api_key: str | None = None
     clear_fmp_key: bool = False
     enabled: bool | None = None
+    session_timeline_enabled: bool | None = None
 
 
 def mount(api_router, *, require_desk_user, require_admin):
@@ -36,6 +37,11 @@ def mount(api_router, *, require_desk_user, require_admin):
                 "fmp_api_key": payload.fmp_api_key,
                 "clear_fmp_key": payload.clear_fmp_key,
                 **({"enabled": payload.enabled} if payload.enabled is not None else {}),
+                **(
+                    {"session_timeline_enabled": payload.session_timeline_enabled}
+                    if payload.session_timeline_enabled is not None
+                    else {}
+                ),
             },
         )
         return {"items": await global_markets.save_instrument_config(_db(), payload.instruments), "prefs": prefs}

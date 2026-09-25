@@ -52,7 +52,7 @@ export default function HolidaysTab() {
   const [calTick, setCalTick] = useState(0);
   const [pastOpen, setPastOpen] = useState(false);
   useEffect(() => subscribeHolidays(() => setCalTick((n) => n + 1)), []);
-  const holidays = useMemo(() => allHolidays(), [calTick]);
+  const holidays = allHolidays();
   const events = useMemo(() => upcomingEvents(20), []);
   const past = useMemo(() => holidays.filter((h) => h.date < today), [holidays, today]);
   const upcoming = useMemo(() => holidays.filter((h) => h.date >= today), [holidays, today]);

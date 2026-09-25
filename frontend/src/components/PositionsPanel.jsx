@@ -1355,7 +1355,7 @@ export default function PositionsPanel({
       cancelled = true;
       clearInterval(id);
     };
-  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex, sellsSnap, current, previous, stats.dayBookedPct, stats.leftover, stats.wallet, rows]);
+  }, [deskAiShow, deskAiRadar, deskAiAsk, oiRiskOpen, adjustSig, bookVerdict?.band, activeIndex, sellsSnap, current, previous, stats.dayBookedPct, stats.leftover, stats.wallet, stats.bookedToday, pnlToday?.booked_after_charges, rows]);
 
   const pinWeeklyDate = useMemo(() => nearestWeeklyExpiry(expiriesMeta), [expiriesMeta]);
 

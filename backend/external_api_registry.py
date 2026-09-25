@@ -235,7 +235,9 @@ async def _telemetry(db, rows: List[Dict[str, Any]]) -> Dict[tuple, Dict[str, An
             entry["avg_latency_ms"] = round(entry.pop("latency_total") / count) if count else None
 
     recent: Dict[tuple, List[dict]] = defaultdict(list)
-    recent_limit = max(len(rows) * 12, 120)
+    # The detail view only renders the latest 12 samples per endpoint. Keep
+    # this bounded to avoid transferring thousands of unrelated telemetry rows.
+    recent_limit = max(len(rows) * 4, 120)
     try:
         recent_docs = await telemetry.find(
             {"ts": {"$gte": start}},
