@@ -23,6 +23,10 @@ FMP_QUOTE_URL = "https://financialmodelingprep.com/stable/quote"
 # quote request every six minutes stays below that cap while still refreshing
 # the configured pairs throughout the session.
 FMP_POLL_INTERVAL_S = 360
+# Global Markets shares Twelve Data's quota with ADRs. The loop wakes every
+# 20 seconds, so this per-instrument gate is required even when the UI page is
+# not open.
+TD_POLL_INTERVAL_S = 600
 SUPPORTED_PROVIDERS = frozenset({"twelve_data", "fmp"})
 FMP_DEFAULT_SYMBOLS = {
     "nasdaq": "^IXIC", "sp500": "^GSPC", "dow": "^DJI", "dax": "^GDAXI",
@@ -303,7 +307,6 @@ async def poll_next(db) -> None:
     if not open_items:
         return
     cursor = int((state or {}).get("position") or 0) % len(enabled)
-    item = next((candidate for candidate in open_items if enabled.index(candidate) >= cursor), open_items[0])
     # FMP accepts a comma-separated symbol list, so refresh all selected FMP
     # pairs in one request instead of spending one call per pair.
     fmp_items = [row for row in providers["fmp"] if instrument_session_open(row)]
@@ -342,9 +345,32 @@ async def poll_next(db) -> None:
                 {"$set": {"fmp_last_polled_at": datetime.now(timezone.utc).isoformat()}},
                 upsert=True,
             )
+    td_items = [row for row in open_items if row["provider"] == "twelve_data"]
+    now = datetime.now(timezone.utc)
+    td_last = (state or {}).get("td_last_polled_at") or {}
+    due_td_items = []
+    for row in td_items:
+        last_item = td_last.get(row["id"]) if isinstance(td_last, dict) else None
+        try:
+            due = not last_item or (now - datetime.fromisoformat(str(last_item))).total_seconds() >= TD_POLL_INTERVAL_S
+        except (TypeError, ValueError):
+            due = True
+        if due:
+            due_td_items.append(row)
+    item = next(
+        (candidate for candidate in due_td_items if enabled.index(candidate) >= cursor),
+        due_td_items[0] if due_td_items else next((candidate for candidate in open_items if enabled.index(candidate) >= cursor), open_items[0]),
+    )
     if item["provider"] == "twelve_data" and providers["twelve_data"]:
         if (await load_prefs(db)).get("enabled") is False:
             return
+        last_item = td_last.get(item["id"]) if isinstance(td_last, dict) else None
+        if last_item:
+            try:
+                if (now - datetime.fromisoformat(str(last_item))).total_seconds() < TD_POLL_INTERVAL_S:
+                    return
+            except (TypeError, ValueError):
+                pass
         key = adr._api_key_from_doc(await adr.load_prefs(db))
         quotes, error = await adr.fetch_quotes(key, [(item["id"], item["providerSymbol"], item["exchange"])], source="global_market")
         quote = quotes.get(item["id"].upper())
@@ -353,6 +379,13 @@ async def poll_next(db) -> None:
                 await db[LATEST_COL].update_one({"id": item["id"]}, {"$set": {"id": item["id"], **quote, "poll_status": "ok"}}, upsert=True)
             elif error:
                 await db[LATEST_COL].update_one({"id": item["id"]}, {"$set": {"id": item["id"], "poll_status": "failed", "poll_error": error}}, upsert=True)
+            td_last = dict(td_last) if isinstance(td_last, dict) else {}
+            td_last[item["id"]] = now.isoformat()
+            await db[STATE_COL].update_one(
+                {"_id": "cursor"},
+                {"$set": {"td_last_polled_at": td_last}},
+                upsert=True,
+            )
     if db is not None:
         await db[STATE_COL].update_one({"_id": "cursor"}, {"$set": {"position": (enabled.index(item) + 1) % len(enabled)}}, upsert=True)
 

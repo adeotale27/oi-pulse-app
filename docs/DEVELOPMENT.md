@@ -7,6 +7,32 @@ Before making any change, use the canonical
 frontend/backend file locations, comment rules, tests, documentation, version
 updates, and shipping steps for every AI or human agent.
 
+For an app-owner request to audit the full application locally, follow the
+read-only [end-to-end audit workflow](./END_TO_END_AUDIT.md) and create a dated,
+sanitized report in `docs/audits/`. The first-run example is
+[LOCAL_END_TO_END_AUDIT_2026-09-29.md](./audits/LOCAL_END_TO_END_AUDIT_2026-09-29.md).
+
+## Loading and unavailable data
+
+Use the shared `DataLoadingState` for app/auth startup and compact dashboard
+panel loading. Keep a panel's last successful data visible during refresh and
+label it as updating. Stop the animation after a failed request or an empty
+closed-session response, and explain that live data is unavailable rather than
+leaving an indefinite loader. Respect the global reduced-motion preference.
+These states are presentation-only and must not change the provider or OI poll
+cadence.
+
+Market Memory is derived from successful OI snapshots and makes no separate
+market-data request. Its card refreshes the summary every 30 seconds while
+visible, preserves the last successful result on a read error, and reports the
+age of the latest snapshot. Shared visibility is controlled in Admin
+configuration → Data collection; relevance is time-weighted over 20 days.
+Keep its refresh lifecycle separate from the OI poller.
+
+The maintenance page should remain vertically scrollable on short phone
+viewports; desktop can retain its fixed-screen composition. Validate the
+maintenance shell at a narrow phone width and short viewport height.
+
 ## Prerequisites
 
 Python 3.11+, Node 18+ / Yarn 1.x, MongoDB 6+, optional Kite API key + daily token.

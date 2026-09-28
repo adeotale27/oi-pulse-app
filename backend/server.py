@@ -11,6 +11,7 @@ import logging
 import math
 import re
 import time
+import ipaddress
 from collections import defaultdict, deque
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -73,6 +74,12 @@ def _fernet():
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+APP_ENV = os.environ.get("APP_ENV", "production").strip().lower()
+LOCAL_DEV_ADMIN_BYPASS_ENABLED = os.environ.get("LOCAL_DEV_ADMIN_BYPASS", "false").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+if LOCAL_DEV_ADMIN_BYPASS_ENABLED and APP_ENV != "development":
+    raise RuntimeError("LOCAL_DEV_ADMIN_BYPASS is allowed only when APP_ENV=development")
 
 # Create Mongo client and db during startup event to keep import-time footprint low.
 client = None
@@ -275,6 +282,12 @@ async def _find_one_capped(coll, query, timeout=2.0):
 
 
 async def _admin_from_request(request: Request):
+    if _is_local_dev_admin_bypass_request(request):
+        return {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "ttl_seconds": ADMIN_SESSION_TTL_SECONDS,
+            "local_dev_admin_bypass": True,
+        }
     tok = _extract_bearer(request, "x-admin-token")
     if not tok:
         return None
@@ -316,6 +329,28 @@ async def _admin_from_request(request: Request):
     return sess
 
 
+def _is_loopback_host(host: Optional[str]) -> bool:
+    normalized = str(host or "").strip().lower().rstrip(".")
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_local_dev_admin_bypass_request(request: Request) -> bool:
+    """Permit passwordless admin only for explicitly enabled loopback development."""
+    if not LOCAL_DEV_ADMIN_BYPASS_ENABLED or APP_ENV != "development":
+        return False
+    client = request.client
+    return bool(
+        client
+        and _is_loopback_host(client.host)
+        and _is_loopback_host(request.url.hostname)
+    )
+
+
 def _session_market_expiry_utc(created_at_utc: datetime) -> datetime:
     """Expire admin session at today's configured market close (IST), or tomorrow if already past."""
     created_ist = created_at_utc.astimezone(IST)
@@ -335,7 +370,7 @@ async def _is_admin_request(request: Request) -> bool:
 
 
 async def require_admin(request: Request):
-    """FastAPI dependency: 401 if not authenticated as admin."""
+    """FastAPI dependency: 401 unless authenticated or explicitly local-dev bypassed."""
     if not await _is_admin_request(request):
         raise HTTPException(401, "Admin only")
     return True
@@ -926,6 +961,7 @@ class SettingsIn(BaseModel):
     alert_enabled_indices: Optional[List[str]] = None  # weekday-defaulted alert focus
     weekday_dashboard_defaults: Optional[Dict[str, str]] = None  # Mon..Fri default desk index
     show_strike_range: Optional[bool] = None  # sidebar Strike Range steppers
+    show_market_memory: Optional[bool] = None  # OI Change historical level memory card
     show_writer_defense: Optional[bool] = None  # Writer Defense map on Open Interest tab
     show_suggestion: Optional[bool] = None  # Suggestion window under right panel
     show_chart_signals: Optional[bool] = None  # Gamma wall / institution CE·PE chips under OI Change chart
@@ -3131,6 +3167,7 @@ async def get_config():
         "market_close_ist": s.get("market_close_ist", close_hm),
         "second_session_ist": s.get("second_session_ist", "12:00"),
         "show_strike_range": bool(s.get("show_strike_range", False)),
+        "show_market_memory": s.get("show_market_memory", True) is not False,
         "show_writer_defense": bool(s.get("show_writer_defense", True)),
         "show_suggestion": bool(s.get("show_suggestion", True)),
         "show_chart_signals": bool(s.get("show_chart_signals", False)),
@@ -3649,7 +3686,7 @@ async def auth_state(request: Request):
             "public_landing_enabled": False,
             "maintenance_mode": False,
             "public_access_expires_at": None,
-            "is_admin": False,
+            "is_admin": _is_local_dev_admin_bypass_request(request),
             "is_guest": False,
             "guest_name": None,
             "needs_guest_name": False,
@@ -3657,6 +3694,7 @@ async def auth_state(request: Request):
             "suggested_guest_name": None,
             "auto_guest_token": None,
             "is_ip_blocked": False,
+            "local_dev_admin_bypass": _is_local_dev_admin_bypass_request(request),
         }
     open_, expires_at_iso = await _get_public_access_state()
     platform_doc = await _load_platform_config()
@@ -3726,6 +3764,7 @@ async def auth_state(request: Request):
         "maintenance_mode": maintenance_mode,
         "public_access_expires_at": expires_at_iso,
         "is_admin": is_admin,
+        "local_dev_admin_bypass": _is_local_dev_admin_bypass_request(request),
         "is_guest": is_guest,
         "guest_name": guest_name,
         "needs_guest_name": needs_guest_name and not auto_guest_token,

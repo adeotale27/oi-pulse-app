@@ -1,10 +1,11 @@
 """HTTP routes for the ADR desk page and admin universe."""
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class PrefsIn(BaseModel):
@@ -23,6 +24,13 @@ class PrefsIn(BaseModel):
     clear_key: Optional[bool] = None
     discover: Optional[bool] = None
 
+    @field_validator("large_move_threshold_percent", "banking_move_threshold_percent")
+    @classmethod
+    def validate_move_threshold(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and (not math.isfinite(value) or value <= 0):
+            raise ValueError("Alert thresholds must be finite numbers greater than 0")
+        return value
+
 
 class UniverseIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -40,6 +48,13 @@ class UniverseIn(BaseModel):
     notification_enabled: bool = True
     large_move_threshold_percent: Optional[float] = None
     priority: int = 50
+
+    @field_validator("large_move_threshold_percent")
+    @classmethod
+    def validate_move_threshold(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and (not math.isfinite(value) or value <= 0):
+            raise ValueError("Alert threshold must be a finite number greater than 0")
+        return value
 
 
 def mount(api_router, *, require_admin, require_desk_user):
@@ -78,8 +93,8 @@ def mount(api_router, *, require_admin, require_desk_user):
         patch = payload.model_dump(exclude_none=True)
         if "poll_interval_seconds" in patch:
             n = int(patch["poll_interval_seconds"])
-            if n < 1:
-                raise HTTPException(400, "poll_interval_seconds must be a positive whole number")
+            if n < adr_mod.MIN_POLL_SECONDS:
+                raise HTTPException(400, f"poll_interval_seconds must be at least {adr_mod.MIN_POLL_SECONDS} seconds")
             patch["poll_interval_seconds"] = n
         discover = bool(patch.pop("discover", False))
         pub = await adr_mod.save_prefs(_db(), patch)

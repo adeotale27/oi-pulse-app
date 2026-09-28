@@ -13,6 +13,7 @@ import { fetchStraddleTick, fetchStraddleHistory } from "../lib/api";
 import { getMarketOpenMinute, getMarketCloseMinute, getMarketOpenHm, getMarketCloseHm } from "@/lib/marketTimes";
 import { sessionAnchorDateIST } from "@/lib/holidays";
 import PageBrandTitle from "@/components/PageBrandTitle";
+import DataLoadingState from "@/components/DataLoadingState";
 import { clampConfiguredPollMs } from "@/lib/dataTruth";
 import { straddleLiveRefreshActive, straddleRefreshLabel } from "@/lib/straddleRefresh";
 
@@ -257,6 +258,8 @@ export default function StraddleChart({
 }) {
   const [points, setPoints] = useState([]);
   const [meta, setMeta] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState(false);
   const [tradeDate, setTradeDate] = useState(() => sessionAnchorDateIST(new Date(), getMarketOpenMinute()));
   const [nowMs, setNowMs] = useState(() => Date.now());
   const wsRef = useRef(null);
@@ -306,6 +309,7 @@ export default function StraddleChart({
     if (point.ts < win.start - 60_000 || point.ts > win.end) return;
 
     applyMeta(point, point.ts);
+    setHistoryError(false);
     setPoints((prev) => {
       const sessionPrev = filterSessionPoints(prev, activeDate);
       const last = sessionPrev.length ? sessionPrev[sessionPrev.length - 1] : null;
@@ -333,9 +337,11 @@ export default function StraddleChart({
   useEffect(() => {
     let cancelled = false;
     const loadHistory = async () => {
+      setHistoryLoading(true);
       try {
         const h = await fetchStraddleHistory(index, null, { expiry, date: tradeDate });
         if (cancelled) return;
+        setHistoryError(false);
         const resolvedDate = h.trade_date || tradeDate;
         if (resolvedDate && resolvedDate !== tradeDate) {
           setTradeDate(resolvedDate);
@@ -350,8 +356,11 @@ export default function StraddleChart({
           filterSessionPoints(cleaned, sessionDate),
           bucketMs,
         ).slice(-maxPoints);
-        // Replace — never merge previous index's live points into the new series.
-        setPoints(filterSessionPoints(sliced, sessionDate));
+        // Keep same-session samples on an empty refresh; never merge another session.
+        setPoints((previous) => {
+          const sessionPoints = filterSessionPoints(previous, sessionDate);
+          return sliced.length ? filterSessionPoints(sliced, sessionDate) : sessionPoints;
+        });
         if (sliced.length) {
           const last = sliced[sliced.length - 1];
           setMeta({
@@ -365,7 +374,11 @@ export default function StraddleChart({
             index,
           });
         }
-      } catch (_e) { /* ignore */ }
+      } catch (_e) {
+        if (!cancelled) setHistoryError(true);
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
     };
     loadHistory();
     if (!liveRefresh) {
@@ -534,7 +547,12 @@ export default function StraddleChart({
                     minute: "2-digit",
                     second: "2-digit",
                   })
-                : "Loading…"}
+                : historyLoading ? "Brewing…" : "No data"}
+              {historyLoading && points.length > 0 ? (
+                <span className="ml-2">
+                  <DataLoadingState variant="inline" label="Updating…" />
+                </span>
+              ) : null}
             </div>
             <div className="hidden md:block text-[10px] text-slate-400 mt-0.5">
               <span className="inline-flex items-center rounded-sm bg-white border border-slate-200 px-1.5 py-0.5 text-slate-600">
@@ -545,6 +563,30 @@ export default function StraddleChart({
         </div>
 
         <div className="px-1 pt-2 pb-1 md:px-4 md:pt-3 md:pb-2 h-[280px] md:h-[460px] bg-white relative">
+          {!points.length ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/90 px-4">
+              {historyLoading ? (
+                <DataLoadingState variant="panel" label="Brewing straddle data…" />
+              ) : (
+                <div
+                  role="status"
+                  data-testid="straddle-data-unavailable"
+                  className="max-w-sm text-center text-sm text-slate-500"
+                >
+                  <div className="font-medium text-slate-700">
+                    {historyError ? "Straddle data could not be loaded" : "No straddle data for this session"}
+                  </div>
+                  <div className="mt-1 text-xs">
+                    {historyError
+                      ? "The chart will update when data is available."
+                      : liveRefresh
+                        ? "Waiting for the first market sample."
+                        : "Live samples appear during market hours."}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
           <ResponsiveContainer>
             <LineChart data={chartPoints} margin={{ top: 28, right: 12, left: 0, bottom: 18 }}>
               <CartesianGrid

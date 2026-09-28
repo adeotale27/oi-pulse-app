@@ -2,36 +2,75 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import DataLoadingState from "@/components/DataLoadingState";
 import InfoTip from "@/components/InfoTip";
 
-export default function MarketMemoryCard({ index }) {
+const REFRESH_INTERVAL_MS = 30_000;
+
+export default function MarketMemoryCard({ index, marketOpen }) {
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(false);
   const [pulse, setPulse] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState(null);
+  const [clock, setClock] = useState(Date.now());
   const pulseTimer = useRef(null);
   useEffect(() => {
     let live = true;
-    api.get(`/market-memory/${index}`, { timeout: 8000 }).then((r) => {
-      if (!live) return;
-      setData(r.data);
-      setPulse(true);
-      clearTimeout(pulseTimer.current);
-      pulseTimer.current = setTimeout(() => setPulse(false), 850);
-    }).catch(() => live && setData({ levels: [] }));
+    const load = async () => {
+      setRefreshing(true);
+      try {
+        const { data: next } = await api.get(`/market-memory/${index}`, { timeout: 8000 });
+        if (!live) return;
+        setData(next);
+        setFetchedAt(Date.now());
+        setRefreshFailed(false);
+        setPulse(true);
+        clearTimeout(pulseTimer.current);
+        pulseTimer.current = setTimeout(() => setPulse(false), 850);
+      } catch {
+        if (live) setRefreshFailed(true);
+      } finally {
+        if (live) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    };
+    setLoading(true);
+    setRefreshFailed(false);
+    load();
+    const refreshTimer = window.setInterval(load, REFRESH_INTERVAL_MS);
+    const clockTimer = window.setInterval(() => setClock(Date.now()), 15_000);
     return () => {
       live = false;
+      window.clearInterval(refreshTimer);
+      window.clearInterval(clockTimer);
       clearTimeout(pulseTimer.current);
     };
   }, [index]);
-  const levels = data?.levels || [];
-  const freshnessTone = Number(data?.freshnessSeconds) < 90
+  const visibleData = data?.index === index ? data : null;
+  const levels = visibleData?.levels || [];
+  const freshnessSeconds = visibleData?.freshnessSeconds == null || fetchedAt == null
+    ? null
+    : Number(visibleData.freshnessSeconds) + Math.floor((clock - fetchedAt) / 1000);
+  const freshnessTone = freshnessSeconds != null && freshnessSeconds < 90
     ? "market-memory-freshness-live"
     : "market-memory-freshness-stale";
-  const freshness = data?.freshnessSeconds == null
+  const ageLabel = freshnessSeconds == null
     ? "Freshness unavailable"
-    : data.freshnessSeconds < 60
-      ? `Updated ${data.freshnessSeconds}s ago`
-      : `Updated ${Math.floor(data.freshnessSeconds / 60)}m ago`;
+    : freshnessSeconds < 60
+      ? `${freshnessSeconds}s ago`
+      : freshnessSeconds < 3600
+        ? `${Math.floor(freshnessSeconds / 60)}m ago`
+        : `${Math.floor(freshnessSeconds / 3600)}h ago`;
+  const freshness = freshnessSeconds == null
+    ? "Freshness unavailable"
+    : marketOpen === false
+      ? `Market closed · last OI snapshot ${ageLabel}`
+      : `Updated ${ageLabel}`;
   const formatReaction = (value) => value == null ? "—" : `${value > 0 ? "+" : ""}${value} pts`;
   const formatContext = (context) => {
     if (!context || typeof context !== "object") return null;
@@ -57,13 +96,17 @@ export default function MarketMemoryCard({ index }) {
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
         <div className="text-xs text-slate-600 dark:text-slate-300">
-          {levels.length ? "Previous reactions around today’s important levels" : "Learning from live OI snapshots."}
+          {levels.length ? "Historical reactions near current price · relevance fades over 20 days" : "Recent level reactions will appear after successful OI snapshots."}
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-[10px] ${freshnessTone}`} data-testid="market-memory-freshness">{freshness}</span>
+          {refreshing && visibleData ? <span className="text-[10px] text-emerald-700 dark:text-emerald-300">Updating…</span> : null}
           {levels.length ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{levels.length} memories</span> : null}
         </div>
       </div>
+      {loading && !visibleData ? <DataLoadingState variant="inline" label="Loading recent level reactions…" className="mt-2" /> : null}
+      {refreshFailed ? <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">{visibleData ? "Could not refresh · showing the last available memory." : "Market Memory is temporarily unavailable; retrying automatically."}</div> : null}
+      {!loading && !refreshFailed && !levels.length ? <div className="mt-1 text-[10px] text-slate-500">{visibleData?.freshnessSeconds == null ? "Waiting for a successful OI snapshot." : "No level currently meets the recent relevance threshold."}</div> : null}
       {levels.length ? <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
         {levels.slice(0, 3).map((row) => (
           <div key={`${row.level}-${row.levelType}`} className={`rounded border border-slate-100 bg-slate-50/70 px-2 py-1.5 dark:border-slate-800 dark:bg-slate-800/50 ${pulse ? "market-memory-level-refresh" : ""}`}>
@@ -71,8 +114,8 @@ export default function MarketMemoryCard({ index }) {
               <span className="font-mono-data text-xs font-semibold">{Number(row.level).toLocaleString("en-IN")}</span>
               <span className={`text-[9px] font-bold ${row.levelType === "SUPPORT" ? "text-emerald-600" : row.levelType === "RESISTANCE" ? "text-rose-600" : "text-amber-600"}`}>{row.levelType}</span>
             </div>
-            <div className="mt-0.5 text-[10px] text-slate-500">{row.strength || "—"} · {(row.rejectionCount || 0) + (row.touchCount || 0) + (row.breakoutCount || 0) + (row.failedBreakoutCount || 0)} interactions · {row.currentDistance == null ? "—" : `${row.currentDistance} pts`}</div>
-            <div className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">Typical {formatReaction(row.averageSignedReaction)} · {row.failureRate == null ? "—" : `${row.failureRate}% break risk`}</div>
+            <div className="mt-0.5 text-[10px] text-slate-500">{row.strength || "—"} · {(row.rejectionCount || 0) + (row.touchCount || 0) + (row.breakoutCount || 0) + (row.failedBreakoutCount || 0)} interactions (20d) · {row.currentDistance == null ? "—" : `${row.currentDistance} pts`}</div>
+            <div className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">5d avg {row.recentAverageReaction == null ? "—" : `${row.recentAverageReaction} pts`} · {row.failedBreakoutRate == null ? "—" : `${row.failedBreakoutRate}% failed retests`}</div>
           </div>
         ))}
       </div> : null}
@@ -92,7 +135,7 @@ export default function MarketMemoryCard({ index }) {
               </InfoTip>
             </div>
             <p className="text-xs leading-5 text-slate-500">Market Memory shows how the index reacted around a level before. Use it with current OI, price action, and data freshness—not as a standalone entry signal.</p>
-            <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-400"><span>{freshness}</span>{data?.price != null ? <span>Live price {Number(data.price).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span> : null}</div>
+            <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-400"><span>{freshness}</span>{visibleData?.price != null ? <span>Live price {Number(visibleData.price).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span> : null}</div>
           </SheetHeader>
           <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-[11px] leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300 sm:grid-cols-2 lg:grid-cols-3">
             <div><b className="text-slate-800 dark:text-slate-100">Level</b><br />The rounded structural price zone being remembered. The small range below it is the level tolerance band.</div>
@@ -108,7 +151,7 @@ export default function MarketMemoryCard({ index }) {
           </div>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[900px] text-xs"><thead className="text-left text-[10px] uppercase text-slate-500"><tr><th className="sticky left-0 z-10 bg-slate-50 py-2 pr-4 dark:bg-slate-900">Level</th><th>Type</th><th>Strength</th><th>Interactions</th><th>Avg reaction</th><th>Direction</th><th>5d / 20d</th><th>Failure</th><th>Distance</th><th>Context</th></tr></thead>
-              <tbody>{(data?.levels || []).map((row) => <tr key={`${row.level}-${row.levelType}`} className="border-t border-slate-100 dark:border-slate-800"><td className="sticky left-0 z-10 bg-white py-2 pr-4 font-mono-data dark:bg-slate-900">{Number(row.level).toLocaleString("en-IN")}<div className="text-[9px] text-slate-400">{row.zoneLow}–{row.zoneHigh}</div></td><td>{row.levelType}</td><td className={row.strength === "HIGH" ? "font-semibold text-emerald-600" : "text-amber-600"}>{row.strength || "—"}</td><td>{(row.rejectionCount || 0) + (row.touchCount || 0) + (row.breakoutCount || 0) + (row.failedBreakoutCount || 0)}<div className="text-[9px] text-slate-400">{row.touchCount || 0} touch · {row.rejectionCount || 0} reject</div></td><td>{row.averageReaction == null ? "—" : `${row.averageReaction} pts`}<div className="text-[9px] text-slate-400">{row.largestReaction == null ? "" : `largest ${row.largestReaction} pts`}</div></td><td>{formatReaction(row.averageSignedReaction)}<div className="text-[9px] text-slate-400">up {formatReaction(row.averageUpReaction)} · down {formatReaction(row.averageDownReaction)}</div></td><td>{row.recentAverageReaction == null ? "—" : `${row.recentAverageReaction}`} / {row.historicalAverageReaction == null ? "—" : row.historicalAverageReaction}</td><td>{row.failureRate == null ? "—" : `${row.failureRate}% break`}<div className="text-[9px] text-slate-400">{row.failedBreakoutRate == null ? "—" : `${row.failedBreakoutRate}% failed retest`}</div></td><td>{row.currentDistance == null ? "—" : `${row.currentDistance} pts`}</td><td className="text-[10px] text-slate-500">{formatContext(row.lastContext) || "—"}</td></tr>)}</tbody>
+              <tbody>{(visibleData?.levels || []).map((row) => <tr key={`${row.level}-${row.levelType}`} className="border-t border-slate-100 dark:border-slate-800"><td className="sticky left-0 z-10 bg-white py-2 pr-4 font-mono-data dark:bg-slate-900">{Number(row.level).toLocaleString("en-IN")}<div className="text-[9px] text-slate-400">{row.zoneLow}–{row.zoneHigh}</div></td><td>{row.levelType}</td><td className={row.strength === "HIGH" ? "font-semibold text-emerald-600" : "text-amber-600"}>{row.strength || "—"}</td><td>{(row.rejectionCount || 0) + (row.touchCount || 0) + (row.breakoutCount || 0) + (row.failedBreakoutCount || 0)}<div className="text-[9px] text-slate-400">{row.touchCount || 0} touch · {row.rejectionCount || 0} reject</div></td><td>{row.averageReaction == null ? "—" : `${row.averageReaction} pts`}<div className="text-[9px] text-slate-400">{row.largestReaction == null ? "" : `largest ${row.largestReaction} pts`}</div></td><td>{formatReaction(row.averageSignedReaction)}<div className="text-[9px] text-slate-400">up {formatReaction(row.averageUpReaction)} · down {formatReaction(row.averageDownReaction)}</div></td><td>{row.recentAverageReaction == null ? "—" : `${row.recentAverageReaction}`} / {row.historicalAverageReaction == null ? "—" : row.historicalAverageReaction}</td><td>{row.failureRate == null ? "—" : `${row.failureRate}% breakout`}<div className="text-[9px] text-slate-400">{row.failedBreakoutRate == null ? "—" : `${row.failedBreakoutRate}% failed retest`}</div></td><td>{row.currentDistance == null ? "—" : `${row.currentDistance} pts`}</td><td className="text-[10px] text-slate-500">{formatContext(row.lastContext) || "—"}</td></tr>)}</tbody>
             </table>
           </div>
         </SheetContent>

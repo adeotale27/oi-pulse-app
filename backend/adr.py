@@ -5,6 +5,7 @@ import asyncio
 from collections import deque
 import hashlib
 import logging
+import math
 import os
 import re
 import time
@@ -34,7 +35,10 @@ QUOTE_URL = "https://api.twelvedata.com/quote"
 STOCKS_URL = "https://api.twelvedata.com/stocks"
 TIME_SERIES_URL = "https://api.twelvedata.com/time_series"
 
-DEFAULT_POLL_SECONDS = 300
+DEFAULT_POLL_SECONDS = 600
+# ADR quotes are intentionally sampled only every ten minutes during the
+# US equity session. Eight seeded ADRs already consume eight /quote credits.
+MIN_POLL_SECONDS = 600
 # Twelve Data Basic 8: 8 API credits / minute, 800 / day. /quote is 1 credit per symbol.
 # A comma-batch of 8 symbols still spends 8 credits in one second (dashboard "minutely max").
 TD_CREDITS_PER_MINUTE = 8
@@ -48,7 +52,6 @@ US_OPEN = dtime(9, 30)
 US_CLOSE = dtime(16, 0)
 DE_OPEN = dtime(9, 0)
 DE_CLOSE = dtime(17, 30)
-IST_OPEN_REFRESH = dtime(9, 15)
 US_EXCHANGES = frozenset({"NYSE", "NASDAQ", "NYSE ARCA", "NYSE MKT", "AMEX"})
 DE_EXCHANGES = frozenset({"FRA", "XETRA", "FWB", "FSE", "XETR", "FRANKFURT"})
 LISTING_FLAGS = {"US": "🇺🇸", "DE": "🇩🇪", "GB": "🇬🇧"}
@@ -158,7 +161,7 @@ def default_prefs() -> Dict[str, Any]:
         "us_timezone": "America/New_York",
         "us_open": "09:30",
         "us_close": "16:00",
-        "indian_open_refresh": True,
+        "indian_open_refresh": False,
         "indian_open_refresh_ist": "09:15",
         "large_move_threshold_percent": DEFAULT_LARGE_MOVE,
         "banking_move_threshold_percent": DEFAULT_BANKING_MOVE,
@@ -394,9 +397,11 @@ def observation_from_quote(cfg: Dict[str, Any], quote: Dict[str, Any], *, poll_s
 
 def large_move(obs: Dict[str, Any], threshold: float) -> bool:
     pct = _num(obs.get("change_percent"))
-    if pct is None:
+    limit = _num(threshold)
+    # Invalid persisted thresholds must not turn routine quotes into alerts.
+    if pct is None or limit is None or not math.isfinite(limit) or limit <= 0:
         return False
-    return abs(pct) >= float(threshold)
+    return abs(pct) >= limit
 
 
 def meaningful_new_move(prev_pct: Optional[float], new_pct: Optional[float], threshold: float) -> bool:
@@ -988,21 +993,17 @@ def _seconds_since(iso_ts: Any, dt: datetime) -> Optional[float]:
 
 
 def should_poll_now(state: Dict[str, Any], prefs: Dict[str, Any], now: Optional[datetime] = None) -> Tuple[bool, str]:
-    """Return (poll?, reason). Immediate on US open; stop after US close; one IST 09:15 refresh."""
+    """Return (poll?, reason) for the US ADR session."""
     dt = now or _now_utc()
     et = now_et(dt)
-    ist = now_ist(dt)
-    interval = max(60, int(prefs.get("poll_interval_seconds") or DEFAULT_POLL_SECONDS))
+    interval = max(MIN_POLL_SECONDS, int(prefs.get("poll_interval_seconds") or DEFAULT_POLL_SECONDS))
     last_ok = state.get("last_ok_at")
     last_attempt = state.get("last_attempt_at") or last_ok
     backoff = max(0, int(state.get("rate_limit_backoff_s") or 0))
     min_gap = max(interval, backoff)
     last_open_day = state.get("last_us_open_day")
-    last_ist_day = state.get("last_ist_refresh_day")
     us_open = is_us_equity_session(dt)
-    de_open = is_de_equity_session(dt)
     today_et = et.date().isoformat()
-    today_ist = ist.date().isoformat()
 
     age = _seconds_since(last_attempt, dt)
     if age is not None and age < min_gap and backoff:
@@ -1010,23 +1011,10 @@ def should_poll_now(state: Dict[str, Any], prefs: Dict[str, Any], now: Optional[
 
     if us_open and last_open_day != today_et:
         return True, "us_open"
-    if prefs.get("indian_open_refresh") is not False:
-        ist_t = ist.time()
-        window_end = (datetime.combine(date(2000, 1, 1), IST_OPEN_REFRESH) + timedelta(minutes=4)).time()
-        nse_day = True
-        try:
-            from market_hours import is_trading_day
-            nse_day = is_trading_day(ist)
-        except Exception:
-            nse_day = ist.weekday() < 5
-        if nse_day and IST_OPEN_REFRESH <= ist_t <= window_end and last_ist_day != today_ist:
-            return True, "ist_open"
-    if not us_open and not de_open:
+    if not us_open:
         return False, "us_closed"
     if age is not None and age < min_gap:
         return False, "wait"
-    if de_open and not us_open and not last_ok:
-        return True, "de_open"
     if not last_ok:
         return True, "interval"
     try:
@@ -1061,12 +1049,8 @@ async def loop(db_fn, stop: asyncio.Event) -> None:
                     patch["rate_limit_backoff_s"] = 45
                 if reason == "us_open":
                     patch["last_us_open_day"] = et_date_iso()
-                if reason == "ist_open":
-                    patch["last_ist_refresh_day"] = now_ist().date().isoformat()
                 if db is not None:
                     await db[STATE_COL].update_one({"_id": "loop"}, {"$set": patch}, upsert=True)
-                if not result.get("ok") and reason == "ist_open":
-                    logger.warning("09:15 IST ADR refresh failed; last successful data kept")
             # Global Markets shares this one Twelve Data loop and the same credit
             # limiter/client.  One instrument per turn keeps Basic plans safe.
             try:

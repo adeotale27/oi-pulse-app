@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Newspaper } from "lucide-react";
+import { settingsAreWritable } from "@/lib/settingsWriteGuard";
 
 export default function MarketIntelSettingsModal({ open, onOpenChange }) {
   const [sources, setSources] = useState([]);
@@ -22,11 +23,16 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
   });
   const [storeStats, setStoreStats] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsLoadError, setSettingsLoadError] = useState("");
+  const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
 
   const load = () => {
     api.get("/market-intel/sources").then((r) => setSources(r.data?.sources || [])).catch(() => {});
     api.get("/market-intel/templates").then((r) => setTemplates(r.data || {})).catch(() => {});
     api.get("/market-intel/stats").then((r) => setStoreStats(r.data || null)).catch(() => {});
+    setSettingsLoaded(false);
+    setSettingsLoadError("");
     api.get("/settings").then((r) => {
       const d = r.data || {};
       setSettings({
@@ -36,9 +42,12 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
         market_intel_popup_enabled: d.market_intel_popup_enabled !== false,
         market_intel_popup_dock_until_next: d.market_intel_popup_dock_until_next !== false,
       });
-    }).catch(() => {});
+      setSettingsLoaded(true);
+    }).catch((e) => {
+      setSettingsLoadError(apiDetail(e, "Could not load saved Market Intel settings"));
+    });
   };
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => { if (open) load(); }, [open, settingsLoadAttempt]);
 
   const saveSrc = async (payload) => {
     setBusy(true);
@@ -67,6 +76,10 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
   };
 
   const saveDeskSettings = async () => {
+    if (!settingsAreWritable({ loaded: settingsLoaded, error: settingsLoadError })) {
+      toast.error("Saved Market Intel settings could not be loaded. Retry before saving.");
+      return;
+    }
     setBusy(true);
     try {
       await api.post("/settings", settings);
@@ -140,8 +153,16 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
               </div>
             ) : null}
           </div>
+          {settingsLoadError ? (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs text-amber-800">
+              <span>{settingsLoadError} — fallback values are shown; saving is disabled until saved settings load.</span>
+              <Button size="sm" variant="outline" className="h-7" onClick={() => setSettingsLoadAttempt((attempt) => attempt + 1)}>
+                Retry load
+              </Button>
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-1">
-            <Button size="sm" className="h-7" disabled={busy} onClick={saveDeskSettings}>Save interval</Button>
+            <Button size="sm" className="h-7" disabled={busy || !settingsAreWritable({ loaded: settingsLoaded, error: settingsLoadError })} onClick={saveDeskSettings}>Save interval</Button>
             <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={async () => {
               if (!window.confirm("Delete news older than the retention window?")) return;
               try {

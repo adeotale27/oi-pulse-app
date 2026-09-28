@@ -8,6 +8,7 @@ import MobileAlertTray from "@/components/MobileAlertTray";
 import DesktopAlertInbox from "@/components/DesktopAlertInbox";
 import PwaNotifyPrompt from "@/components/PwaNotifyPrompt";
 import MaintenanceScreen from "@/components/MaintenanceScreen";
+import DataLoadingState from "@/components/DataLoadingState";
 import { installDeskErrorLog } from "@/lib/errorLog";
 import { api } from "@/lib/api";
 
@@ -20,11 +21,7 @@ const KiteCallback = lazy(() => import("@/pages/KiteCallback"));
 const AboutAppModal = lazy(() => import("@/components/AboutAppModal"));
 
 function BootFallback() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f6f9fc]">
-      <div className="text-sm text-slate-500">Loading…</div>
-    </div>
-  );
+  return <DataLoadingState />;
 }
 
 function PublicEntry() {

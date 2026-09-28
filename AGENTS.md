@@ -1,6 +1,6 @@
 # StrikLenz — notes for humans and AI
 
-**Current version: V14.78** (`VERSION` at repo root).
+**Current version: V14.88** (`VERSION` at repo root).
 
 This is an Indian-market **open interest desk** branded **StrikLenz** (display name: repo-root `APP_NAME`). Indices: NIFTY, SENSEX, BANKNIFTY. FastAPI + MongoDB + React, live data from **Zerodha Kite Connect**.
 
@@ -18,6 +18,7 @@ Read first:
 10. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — add an underlying / API / UI
 11. [docs/HOSTING.md](docs/HOSTING.md) — leaving Emergent, Oracle Cloud vs keeping Mongo, GoDaddy DNS
 12. [docs/AI.md](docs/AI.md) — rule copilot on the carry brief; optional LLM over OI + book
+13. [docs/END_TO_END_AUDIT.md](docs/END_TO_END_AUDIT.md) — repeatable read-only local audit workflow; sample: [docs/audits/LOCAL_END_TO_END_AUDIT_2026-09-29.md](docs/audits/LOCAL_END_TO_END_AUDIT_2026-09-29.md)
 
 Rules of the product:
 
@@ -33,3 +34,10 @@ Rules of the product:
   including meaningful comments for major/non-obvious frontend and backend
   behavior, updates to stale comments, focused tests, documentation, and
   lockstep versioning.
+- Passwordless admin is permitted only for loopback requests in local
+  development when explicitly enabled; follow
+  [docs/LOCAL_DEVELOPMENT_AUTH.md](docs/LOCAL_DEVELOPMENT_AUTH.md) and never
+  enable it in staging or production.
+- For an explicit full/local end-to-end audit request, follow
+  [docs/END_TO_END_AUDIT.md](docs/END_TO_END_AUDIT.md): read-only, isolated local
+  data, preserve the worktree, and create a sanitized dated report.

@@ -5,6 +5,7 @@ import {
 import { readPositionsBook, subscribePositionsBook } from "@/lib/positionsBook";
 import { openOiMarks, formatMarkHover, isMarkNearAtm, strikeKey, peTopKey, ceTopKey } from "@/lib/oiPositionMarks";
 import { isPositionMarkGlowActive } from "@/lib/marketTimes";
+import DataLoadingState from "@/components/DataLoadingState";
 
 const PUT_GREEN = "#16A34A";
 const PUT_LIGHT = "#86EFAC";
@@ -29,7 +30,7 @@ function formatTime(iso) {
   }
 }
 
-export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp, expiry: expiryProp, keepPositionMarkGlowAfterClose = true, positionMarkGlowPct = 1 }) {
+export default memo(function OIChart({ current, previous, mode, atm, showOI = true, currentTime, prevTime, signalsMap, compact = false, chartKey = "", index: indexProp, expiry: expiryProp, keepPositionMarkGlowAfterClose = true, positionMarkGlowPct = 1, loading = false, updating = false }) {
   const spotPrice = current?.price ?? null;
   const spotPriceRef = useRef(spotPrice);
   spotPriceRef.current = spotPrice;
@@ -143,10 +144,21 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
     };
   }, [showOI, compact, showGlow, positionMarkGlowPct]);
 
-  if (!current) {
+  if (!data.length) {
     return (
-      <div className={`${compact ? "h-[280px]" : "h-96"} flex items-center justify-center text-slate-400 text-sm`}>
-        Loading data…
+      <div className={`${compact ? "h-[280px]" : "h-96"} rounded-md border border-slate-200 bg-white/70 dark:border-slate-700 dark:bg-slate-900/40`}>
+        {loading ? (
+          <DataLoadingState variant="panel" label="Brewing OI data…" />
+        ) : (
+          <div
+            role="status"
+            data-testid="oi-chart-unavailable"
+            className="flex h-full min-h-[10rem] flex-col items-center justify-center gap-1 px-4 text-center text-sm text-slate-500 dark:text-slate-300"
+          >
+            <span className="font-medium text-slate-700 dark:text-slate-100">Live OI data is unavailable</span>
+            <span className="text-xs">No current snapshot is available. Check the feed status above.</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -175,6 +187,13 @@ export default memo(function OIChart({ current, previous, mode, atm, showOI = tr
 
   return (
     <div className="w-full relative z-20 isolate overflow-visible" data-testid="oi-chart">
+      {updating ? (
+        <DataLoadingState
+          variant="inline"
+          label="Updating…"
+          className="absolute right-2 top-2 z-30 rounded-sm bg-white/90 px-2 py-1 dark:bg-slate-900/90"
+        />
+      ) : null}
       <div
         ref={wrapRef}
         className={`w-full ${chartH} touch-manipulation relative overflow-visible`}

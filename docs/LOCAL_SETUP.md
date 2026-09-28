@@ -26,6 +26,9 @@ DB_NAME=oi_pulse
 
 ADMIN_USERNAME=Adeotale
 ADMIN_PASSWORD=change-me
+# Optional, local-only passwordless admin for UI/render testing:
+APP_ENV=development
+LOCAL_DEV_ADMIN_BYPASS=true
 # Optional fixed bootstrap token (otherwise sessions are issued at login):
 # ADMIN_TOKEN=
 
@@ -88,7 +91,24 @@ WebSockets default to `ws://localhost:8000` when the env backend URL is set (see
 
 ---
 
-## 3. First login
+## 3. Authentication for local development
+
+For ordinary local development, use the optional `APP_ENV=development` and
+`LOCAL_DEV_ADMIN_BYPASS=true` settings in `backend/.env`. This bypasses the
+login screen and gives loopback requests admin access so agents and developers
+can exercise the real dashboard, admin UI, and API without repeatedly signing
+in. The dashboard displays a persistent warning while the bypass is active.
+
+The backend refuses to start if the bypass is enabled outside
+`APP_ENV=development`, and it only grants the bypass when both the request's
+client address and host are loopback (`localhost`, `127.0.0.1`, or `::1`).
+Do not copy these settings to staging, production, or any shared server. The
+full contract is in [`LOCAL_DEVELOPMENT_AUTH.md`](./LOCAL_DEVELOPMENT_AUTH.md).
+
+To test the real login flow locally, set `LOCAL_DEV_ADMIN_BYPASS=false` or
+remove it from `backend/.env`, then restart the backend.
+
+## 4. First login
 
 1. Open the app → Admin login with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 2. **Kite API** → save key/secret → generate/refresh daily access token → mode becomes **LIVE**.
@@ -97,7 +117,7 @@ WebSockets default to `ws://localhost:8000` when the env backend URL is set (see
 
 ---
 
-## 4. Useful admin actions
+## 5. Useful admin actions
 
 | Action | Where |
 |--------|--------|
@@ -108,7 +128,7 @@ WebSockets default to `ws://localhost:8000` when the env backend URL is set (see
 
 ---
 
-## 5. Tests (optional)
+## 6. Tests (optional)
 
 ```bash
 cd backend
@@ -119,7 +139,7 @@ Root-level `backend_*.py` / `p0_regression_test.py` scripts hit a running API �
 
 ---
 
-## Troubleshooting
+## 7. Troubleshooting
 
 | Symptom | Check |
 |---------|--------|

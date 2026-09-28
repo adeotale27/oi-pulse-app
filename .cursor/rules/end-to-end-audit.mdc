@@ -1,0 +1,19 @@
+---
+description: Run the documented read-only local end-to-end audit when the app owner explicitly requests a full application audit.
+alwaysApply: true
+---
+
+# Local end-to-end audit
+
+When the app owner explicitly asks for a full/local end-to-end audit, follow
+[`docs/END_TO_END_AUDIT.md`](../../docs/END_TO_END_AUDIT.md) before testing.
+Reuse the owner's local services and designated local Mongo DB; preserve the
+worktree and treat all records as potentially real. Do not perform state-changing
+admin actions, paid provider calls, manual refreshes, CAS actions, or trades
+without explicit approval for that exact action.
+
+Produce a sanitized, dated report at
+`docs/audits/LOCAL_END_TO_END_AUDIT_YYYY-MM-DD.md` with what worked, prioritized
+evidence-based findings, validation results, and tested/untested/blocked
+coverage. Distinguish observations from source-only conclusions and projections.
+Do not fix findings during an audit-only request.

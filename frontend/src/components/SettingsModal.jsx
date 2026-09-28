@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Settings2, Bell, Clock, Database, LayoutGrid, Activity } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
+import { settingsAreWritable } from "@/lib/settingsWriteGuard";
 import InfoTip from "@/components/InfoTip";
 
 import { DESK_IDS, isMcxMajorId } from "@/lib/universe";
@@ -78,6 +79,7 @@ export default function SettingsModal({
   const [local, setLocal] = useState(loadOISettings());
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [pane, setPane] = useState("alerts");
 
   useEffect(() => {
@@ -127,6 +129,7 @@ export default function SettingsModal({
           alert_enabled_indices: ["NIFTY"],
           weekday_dashboard_defaults: { "0": "NIFTY", "1": "NIFTY", "2": "SENSEX", "3": "SENSEX", "4": "NIFTY" },
           show_strike_range: false,
+          show_market_memory: true,
           visible_pages: DASHBOARD_PAGES.filter((p) => !p.hardAdmin && p.id !== "cas").map((p) => p.id),
           admin_visible_pages: ALL_PAGE_IDS,
           show_writer_defense: true,
@@ -141,7 +144,7 @@ export default function SettingsModal({
         });
       });
     setLocal(loadOISettings());
-  }, [open, isAdmin]);
+  }, [open, isAdmin, loadAttempt]);
 
   const toggleIndex = (idx) => {
     const cur = new Set(settings.enabled_indices || []);
@@ -211,6 +214,10 @@ export default function SettingsModal({
   const setLot = (idx, v) => setLocal((prev) => ({ ...prev, lotSize: { ...prev.lotSize, [idx]: v } }));
 
   const submit = async () => {
+    if (isAdmin && !settingsAreWritable({ loaded: settings !== null, error: loadError })) {
+      toast.error("Saved settings could not be loaded. Retry before saving.");
+      return;
+    }
     setSaving(true);
     try {
       // Always persist local thresholds first so they aren't lost if server POST fails.
@@ -244,6 +251,7 @@ export default function SettingsModal({
           admin_session_ttl_minutes: settings.admin_session_ttl_minutes,
           mcx_desk_on: !!settings.mcx_desk_on,
           show_strike_range: settings.show_strike_range,
+          show_market_memory: settings.show_market_memory !== false,
           show_writer_defense: settings.show_writer_defense,
           show_suggestion: settings.show_suggestion,
           show_chart_signals: settings.show_chart_signals,
@@ -318,8 +326,11 @@ export default function SettingsModal({
         </DialogHeader>
 
         {loadError && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-xs px-3 py-2">
-            ⚠️ {loadError} — using defaults. Save will retry.
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-xs px-3 py-2">
+            <span>{loadError} — fallback values are shown; saving server settings is disabled until saved settings load.</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+              Retry load
+            </Button>
           </div>
         )}
 
@@ -713,8 +724,8 @@ export default function SettingsModal({
                   Data collection
                 </div>
                 <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div><div className="text-xs font-medium text-slate-800">Market Memory</div><div className="text-[10px] text-slate-500">Show the OI-derived level memory above the refresh status on OI Change.</div></div>
-                  <Switch checked={local.showMarketMemory !== false} onCheckedChange={(checked) => setLocalField("showMarketMemory", !!checked)} data-testid="show-market-memory" />
+                  <div><div className="text-xs font-medium text-slate-800">Market Memory</div><div className="text-[10px] text-slate-500">Show this historical level-memory panel on OI Change for all desk users.</div></div>
+                  <Switch checked={settings.show_market_memory !== false} onCheckedChange={(checked) => setSettings({ ...settings, show_market_memory: !!checked })} data-testid="show-market-memory" />
                 </div>
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
@@ -1111,7 +1122,7 @@ export default function SettingsModal({
           <Button
             data-testid="btn-save-settings"
             onClick={submit}
-            disabled={saving}
+            disabled={saving || (isAdmin && !settingsAreWritable({ loaded: settings !== null, error: loadError }))}
             className="rounded-sm bg-slate-900 hover:bg-slate-800"
           >
             {saving ? "Saving…" : "Save"}
