@@ -56,6 +56,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | POST | `/desk-ai` | Desk user: one `desk_ai_show` flag for the whole desk |
 | GET/POST/DELETE | `/desk-ai/providers` | Admin: vaulted OpenAI-compatible Desk AI keys |
 | GET | `/market-intel` | Ranked clustered events (desk user). Query `filter=` |
+| GET | `/market-memory/{index}` | Recent price-level interaction summary derived from stored OI snapshots (desk user) |
 | GET/POST | `/market-intel/prefs` | Per-user page/popup prefs |
 | GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app very-high-impact popup (up to 8 unseen clusters). Desk-wide popup tick off → empty for everyone; ingest is independent. Admin always receives items when the desk tick is on. |
 | GET/POST/DELETE | `/market-intel/sources` | Admin sources; `.../test` and `.../fetch` |
@@ -92,6 +93,8 @@ Spot and straddle WS endpoints (see `frontend/src/lib/spotWs.js`, `straddleWs.js
 | **Telegram Bot API** | Optional alert / huge-shift / digest delivery. Token/chat from Admin → Admin configuration (Fernet vault) or `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` env fallback. |
 | **yfinance** (optional paths) | Auxiliary market data where configured |
 | **Google Fonts** | Inter in `index.html` (only browser third-party on the desk) |
+
+Admin → API Configuration's **Called today** metric counts integrations with telemetry-recorded requests since local midnight. Source-discovered providers remain listed even when not configured or used; the metric does not predict future calls.
 
 The browser talks only to **this origin** (`/api`, `/ws`). Production is **https://striklenz.com**. Failed calls to `https://striklenz.com/api/...` **are this app** behind Cloudflare when origin is slow (520/524). `aaisnamkeen.com` is a retired host — Kite redirects must not land there. `sc.ecombullet.com` is **not** in this repo.
 

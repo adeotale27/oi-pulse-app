@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import AuthShell from "@/components/AuthShell";
 import MaintenanceScreen from "@/components/MaintenanceScreen";
+import DataLoadingState from "@/components/DataLoadingState";
 
 /**
  * AuthGate — three modes:
@@ -223,7 +224,7 @@ export default function AuthGate({ children }) {
   // Absolute session TTL logout for admin (matches backend created_at + ttl).
   // Does NOT call /auth/logout (that would wipe Remember-me for this IP).
   useEffect(() => {
-    if (!state.is_admin) return;
+    if (!state.is_admin || state.local_dev_admin_bypass) return;
     const ttl = (state.session_ttl_seconds || 8 * 3600) * 1000;
     const check = setInterval(() => {
       if (Date.now() - lastActivityRef.current > ttl) {
@@ -233,11 +234,11 @@ export default function AuthGate({ children }) {
       }
     }, 60_000);
     return () => clearInterval(check);
-  }, [state.is_admin, state.session_ttl_seconds]);
+  }, [state.is_admin, state.local_dev_admin_bypass, state.session_ttl_seconds]);
 
   // Market-close admin logout — ONLY when Settings explicitly enables it.
   useEffect(() => {
-    if (!state.is_admin) return;
+    if (!state.is_admin || state.local_dev_admin_bypass) return;
     if (!state.expire_admin_on_market_close) return;
     if (!state.admin_session_expires_at) return;
     const expMs = Date.parse(state.admin_session_expires_at);
@@ -255,7 +256,7 @@ export default function AuthGate({ children }) {
       window.location.reload();
     }, Math.min(expMs - now, 2147483000));
     return () => clearTimeout(timer);
-  }, [state.is_admin, state.admin_session_expires_at, state.expire_admin_on_market_close]);
+  }, [state.is_admin, state.local_dev_admin_bypass, state.admin_session_expires_at, state.expire_admin_on_market_close]);
 
   const admitGuest = async (token, name, expiresIn, expiresAt) => {
     clearAdminAuth({ clearRemember: false });
@@ -408,11 +409,7 @@ export default function AuthGate({ children }) {
   };
 
   if (state.loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#061018]">
-        <div className="text-sm text-slate-400">Loading…</div>
-      </div>
-    );
+    return <DataLoadingState />;
   }
 
   if (state.auth_unavailable) {
@@ -447,7 +444,22 @@ export default function AuthGate({ children }) {
   }
 
   // Admin always passes. Guest only while public access remains open.
-  if (state.is_admin) return children;
+  if (state.is_admin) {
+    return (
+      <>
+        {state.local_dev_admin_bypass && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-3 right-3 z-[100] rounded-md border border-amber-400/50 bg-amber-950/95 px-3 py-2 text-xs font-semibold text-amber-100 shadow-lg"
+          >
+            Local development — admin login bypassed
+          </div>
+        )}
+        {children}
+      </>
+    );
+  }
   if (state.is_guest && state.public_access_open) return children;
   // Stale guest token after public access closed → force login/guest prompt
   if (state.is_guest && !state.public_access_open) {

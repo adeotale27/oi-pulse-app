@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
+from zoneinfo import ZoneInfo
 
 EVENTS_COL = "market_memory_events"
 STATE_COL = "market_memory_state"
@@ -148,6 +149,7 @@ async def summary(db, index: str) -> Dict[str, Any]:
     docs = await db[EVENTS_COL].find({"index": index}, {"_id": 0}).sort("timestamp", -1).to_list(500) if db is not None else []
     by_level: Dict[float, List[Dict[str, Any]]] = {}
     now = datetime.now(timezone.utc)
+    today_ist = now.astimezone(ZoneInfo("Asia/Kolkata")).date()
     step, tolerance = STRUCTURE.get(index, (50, 10))
     for event in docs:
         raw = _number(event.get("level"))
@@ -158,22 +160,43 @@ async def summary(db, index: str) -> Dict[str, Any]:
             by_level.setdefault(float(anchor), []).append({**event, "rawLevel": raw})
     levels = []
     for level, events in by_level.items():
-        dated = [(event, datetime.fromisoformat(str(event["timestamp"]).replace("Z", "+00:00"))) for event in events]
+        dated = []
+        for event in events:
+            stamp = datetime.fromisoformat(str(event["timestamp"]).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            if stamp <= now:
+                dated.append((event, stamp))
+        if not dated:
+            continue
         count5 = sum(1 for _, stamp in dated if stamp >= now - timedelta(days=5))
         count20 = sum(1 for _, stamp in dated if stamp >= now - timedelta(days=20))
         meaningful = []
         for event, stamp in sorted(dated, key=lambda item: item[1]):
             if not meaningful or (stamp - meaningful[-1][1]).total_seconds() >= 300:
                 meaningful.append((event, stamp))
-        kinds = {kind: sum(1 for event, _ in meaningful if event["interactionType"] == kind) for kind in ("TOUCH", "REJECTION", "BREAKOUT", "FAILED_BREAKOUT")}
-        reactions = [_number(event.get("reaction5m")) for event in events if event.get("reaction5m") is not None]
+        recent_meaningful = [
+            (event, stamp) for event, stamp in meaningful
+            if stamp >= now - timedelta(days=20)
+        ]
+        kinds = {kind: sum(1 for event, _ in recent_meaningful if event["interactionType"] == kind) for kind in ("TOUCH", "REJECTION", "BREAKOUT", "FAILED_BREAKOUT")}
+        weighted_kinds = {kind: 0.0 for kind in kinds}
+        for event, stamp in recent_meaningful:
+            kind = event.get("interactionType")
+            if kind not in weighted_kinds:
+                continue
+            age_fraction = (now - stamp).total_seconds() / timedelta(days=20).total_seconds()
+            weighted_kinds[kind] += max(0.0, 1.0 - age_fraction)
+        reactions = [_number(event.get("reaction5m")) for event, _ in dated if event.get("reaction5m") is not None]
         reactions = [value for value in reactions if value is not None]
         recent_reactions = [abs(value) for event, stamp in dated if stamp >= now - timedelta(days=5) for value in [_number(event.get("reaction5m"))] if value is not None]
         older_reactions = [abs(value) for event, stamp in dated if stamp >= now - timedelta(days=20) for value in [_number(event.get("reaction5m"))] if value is not None]
-        last = events[0]
-        recency = max(0.0, 1.0 - (now - dated[-1][1]).total_seconds() / 21600)
-        score = min(100, round(20 + min(30, kinds["REJECTION"] * 8 + kinds["FAILED_BREAKOUT"] * 6)
-                              + min(25, kinds["TOUCH"] * 5) + recency * 25))
+        last, last_stamp = max(dated, key=lambda item: item[1])
+        recency = max(0.0, min(1.0, 1.0 - (now - last_stamp).total_seconds() / 21600))
+        # Historical counts fade across the existing 20-day context window; old
+        # levels must not remain relevant forever just because they once repeated.
+        score = min(100, round(20 + min(30, weighted_kinds["REJECTION"] * 8 + weighted_kinds["FAILED_BREAKOUT"] * 6)
+                              + min(25, weighted_kinds["TOUCH"] * 5) + recency * 25))
         if score < 30:
             continue
         role = "SUPPORT" if price is not None and level <= price and kinds["REJECTION"] else (
@@ -183,7 +206,7 @@ async def summary(db, index: str) -> Dict[str, Any]:
         avg_signed = round(sum(reactions) / len(reactions), 2) if reactions else None
         levels.append({"level": level, "zoneLow": level - tolerance, "zoneHigh": level + tolerance,
                        "levelType": role, "strength": "HIGH" if score >= 70 else "MEDIUM",
-                       "relevanceScore": score, "todayCount": sum(1 for _, stamp in dated if stamp.date() == now.date()), "5DayCount": count5, "20DayCount": count20,
+                       "relevanceScore": score, "todayCount": sum(1 for _, stamp in dated if stamp.astimezone(ZoneInfo("Asia/Kolkata")).date() == today_ist), "5DayCount": count5, "20DayCount": count20,
                        "touchCount": kinds["TOUCH"], "rejectionCount": kinds["REJECTION"], "breakoutCount": kinds["BREAKOUT"], "failedBreakoutCount": kinds["FAILED_BREAKOUT"],
                        "averageReaction": round(sum(abs(value) for value in reactions) / len(reactions), 2) if reactions else None,
                        "averageSignedReaction": avg_signed,

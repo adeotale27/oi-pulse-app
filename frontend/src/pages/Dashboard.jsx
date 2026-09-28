@@ -241,6 +241,7 @@ export default function Dashboard() {
   const [current, setCurrent] = useState(null);
   const [previous, setPrevious] = useState(null);
   const [status, setStatus] = useState(null);
+  const [showMarketMemory, setShowMarketMemory] = useState(true);
   const [authState, setAuthState] = useState(() => {
     try {
       const last = typeof window !== "undefined" ? window.__oi_last_auth_state : null;
@@ -901,7 +902,7 @@ export default function Dashboard() {
     const u = String(idx || "").toUpperCase();
     return list.some((x) => String(x).toUpperCase() === u);
   }, []);
-  const [oiLoading, setOiLoading] = useState(false);
+  const [oiLoading, setOiLoading] = useState(true);
   const [showStrikeRange, setShowStrikeRange] = useState(false);
   const [showWriterDefense, setShowWriterDefense] = useState(true);
   const [showSuggestion, setShowSuggestion] = useState(true);
@@ -1422,6 +1423,7 @@ export default function Dashboard() {
       setAlertEnabledIndices(d.alert_enabled_indices);
     }
     if (typeof d.show_strike_range === "boolean") setShowStrikeRange(d.show_strike_range);
+    if (typeof d.show_market_memory === "boolean") setShowMarketMemory(d.show_market_memory);
     if (typeof d.show_writer_defense === "boolean") setShowWriterDefense(d.show_writer_defense);
     if (typeof d.show_suggestion === "boolean") setShowSuggestion(d.show_suggestion);
     if (typeof d.show_chart_signals === "boolean") setShowChartSignals(d.show_chart_signals);
@@ -2784,6 +2786,8 @@ export default function Dashboard() {
                       signalsMap={showChartSignals ? perStrikeSignals : null}
                       keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
                       positionMarkGlowPct={positionMarkGlowPct}
+                      loading={oiLoading}
+                      updating={oiLoading && !!current?.strikes?.length}
                     />
                     {marketIntel && (
                       <div
@@ -2849,7 +2853,7 @@ export default function Dashboard() {
                       <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-[auto_1fr_1fr] gap-6 items-start text-base" data-testid="change-summary">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div className="inline-flex items-center px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm font-medium" data-testid="change-summary-title">
+                            <div className="inline-flex items-center px-3 py-1.5 rounded-md bg-gradient-to-br from-emerald-600 to-teal-600 text-white text-sm font-medium" data-testid="change-summary-title">
                               Change on {formatDayLabel(current?.timestamp)}
                             </div>
                             {typeof current?.pcr === "number" && current.pcr > 0 && (
@@ -2960,6 +2964,8 @@ export default function Dashboard() {
                       chartKey={`${activeIndex}-abs`}
                       keepPositionMarkGlowAfterClose={keepPositionMarkGlowAfterClose}
                       positionMarkGlowPct={positionMarkGlowPct}
+                      loading={oiLoading}
+                      updating={oiLoading && !!current?.strikes?.length}
                     />
                   </TabsContent>
                   )}
@@ -3168,7 +3174,7 @@ export default function Dashboard() {
 
                 {(activeTab === "oi-change" || activeTab === "open-interest") && (
                 <div className="mt-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2 flex-wrap">
-                  {activeTab === "oi-change" && oiSettings.showMarketMemory !== false ? <div className="w-full"><MarketMemoryCard index={activeIndex} /></div> : null}
+                  {activeTab === "oi-change" && showMarketMemory ? <div className="w-full"><MarketMemoryCard index={activeIndex} marketOpen={status?.market?.is_market_open} /></div> : null}
                   <div data-testid="footer-refresh">
                     OI last pulled —{" "}
                     <span className="font-mono-data text-slate-900">

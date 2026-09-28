@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from adr import (
     DEFAULT_LARGE_MOVE,
     SEED_ADRS,
@@ -24,6 +27,7 @@ from adr import (
     universe_doc,
     validate_universe_row,
 )
+from adr_api import PrefsIn, UniverseIn
 
 
 INFY_QUOTE = {
@@ -103,6 +107,30 @@ def test_large_move_and_dedupe():
     assert not is_banking_sector("IT")
 
 
+def test_invalid_adr_move_thresholds_never_match_quotes():
+    unchanged = {"change_percent": 0}
+    assert not large_move(unchanged, -0.1)
+    assert not large_move(unchanged, 0)
+    assert not large_move(unchanged, float("nan"))
+
+
+@pytest.mark.parametrize("value", [0, -0.1, float("nan"), float("inf")])
+def test_adr_admin_thresholds_require_finite_positive_values(value):
+    with pytest.raises(ValidationError):
+        PrefsIn(large_move_threshold_percent=value)
+    with pytest.raises(ValidationError):
+        PrefsIn(banking_move_threshold_percent=value)
+    with pytest.raises(ValidationError):
+        UniverseIn(large_move_threshold_percent=value)
+
+
+def test_adr_admin_thresholds_accept_positive_values():
+    prefs = PrefsIn(large_move_threshold_percent=0.1, banking_move_threshold_percent=5)
+    row = UniverseIn(large_move_threshold_percent=2.5)
+    assert prefs.large_move_threshold_percent == 0.1
+    assert row.large_move_threshold_percent == 2.5
+
+
 def test_us_session_dst_holidays_and_close():
     # 09:30 EDT = 13:30 UTC (2026-07-10 Friday)
     assert is_us_equity_session(datetime(2026, 7, 10, 13, 30, tzinfo=timezone.utc))
@@ -123,14 +151,14 @@ def test_us_session_dst_holidays_and_close():
 
 
 def test_should_poll_us_open_interval_and_close():
-    prefs = {"poll_interval_seconds": 300, "indian_open_refresh": True, "enabled": True}
+    prefs = {"poll_interval_seconds": 600, "indian_open_refresh": True, "enabled": True}
     open_dt = datetime(2026, 7, 10, 13, 30, tzinfo=timezone.utc)
     go, reason = should_poll_now({}, prefs, open_dt)
     assert go and reason == "us_open"
     state = {"last_us_open_day": et_date_iso(open_dt), "last_ok_at": open_dt.isoformat()}
     go, reason = should_poll_now(state, prefs, open_dt)
     assert not go
-    later = datetime(2026, 7, 10, 13, 36, tzinfo=timezone.utc)
+    later = datetime(2026, 7, 10, 14, 1, tzinfo=timezone.utc)
     go, reason = should_poll_now(state, prefs, later)
     assert go and reason == "interval"
     closed = datetime(2026, 7, 10, 20, 5, tzinfo=timezone.utc)
@@ -138,7 +166,7 @@ def test_should_poll_us_open_interval_and_close():
     assert not go and reason == "us_closed"
     de_hours = datetime(2026, 7, 10, 11, 0, tzinfo=timezone.utc)
     go, reason = should_poll_now({"last_us_open_day": "x"}, prefs, de_hours)
-    assert go and reason == "de_open"
+    assert not go and reason == "us_closed"
     go, reason = should_poll_now(
         {"last_us_open_day": "x", "last_attempt_at": de_hours.isoformat(), "rate_limit_backoff_s": 90},
         prefs,
@@ -150,7 +178,7 @@ def test_should_poll_us_open_interval_and_close():
         prefs,
         de_hours,
     )
-    assert not go and reason == "wait"
+    assert not go and reason == "us_closed"
 
 
 def test_twelve_data_credit_gap():
@@ -159,14 +187,12 @@ def test_twelve_data_credit_gap():
     assert quote_credit_wait_s(100.0, 108.0) == 0.5
 
 
-def test_ist_open_refresh_once():
-    prefs = {"poll_interval_seconds": 300, "indian_open_refresh": True}
-    # 2026-08-14 Friday 09:15 IST = 03:45 UTC
+def test_no_ist_open_refresh_before_us_session():
+    prefs = {"poll_interval_seconds": 600, "indian_open_refresh": True}
+    # 2026-08-14 Friday 09:15 IST = 03:45 UTC; no ADR request is allowed yet.
     ist_open = datetime(2026, 8, 14, 3, 45, tzinfo=timezone.utc)
     go, reason = should_poll_now({"last_us_open_day": "x"}, prefs, ist_open)
-    assert go and reason == "ist_open"
-    go, reason = should_poll_now({"last_ist_refresh_day": "2026-08-14", "last_us_open_day": "x"}, prefs, ist_open)
-    assert not go
+    assert not go and reason == "us_closed"
 
 
 def test_quote_spec_tata_wns():

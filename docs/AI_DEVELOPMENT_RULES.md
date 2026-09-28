@@ -1,5 +1,10 @@
 # Rules for AI coding agents on StrikLenz
 
+For local passwordless admin testing, follow
+[`LOCAL_DEVELOPMENT_AUTH.md`](./LOCAL_DEVELOPMENT_AUTH.md). Preserve its
+backend-only, opt-in, development-only, loopback-only enforcement; never enable
+the bypass on staging or production.
+
 1. Read [ARCHITECTURE.md](./ARCHITECTURE.md), [ENGINEERING_RULES.md](./ENGINEERING_RULES.md), [../AGENTS.md](../AGENTS.md), and `VERSION` before coding.
 2. Reuse `universe`, holidays, payoff, journal helpers. Do not create a second index list.
 3. Never duplicate services/components/utilities that already exist.

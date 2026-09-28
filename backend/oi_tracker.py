@@ -198,6 +198,7 @@ DEFAULT_SETTINGS = {
     ],
     # Sidebar Strike Range steppers — off by default (ATM quick-picks cover most use)
     "show_strike_range": False,
+    "show_market_memory": True,
     # Writer Defense map on Open Interest tab (admin-togglable)
     "show_writer_defense": True,
     # Suggestion posture card under the right panel (admin-togglable)
@@ -517,6 +518,7 @@ class OITracker:
             "oi_poll_interval_seconds", "straddle_poll_interval_seconds",
             "positions_poll_interval_seconds",
             "straddle_enabled_indices", "visible_pages", "admin_visible_pages",
+            "show_market_memory",
             "market_open_ist", "market_close_ist", "second_session_ist",
             "expire_admin_on_market_close", "admin_session_ttl_minutes",
             "alert_enabled_indices", "alert_indices_override_date",

@@ -12,6 +12,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `admin_audit` | Admin enable/disable (and similar) with previous/new state |
 | `alerts` | Server-side OI reversal / pressure alerts |
 | `straddle_samples` | ATM straddle time series |
+| `market_memory_events` / `market_memory_state` | Level interactions and latest per-index memory state, captured from existing OI snapshots |
 | `credentials` | Encrypted Kite API key/secret/token vault (`_id: kite`) |
 | `settings` | Admin settings, public access flag (`open`, `require_approval`, expiry), password hash, sidebar notes, `mcx_desk_on`, Market Intelligence ingest/retention, `telegram_prefs` (alert filters + Fernet `bot_token_enc` + `chat_id`), `adr_prefs` (Twelve Data Fernet `api_key_enc`, poll/alerts) |
 | `adr_universe` | Admin-editable Indian ADR list (company, NSE symbol, US ticker, sector, ratio) |
@@ -55,6 +56,16 @@ Kite Connect ──► OITracker (asyncio poll) ──► oi_snapshots
 2. **Normalize** — Snapshot includes spot, ATM, PCR, per-strike CE/PE OI, VIX when available, `timestamp` / `created_at`.
 3. **Upsert** — Written to `oi_snapshots` with uniqueness on `(index, expiry, timestamp)`.
 4. **On demand** — Boot fetches OI for the **open index** only; other chips load when selected. FII/DII and impact fetch when that tile is opened. Positions poll only on the Positions tab. Index management **Search/Sync** loads the Kite name list — login and `/expiries` do not dump `kite.instruments()`. Auth 520/timeout does not sign you out.
+
+### Market Memory
+
+Market Memory consumes the existing successful OI snapshot stream; it does not
+make a second Kite/provider quote request. The OI Change card refreshes its
+summary every 30 seconds while mounted and retains the last successful result
+if a read fails. Summary relevance is weighted over the existing 20-day context
+window, while the freshness label reflects the latest stored snapshot. The
+administrator can show or hide the card for all users in Admin configuration →
+Data collection. These display/read changes do not affect the OI polling cadence.
 
 ### Change windows
 

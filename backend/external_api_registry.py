@@ -302,10 +302,12 @@ async def build_registry(db) -> Dict[str, Any]:
         states = {x["status"] for x in endpoints}
         provider["status"] = "failed" if "failed" in states else "warning" if "warning" in states else "healthy" if "healthy" in states else "unknown"
     endpoint_metrics = rows
+    # Source discovery only means tracked; count active providers from request telemetry.
     summary = {
         "providers": len(providers), "endpoints": len(rows),
         "modules": len({m for row in rows for m in row["modules"]}),
-        "active": len(providers), "healthy": sum(p["status"] == "healthy" for p in providers.values()),
+        "active": sum(p["requests_today"] > 0 for p in providers.values()),
+        "healthy": sum(p["status"] == "healthy" for p in providers.values()),
         "warning": sum(p["status"] == "warning" for p in providers.values()), "failed": sum(p["status"] == "failed" for p in providers.values()),
         "requests_today": sum(x["requests_today"] for x in endpoint_metrics), "errors_today": sum(x["errors_today"] for x in endpoint_metrics),
     }

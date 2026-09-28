@@ -23,6 +23,7 @@ The publisher Kite token polls the option chain on a cadence you set (15 / 30 / 
 | **Alerts / Activity** | Server reversal alerts + session tape |
 | **Events / Index Risk** | Calendar + event-risk tile (upload stamps stay admin-only) |
 | **Straddle** | ATM straddle premium path |
+| **Market Memory** | Recent, recency-weighted reactions around price levels, derived from existing OI snapshots |
 | **CAS Expiry** | Classic 15:28 SELL-both, plus **15:20 Auto Trade** (one ATM BUY). Runbook: [docs/CAS_AUTO_TRADE_15_20.md](docs/CAS_AUTO_TRADE_15_20.md) |
 | **Trade journal** | Admin-only: booked P&L, notes, rating, month calendar |
 
@@ -70,6 +71,7 @@ Details: [docs/DATA.md](docs/DATA.md) · APIs: [docs/ABOUT.md](docs/ABOUT.md).
 | Knob | Where |
 |------|--------|
 | Tracked indices, alert focus, poll seconds, market close | **Admin configuration** (gear) |
+| Market Memory visibility for all desk users | Admin configuration → **Data collection** |
 | **Public vs Admin pages** (two ticks per tile) | Admin configuration → Public / Admin dashboard pages |
 | Site-wide guest access ON/OFF | Header **Public** switch |
 | Extra guest pages (Positions, Sell Candidates, Index Risk) | Public icon menu (same flags as settings) |

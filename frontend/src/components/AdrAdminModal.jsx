@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Pencil, Power, Trash2 } from "lucide-react";
 import GlobalMarketsSettings from "@/components/GlobalMarketsSettings";
+import { getAdrPollFeedback, isPositiveAdrThreshold } from "@/lib/adrAdmin";
 
 const blank = {
   company_name: "", indian_symbol: "", adr_symbol: "", exchange: "NYSE",
@@ -59,6 +60,29 @@ export default function AdrAdminModal({ open, onOpenChange }) {
     }
   };
 
+  const pollNow = async () => {
+    try {
+      const { data } = await api.post("/adrs/poll");
+      const feedback = getAdrPollFeedback(data);
+      toast[feedback.tone](feedback.message);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "ADR poll failed");
+    }
+  };
+
+  const saveAlertThresholds = () => {
+    const largeMove = prefs?.large_move_threshold_percent;
+    const bankingMove = prefs?.banking_move_threshold_percent;
+    if (!isPositiveAdrThreshold(largeMove) || !isPositiveAdrThreshold(bankingMove)) {
+      toast.error("Both alert thresholds must be finite numbers greater than 0.");
+      return;
+    }
+    savePrefs({
+      large_move_threshold_percent: largeMove,
+      banking_move_threshold_percent: bankingMove,
+    });
+  };
+
   const saveItem = async () => {
     setBusy(true);
     try {
@@ -102,13 +126,13 @@ export default function AdrAdminModal({ open, onOpenChange }) {
           </div>
           <div>
             <Label className="text-xs">Polling interval (seconds)</Label>
-            <Input type="number" min={1} step={1} className="h-8 mt-1" value={prefs?.poll_interval_seconds ?? 300} onChange={(e) => setPrefs({ ...prefs, poll_interval_seconds: e.target.value === "" ? "" : Number(e.target.value) })} />
-            <p className="text-[10px] text-slate-500 mt-1">Use any positive whole number of seconds. Twelve Data Basic allows 8 credits/min and 800/day; ADR and Global Markets share that quota, so very short intervals can still be rate-limited.</p>
+            <Input type="number" min={600} step={60} className="h-8 mt-1" value={prefs?.poll_interval_seconds ?? 600} onChange={(e) => setPrefs({ ...prefs, poll_interval_seconds: e.target.value === "" ? "" : Number(e.target.value) })} />
+            <p className="text-[10px] text-slate-500 mt-1">Minimum 600 seconds. ADRs poll only while US equities are open. Twelve Data Basic allows 8 credits/min and 800/day; ADR and Global Markets share that quota.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => {
-              if (!Number.isInteger(Number(prefs.poll_interval_seconds)) || Number(prefs.poll_interval_seconds) < 1) {
-                toast.error("Polling interval must be a positive whole number of seconds.");
+              if (!Number.isInteger(Number(prefs.poll_interval_seconds)) || Number(prefs.poll_interval_seconds) < 600) {
+                toast.error("Polling interval must be at least 600 seconds.");
                 return;
               }
               const patch = { poll_interval_seconds: prefs.poll_interval_seconds };
@@ -117,17 +141,13 @@ export default function AdrAdminModal({ open, onOpenChange }) {
             }}>Save provider</Button>
             <Button type="button" size="sm" variant="outline" data-testid="adr-test-api" onClick={test}>Test API Connection</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => savePrefs({ discover: true }).then(load)}>Sync ADR Monitor</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => api.post("/adrs/poll").then(() => toast.success("Poll queued"))}>Poll now</Button>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={pollNow}>Poll now</Button>
           </div>
         </section>
 
         <section className="space-y-2 rounded-md border p-3">
           <div className="text-[11px] font-semibold uppercase tracking-widest">Market Session</div>
-          <p className="text-xs text-slate-600">US timezone America/New_York · 09:30–16:00 ET (DST automatic). Indian opening refresh 09:15 IST (one poll while US is closed).</p>
-          <div className="flex items-center gap-2">
-            <Switch checked={prefs?.indian_open_refresh !== false} onCheckedChange={(ck) => savePrefs({ indian_open_refresh: !!ck })} />
-            <span className="text-xs">Indian opening refresh</span>
-          </div>
+          <p className="text-xs text-slate-600">US timezone America/New_York · 09:30–16:00 ET (DST automatic). ADR polling is disabled outside this session.</p>
         </section>
 
         <section className="space-y-2 rounded-md border p-3">
@@ -135,21 +155,18 @@ export default function AdrAdminModal({ open, onOpenChange }) {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Large move %</Label>
-              <Input type="number" step="0.1" className="h-8 mt-1" value={prefs?.large_move_threshold_percent ?? 5} onChange={(e) => setPrefs({ ...prefs, large_move_threshold_percent: Number(e.target.value) })} />
+              <Input type="number" min="0.1" step="0.1" className="h-8 mt-1" value={prefs?.large_move_threshold_percent ?? 5} onChange={(e) => setPrefs({ ...prefs, large_move_threshold_percent: e.target.value === "" ? "" : Number(e.target.value) })} />
             </div>
             <div>
               <Label className="text-xs">Banking threshold %</Label>
-              <Input type="number" step="0.1" className="h-8 mt-1" value={prefs?.banking_move_threshold_percent ?? 5} onChange={(e) => setPrefs({ ...prefs, banking_move_threshold_percent: Number(e.target.value) })} />
+              <Input type="number" min="0.1" step="0.1" className="h-8 mt-1" value={prefs?.banking_move_threshold_percent ?? 5} onChange={(e) => setPrefs({ ...prefs, banking_move_threshold_percent: e.target.value === "" ? "" : Number(e.target.value) })} />
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={prefs?.notifications_enabled !== false} onCheckedChange={(ck) => savePrefs({ notifications_enabled: !!ck })} />
             <span className="text-xs">Notifications</span>
           </div>
-          <Button type="button" size="sm" variant="outline" onClick={() => savePrefs({
-            large_move_threshold_percent: prefs.large_move_threshold_percent,
-            banking_move_threshold_percent: prefs.banking_move_threshold_percent,
-          })}>Save alerts</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={saveAlertThresholds}>Save alerts</Button>
         </section>
 
         <section className="space-y-2">

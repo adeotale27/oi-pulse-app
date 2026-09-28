@@ -1,5 +1,45 @@
 # Changelog
 
+## V14.88 — 2026-09-29
+
+Kept the maintenance hero and actions centered in their own area while returning the phone artwork to a bounded NIFTY-left, fully contained robot-right layout. Short phones use a smaller illustration without introducing page or panel scrolling.
+
+## V14.87 — 2026-09-29
+
+Centered the maintenance hero copy and actions across the phone viewport, replaced the synthetic NIFTY curve with saved underlying-price history, and added a reduced-motion-aware animated trace. The NIFTY card now blends into the page instead of using a near-black fill, and its chart aligns with the hero to use phone space better.
+
+## V14.86 — 2026-09-29
+
+Centered the maintenance status pills and shared app mark, improved the phone illustration scale and spacing, and restored a compact four-feature footer on phones while retaining the full feature footer on larger screens.
+
+## V14.85 — 2026-09-29
+
+Reworked the maintenance page for phones: it now stays within the viewport without scrolling, places the NIFTY panel to the robot's left, removes the bench, and keeps a compact branded footer visible. Fixed the Market Memory visibility setting being omitted from the backend persistence allowlist.
+
+## V14.84 — 2026-09-29
+
+Made Market Memory relevance fade over a bounded 20-day window, fixed latest-interaction and India-local day counting, corrected card metric labels, and refreshed the summary every 30 seconds with explicit freshness/error states. Added a shared Admin Config visibility setting and an initial maintenance-page mobile layout adjustment.
+
+## V14.83 — 2026-09-29
+
+Added branded, reduced-motion-aware startup and panel loading states. OI and Straddle charts now keep existing data visible while refreshing and show explicit unavailable states when no snapshot or session data can be displayed.
+
+## V14.82 — 2026-09-29
+
+Matched the active timeframe pill and OI change-date label to the existing emerald/teal selected strike-filter style, with accessible pressed state. Added a reusable, read-only local end-to-end audit procedure and a sanitized report from the September 29 run.
+
+## V14.81 — 2026-09-29
+
+Prevented Admin Config and Market Intel settings from saving fallback defaults after a failed read, made ADR poll feedback reflect the actual poll result, rejected non-positive or non-finite ADR thresholds in the UI and API, and changed API Configuration's Active count to providers with recorded calls today. Documented that Twelve Data's per-instrument cadence does not enforce the Free plan's aggregate daily-credit allowance.
+
+## V14.80 — 2026-09-29
+
+Added an opt-in, backend-enforced admin authentication bypass for loopback-only local development, with a production fail-closed guard, visible dashboard warning, focused tests, and coding-agent documentation.
+
+## V14.79 — 2026-09-29
+
+Limited Twelve Data usage by polling ADRs only during the US equity session at a minimum ten-minute cadence, removed the pre-US Indian-open refresh, and added the same ten-minute per-instrument gate to Global Markets Twelve Data requests. FMP remains opt-in per enabled instrument/provider assignment.
+
 ## V14.78 — 2026-09-26
 
 Made the maintenance page fit phone viewports, reduced the robot and NIFTY chart sizes on mobile, compacted the maintenance actions, and removed the admin sign-in link.

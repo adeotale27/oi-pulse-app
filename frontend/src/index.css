@@ -761,6 +761,8 @@ input[type="number"] {
   display: block;
   border-radius: 0.4rem;
 }
+.oi-pulse-logo { display: block; flex: 0 0 auto; }
+.data-loading-logo-frame { box-sizing: border-box; }
 
 @keyframes oi-position-mark-glow {
   0%, 100% { opacity: 0.04; transform: scale(0.92); }
