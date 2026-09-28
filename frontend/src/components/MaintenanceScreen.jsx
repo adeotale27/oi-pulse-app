@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Activity, Coffee, RefreshCw, Wrench } from "lucide-react";
-import { Link } from "react-router-dom";
 import OiPulseLogo from "@/components/OiPulseLogo";
 import StrikLenzRobot from "@/components/StrikLenzRobot";
 import AuthFeatureFooter from "@/components/AuthFeatureFooter";
@@ -153,9 +152,6 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
               <RefreshCw className={retrying ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
               {retrying ? "Checking desk…" : "Try the desk again"}
             </button>
-            <Link to="/admin" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-emerald-300/20 bg-emerald-300/5 px-4 py-3 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10">
-              Admin sign in
-            </Link>
             <div className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
               <Coffee className="h-4 w-4 text-amber-300" /> No action needed. Sip responsibly.
             </div>
@@ -163,7 +159,7 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
         </section>
 
         <section className="relative mx-auto h-56 w-full max-w-2xl sm:h-72 lg:h-[min(27rem,100%)]">
-          <motion.div className="absolute left-[2%] top-[5%] w-[58%] rounded-2xl border border-emerald-300/20 bg-[#06191b]/90 p-3 shadow-2xl shadow-emerald-950/50 backdrop-blur sm:left-[5%] sm:top-[8%] sm:w-[48%] sm:p-4" animate={{ y: [0, -8, 0] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}>
+          <motion.div className="maintenance-nifty-card absolute left-[2%] top-[5%] w-[58%] rounded-2xl border border-emerald-300/20 bg-[#06191b]/90 p-3 shadow-2xl shadow-emerald-950/50 backdrop-blur sm:left-[5%] sm:top-[8%] sm:w-[48%] sm:p-4" animate={{ y: [0, -8, 0] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}>
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-emerald-200"><span>NIFTY pulse</span><Activity className="h-3.5 w-3.5" /></div>
             <div className="mt-2 h-20 sm:mt-3 sm:h-28"><MiniChart values={oiBars} /></div>
             <div className="mt-2 flex justify-between font-mono text-[10px] text-slate-400"><span>OI feed: {marketOpen ? "humming" : "paused"}</span><span className={marketOpen ? "text-emerald-300" : "text-slate-400"}>{marketOpen ? "MARKET LIVE" : "MARKET CLOSED"}</span></div>
@@ -179,8 +175,10 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
           </motion.div>
 
           <div className="absolute inset-x-[8%] bottom-[5%] h-8 rounded-[50%] bg-emerald-400/20 blur-2xl" />
-          <motion.div className="absolute bottom-[3%] left-[31%] z-10 scale-[.65] origin-bottom sm:bottom-[10%] sm:left-[25%] sm:scale-100" animate={{ y: [0, -10, 0], rotate: [-1, 1, -1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}>
-            <StrikLenzRobot variant="maintenance" />
+          <motion.div className="maintenance-robot absolute bottom-[3%] left-[31%] z-10 sm:bottom-[10%] sm:left-[25%]" animate={{ y: [0, -10, 0], rotate: [-1, 1, -1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}>
+            <div className="maintenance-robot-scale">
+              <StrikLenzRobot variant="maintenance" />
+            </div>
           </motion.div>
           <div className="absolute bottom-[3%] left-[8%] h-6 w-[84%] skew-x-[-12deg] rounded-xl border border-white/15 bg-gradient-to-b from-slate-700 to-slate-950 shadow-2xl sm:bottom-[9%] sm:h-8" />
           <div className="absolute bottom-0 right-[4%] rounded-lg border border-amber-200/25 bg-amber-100/10 px-2 py-1.5 text-center font-mono text-[8px] text-amber-100/90 shadow-lg rotate-3 sm:bottom-[2%] sm:px-3 sm:py-2 sm:text-[10px]">
