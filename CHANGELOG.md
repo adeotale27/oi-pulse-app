@@ -1,5 +1,9 @@
 # Changelog
 
+## V14.78 — 2026-09-26
+
+Made the maintenance page fit phone viewports, reduced the robot and NIFTY chart sizes on mobile, compacted the maintenance actions, and removed the admin sign-in link.
+
 ## V14.77 — 2026-09-25
 
 Refreshed the dark palette from muted blue-gray to a modern deep navy with brighter cyan/emerald accents, clearer surface hierarchy, and improved dark-mode text contrast.
