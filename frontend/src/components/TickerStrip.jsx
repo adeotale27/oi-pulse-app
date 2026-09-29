@@ -339,7 +339,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
                   : `(${t.change_pct > 0 ? "+" : ""}${fmtNum(t.change_pct, 2)}%)`}
               </span>
             </Tag>
-              <div className="inline-flex items-center gap-1 h-6 rounded-full border border-slate-200 bg-white px-1 py-[1px] shadow-[0_1px_0_rgba(15,23,42,0.04)] text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 whitespace-nowrap">
+              <div className={`inline-flex items-center gap-1 h-6 rounded-full border px-1.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap ${tickerRegimeChipClass(regime.key)}`}>
                 <span>{regime.label}</span>
                 <InfoTip
                   title="Index regime"
@@ -457,7 +457,7 @@ export default function TickerStrip({ onSelectIndex, activeIndex, spotPrices = {
             {isHeader && (
               <div className="flex items-center gap-1 px-2 pb-1.5">
                 <span
-                  className={`inline-flex min-w-0 max-w-full whitespace-normal rounded-sm border px-1 py-px text-[9px] font-semibold leading-tight ${tickerRegimeChipClass(regime.key, { onDark: isActive })}`}
+                  className={`inline-flex min-w-0 max-w-full whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-[10px] font-bold leading-tight ${tickerRegimeChipClass(regime.key)}`}
                   title={regime.why}
                   data-testid={`regime-chip-${t.index}`}
                 >

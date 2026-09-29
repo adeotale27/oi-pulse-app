@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, apiDetail } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { MI_CATS } from "@/lib/marketIntel";
 import { toast } from "sonner";
 import { KeyRound } from "lucide-react";
@@ -63,6 +64,7 @@ export default function DeskAiKeysModal({ open, onOpenChange }) {
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-4 h-4" />
             Desk AI keys
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription>
             Store an OpenAI-compatible key on the server (never in the browser). Env OPENAI_API_KEY is fallback for OpenAI only.
@@ -156,13 +158,13 @@ export function MarketIntelUserPrefs({ prefs, onChange }) {
         </label>
       ))}
       <label className="flex items-center gap-2">Popup min impact
-        <input type="number" className="w-16 h-7 border rounded-sm px-1" value={prefs.popup_min_impact ?? 90} onChange={(e) => onChange({ popup_min_impact: Number(e.target.value) })} />
+        <input type="number" min={50} max={100} className="w-16 h-7 border rounded-sm px-1" value={prefs.popup_min_impact ?? 75} onChange={(e) => onChange({ popup_min_impact: Number(e.target.value) })} />
       </label>
       <label className="flex items-center gap-2">Popup min India
-        <input type="number" className="w-16 h-7 border rounded-sm px-1" value={prefs.popup_min_india ?? 70} onChange={(e) => onChange({ popup_min_india: Number(e.target.value) })} />
+        <input type="number" min={0} max={100} className="w-16 h-7 border rounded-sm px-1" value={prefs.popup_min_india ?? 30} onChange={(e) => onChange({ popup_min_india: Number(e.target.value) })} />
       </label>
       <label className="flex items-center gap-2">UI refresh (sec)
-        <input type="number" className="w-16 h-7 border rounded-sm px-1" min={60} max={1800} value={prefs.ui_poll_seconds ?? 120} onChange={(e) => onChange({ ui_poll_seconds: Number(e.target.value) })} />
+        <input type="number" className="w-16 h-7 border rounded-sm px-1" min={60} max={1800} value={prefs.ui_poll_seconds ?? 60} onChange={(e) => onChange({ ui_poll_seconds: Number(e.target.value) })} />
       </label>
       <div className="flex flex-wrap gap-1">
         {MI_CATS.map((c) => (

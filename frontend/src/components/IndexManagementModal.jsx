@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { api, apiDetail, INDEX_ADMIN_TIMEOUT_MS } from "@/lib/api";
@@ -148,6 +149,7 @@ export default function IndexManagementModal({ open, onOpenChange, onChanged }) 
           <DialogTitle className="flex items-center gap-2 text-[15px]">
             <Layers className="w-4 h-4 text-emerald-600" />
             Index management
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription className="text-[11px] text-slate-500">
             Discover Kite F&amp;O names, then Enable or Disable. NIFTY / SENSEX / BANKNIFTY stay on the desk.

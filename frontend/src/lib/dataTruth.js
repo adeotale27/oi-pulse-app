@@ -40,16 +40,18 @@ export function nextRefreshInSeconds(ageSeconds, pollMs = DEFAULT_POLL_MS) {
  * Build an impossible-to-misread truth layer from API data_status + market flags.
  *
  * @returns {{
- *   mode: 'LIVE' | 'LAST_SESSION' | 'STALE' | 'OFFLINE' | 'NO_DATA',
+ *   mode: 'LIVE' | 'PRE_MARKET' | 'LAST_SESSION' | 'STALE' | 'OFFLINE' | 'NO_DATA',
  *   badge: string,
  *   asOfLabel: string,
  *   detail: string,
- *   tone: 'live' | 'session' | 'warn' | 'offline',
+ *   tone: 'live' | 'premarket' | 'session' | 'warn' | 'offline',
  * }}
  */
 export function buildDataTruth({
   dataStatus,
   marketOpen,
+  preMarket = false,
+  pollStartsAt = "09:15",
   mode, // kite | offline
   snapshotTs,
   now = new Date(),
@@ -92,6 +94,21 @@ export function buildDataTruth({
       asOfLabel: asOfClock ? `Live data as of ${asOfClock} IST` : dataDate ? `Session ${dataDate}` : "—",
       detail: "Market feed required · board is not live",
       tone: "offline",
+    };
+  }
+
+  // NSE pre-open begins at 09:00, before OI polling; yesterday's snapshot is expected here.
+  if (preMarket && open) {
+    return {
+      mode: "PRE_MARKET",
+      badge: "PRE-MARKET",
+      asOfLabel: asOfClock
+        ? `Last session OI as of ${asOfClock} IST`
+        : dataDate
+          ? `Last session OI · ${dataDate}`
+          : `OI polling starts at ${pollStartsAt} IST`,
+      detail: `NSE pre-open · OI polling starts at ${pollStartsAt} IST`,
+      tone: "premarket",
     };
   }
 

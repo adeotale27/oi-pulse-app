@@ -33,7 +33,8 @@ STATUSES = ("HEALTHY", "WARNING", "FAILED", "DISABLED")
 STORE_MIN_IMPACT = 50
 _constit_cache: Dict[str, Any] = {"t": 0.0, "terms": []}
 
-DEFAULT_INGEST_S = 300
+DEFAULT_INGEST_S = 60
+DEFAULT_KEYED_SOURCE_INTERVAL_S = 300
 DEFAULT_RETENTION_DAYS = 5
 DEFAULT_MIN_HISTORY_DAYS = 2
 BOOT_DELAY_S = 90  # do not compete with OI/Kite boot
@@ -658,16 +659,56 @@ def default_user_prefs() -> Dict[str, Any]:
     return {
         "page_enabled": True,
         "popup_enabled": True,
-        "popup_min_impact": 90,
-        "popup_min_india": 70,
+        "popup_min_impact": 75,
+        "popup_min_india": 30,
         "show_critical": True,
         "show_high": True,
         "show_moderate": False,
         "categories": ["India", "Macro", "Fed", "Oil", "Geopolitics", "Corporate"],
-        "ui_poll_seconds": 120,
+        "ui_poll_seconds": 60,
         "min_impact": 55,
         "min_india": 0,
     }
+
+
+def user_prefs_with_defaults(stored: Dict[str, Any]) -> Dict[str, Any]:
+    prefs = {**default_user_prefs(), **(stored or {})}
+    if (
+        prefs.get("popup_min_impact") == 90
+        and prefs.get("popup_min_india") == 70
+    ):
+        # Upgrade the previous built-in defaults; retain any genuinely customized pair.
+        prefs["popup_min_impact"] = 75
+        prefs["popup_min_india"] = 30
+    return prefs
+
+
+def popup_matches_preferences(article: Dict[str, Any], prefs: Dict[str, Any]) -> bool:
+    impact = _safe_int(article.get("impact_score"), 0)
+    india = _safe_int(article.get("india_relevance_score"), 0)
+    min_impact = max(50, min(100, _safe_int(prefs.get("popup_min_impact"), 75)))
+    min_india = max(0, min(100, _safe_int(prefs.get("popup_min_india"), 30)))
+    return impact >= 90 or (impact >= min_impact and india >= min_india)
+
+
+def source_interval_seconds(src: Dict[str, Any], ingest_seconds: int) -> int:
+    """Keep paid/keyed providers on a safe floor while public feeds use the desk cadence."""
+    base = max(60, min(3600, _safe_int(ingest_seconds, DEFAULT_INGEST_S)))
+    configured = _safe_int(src.get("fetch_frequency_seconds"), 0)
+    configured = max(60, min(3600, configured)) if configured else 0
+    source_type = str(src.get("source_type") or "").upper()
+    provider_floor = DEFAULT_KEYED_SOURCE_INTERVAL_S if source_type in {"API", "FIRECRAWL"} else 60
+    return max(base, configured, provider_floor)
+
+
+def source_is_due(src: Dict[str, Any], now: datetime, ingest_seconds: int) -> bool:
+    last_run = parse_news_datetime(src.get("last_run"))
+    if last_run is None:
+        return True
+    if last_run.tzinfo is None:
+        last_run = last_run.replace(tzinfo=timezone.utc)
+    elapsed = now.astimezone(timezone.utc) - last_run.astimezone(timezone.utc)
+    return elapsed.total_seconds() >= source_interval_seconds(src, ingest_seconds)
 
 
 def _secret_from_source(src: Dict[str, Any]) -> str:
@@ -1084,7 +1125,12 @@ async def update_source_health(db, src_id: str, stats: Dict[str, Any]) -> None:
         await db[SRC_COL].update_one({"id": src_id}, {"$set": patch})
 
 
-async def run_all_sources(db, settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def run_all_sources(
+    db,
+    settings: Optional[Dict[str, Any]] = None,
+    *,
+    respect_source_cadence: bool = False,
+) -> Dict[str, Any]:
     summary = {"ran": 0, "ok": 0, "failed": 0, "fetched": 0, "accepted": 0, "duplicates": 0, "rescored": 0}
     if db is None:
         return summary
@@ -1092,8 +1138,16 @@ async def run_all_sources(db, settings: Optional[Dict[str, Any]] = None) -> Dict
         summary["rescored"] = await rescore_stored_articles(db)
     except Exception as e:
         logger.warning("mi rescore: %s", redact(e))
+    config = settings or {}
+    ingest_seconds = max(
+        60,
+        min(3600, _safe_int(config.get("market_intel_ingest_seconds"), DEFAULT_INGEST_S)),
+    )
+    now = datetime.now(timezone.utc)
     cur = db[SRC_COL].find({"enabled": True})
     async for src in cur:
+        if respect_source_cadence and not source_is_due(src, now, ingest_seconds):
+            continue
         summary["ran"] += 1
         try:
             stats = await ingest_one(db, src, test=False)
@@ -1295,9 +1349,15 @@ async def popup_candidates(
                 seen_ids.add(str(row["event_cluster_id"]))
     except Exception:
         pass
+    min_impact = max(50, min(100, _safe_int(prefs.get("popup_min_impact"), 75)))
+    min_india = max(0, min(100, _safe_int(prefs.get("popup_min_india"), 30)))
     q = {
         "status": {"$ne": "gone"},
-        "$or": [{"impact_band": "CRITICAL"}, {"impact_score": {"$gte": 90}}],
+        "$or": [
+            {"impact_band": "CRITICAL"},
+            {"impact_score": {"$gte": 90}},
+            {"impact_score": {"$gte": min_impact}, "india_relevance_score": {"$gte": min_india}},
+        ],
     }
     docs = await db[ART_COL].find(q, {"_id": 0}).sort("discovered_at", -1).to_list(80)
     kept = []
@@ -1306,6 +1366,8 @@ async def popup_candidates(
             continue
         cid = str(d.get("event_cluster_id") or d.get("id") or "")
         if cid and cid in seen_ids:
+            continue
+        if not popup_matches_preferences(d, prefs):
             continue
         kept.append(d)
     ranked = cluster_rows(kept)[:12]
@@ -1329,6 +1391,7 @@ async def ingest_loop(get_db, get_settings, stop_event) -> None:
     import asyncio
     await asyncio.sleep(BOOT_DELAY_S)
     while not stop_event.is_set():
+        started = time.monotonic()
         db = get_db()
         settings = get_settings() or {}
         interval = int(settings.get("market_intel_ingest_seconds") or DEFAULT_INGEST_S)
@@ -1336,11 +1399,12 @@ async def ingest_loop(get_db, get_settings, stop_event) -> None:
         try:
             if db is not None:
                 await ensure_default_sources(db)
-                await run_all_sources(db, settings)
+                await run_all_sources(db, settings, respect_source_cadence=True)
         except Exception as e:
             logger.warning("mi loop: %s", redact(e))
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+            remaining = max(0.0, interval - (time.monotonic() - started))
+            await asyncio.wait_for(stop_event.wait(), timeout=remaining)
             break
         except asyncio.TimeoutError:
             continue

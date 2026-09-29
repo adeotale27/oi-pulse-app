@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -319,6 +320,7 @@ export default function SettingsModal({
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="w-4 h-4" />
               {isAdmin ? "Admin configuration" : "Settings"}
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription>
               Pick a tile, then edit that group. Alerts and chart signals are local+server; Market timing, data, and pages are admin-only.

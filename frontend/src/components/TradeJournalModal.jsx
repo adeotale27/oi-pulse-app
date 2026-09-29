@@ -11,6 +11,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Button } from "@/components/ui/button";
 import {
   fetchJournalMonth,
@@ -458,6 +459,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <BookOpen className="w-4 h-4" />
               </span>
               Trade journal
+              <AdminDialogNavigation />
             </DialogTitle>
             <DialogDescription className="text-slate-600">
               <span className="hidden sm:inline">

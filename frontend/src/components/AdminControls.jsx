@@ -202,13 +202,25 @@ export default function AdminControls({
     }
     const onAccess = () => setAccessOpen(true);
     const onPassword = () => setPwOpen(true);
+    const onCloseAccess = () => setAccessOpen(false);
+    const onClosePassword = () => setPwOpen(false);
     window.addEventListener("oi-admin-open-access", onAccess);
     window.addEventListener("oi-admin-open-password", onPassword);
+    window.addEventListener("oi-admin-close-access", onCloseAccess);
+    window.addEventListener("oi-admin-close-password", onClosePassword);
     return () => {
       window.removeEventListener("oi-admin-open-access", onAccess);
       window.removeEventListener("oi-admin-open-password", onPassword);
+      window.removeEventListener("oi-admin-close-access", onCloseAccess);
+      window.removeEventListener("oi-admin-close-password", onClosePassword);
     };
   }, [ownsModals]);
+
+  useEffect(() => {
+    if (!ownsModals) return;
+    const dialog = accessOpen ? "access-control" : pwOpen ? "change-password" : null;
+    window.dispatchEvent(new CustomEvent("oi-admin-dialog-state", { detail: { dialog } }));
+  }, [accessOpen, ownsModals, pwOpen]);
 
   const isAdmin = state ? !!state.is_admin : !!assumedAdmin;
   if (!isAdmin) {

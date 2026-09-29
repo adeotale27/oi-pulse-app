@@ -1,7 +1,7 @@
 // Black-Scholes pricer + implied volatility solver + Greeks.
 // All inputs use continuous compounding. Time is in years. Sigma is decimal.
 
-import { getMarketCloseMinute, getMarketCloseHm, getMarketOpenMinute } from "@/lib/marketTimes";
+import { getMarketCloseMinute, getMarketCloseHm, getMarketOpenMinute } from "./marketTimes.js";
 
 function cnd(x) {
   // Abramowitz & Stegun 7.1.26 rational approximation for the standard

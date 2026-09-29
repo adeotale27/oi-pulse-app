@@ -45,7 +45,7 @@ React desk  ◄── /api/config + /api/settings ──┘
    Guest: only ticked Public pages + own Kite book
 ```
 
-1. **Market hours** (default 09:15–15:40 IST, CAS-era index F&O) gate OI polling. GIFT Nifty keeps its own sessions.
+1. NSE pre-market starts at **09:00 IST**; OI polling starts at **09:15** and runs through the configured close (default 15:40). The desk labels the 09:00–09:15 period **Pre-market**, not stale. GIFT Nifty keeps its own sessions.
 2. **Change windows** compare the latest snapshot to one ~N minutes earlier (never yesterday’s session).
 3. **Fresh Pull** (admin) wipes today’s OI board and takes one live tick per enabled index.
 4. **Auth**: admin password session (`X-Admin-Token`); optional public gate + guest approval (`X-Guest-Token`).

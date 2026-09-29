@@ -719,62 +719,155 @@ def filter_cycles(
 
 
 def summarize_trade_memory(cycles: Optional[Iterable[dict]] = None, *, min_n: int = 3) -> Dict[str, Any]:
-    """Closed short CE/PE win rates by index (and weekday when sample is large enough). Pure."""
+    """Return owner-safe outcome and execution aggregates; never expose cycle details."""
     from collections import defaultdict
-    from universe import DESK_IDS
+    def entry_weekday(cycle: dict) -> Optional[str]:
+        try:
+            return datetime.strptime(str(cycle.get("entry_date") or "")[:10], "%Y-%m-%d").strftime("%A")
+        except ValueError:
+            return None
 
-    buckets: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"n": 0, "wins": 0})
+    def as_datetime(value: Any) -> Optional[datetime]:
+        if isinstance(value, datetime):
+            return value
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return parse_dt(value)
+
+    def holding_minutes(cycle: dict) -> Optional[float]:
+        start = as_datetime(cycle.get("entry_time") or cycle.get("entry_time_ist"))
+        end = as_datetime(cycle.get("exit_time") or cycle.get("exit_time_ist"))
+        if not start or not end:
+            return None
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=IST)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=IST)
+        minutes = (end - start).total_seconds() / 60
+        return round(minutes, 1) if 0 <= minutes <= 60 * 24 * 90 else None
+
+    def new_bag() -> Dict[str, Any]:
+        return {
+            "n": 0, "wins": 0, "losses": 0, "pnl": 0.0,
+            "win_pnl": 0.0, "win_n": 0, "loss_pnl": 0.0, "loss_n": 0,
+            "holding_minutes": 0.0, "holding_n": 0,
+            "carried_n": 0, "partial_exit_n": 0,
+        }
+
+    def add(bag: Dict[str, Any], cycle: dict, pnl: float) -> None:
+        bag["n"] += 1
+        bag["pnl"] += pnl
+        if pnl > 0:
+            bag["wins"] += 1
+            bag["win_pnl"] += pnl
+            bag["win_n"] += 1
+        elif pnl < 0:
+            bag["losses"] += 1
+            bag["loss_pnl"] += pnl
+            bag["loss_n"] += 1
+        duration = holding_minutes(cycle)
+        if duration is not None:
+            bag["holding_minutes"] += duration
+            bag["holding_n"] += 1
+        if cycle.get("carried"):
+            bag["carried_n"] += 1
+        if int(_num(cycle.get("partial_exit_count")) or 0) > 0:
+            bag["partial_exit_n"] += 1
+
+    buckets: Dict[str, Dict[str, Any]] = defaultdict(new_bag)
+    total = new_bag()
     for c in cycles or []:
         if str(c.get("status") or "") != "closed":
             continue
-        if str(c.get("direction") or "").lower() != "short":
-            continue
-        idx = str(c.get("index") or "").upper()
+        idx = str(c.get("index") or "").upper()[:16]
         side = str(c.get("side") or "").upper()
-        if side not in ("CE", "PE") or idx not in DESK_IDS:
+        direction = str(c.get("direction") or "").lower()
+        if side not in ("CE", "PE") or idx in ("", "OTHER", "UNKNOWN") or direction not in ("short", "long"):
             continue
         pnl = _num(c.get("booked_pnl") if c.get("booked_pnl") is not None else c.get("realised"))
-        weekday = None
-        ed = str(c.get("entry_date") or "")[:10]
-        try:
-            weekday = datetime.strptime(ed, "%Y-%m-%d").strftime("%A")
-        except ValueError:
-            weekday = None
-        keys = [f"{idx}|{side}|"]
+        weekday = entry_weekday(c)
+        keys = [f"{idx}|{side}|{direction}|"]
         if weekday:
-            keys.append(f"{idx}|{side}|{weekday}")
+            keys.append(f"{idx}|{side}|{direction}|{weekday}")
+        add(total, c, pnl)
         for key in keys:
-            buckets[key]["n"] += 1
-            if pnl > 0:
-                buckets[key]["wins"] += 1
+            add(buckets[key], c, pnl)
 
-    lines: List[str] = []
-    out_buckets: List[Dict[str, Any]] = []
-    # Weekday-specific first, then index+side.
+    def public_bag(bag: Dict[str, Any]) -> Dict[str, Any]:
+        n = bag["n"]
+        carried_n = bag["carried_n"]
+        return {
+            "n": n,
+            "wins": bag["wins"],
+            "losses": bag["losses"],
+            "win_rate": round(100.0 * bag["wins"] / n, 1) if n else None,
+            "expectancy": round(bag["pnl"] / n, 2) if n else None,
+            "avg_win": round(bag["win_pnl"] / bag["win_n"], 2) if bag["win_n"] else None,
+            "avg_loss": round(bag["loss_pnl"] / bag["loss_n"], 2) if bag["loss_n"] else None,
+            "avg_holding_minutes": round(bag["holding_minutes"] / bag["holding_n"], 1) if bag["holding_n"] else None,
+            "holding_samples": bag["holding_n"],
+            "carried_n": carried_n,
+            "carried_rate_pct": round(100.0 * carried_n / n, 1) if n else None,
+            "partial_exit_n": bag["partial_exit_n"],
+            "sample_quality": "limited" if n < min_n else "descriptive",
+        }
+
     ordered = sorted(
         buckets.items(),
-        key=lambda kv: (0 if kv[0].split("|")[2] else 1, kv[0]),
+        key=lambda kv: (0 if kv[0].split("|")[3] else 1, -kv[1]["n"], kv[0]),
     )
-    for key, bag in ordered:
-        if bag["n"] < min_n:
-            continue
-        idx, side, weekday = key.split("|")
-        wr = round(100.0 * bag["wins"] / bag["n"])
-        if weekday:
-            lines.append(f"{idx} {side} shorts on {weekday}: {bag['wins']}/{bag['n']} paid ({wr:.0f}%)")
-        else:
-            lines.append(f"{idx} {side} shorts: {bag['wins']}/{bag['n']} paid ({wr:.0f}%)")
+    out_buckets: List[Dict[str, Any]] = []
+    lines: List[str] = []
+    for key, bag in ordered[:16]:
+        idx, side, direction, weekday = key.split("|")
+        metrics = public_bag(bag)
         out_buckets.append({
             "index": idx,
             "side": side,
+            "direction": direction,
             "weekday": weekday or None,
-            "n": bag["n"],
-            "wins": bag["wins"],
-            "win_rate": wr,
+            **metrics,
         })
-        if len(lines) >= 6:
-            break
-    return {"lines": lines[:6], "buckets": out_buckets[:8]}
+        if bag["n"] >= min_n and len(lines) < 6:
+            plural = "shorts" if direction == "short" else "longs"
+            cohort = f"{idx} {side} {plural}"
+            if weekday:
+                cohort += f" on {weekday}"
+            lines.append(
+                f"{cohort}: {bag['wins']}/{bag['n']} paid; "
+                f"avg P&L {metrics['expectancy']:+.0f} (descriptive, not predictive)"
+            )
+
+    if total["n"] < min_n:
+        lines.insert(0, f"Insufficient history: {total['n']} closed option cycles; need {min_n}+ for recurring-pattern observations.")
+
+    # Process fields stay separate from outcome statistics so timing is not
+    # presented as an explanation for P&L.
+    return {
+        "lines": lines[:6],
+        "buckets": out_buckets[:16],
+        "summary": {
+            "closed_cycles": total["n"],
+            "sample_quality": "insufficient" if total["n"] < min_n else "descriptive",
+            "expectancy": public_bag(total)["expectancy"],
+            "avg_win": public_bag(total)["avg_win"],
+            "avg_loss": public_bag(total)["avg_loss"],
+            "wins": total["wins"],
+            "losses": total["losses"],
+            "win_rate": public_bag(total)["win_rate"],
+        },
+        "process": {
+            "cycles": total["n"],
+            "avg_holding_minutes": public_bag(total)["avg_holding_minutes"],
+            "holding_samples": total["holding_n"],
+            "carried_n": total["carried_n"],
+            "carried_rate_pct": public_bag(total)["carried_rate_pct"],
+            "partial_exit_n": total["partial_exit_n"],
+        },
+    }
 
 
 def stamp_journal_legs(legs: List[dict], cycles: Iterable[dict]) -> bool:

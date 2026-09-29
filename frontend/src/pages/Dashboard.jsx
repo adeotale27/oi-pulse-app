@@ -41,6 +41,7 @@ import IndexManagementModal from "@/components/IndexManagementModal";
 import TradeJournalModal from "@/components/TradeJournalModal";
 import ErrorLogModal from "@/components/ErrorLogModal";
 import ApiConfigurationModal from "@/components/ApiConfigurationModal";
+import { ADMIN_DIALOGS, getAdminDialogKeyDirection, getNextAdminDialog } from "@/lib/adminDialogCycle";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import HolidaysTab from "@/components/HolidaysTab";
 import PositionsPanel from "@/components/PositionsPanel";
@@ -267,6 +268,7 @@ export default function Dashboard() {
   const [errorLogOpen, setErrorLogOpen] = useState(false);
   const [errorLogSource, setErrorLogSource] = useState("");
   const [apiConfigurationOpen, setApiConfigurationOpen] = useState(false);
+  const [accountDialog, setAccountDialog] = useState(null);
   const [notifEnabled, setNotifEnabled] = useState(loadNotifEnabled);
   const [flash, setFlash] = useState(false);
   const [expiries, setExpiries] = useState([]);
@@ -310,6 +312,91 @@ export default function Dashboard() {
   const [soundsOpen, setSoundsOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
+  const adminDialogOpenState = {
+    upload: uploadOpen,
+    telegram: telegramPrefsOpen,
+    journal: journalOpen,
+    "error-log": errorLogOpen,
+    "api-configuration": apiConfigurationOpen,
+    "admin-configs": settingsOpen,
+    "index-management": indexManagerOpen,
+    "desk-ai-keys": deskAiKeysOpen,
+    "market-intel": miSettingsOpen,
+    "global-markets": adrAdminOpen,
+  };
+  const activeAdminDialog =
+    ADMIN_DIALOGS.find(({ id }) => adminDialogOpenState[id])?.id || accountDialog;
+  const openAdminDialog = useCallback((dialogId) => {
+    if (!authState.is_admin) return;
+    // Change the controlled open flags together so each modal keeps its mounted feature state.
+    setUploadOpen(false);
+    setTelegramPrefsOpen(false);
+    setJournalOpen(false);
+    setErrorLogOpen(false);
+    setApiConfigurationOpen(false);
+    setSettingsOpen(false);
+    setIndexManagerOpen(false);
+    setDeskAiKeysOpen(false);
+    setMiSettingsOpen(false);
+    setAdrAdminOpen(false);
+    setAccountDialog(null);
+    window.dispatchEvent(new CustomEvent("oi-admin-close-access"));
+    window.dispatchEvent(new CustomEvent("oi-admin-close-password"));
+
+    if (dialogId === "access-control" || dialogId === "change-password") {
+      setAccountDialog(dialogId);
+      window.dispatchEvent(new CustomEvent(
+        dialogId === "access-control" ? "oi-admin-open-access" : "oi-admin-open-password",
+      ));
+      return;
+    }
+
+    const setters = {
+      upload: setUploadOpen,
+      telegram: setTelegramPrefsOpen,
+      journal: setJournalOpen,
+      "error-log": setErrorLogOpen,
+      "api-configuration": setApiConfigurationOpen,
+      "admin-configs": setSettingsOpen,
+      "index-management": setIndexManagerOpen,
+      "desk-ai-keys": setDeskAiKeysOpen,
+      "market-intel": setMiSettingsOpen,
+      "global-markets": setAdrAdminOpen,
+    };
+    setters[dialogId]?.(true);
+  }, [authState.is_admin]);
+
+  // Keep arrow navigation scoped to an open Admin dialog and out of editable controls.
+  useEffect(() => {
+    const onDialogState = (event) => {
+      const id = event?.detail?.dialog;
+      setAccountDialog(ADMIN_DIALOGS.some(({ id: dialogId }) => dialogId === id) ? id : null);
+    };
+    const onCycle = (event) => {
+      if (!authState.is_admin) return;
+      const nextDialog = getNextAdminDialog(activeAdminDialog, event?.detail?.direction);
+      if (nextDialog) openAdminDialog(nextDialog);
+    };
+    window.addEventListener("oi-admin-dialog-state", onDialogState);
+    window.addEventListener("oi-admin-dialog-cycle", onCycle);
+    return () => {
+      window.removeEventListener("oi-admin-dialog-state", onDialogState);
+      window.removeEventListener("oi-admin-dialog-cycle", onCycle);
+    };
+  }, [activeAdminDialog, authState.is_admin, openAdminDialog]);
+  useEffect(() => {
+    if (!authState.is_admin || !activeAdminDialog) return undefined;
+    const onKeyDown = (event) => {
+      const direction = getAdminDialogKeyDirection(event);
+      if (!direction) return;
+      const nextDialog = getNextAdminDialog(activeAdminDialog, direction);
+      if (!nextDialog) return;
+      event.preventDefault();
+      openAdminDialog(nextDialog);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeAdminDialog, authState.is_admin, openAdminDialog]);
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
     try {
       const stored = localStorage.getItem("rightPanelOpen");

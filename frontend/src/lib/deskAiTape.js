@@ -3,7 +3,7 @@
 import { greeks, impliedVol, yearsToExpiry } from "./blackScholes";
 import { computeSellCandidates } from "./sellCandidates";
 
-export function summarizeIndexTape(current, previous) {
+export function summarizeIndexTape(current, previous, dataStatus = current?.data_status) {
   if (!current || typeof current !== "object") return null;
   const strikes = Array.isArray(current.strikes) ? current.strikes : [];
   const prevMap = new Map(
@@ -35,6 +35,8 @@ export function summarizeIndexTape(current, previous) {
     callWall: callWall?.k ?? null,
     putWall: putWall?.k ?? null,
     expiry: current.expiry ? String(current.expiry).slice(0, 10) : null,
+    asOf: current.timestamp || null,
+    dataStatus: dataStatus?.label || null,
   };
 }
 
@@ -49,6 +51,8 @@ export function tapeFromBiasRow(row) {
     ceChg: b ? Math.round(Number(b.ce) || 0) : null,
     peChg: b ? Math.round(Number(b.pe) || 0) : null,
     expiry: row.expiry ? String(row.expiry).slice(0, 10) : null,
+    asOf: row.asOf || null,
+    dataStatus: row.dataStatus || null,
   };
 }
 
@@ -64,6 +68,54 @@ export function compactJournalFromPeriod(data) {
     win_trades: s.win_trades ?? s.win_days ?? null,
     loss_trades: s.loss_trades ?? s.lose_days ?? null,
     by_index: s.by_index && typeof s.by_index === "object" ? s.by_index : null,
+  };
+}
+
+// Keep only aggregate memory fields; no cycle identifier or individual trade can reach Desk AI.
+export function compactTradeMemory(data) {
+  if (!data || typeof data !== "object") return null;
+  if (data.status === "unavailable") return { status: "unavailable", lines: [] };
+  const numeric = (value) => value != null && Number.isFinite(Number(value)) ? Number(value) : null;
+  const summary = data.summary && typeof data.summary === "object" ? data.summary : {};
+  const process = data.process && typeof data.process === "object" ? data.process : {};
+  const buckets = Array.isArray(data.buckets) ? data.buckets.slice(0, 8).map((row) => ({
+    index: String(row.index || "").slice(0, 16),
+    side: row.side === "PE" ? "PE" : row.side === "CE" ? "CE" : null,
+    direction: row.direction === "long" ? "long" : row.direction === "short" ? "short" : null,
+    weekday: String(row.weekday || "").slice(0, 12) || null,
+    n: Number(row.n) || 0,
+    wins: Number(row.wins) || 0,
+    losses: Number(row.losses) || 0,
+    win_rate: numeric(row.win_rate),
+    expectancy: numeric(row.expectancy),
+    avg_win: numeric(row.avg_win),
+    avg_loss: numeric(row.avg_loss),
+    avg_holding_minutes: numeric(row.avg_holding_minutes),
+    carried_rate_pct: numeric(row.carried_rate_pct),
+    partial_exit_n: Number(row.partial_exit_n) || 0,
+    sample_quality: row.sample_quality === "descriptive" ? "descriptive" : "limited",
+  })) : [];
+  return {
+    lines: Array.isArray(data.lines) ? data.lines.slice(0, 6).map((line) => String(line).slice(0, 240)) : [],
+    summary: {
+      closed_cycles: Number(summary.closed_cycles) || 0,
+      sample_quality: ["descriptive", "insufficient"].includes(summary.sample_quality) ? summary.sample_quality : "insufficient",
+      expectancy: numeric(summary.expectancy),
+      avg_win: numeric(summary.avg_win),
+      avg_loss: numeric(summary.avg_loss),
+      wins: Number(summary.wins) || 0,
+      losses: Number(summary.losses) || 0,
+      win_rate: numeric(summary.win_rate),
+    },
+    process: {
+      cycles: Number(process.cycles) || 0,
+      avg_holding_minutes: numeric(process.avg_holding_minutes),
+      holding_samples: Number(process.holding_samples) || 0,
+      carried_n: Number(process.carried_n) || 0,
+      carried_rate_pct: numeric(process.carried_rate_pct),
+      partial_exit_n: Number(process.partial_exit_n) || 0,
+    },
+    buckets,
   };
 }
 

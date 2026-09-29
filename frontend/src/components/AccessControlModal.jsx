@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { api } from "@/lib/api";
 import useQuiescentAwarePolling from "@/hooks/useQuiescentAwarePolling";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, ShieldBan, UserCheck, LogOut } from "lucide-react";
 import { toast } from "sonner";
@@ -173,6 +174,7 @@ export default function AccessControlModal({ open, onOpenChange }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCheck className="w-4 h-4" /> Access Control
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription>
             Approve guest requests (when Require approval is ON), remove anyone in the app, and block IPs. Public Access must be ON for guests.

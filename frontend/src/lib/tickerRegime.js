@@ -185,18 +185,17 @@ export function describeTickerRegime(changePct, isFlat, prevClose = 0, dayHigh =
   }
 }
 
-export function tickerRegimeChipClass(key, { onDark = false } = {}) {
-  if (onDark) return "bg-white/15 text-white border-white/25";
+export function tickerRegimeChipClass(key) {
   return (
     {
-      "bull-trend": "bg-emerald-50 text-emerald-800 border-emerald-200",
-      bullish: "bg-emerald-50 text-emerald-800 border-emerald-200",
-      "bear-trend": "bg-orange-50 text-orange-900 border-orange-200",
-      trending: "bg-sky-50 text-sky-800 border-sky-200",
-      "risk-off": "bg-rose-50 text-rose-800 border-rose-200",
-      range: "bg-amber-50 text-amber-900 border-amber-200",
-      steady: "bg-slate-100 text-slate-600 border-slate-200",
-      unavailable: "bg-slate-50 text-slate-500 border-slate-200",
+      "bull-trend": "bg-emerald-200 text-emerald-950 border-emerald-400",
+      bullish: "bg-emerald-200 text-emerald-950 border-emerald-400",
+      "bear-trend": "bg-red-200 text-red-950 border-red-400",
+      trending: "bg-blue-200 text-blue-950 border-blue-400",
+      "risk-off": "bg-rose-300 text-rose-950 border-rose-500",
+      range: "bg-blue-200 text-blue-950 border-blue-400",
+      steady: "bg-amber-200 text-amber-950 border-amber-400",
+      unavailable: "bg-slate-200 text-slate-950 border-slate-400",
     }[key] || "bg-slate-100 text-slate-600 border-slate-200"
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -98,16 +99,16 @@ export default function AdrAdminModal({ open, onOpenChange }) {
   if (!prefs && open) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent><DialogHeader><DialogTitle>Global Markets</DialogTitle></DialogHeader><div className="text-sm text-slate-500">Loading…</div></DialogContent>
+        <DialogContent><DialogHeader><DialogTitle className="flex items-center gap-2">Global Markets<AdminDialogNavigation /></DialogTitle></DialogHeader><div className="text-sm text-slate-500">Loading…</div></DialogContent>
       </Dialog>
     );
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="adr-admin-modal" className="w-[min(94vw,48rem)] max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0">
+      <DialogContent data-testid="adr-admin-modal" className="w-[min(94vw,48rem)] max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden min-w-0 max-md:left-0 max-md:top-0 max-md:translate-x-0 max-md:translate-y-0 max-md:w-screen max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none max-md:px-4 max-md:pt-[calc(env(safe-area-inset-top)+1rem)] max-md:pb-[max(1rem,env(safe-area-inset-bottom))]">
         <DialogHeader>
-          <DialogTitle className="text-center">Global Markets</DialogTitle>
+          <DialogTitle className="flex items-center justify-center gap-2">Global Markets<AdminDialogNavigation /></DialogTitle>
           <DialogDescription className="mx-auto max-w-2xl text-center">Global Markets can use Twelve Data or Financial Modeling Prep per instrument. ADR Monitor uses the Indian ADR universe and Twelve Data. API keys stay in the vault and are never returned to the browser.</DialogDescription>
         </DialogHeader>
 

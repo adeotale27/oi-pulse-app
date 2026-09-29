@@ -101,7 +101,7 @@ export default function MarketIntelPage({ compact = false, isAdmin = false }) {
 
   useEffect(() => {
     if (!configLoaded) return undefined;
-    const sec = Math.max(60, Number(prefs?.ui_poll_seconds) || 120);
+    const sec = Math.max(60, Number(prefs?.ui_poll_seconds) || 60);
     const id = setInterval(loadFeed, sec * 1000);
     return () => clearInterval(id);
   }, [loadFeed, prefs?.ui_poll_seconds, configLoaded]);

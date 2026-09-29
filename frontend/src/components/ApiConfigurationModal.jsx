@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ExternalLink, RefreshCw, Search, ServerCog, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
@@ -92,7 +93,7 @@ export default function ApiConfigurationModal({ open, onOpenChange }) {
       <DialogContent className="max-w-[min(94vw,78rem)] w-[94vw] h-[min(90dvh,56rem)] max-h-[90dvh] overflow-hidden flex flex-col rounded-xl max-md:w-screen max-md:max-w-none max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:rounded-none max-md:p-3 max-md:pt-[calc(env(safe-area-inset-top)+0.75rem)]" data-testid="api-configuration-modal">
         {selected ? (
           <>
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><ServerCog className="w-4 h-4" />{selected.name}</DialogTitle><DialogDescription>{selected.category} · {selected.host} · {selected.auth}</DialogDescription></DialogHeader>
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><ServerCog className="w-4 h-4" />{selected.name}<AdminDialogNavigation /></DialogTitle><DialogDescription>{selected.category} · {selected.host} · {selected.auth}</DialogDescription></DialogHeader>
             <div className="flex items-center justify-between"><Button size="sm" variant="outline" onClick={() => setSelected(null)}><ArrowLeft className="w-3.5 h-3.5 mr-1" />All providers</Button><span className="inline-flex items-center gap-1.5 text-xs font-medium"><i className={`h-2 w-2 rounded-full ${STATUS[selected.status]}`} />{statusLabel(selected.status)}</span></div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-md border border-slate-200 bg-slate-50/70 p-2.5"><Metric label="Requests today" value={fmtNumber(selected.requests_today)} /><Metric label="Errors today" value={fmtNumber(selected.errors_today)} /><Metric label="Average latency" value={fmtLatency(selected.avg_latency_ms)} /><Metric label="Endpoints" value={selected.endpoints.length} /></div>
             <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => viewErrors(selected)}>View errors</Button><span className="text-[11px] text-slate-500 self-center">Errors open in the existing Error Log, filtered to this integration where a source is available.</span></div>
@@ -104,7 +105,7 @@ export default function ApiConfigurationModal({ open, onOpenChange }) {
           </>
         ) : (
           <>
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><ServerCog className="w-4 h-4" />API Configuration</DialogTitle><DialogDescription>Tracked providers are discovered from source. “Called today” counts providers with telemetry-recorded requests since local midnight; it does not indicate configuration or future availability.</DialogDescription></DialogHeader>
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><ServerCog className="w-4 h-4" />API Configuration<AdminDialogNavigation /></DialogTitle><DialogDescription>Tracked providers are discovered from source. “Called today” counts providers with telemetry-recorded requests since local midnight; it does not indicate configuration or future availability.</DialogDescription></DialogHeader>
             <button type="button" className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-700 md:hidden" onClick={() => setMobileMetricsOpen((open) => !open)} aria-expanded={mobileMetricsOpen}>Summary <ChevronDown className={`h-4 w-4 transition-transform ${mobileMetricsOpen ? "rotate-180" : ""}`} /></button>
             <div className={`${mobileMetricsOpen ? "grid" : "hidden"} md:grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200`}>{[["Tracked providers", summary.providers], ["Endpoints", summary.endpoints], ["Modules", summary.modules], ["Called today", summary.active], ["Healthy", summary.healthy], ["Warning", summary.warning], ["Errors today", summary.errors_today], ["Avg latency", fmtLatency(summary.avg_latency_ms)]].map(([label, value]) => <div key={label} className="bg-white px-2 py-2"><div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-0.5 font-mono-data text-sm font-bold text-slate-800">{value ?? "—"}</div></div>)}</div>
             <button type="button" className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-700 md:hidden" onClick={() => setMobileControlsOpen((open) => !open)} aria-expanded={mobileControlsOpen}>Search and filters <ChevronDown className={`h-4 w-4 transition-transform ${mobileControlsOpen ? "rotate-180" : ""}`} /></button>

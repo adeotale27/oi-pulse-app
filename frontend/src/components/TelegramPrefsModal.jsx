@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -114,7 +115,7 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Telegram Preferences</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">Telegram Preferences<AdminDialogNavigation /></DialogTitle>
           </DialogHeader>
           <div className="text-sm text-slate-500 py-6 text-center">Loading…</div>
         </DialogContent>
@@ -133,6 +134,7 @@ export default function TelegramPrefsModal({ open, onOpenChange }) {
           <DialogTitle className="flex items-center gap-2">
             <Send className="w-4 h-4" />
             Telegram desk alerts
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription>
             Huge OI shifts and a 15:15 IST session wrap (next-session calendar). We never send your book.

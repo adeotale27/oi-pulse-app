@@ -14,7 +14,7 @@ Stack: **React (CRA/craco) + FastAPI + Motor/MongoDB + Kite Connect**.
 |------|-----|-------|
 | **Admin** | `POST /api/auth/login` with username/password (`ADMIN_USERNAME` / `ADMIN_PASSWORD` in `backend/.env`) | `X-Admin-Token` (session TTL; optionally expires at market close) |
 | **Remember me** | `POST /api/auth/remember-login` with 24h IP-bound device token | Issues a fresh admin session |
-| **Guest** | Public access ON; full name required. If **Require approval** is ON (default), Access Control must approve. If OFF, the name is stored and a guest session is minted immediately | `X-Guest-Token` |
+| **Guest** | Public access ON; full name required. If **Require approval** is ON (default), Access Control must approve every new access request. A lost/expired token requires a fresh request; an IP address or display name never restores access. If approval is OFF, a guest session is minted immediately | `X-Guest-Token` |
 | **Blocked IP** | Admin can block/unblock IPs; blocked clients cannot enter as guest | — |
 
 Auth state: `GET /api/auth/state` (public flag, admin/guest flags, pending request count).
@@ -57,8 +57,8 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | GET/POST/DELETE | `/desk-ai/providers` | Admin: vaulted OpenAI-compatible Desk AI keys |
 | GET | `/market-intel` | Ranked clustered events (desk user). Query `filter=` |
 | GET | `/market-memory/{index}` | Recent price-level interaction summary derived from stored OI snapshots (desk user) |
-| GET/POST | `/market-intel/prefs` | Per-user page/popup prefs |
-| GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app very-high-impact popup (up to 8 unseen clusters). Desk-wide popup tick off → empty for everyone; ingest is independent. Admin always receives items when the desk tick is on. |
+| GET/POST | `/market-intel/prefs` | Per-user page/popup prefs; public feeds and the page default to 60-second refresh, with default popup thresholds of 75 impact / 30 India relevance |
+| GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app high-impact popup (up to 12 unseen clusters). The default includes high-impact India-relevant events plus a critical global-event override. Desk-wide popup tick off → empty for everyone; ingest is independent. Admin always receives items when the desk tick is on. |
 | GET/POST/DELETE | `/market-intel/sources` | Admin sources; `.../test` and `.../fetch` |
 | POST | `/market-intel/cleanup` | Admin retention cleanup now |
 | GET | `/market-intel/templates` | public-apis News/Finance catalog + RSS templates |

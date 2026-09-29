@@ -1,5 +1,6 @@
 from desk_guide import compact_snapshot, compose_rules_guide, llm_configured, reset_cache, status, carry_outside
 import asyncio
+from datetime import datetime, timezone
 from desk_guide import maybe_guide
 
 
@@ -21,6 +22,20 @@ def test_compact_strips_noise_and_caps_lists():
         },
         "memory": {
             "lines": ["NIFTY CE shorts on Friday: 5/7 paid (71%)"],
+            "summary": {
+                "closed_cycles": 7, "sample_quality": "descriptive",
+                "expectancy": 125, "avg_win": 300, "avg_loss": -280,
+            },
+            "process": {
+                "cycles": 7, "avg_holding_minutes": 38, "carried_n": 1,
+                "carried_rate_pct": 14.3, "partial_exit_n": 2,
+            },
+            "buckets": [{
+                "index": "NIFTY", "side": "CE", "direction": "short",
+                "n": 7, "wins": 5, "losses": 2, "expectancy": 125,
+                "sample_quality": "descriptive", "cycle_id": "must-not-leak",
+            }],
+            "owner_id": "must-not-leak",
             "token": "SECRET",
         },
         "sells": [{"s": "NIFTY 24300 CE", "why": "IV Rank 72, fresh writing", "token": "x", "chain": [1]}],
@@ -56,6 +71,11 @@ def test_compact_strips_noise_and_caps_lists():
     assert snap["vix"] == 11.4
     assert snap["memory"]["lines"][0].startswith("NIFTY CE")
     assert "token" not in snap["memory"]
+    assert snap["memory"]["summary"]["closed_cycles"] == 7
+    assert snap["memory"]["process"]["avg_holding_minutes"] == 38
+    assert snap["memory"]["buckets"][0]["direction"] == "short"
+    assert "cycle_id" not in str(snap["memory"])
+    assert "owner_id" not in str(snap["memory"])
     assert snap["sells"][0]["s"] == "NIFTY 24300 CE"
     assert "token" not in snap["sells"][0]
     assert "chain" not in snap["sells"][0]
@@ -85,6 +105,23 @@ def test_rules_guide_mentions_results():
     assert "WHAT CHANGED" not in text
     assert "OPTION BUYER" not in text
     assert "Why carry" not in text
+
+
+def test_strategy_memory_distinguishes_insufficient_and_unavailable_reads():
+    insufficient = compose_rules_guide({
+        "surface": "desk",
+        "memory": {
+            "summary": {"closed_cycles": 1, "sample_quality": "insufficient"},
+            "lines": ["Insufficient history: 1 closed option cycle; need 3+"],
+        },
+    })
+    assert "insufficient history" in insufficient.lower()
+    unavailable = compose_rules_guide({
+        "surface": "desk",
+        "memory": {"status": "unavailable"},
+    })
+    assert "read failed" in unavailable.lower()
+    assert "empty trading history" in unavailable.lower()
 
 
 def test_rules_guide_adjust_first():
@@ -170,9 +207,129 @@ def test_carry_outside_keeps_impact_only():
     })
     assert [m["symbol"] for m in pack["movers"]] == ["RELIANCE"]
     assert pack["news"][0]["title"].startswith("RBI")
+    assert pack["news"][0]["source"] is None
+    assert pack["available"] is True
     assert len(pack["news"]) == 1
     assert pack["events"][0]["event"].startswith("HDFCBANK")
     assert "breadth" not in pack
+
+
+def test_evidence_quality_preserves_timestamps_and_source_identity(monkeypatch):
+    now = 1_790_000_000
+    monkeypatch.setattr("desk_guide.time.time", lambda: now)
+    snap = compact_snapshot({
+        "oi": [{
+            "idx": "NIFTY",
+            "asOf": "2026-09-29T09:20:00+05:30",
+            "dataStatus": "LIVE",
+        }],
+        "gift_quote": {
+            "source": "yahoo",
+            "fetchedAt": datetime.fromtimestamp(now - 120, timezone.utc).isoformat(),
+            "isProxy": True,
+        },
+        "vix_quote": {
+            "source": "kite",
+            "fetchedAt": datetime.fromtimestamp(now - 60, timezone.utc).isoformat(),
+        },
+        "outside": {"at": now - 30, "available": False, "quote_source": "kite"},
+    })
+
+    quality = snap["evidence_quality"]
+    assert quality["level"] == "broad"
+    assert quality["covered"] == 3
+    assert quality["total"] == 4
+    assert quality["sources"][0]["status"] == "LIVE"
+    assert quality["sources"][1]["source"] == "yahoo proxy"
+    assert quality["sources"][1]["timeKind"] == "fetched"
+    assert quality["sources"][1]["ageMinutes"] == 2
+    assert all(source["name"] != "Outside tape" for source in quality["sources"])
+
+
+def test_evidence_age_updates_without_invalidating_cached_ai(monkeypatch):
+    reset_cache()
+    monkeypatch.setattr("desk_guide.llm_configured", lambda: True)
+    monkeypatch.setattr("desk_guide.MIN_INTERVAL_S", 300)
+    wall_clock = [1_790_000_000.0]
+    monotonic = [1000.0]
+    monkeypatch.setattr("desk_guide.time.time", lambda: wall_clock[0])
+    monkeypatch.setattr("desk_guide.time.monotonic", lambda: monotonic[0])
+    calls = []
+
+    async def fake_llm(_snap):
+        calls.append(1)
+        return "BASE CASE\n- Existing evidence remains conditional"
+
+    monkeypatch.setattr("desk_guide._call_llm", fake_llm)
+    body = {
+        "surface": "carry",
+        "oi": [{
+            "idx": "NIFTY",
+            "asOf": datetime.fromtimestamp(wall_clock[0] - 60, timezone.utc).isoformat(),
+            "dataStatus": "LIVE",
+        }],
+    }
+
+    async def run():
+        first = await maybe_guide(body)
+        wall_clock[0] += 60
+        second = await maybe_guide(body)
+        return first, second
+
+    first, second = asyncio.run(run())
+    assert len(calls) == 1
+    assert second["cached"] is True
+    assert second["guide"] == first["guide"]
+    assert second["evidence_quality"]["sources"][0]["ageMinutes"] == (
+        first["evidence_quality"]["sources"][0]["ageMinutes"] + 1
+    )
+
+
+def test_compacted_oi_and_outside_keep_only_bounded_freshness_metadata():
+    snap = compact_snapshot({
+        "oi": [{
+            "idx": "NIFTY",
+            "asOf": "2026-09-29T09:20:00+05:30",
+            "dataStatus": "LIVE",
+            "strikes": [{"secret": True}],
+        }],
+        "outside": {
+            "at": 1_790_000_000,
+            "quote_source": "kite",
+            "news": [{
+                "title": "RBI policy update",
+                "source": "ET",
+                "published": "Tue, 29 Sep 2026 09:15:00 +0530",
+                "url": "https://example.invalid/secret",
+            }],
+        },
+    })
+    assert snap["oi"][0]["asOf"] == "2026-09-29T09:20:00+05:30"
+    assert snap["oi"][0]["dataStatus"] == "LIVE"
+    assert "strikes" not in snap["oi"][0]
+    assert snap["outside"]["news"][0]["source"] == "ET"
+    assert snap["outside"]["news"][0]["published"].startswith("Tue, 29 Sep")
+    assert "url" not in snap["outside"]["news"][0]
+
+
+def test_invalid_source_timestamps_are_not_counted_as_coverage():
+    quality = compact_snapshot({
+        "oi": [{"idx": "NIFTY", "asOf": "not a timestamp", "dataStatus": "LIVE"}],
+        "gift_quote": {"source": "yahoo", "fetchedAt": "unknown"},
+    })["evidence_quality"]
+    assert quality["covered"] == 0
+    assert quality["sources"] == []
+
+
+def test_guide_request_accepts_provider_freshness_metadata():
+    from server import DeskGuideIn
+
+    request = DeskGuideIn.model_validate({
+        "vix_quote": {"source": "kite", "fetchedAt": "2026-09-29T09:15:00Z"},
+        "gift_quote": {"source": "yahoo", "fetchedAt": "2026-09-29T09:15:00Z", "isProxy": True},
+    })
+    assert request.model_dump()["vix_quote"]["source"] == "kite"
+    assert request.model_dump()["gift_quote"]["isProxy"] is True
 
 
 def test_skip_llm_even_if_key(monkeypatch):
@@ -204,6 +361,55 @@ def test_status_without_key(monkeypatch):
     st = status()
     assert st["enabled"] is False
     assert st["source"] == "rules"
+
+
+def test_guide_cache_is_caller_scoped_and_guest_cannot_force(monkeypatch):
+    reset_cache()
+    monkeypatch.setattr("desk_guide.llm_configured", lambda: True)
+    monkeypatch.setattr("desk_guide.MIN_INTERVAL_S", 300)
+    clock = [1000.0]
+    monkeypatch.setattr("desk_guide.time.monotonic", lambda: clock[0])
+    calls = []
+
+    async def fake_llm(snap):
+        calls.append(snap)
+        return snap["why"][0]
+
+    monkeypatch.setattr("desk_guide._call_llm", fake_llm)
+
+    async def run():
+        guest = await maybe_guide(
+            {"surface": "carry", "why": ["Guest's original context"]},
+            cache_scope="guest:one",
+        )
+        clock[0] = 1001.0
+        forced_guest = await maybe_guide(
+            {"surface": "carry", "why": ["Another guest's injected context"], "force": True},
+            cache_scope="guest:two",
+            allow_force=False,
+        )
+        clock[0] = 1002.0
+        forced_admin = await maybe_guide(
+            {"surface": "carry", "why": ["Admin's separate context"], "force": True},
+            cache_scope="admin",
+            allow_force=True,
+        )
+        clock[0] = 1003.0
+        guest_again = await maybe_guide(
+            {"surface": "carry", "why": ["Guest's original context"]},
+            cache_scope="guest:one",
+        )
+        return guest, forced_guest, forced_admin, guest_again
+
+    guest, forced_guest, forced_admin, guest_again = asyncio.run(run())
+    assert guest["guide"] == "Guest's original context"
+    assert forced_guest["source"] == "rules"
+    assert forced_guest["llm_throttled"] is True
+    assert "Guest's original context" not in forced_guest["guide"]
+    assert forced_admin["guide"] == "Admin's separate context"
+    assert guest_again["guide"] == "Guest's original context"
+    assert guest_again["cached"] is True
+    assert len(calls) == 2
 
 
 def test_cache_is_per_surface(monkeypatch):
@@ -368,4 +574,3 @@ def test_desk_put_writers_marks_short_calls_as_fight():
     )
     assert "NIFTY23800PE" in named["holds"]
     assert "NIFTY24000CE" in named["fight"]
-
