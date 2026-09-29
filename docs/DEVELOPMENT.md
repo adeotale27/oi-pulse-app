@@ -27,7 +27,11 @@ market-data request. Its card refreshes the summary every 30 seconds while
 visible, preserves the last successful result on a read error, and reports the
 age of the latest snapshot. Shared visibility is controlled in Admin
 configuration → Data collection; relevance is time-weighted over 20 days.
-Keep its refresh lifecycle separate from the OI poller.
+Its six-level shortlist prioritizes up to three historically supported zones
+below spot and three above when both sides have qualifying evidence, then fills
+unused slots with nearby structures. Distance is `spot - level`: positive means
+price is above a level, negative means it is below. Missing-side levels are not
+fabricated. Keep its refresh lifecycle separate from the OI poller.
 
 The maintenance page should remain vertically scrollable on short phone
 viewports; desktop can retain its fixed-screen composition. Validate the

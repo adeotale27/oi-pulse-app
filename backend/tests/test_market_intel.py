@@ -17,9 +17,13 @@ from market_intel import (
     map_records,
     parse_news_datetime,
     popup_allowed,
+    popup_matches_preferences,
     retention_cutoff,
+    source_interval_seconds,
+    source_is_due,
     should_store_article,
     similar_titles,
+    user_prefs_with_defaults,
     validate_source_url,
 )
 
@@ -177,6 +181,35 @@ def test_popup_allowed_independent_of_page_and_ingest():
     assert popup_allowed(True, prefs_off, is_admin=True) is True
     assert popup_allowed(True, prefs_off, is_admin=False) is False
     assert popup_allowed(True, prefs_guest, is_admin=False) is True
+
+
+def test_popup_honors_user_thresholds_and_keeps_critical_global_override():
+    prefs = {"popup_min_impact": 75, "popup_min_india": 30}
+    assert popup_matches_preferences({"impact_score": 78, "india_relevance_score": 35}, prefs)
+    assert not popup_matches_preferences({"impact_score": 78, "india_relevance_score": 20}, prefs)
+    assert not popup_matches_preferences({"impact_score": 70, "india_relevance_score": 90}, prefs)
+    assert popup_matches_preferences({"impact_score": 92, "india_relevance_score": 0}, prefs)
+
+
+def test_user_popup_defaults_migrate_without_overwriting_custom_thresholds():
+    migrated = user_prefs_with_defaults({"popup_min_impact": 90, "popup_min_india": 70})
+    assert migrated["popup_min_impact"] == 75
+    assert migrated["popup_min_india"] == 30
+    custom = user_prefs_with_defaults({"popup_min_impact": 85, "popup_min_india": 65})
+    assert custom["popup_min_impact"] == 85
+    assert custom["popup_min_india"] == 65
+
+
+def test_source_cadence_accelerates_public_feeds_without_overpolling_keyed_providers():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime(2026, 9, 29, 9, 0, tzinfo=timezone.utc)
+    rss = {"source_type": "RSS", "last_run": (now - timedelta(seconds=60)).isoformat()}
+    api = {"source_type": "API", "last_run": (now - timedelta(seconds=60)).isoformat()}
+    assert source_interval_seconds(rss, 60) == 60
+    assert source_interval_seconds(api, 60) == 300
+    assert source_is_due(rss, now, 60)
+    assert not source_is_due(api, now, 60)
 
 
 def test_top_two_are_highest():

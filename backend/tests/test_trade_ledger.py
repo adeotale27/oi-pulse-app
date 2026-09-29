@@ -346,7 +346,50 @@ def test_summarize_trade_memory_weekday_and_min_n():
     mem = summarize_trade_memory(cycles)
     assert any("NIFTY CE shorts on Friday: 4/5 paid" in x for x in mem["lines"])
     skinny = summarize_trade_memory(cycles[:2])
-    assert skinny["lines"] == []
+    assert skinny["summary"]["sample_quality"] == "insufficient"
+    assert skinny["lines"][0].startswith("Insufficient history:")
+
+
+def test_trade_memory_aggregates_outcomes_and_process_separately():
+    from trade_ledger import summarize_trade_memory
+
+    cycles = [
+        {
+            "status": "closed", "direction": "short", "index": "NIFTY", "side": "CE",
+            "booked_pnl": pnl, "entry_date": "2026-08-21", "carried": carried,
+            "partial_exit_count": partials, "entry_time": _dt(2026, 8, 21, 10, 0),
+            "exit_time": _dt(2026, 8, 21, 10 + minutes // 60, minutes % 60),
+        }
+        for pnl, carried, partials, minutes in (
+            (100, False, 0, 60),
+            (-50, True, 1, 120),
+            (0, False, 0, 360),
+        )
+    ]
+    cycles.append({
+        "status": "closed", "direction": "long", "index": "NIFTY", "side": "PE",
+        "booked_pnl": 25, "entry_date": "2026-08-20",
+    })
+    cycles.append({
+        "status": "open", "direction": "short", "index": "NIFTY", "side": "CE",
+        "booked_pnl": 1000, "entry_date": "2026-08-21",
+    })
+
+    memory = summarize_trade_memory(cycles)
+    short_ce = next(row for row in memory["buckets"] if row["direction"] == "short" and row["side"] == "CE" and not row["weekday"])
+    assert short_ce["n"] == 3
+    assert short_ce["expectancy"] == 16.67
+    assert short_ce["avg_win"] == 100
+    assert short_ce["avg_loss"] == -50
+    assert short_ce["avg_holding_minutes"] == 180
+    assert short_ce["carried_n"] == 1
+    assert short_ce["partial_exit_n"] == 1
+    assert short_ce["sample_quality"] == "descriptive"
+    assert memory["process"]["cycles"] == 4
+    assert memory["summary"]["closed_cycles"] == 4
+    assert any(row["direction"] == "long" and row["sample_quality"] == "limited" for row in memory["buckets"])
+    assert "cycle_id" not in str(memory)
+    assert "owner_id" not in str(memory)
 
 
 def test_compact_trade_is_human_readable():
@@ -416,4 +459,3 @@ def test_filter_collapses_duplicate_closed_cycles():
     b["cycle_id"] = "zzzz-clone"
     rows = filter_cycles([a, b], start="2026-08-24", end="2026-08-24")
     assert len(rows) == 1
-

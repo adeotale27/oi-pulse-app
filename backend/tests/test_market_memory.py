@@ -42,6 +42,29 @@ def _event(level, stamp, interaction="TOUCH"):
     }
 
 
+def test_summary_shortlist_preserves_historical_levels_on_both_sides_of_spot():
+    now = datetime.now(timezone.utc)
+    events = []
+    for level in (23050, 23150, 23250, 23350, 23450, 23550, 23650, 22600):
+        events.extend(
+            _event(level, now - timedelta(minutes=5 + offset * 7), "REJECTION")
+            for offset in range(6)
+        )
+    db = FakeDatabase({
+        market_memory.EVENTS_COL: Collection(events),
+        market_memory.STATE_COL: Collection(state={
+            "previous_price": 22687.2,
+            "updated_at": now.isoformat(),
+        }),
+    })
+
+    result = asyncio.run(market_memory.summary(db, "NIFTY"))
+
+    assert len(result["levels"]) <= 6
+    assert any(row["levelType"] == "SUPPORT" and row["currentDistance"] > 0 for row in result["levels"])
+    assert any(row["levelType"] == "RESISTANCE" and row["currentDistance"] < 0 for row in result["levels"])
+
+
 def test_summary_fades_old_events_uses_latest_interaction_and_counts_ist_day(monkeypatch):
     now = datetime(2026, 9, 29, 3, 0, tzinfo=timezone.utc)
 
@@ -78,4 +101,3 @@ def test_summary_fades_old_events_uses_latest_interaction_and_counts_ist_day(mon
     assert levels[25100]["todayCount"] == 4
     assert levels[25100]["touchCount"] == 4
     assert levels[25100]["20DayCount"] == 4
-

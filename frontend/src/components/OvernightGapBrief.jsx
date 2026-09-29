@@ -13,8 +13,8 @@ import {
   writeCarryLeft,
 } from "@/lib/carryDock";
 import { carryCase, eventDisplayName, sellerCarryAdvice, summarizeBook, writerBiasLine } from "@/lib/carryFocus";
-import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, daysAgoIST, tapeFromBiasRow } from "@/lib/deskAiTape";
-import { parseGuideSections } from "@/lib/deskAiLayout";
+import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, compactTradeMemory, daysAgoIST, tapeFromBiasRow } from "@/lib/deskAiTape";
+import { formatEvidenceAsOf, parseGuideSections } from "@/lib/deskAiLayout";
 import { todayIST } from "@/lib/holidays";
 import { cashSessionFocusIndex, overnightBiasIndices } from "@/lib/deskFocus";
 import {
@@ -140,6 +140,7 @@ export default function OvernightGapBrief({
   const [vixLive, setVixLive] = useState(null);
   const [book, setBook] = useState(null);
   const [guide, setGuide] = useState(null);
+  const [tradeMemory, setTradeMemory] = useState(null);
   const [carryAi, setCarryAi] = useState(() => readCarryAi());
   const dragRef = useRef(null);
   const boxRef = useRef(null);
@@ -350,6 +351,8 @@ export default function OvernightGapBrief({
             atm: data?.current?.atm ?? null,
             pcr: data?.current?.pcr ?? null,
             expiry: data?.current?.expiry ?? null,
+            asOf: data?.current?.timestamp ?? null,
+            dataStatus: data?.data_status?.label ?? null,
           });
           if (idx === focus || (!sells.length && idx === names[0])) {
             sells = compactSellIdeas(idx, data?.current, sessPrev || data?.previous, vixLive ?? vix);
@@ -397,21 +400,22 @@ export default function OvernightGapBrief({
   }, [loadIndexImpacts]);
 
   const loadBook = useCallback(async () => {
-    if (!isAdmin || !active || minimized) return;
+    if (!active || minimized) return;
     try {
-      const [{ data }, journalRes, memRes] = await Promise.all([
-        api.get("/positions"),
-        fetchJournalPeriod(daysAgoIST(30, todayIST()), todayIST(), "ALL").catch(() => null),
-        api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null })),
+      // The memory route is per-caller; keep guest reads separate from the admin-only journal/book fetches.
+      const [positionsRes, journalRes, memRes] = await Promise.all([
+        isAdmin ? api.get("/positions") : Promise.resolve({ data: null }),
+        isAdmin ? fetchJournalPeriod(daysAgoIST(30, todayIST()), todayIST(), "ALL").catch(() => null) : Promise.resolve(null),
+        api.get("/desk-memory", { params: { days: 180 } }).catch(() => ({ data: { status: "unavailable" } })),
       ]);
-      setBook(summarizeBook(data?.positions || []));
+      if (isAdmin) setBook(summarizeBook(positionsRes.data?.positions || []));
+      const memory = compactTradeMemory(memRes?.data);
+      setTradeMemory(memory);
       packedBookRef.current = {
-        ...compactBookFromPositions(data),
-        journal: compactJournalFromPeriod(journalRes),
+        ...(isAdmin ? compactBookFromPositions(positionsRes.data) : {}),
+        ...(isAdmin ? { journal: compactJournalFromPeriod(journalRes) } : {}),
         sells: packedBookRef.current?.sells || [],
-        memory: memRes?.data && Array.isArray(memRes.data.lines)
-          ? { lines: memRes.data.lines.slice(0, 6) }
-          : null,
+        memory,
       };
     } catch {
       setBook(null);
@@ -419,10 +423,10 @@ export default function OvernightGapBrief({
   }, [isAdmin, active, minimized]);
 
   useEffect(() => {
-    if (!isAdmin || !active || minimized) return undefined;
+    if (!active || minimized) return undefined;
     const t = setTimeout(loadBook, 20000);
     return () => clearTimeout(t);
-  }, [loadBook, isAdmin, active, minimized]);
+  }, [loadBook, active, minimized]);
 
   useEffect(() => {
     if (!active || minimized) return undefined;
@@ -499,13 +503,22 @@ export default function OvernightGapBrief({
     holidays: kase.holidays,
     book,
     vix: vixNow,
+    vix_quote: vix == null && vixLive && typeof vixLive === "object" ? {
+      source: vixLive.source,
+      fetchedAt: vixLive.ts,
+    } : null,
     giftPct,
+    gift_quote: gift ? {
+      source: gift.source,
+      fetchedAt: gift.ts,
+      isProxy: gift.is_proxy,
+    } : null,
     weekday: ist.weekday,
     band: verdict.band,
     oi: biases.map(tapeFromBiasRow).filter((r) => r && r.idx),
     adjust: packedBookRef.current?.adjust,
     journal: packedBookRef.current?.journal,
-    memory: packedBookRef.current?.memory,
+    memory: tradeMemory || packedBookRef.current?.memory,
     sells: packedBookRef.current?.sells,
   };
 
@@ -536,7 +549,9 @@ export default function OvernightGapBrief({
           memory: p.memory,
           sells: p.sells,
           vix: p.vix,
+          vix_quote: p.vix_quote,
           giftPct: p.giftPct,
+          gift_quote: p.gift_quote,
           weekday: p.weekday,
           band: p.band,
         });
@@ -551,7 +566,7 @@ export default function OvernightGapBrief({
       cancelled = true;
       clearInterval(id);
     };
-  }, [active, minimized, carryAi]);
+  }, [active, minimized, carryAi, tradeMemory]);
 
   if (!active) return null;
 
@@ -732,21 +747,66 @@ export default function OvernightGapBrief({
           >
             <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-emerald-800 dark:text-emerald-200 mb-1 font-bold">
               <Sparkles className="w-3.5 h-3.5" />
-              Overnight coach · {guide?.source === "llm" ? "Live GPT" : "rules"}
+              Overnight coach · {guide?.source === "llm" ? "AI model" : "rules"}
             </div>
             {(() => {
               const sec = parseGuideSections(guideText);
-              if (sec.do.length || sec.dont.length) {
+              const scenarioLabels = {
+                baseCase: "Base case",
+                gapUp: "Gap up",
+                gapDown: "Gap down",
+                reassessIf: "Reassess if",
+              };
+              const scenarios = Object.entries(sec.scenarios || {})
+                .filter(([, lines]) => lines.length);
+              const evidence = guide?.evidence_quality;
+              if (sec.do.length || sec.dont.length || scenarios.length) {
                 return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-widest text-emerald-700 mb-0.5">Do</div>
-                      <ul className="space-y-1">{sec.do.map((s) => <li key={s}>{s}</li>)}</ul>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-widest text-rose-700 mb-0.5">Don&apos;t</div>
-                      <ul className="space-y-1">{sec.dont.map((s) => <li key={s}>{s}</li>)}</ul>
-                    </div>
+                  <div className="space-y-2">
+                    {scenarios.length ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5">
+                        {scenarios.map(([key, lines]) => (
+                          <div key={key}>
+                            <div className="text-[10px] uppercase tracking-widest text-slate-600 dark:text-slate-300 mb-0.5">
+                              {scenarioLabels[key]}
+                            </div>
+                            <ul className="space-y-1">{lines.map((s) => <li key={s}>{s}</li>)}</ul>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {sec.do.length || sec.dont.length ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {sec.do.length ? (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-widest text-emerald-700 mb-0.5">Do</div>
+                            <ul className="space-y-1">{sec.do.map((s) => <li key={s}>{s}</li>)}</ul>
+                          </div>
+                        ) : null}
+                        {sec.dont.length ? (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-widest text-rose-700 mb-0.5">Don&apos;t</div>
+                            <ul className="space-y-1">{sec.dont.map((s) => <li key={s}>{s}</li>)}</ul>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {evidence && Array.isArray(evidence.sources) ? (
+                      <div className="border-t border-emerald-200/70 dark:border-emerald-800/70 pt-1.5 text-[10px] font-normal text-slate-600 dark:text-slate-300">
+                        <div className="font-semibold">
+                          Timestamp coverage: {evidence.level || "limited"} ({evidence.covered}/{evidence.total} source timestamps)
+                        </div>
+                        <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                          {evidence.sources.map((source) => (
+                            <span key={source.name}>
+                              {source.name}{source.source ? ` · ${source.source}` : ""}
+                              {source.ageMinutes != null ? ` · ${source.timeKind === "fetched" ? "fetched " : ""}${source.ageMinutes}m ago` : " · time unknown"}
+                              {source.status ? ` · ${source.status}` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               }
@@ -821,6 +881,12 @@ export default function OvernightGapBrief({
                     ) : (
                       <span className="ml-auto opacity-50">—</span>
                     )}
+                    {row.asOf || row.dataStatus ? (
+                      <span className="w-full text-[10px] text-slate-600 dark:text-slate-300">
+                        {row.dataStatus ? `${row.dataStatus} · ` : ""}
+                        {row.asOf ? `${formatEvidenceAsOf(row.asOf)} snapshot` : "timestamp unavailable"}
+                      </span>
+                    ) : null}
                     {bag ? (
                       <span className="w-full sm:w-auto sm:ml-0 text-[10px] opacity-60">
                         You: {bag.pe} PE short{bag.pe === 1 ? "" : "s"} · {bag.ce} CE

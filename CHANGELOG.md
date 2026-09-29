@@ -1,5 +1,53 @@
 # Changelog
 
+## V16.04 — 2026-09-29
+
+Improved Desk AI session brief readability with larger, separate evidence cards, plain-language OI labels, clearly labeled sources and timestamps, and distinct live/stale status badges.
+
+## V16.03 — 2026-09-29
+
+Separated Desk AI's model/rule interpretation from observed market data, disclosed available and missing evidence timestamps plus clear GIFT/breadth disagreements, and added market-phase-aware pre-open, session, and closeout briefs.
+
+## V16.02 — 2026-09-29
+
+Enabled Left/Right keyboard shortcuts for cycling Admin dialogs while protecting editable fields, enlarged the phone dialog navigation touch targets, and clarified Desk AI's upcoming company-results and board-meeting tile.
+
+## V16.01 — 2026-09-29
+
+Moved Admin dialog previous/next navigation beside each popup title and replaced the labeled buttons with compact, accessible arrow controls.
+
+## V16.00 — 2026-09-29
+
+Added owner-scoped learning from historical trade outcomes for more personal Desk AI suggestions, with read-only safeguards and evidence limits. Admin dialogs can be cycled without closing and reopening the menu. Market Memory now balances historically supported zones above and below spot when both sides have evidence, rather than showing only a one-sided nearest-level list.
+
+## V15.00 — 2026-09-29
+
+Introduced a read-only Desk AI analyst agent that compares timestamped OI, GIFT/VIX, outside tape, book, and journal evidence, calls out coverage limits and conflicts, and provides conditional carry scenarios. It cannot change app settings, code, trading logic, or place trades; the deterministic carry verdict remains authoritative.
+
+## V14.94 — 2026-09-29
+
+Reduced default Market Intel feed and public-source refresh delays to one minute, kept keyed API and Firecrawl polling at a five-minute minimum, refreshed the in-app popup every minute, and made popup eligibility honor the user's impact and India-relevance thresholds.
+
+## V14.93 — 2026-09-29
+
+Improved visibility of every index regime label with larger, bolder text, dark high-contrast text, and consistent colors: red for bear, blue for ranging, green for bull, rose for risk-off, and amber for quiet.
+
+## V14.92 — 2026-09-29
+
+Stopped guest sessions from being restored by shared IP/name, removed guest Kite-book lookup by IP/name, and isolated Desk Guide LLM caches by authenticated caller and compact snapshot. Guest LLM refreshes now respect a global provider cooldown, and snapshot content is explicitly untrusted in model instructions.
+
+## V14.91 — 2026-09-29
+
+Fixed standalone Node execution of position and Black-Scholes regression tests by replacing a webpack-only market-time import alias with a same-directory relative import.
+
+## V14.90 — 2026-09-29
+
+Show a Pre-market status from the 09:00 NSE pre-open until OI polling begins at 09:15, instead of marking the expected prior-session snapshot stale.
+
+## V14.89 — 2026-09-29
+
+Fixed Global Markets settings on phones by using a full-screen, safe-area-aware modal and stacking each instrument's controls into a compact layout instead of clipping them offscreen.
+
 ## V14.88 — 2026-09-29
 
 Kept the maintenance hero and actions centered in their own area while returning the phone artwork to a bounded NIFTY-left, fully contained robot-right layout. Short phones use a smaller illustration without introducing page or panel scrolling.

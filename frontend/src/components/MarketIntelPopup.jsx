@@ -158,7 +158,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
     };
     timer = setTimeout(() => {
       poll();
-      timer = setInterval(poll, 180000);
+      timer = setInterval(poll, 60000);
     }, 2000);
     const onReload = () => poll();
     window.addEventListener(MI_RELOAD_EVENT, onReload);

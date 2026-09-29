@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -135,7 +136,7 @@ export default function ErrorLogModal({ open, onOpenChange, initialSource = "" }
         data-testid="error-log-modal"
       >
         <DialogHeader>
-          <DialogTitle>Error log</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">Error log<AdminDialogNavigation /></DialogTitle>
           <DialogDescription className="whitespace-normal break-words">
             API, desk UI, and logger errors. Tokens are stripped. Same fingerprint within 5 minutes is counted, not duplicated.
           </DialogDescription>

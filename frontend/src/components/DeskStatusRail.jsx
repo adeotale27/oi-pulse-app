@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const TRUTH_TONE = {
   live: { bar: "bg-emerald-600/95 text-white border-emerald-700", badge: "bg-white text-emerald-800", pulse: "bg-emerald-600" },
+  premarket: { bar: "bg-[#022c22] text-emerald-50 border-[#011f18]", badge: "bg-emerald-100 text-emerald-950", pulse: "bg-emerald-300" },
   session: { bar: "bg-[#022c22] text-emerald-50 border-[#011f18]", badge: "bg-amber-400 text-amber-950", pulse: "bg-amber-300" },
   warn: { bar: "bg-amber-500 text-amber-950 border-amber-600", badge: "bg-amber-950 text-amber-100", pulse: "bg-amber-950" },
   offline: { bar: "bg-rose-700 text-rose-50 border-rose-800", badge: "bg-rose-100 text-rose-900", pulse: "bg-rose-200" },
@@ -36,9 +37,17 @@ export default function DeskStatusRail({
   }, [marketOpen]);
 
   const truth = useMemo(
-    () => buildDataTruth({ dataStatus, marketOpen, mode, snapshotTs, pollMs }),
+    () => buildDataTruth({
+      dataStatus,
+      marketOpen,
+      preMarket: market?.is_pre_market === true,
+      pollStartsAt: market?.market_open_ist || "09:15",
+      mode,
+      snapshotTs,
+      pollMs,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dataStatus, marketOpen, mode, snapshotTs, pollMs, tick],
+    [dataStatus, marketOpen, market?.is_pre_market, market?.market_open_ist, mode, snapshotTs, pollMs, tick],
   );
 
   const tone = TRUTH_TONE[truth.tone] || TRUTH_TONE.offline;

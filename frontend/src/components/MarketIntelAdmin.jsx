@@ -3,6 +3,7 @@ import { api, apiDetail } from "@/lib/api";
 import { notifyMarketIntelReload } from "@/lib/marketIntel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { toast } from "sonner";
 import { Newspaper } from "lucide-react";
 import { settingsAreWritable } from "@/lib/settingsWriteGuard";
@@ -11,7 +12,7 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
   const [sources, setSources] = useState([]);
   const [templates, setTemplates] = useState({ apis: [], rss: [] });
   const [settings, setSettings] = useState({
-    market_intel_ingest_seconds: 300,
+    market_intel_ingest_seconds: 60,
     market_intel_retention_days: 5,
     market_intel_min_history_days: 2,
     market_intel_popup_enabled: true,
@@ -36,7 +37,7 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
     api.get("/settings").then((r) => {
       const d = r.data || {};
       setSettings({
-        market_intel_ingest_seconds: d.market_intel_ingest_seconds ?? 300,
+        market_intel_ingest_seconds: d.market_intel_ingest_seconds ?? 60,
         market_intel_retention_days: d.market_intel_retention_days ?? 5,
         market_intel_min_history_days: d.market_intel_min_history_days ?? 2,
         market_intel_popup_enabled: d.market_intel_popup_enabled !== false,
@@ -111,20 +112,21 @@ export default function MarketIntelSettingsModal({ open, onOpenChange }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="market-intel-settings-modal" className="max-w-lg max-h-[min(90dvh,calc(100dvh-1rem))] overflow-hidden flex flex-col p-4 sm:p-6 gap-3 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:translate-y-0 max-md:w-[calc(100vw-1rem)]">
-        <DialogHeader className="shrink-0 pr-8">
+        <DialogHeader className="shrink-0 pr-14">
           <DialogTitle className="flex items-center gap-2">
             <Newspaper className="w-4 h-4" />
             Mkt Intel settings
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription>
-            Public market-news RSS is on by default. Keyed APIs run only when a key is saved. Untick a source to skip it. Ingest always stores news on the interval below — hiding the page or popups does not stop that.
+            Public market-news RSS is on by default. Keyed APIs run only when a key is saved. Untick a source to skip it.             Public feeds are checked on this interval; keyed API and Firecrawl sources have a five-minute minimum to protect provider quotas. Hiding the page or popups does not stop ingest.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 min-h-0 flex-1 overflow-y-auto pr-1" data-testid="market-intel-admin">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <label>Ingest interval (sec)
               <input type="number" min={60} max={3600} className="w-full h-8 border rounded-sm px-2 mt-0.5"
-                value={settings.market_intel_ingest_seconds ?? 300}
+                value={settings.market_intel_ingest_seconds ?? 60}
                 onChange={(e) => setSettings({ ...settings, market_intel_ingest_seconds: Number(e.target.value) })}
                 data-testid="mi-ingest-seconds" />
             </label>

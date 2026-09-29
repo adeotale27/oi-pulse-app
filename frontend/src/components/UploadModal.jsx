@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { UploadCloud, AlertTriangle, CheckCircle2, FileText, ExternalLink } from "lucide-react";
@@ -186,6 +187,7 @@ export default function UploadModal({ open, onOpenChange, onUploaded }) {
           <DialogTitle className="flex items-center gap-2">
             <UploadCloud className="w-5 h-5" />
             Upload Data
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription className="text-xs">
             Upload a CSV or XLSX file. If validation passes with no errors, existing data for this category is removed and replaced by the new file.

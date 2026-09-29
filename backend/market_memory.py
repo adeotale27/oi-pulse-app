@@ -220,7 +220,21 @@ async def summary(db, index: str) -> Dict[str, Any]:
                        "lastInteraction": last.get("timestamp"), "lastInteractionType": last.get("interactionType"), "lastContext": last.get("context") or {},
                        "currentDistance": round(price - level, 2) if price is not None else None,
                        "memoryStrength": score})
-    levels.sort(key=lambda row: (abs(row["currentDistance"]) if row["currentDistance"] is not None else float("inf"), -row["relevanceScore"]))
+    distance_key = lambda row: (
+        abs(row["currentDistance"]) if row["currentDistance"] is not None else float("inf"),
+        -row["relevanceScore"],
+    )
+    levels.sort(key=distance_key)
+    # Reserve visibility for both sides of spot when history supports them;
+    # fill missing sides with nearby structures rather than inventing levels.
+    supports = [row for row in levels if row["levelType"] == "SUPPORT"][:3]
+    resistances = [row for row in levels if row["levelType"] == "RESISTANCE"][:3]
+    selected = {row["level"]: row for row in supports + resistances}
+    for row in levels:
+        if len(selected) >= 6:
+            break
+        selected.setdefault(row["level"], row)
+    selected_levels = sorted(selected.values(), key=distance_key)
     updated_at = (state or {}).get("updated_at")
     freshness_seconds = None
     if updated_at:
@@ -230,4 +244,4 @@ async def summary(db, index: str) -> Dict[str, Any]:
             freshness_seconds = None
     return {"index": index, "price": price, "updatedAt": updated_at, "freshnessSeconds": freshness_seconds,
             "structure": {"step": step, "tolerance": tolerance},
-            "levels": levels[:6], "interactions": docs[:100]}
+            "levels": selected_levels, "interactions": docs[:100]}

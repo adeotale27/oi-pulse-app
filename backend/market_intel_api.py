@@ -81,11 +81,10 @@ def mount(api_router, *, require_admin, require_desk_user):
 
     async def _prefs(user_id: str) -> Dict[str, Any]:
         db = _db()
-        base = mi.default_user_prefs()
         if db is None:
-            return {**base, "user_id": user_id}
+            return {**mi.default_user_prefs(), "user_id": user_id}
         doc = await db[mi.PREF_COL].find_one({"user_id": user_id}, {"_id": 0}) or {}
-        return {**base, **doc, "user_id": user_id}
+        return {**mi.user_prefs_with_defaults(doc), "user_id": user_id}
 
     @api_router.get("/desk-ai/providers")
     async def desk_ai_providers(_admin: bool = Depends(require_admin)):
@@ -156,6 +155,11 @@ def mount(api_router, *, require_admin, require_desk_user):
             "enabled": bool(payload.enabled),
             "priority": int(payload.priority or 50),
             "max_items": max(1, min(80, int(payload.max_items or 30))),
+            "fetch_frequency_seconds": (
+                max(60, min(3600, int(payload.fetch_frequency_seconds)))
+                if payload.fetch_frequency_seconds is not None
+                else prev.get("fetch_frequency_seconds")
+            ),
             "category": payload.category,
             "region": payload.region,
         }
@@ -332,7 +336,7 @@ def mount(api_router, *, require_admin, require_desk_user):
             # Optionally include other settings
             "popup_enabled": s.get("market_intel_popup_enabled", True) is not False,
             "popup_dock_until_next": s.get("market_intel_popup_dock_until_next", True) is not False,
-            "ingest_seconds": s.get("market_intel_ingest_seconds") or 300,
+            "ingest_seconds": s.get("market_intel_ingest_seconds") or mi.DEFAULT_INGEST_S,
             "retention_days": s.get("market_intel_retention_days") or 5,
             "min_history_days": s.get("market_intel_min_history_days") or 2,
         }

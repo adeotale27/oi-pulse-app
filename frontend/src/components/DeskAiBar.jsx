@@ -4,7 +4,7 @@ import { api, fetchOIChange, fetchJournalPeriod, fetchExtras } from "@/lib/api";
 import { upcomingHolidays, todayIST } from "@/lib/holidays";
 import { eventDisplayName } from "@/lib/carryFocus";
 import { attachDayCapital, classifyDayCapital } from "@/lib/capitalGuard";
-import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, daysAgoIST, summarizeIndexTape } from "@/lib/deskAiTape";
+import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, compactTradeMemory, daysAgoIST, summarizeIndexTape } from "@/lib/deskAiTape";
 import { cashSessionFocusIndex, cashSessionFocusLabel, filterCashHeavyMovers, istWeekdaySun0, overnightBiasIndices } from "@/lib/deskFocus";
 import MarketIntelCard from "@/components/MarketIntelCard";
 
@@ -40,6 +40,8 @@ export default function DeskAiBar({
   const [guide, setGuide] = useState(null);
   const [meta, setMeta] = useState(null);
   const [outside, setOutside] = useState(null);
+  const [marketStatus, setMarketStatus] = useState(null);
+  const [sessionExtras, setSessionExtras] = useState(null);
   const [intel, setIntel] = useState({ oi: [], book: null, adjust: null, journal: null });
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(() => variant === "panel" || loadOpen());
@@ -54,15 +56,17 @@ export default function DeskAiBar({
       const focusIndex = cashSessionFocusIndex(weekday);
       const names = overnightBiasIndices(weekday, activeIndex).slice(0, 3);
       const today = todayIST();
-      const [st, outRes, evRes, posRes, extrasRes, journalRes, memRes, marketMemoryRes, ...oiPacks] = await Promise.all([
+      // Trade memory is scoped to this signed-in caller; unlike the journal and publisher book, guests may use it.
+      const [st, outRes, evRes, posRes, extrasRes, journalRes, memRes, marketMemoryRes, marketStatusRes, ...oiPacks] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
         api.get("/desk-outside", { params: activeIndex ? { index: activeIndex } : {} }).catch(() => ({ data: null })),
         api.get(`/events/${focusIndex}`).catch(() => ({ data: null })),
         isAdmin ? api.get("/positions").catch(() => ({ data: null })) : Promise.resolve({ data: null }),
         fetchExtras().catch(() => null),
         isAdmin ? fetchJournalPeriod(daysAgoIST(30, today), today, "ALL").catch(() => null) : Promise.resolve(null),
-        isAdmin ? api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+        api.get("/desk-memory", { params: { days: 180 } }).catch(() => ({ data: { status: "unavailable" } })),
         api.get(`/market-memory/${focusIndex}`).catch(() => ({ data: null })),
+        api.get("/market/status").catch(() => ({ data: null })),
         ...names.map((idx) => fetchOIChange(idx, 15, { also: "session" }).catch(() => null)),
       ]);
       setMeta(st.data);
@@ -71,14 +75,20 @@ export default function DeskAiBar({
         rawOut.movers = filterCashHeavyMovers(rawOut.movers);
       }
       setOutside(rawOut);
+      setMarketStatus(marketStatusRes.data);
+      setSessionExtras(extrasRes);
       const holidays = upcomingHolidays().slice(0, 6).map((h) => ({ name: h.name, date: h.date }));
       const events = (evRes.data?.events || []).slice(0, 8);
       const packed = compactBookFromPositions(posRes.data);
       const oi = oiPacks
-        .map((data) => summarizeIndexTape(data?.current, data?.also_windows?.session?.previous || data?.previous))
+        .map((data) => summarizeIndexTape(
+          data?.current,
+          data?.also_windows?.session?.previous || data?.previous,
+          data?.data_status,
+        ))
         .filter(Boolean);
       const journal = attachDayCapital(compactJournalFromPeriod(journalRes), posRes.data);
-      const memory = memRes?.data && Array.isArray(memRes.data.lines) ? { lines: memRes.data.lines.slice(0, 6) } : null;
+      const memory = compactTradeMemory(memRes?.data);
       const vix = extrasRes?.vix?.last ?? extrasRes?.vix?.ltp ?? extrasRes?.vix;
       const focusPack = oiPacks.find((data) => String(data?.current?.index || "") === focusIndex) || oiPacks[0];
       const dayCap = classifyDayCapital({
@@ -103,6 +113,15 @@ export default function DeskAiBar({
         session_focus: focusIndex,
         weekday,
         vix: vix != null ? Number(vix) : undefined,
+        vix_quote: extrasRes?.vix && typeof extrasRes.vix === "object" ? {
+          source: extrasRes.vix.source,
+          fetchedAt: extrasRes.vix.ts,
+        } : undefined,
+        gift_quote: extrasRes?.gift_nifty ? {
+          source: extrasRes.gift_nifty.source,
+          fetchedAt: extrasRes.gift_nifty.ts,
+          isProxy: extrasRes.gift_nifty.is_proxy,
+        } : undefined,
         holidays,
         results: events.map((e) => ({
           name: eventDisplayName(e) || e.name,
@@ -277,6 +296,8 @@ export default function DeskAiBar({
     >
       <MarketIntelCard
         outside={outside}
+        market={marketStatus}
+        extras={sessionExtras}
         guide={guide}
         compact={!isPanel}
         oi={intel.oi}

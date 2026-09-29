@@ -47,7 +47,7 @@ import {
   minutesToCloseIST,
 } from "@/lib/blackScholes";
 import { computeSellCandidates } from "@/lib/sellCandidates";
-import { compactTopSells, compactBookFromPositions, summarizeIndexTape } from "@/lib/deskAiTape";
+import { compactTopSells, compactBookFromPositions, compactTradeMemory, summarizeIndexTape } from "@/lib/deskAiTape";
 import {
   loadPositionsToggles,
   savePositionsToggles,
@@ -1320,7 +1320,7 @@ export default function PositionsPanel({
           params: activeIndex ? { index: activeIndex } : {},
         }).catch(() => ({ data: null }));
         if (!cancelled) setOutside(out.data || null);
-        const mem = await api.get("/desk-memory", { params: { days: 60 } }).catch(() => ({ data: null }));
+        const mem = await api.get("/desk-memory", { params: { days: 180 } }).catch(() => ({ data: { status: "unavailable" } }));
         const oiTape = summarizeIndexTape(current, previous);
         const packed = compactBookFromPositions({ positions: rows });
         const { data } = await api.post("/desk-guide", {
@@ -1339,9 +1339,7 @@ export default function PositionsPanel({
             wallet: stats.wallet,
             leftover: stats.leftover,
           },
-          memory: mem?.data && Array.isArray(mem.data.lines)
-            ? { lines: mem.data.lines.slice(0, 6) }
-            : undefined,
+          memory: compactTradeMemory(mem?.data),
           outside: out.data || undefined,
         });
         if (!cancelled) setDeskGuide(data || null);

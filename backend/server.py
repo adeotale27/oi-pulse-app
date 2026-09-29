@@ -428,13 +428,6 @@ async def _load_user_kite_doc(guest_sess: Optional[dict]):
         found = await db.user_kite.find_one({"_id": str(uid)})
         if found:
             return found
-    name = guest_sess.get("name")
-    ip = guest_sess.get("ip")
-    if name and ip:
-        return await db.user_kite.find_one(
-            {"guest_name": name, "ip": ip},
-            sort=[("updated_at", -1)],
-        )
     return None
 
 
@@ -817,25 +810,6 @@ async def _create_guest_session(name: str, ip: Optional[str], ua: str, *, reques
     if request_id:
         doc["access_request_id"] = request_id
     await db.guest_sessions.insert_one(doc)
-    if ip:
-        try:
-            await db.guest_ip_names.update_one(
-                {"_id": ip},
-                {
-                    "$set": {
-                        "name": name,
-                        "updated_at": now_iso,
-                        "last_token": token,
-                        "opted_out": False,
-                        "ever_approved": True,
-                        "requires_reapproval": False,
-                    },
-                    "$unset": {"opted_out_at": ""},
-                },
-                upsert=True,
-            )
-        except Exception:
-            pass
     return {
         "token": token,
         "name": name,
@@ -3151,7 +3125,7 @@ async def get_config():
         "oi_poll_interval_seconds": poll_interval_seconds,
         "straddle_poll_interval_seconds": straddle_poll,
         "positions_poll_interval_seconds": positions_poll,
-        "market_intel_ingest_seconds": int(s.get("market_intel_ingest_seconds") or 300),
+        "market_intel_ingest_seconds": int(s.get("market_intel_ingest_seconds") or 60),
         "market_intel_retention_days": _int_or("market_intel_retention_days", 5),
         "market_intel_min_history_days": _int_or("market_intel_min_history_days", 2),
         "market_intel_popup_enabled": s.get("market_intel_popup_enabled", True) is not False,
@@ -3375,8 +3349,8 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
 
     • New IP/name → pending until admin approves (default), or immediate session
       when admin turns off Require approval.
-    • Returning guest (same IP + name already approved) → mint session immediately
-      (no second approval), unless admin explicitly removed them (requires_reapproval).
+    • Returning guests must present their existing bearer token or submit a new
+      request; an IP address and display name do not prove guest identity.
     • Blocked IP → soft refusal message.
     """
     if await _get_maintenance_state():
@@ -3396,94 +3370,10 @@ async def auth_guest_start(payload: GuestSessionIn, request: Request):
     now_iso = datetime.now(timezone.utc).isoformat()
     open_door = not await _get_guest_require_approval()
 
-    # Returning guest: IP + name already known/approved → admit without queue.
-    if ip:
-        row = await db.guest_ip_names.find_one({"_id": ip})
-        stored_name = (row or {}).get("name") or ""
-        needs_reapproval = bool((row or {}).get("requires_reapproval"))
-        name_matches = stored_name.strip().lower() == name.lower()
-        ever_ok = bool((row or {}).get("ever_approved"))
-        prior = None
-        if name_matches and not needs_reapproval:
-            prior = await db.access_requests.find_one(
-                {
-                    "ip": ip,
-                    "status": {"$in": ["approved", "consumed"]},
-                },
-                sort=[("decided_at", -1)],
-            )
-            if prior and prior.get("name") and prior["name"].strip().lower() != name.lower():
-                # Prefer matching name when possible; fall back to ever_approved flag.
-                prior_match = await db.access_requests.find_one(
-                    {
-                        "ip": ip,
-                        "status": {"$in": ["approved", "consumed"]},
-                        "name": name,
-                    },
-                    sort=[("decided_at", -1)],
-                )
-                prior = prior_match or (prior if ever_ok else None)
-            if prior or ever_ok:
-                try:
-                    await db.access_requests.update_many(
-                        {"ip": ip, "status": "pending"},
-                        {"$set": {
-                            "status": "consumed",
-                            "decided_at": now_iso,
-                            "decided_reason": "returning_auto",
-                            "consumed_at": now_iso,
-                        }},
-                    )
-                except Exception:
-                    pass
-                guest = await _create_guest_session(
-                    name, ip, ua, request_id=(prior or {}).get("_id")
-                )
-                logger.info(f"ACCESS returning guest auto-admit: name='{name}' ip={ip}")
-                return {
-                    "ok": True,
-                    "status": "approved",
-                    "token": guest["token"],
-                    "name": name,
-                    "expires_in_seconds": guest["expires_in_seconds"],
-                    "expires_at": guest.get("expires_at"),
-                    "source": "returning",
-                    "message": "Welcome back",
-                }
-
     if open_door:
         return await _admit_guest_immediate(name, ip, ua, reason="open_door")
 
-    # Explicit request: clear Exit opt-out only. Keep requires_reapproval until approve.
-    if ip:
-        try:
-            await db.guest_ip_names.update_one(
-                {"_id": ip},
-                {
-                    "$set": {"name": name, "updated_at": now_iso, "opted_out": False},
-                    "$unset": {"opted_out_at": ""},
-                },
-                upsert=True,
-            )
-        except Exception:
-            pass
-
-    # One pending request per IP — reuse instead of flooding the admin queue.
-    if ip:
-        existing = await db.access_requests.find_one({"ip": ip, "status": "pending"})
-        if existing:
-            await db.access_requests.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {"name": name, "user_agent": ua, "updated_at": now_iso}},
-            )
-            return {
-                "ok": True,
-                "status": "pending",
-                "request_id": existing["_id"],
-                "name": name,
-                "message": "Waiting for admin approval",
-            }
-
+    # The IP binds approval-status polling but never serves as proof of identity.
     req_id = secrets.token_urlsafe(16)
     await db.access_requests.insert_one({
         "_id": req_id,
@@ -3564,112 +3454,16 @@ async def auth_access_request_status(request_id: str, request: Request):
     return out
 
 
-async def _try_auto_guest_for_ip(ip: Optional[str], request: Request) -> Optional[dict]:
-    """If this IP was previously approved under a known name, re-admit without a click.
-
-    Order:
-      1) Revive a still-valid last_token session
-      2) Else mint a fresh session when a prior approved request exists for this IP
-
-    Skipped when the guest explicitly Exit'd (opted_out) until they request again.
-    """
-    if not ip:
-        return None
-    if await _is_ip_blocked(ip):
-        return None
-    open_, _ = await _get_public_access_state()
-    if not open_:
-        return None
-    row = await db.guest_ip_names.find_one({"_id": ip})
-    if not row or not row.get("name"):
-        return None
-    if row.get("opted_out"):
-        return None
-    # Admin explicitly removed this guest — they must request + be approved again.
-    if row.get("requires_reapproval"):
-        return None
-    name = row["name"]
-    # 1) Live session still good?
-    tok = row.get("last_token")
-    if tok:
-        sess = await db.guest_sessions.find_one({"_id": tok})
-        if sess and not sess.get("revoked_at"):
-            try:
-                started = datetime.fromisoformat(sess.get("started_at"))
-                now_utc = datetime.now(timezone.utc)
-                exp = None
-                if sess.get("expires_at"):
-                    exp = datetime.fromisoformat(sess["expires_at"])
-                    if exp.tzinfo is None:
-                        exp = exp.replace(tzinfo=timezone.utc)
-                else:
-                    exp = _guest_expiry_from_start(started)
-                if now_utc < exp and (now_utc - started).total_seconds() <= GUEST_SESSION_TTL_SECONDS:
-                    return {
-                        "token": tok,
-                        "name": sess.get("name") or name,
-                        "expires_in_seconds": _guest_seconds_remaining(exp, now_utc),
-                        "expires_at": exp.isoformat(),
-                        "source": "revive",
-                    }
-            except Exception:
-                pass
-    # 2) Previously approved on this IP → mint without another admin click
-    prior = await db.access_requests.find_one(
-        {
-            "ip": ip,
-            "status": {"$in": ["approved", "consumed"]},
-            "name": name,
-        },
-        sort=[("decided_at", -1)],
-    )
-    if not prior:
-        # Any prior approval for this IP (name may have been edited slightly)
-        prior = await db.access_requests.find_one(
-            {"ip": ip, "status": {"$in": ["approved", "consumed"]}},
-            sort=[("decided_at", -1)],
-        )
-        if prior and prior.get("name"):
-            name = prior["name"]
-    if not prior:
-        return None
-    ua = request.headers.get("user-agent", "")[:200]
-    guest = await _create_guest_session(name, ip, ua, request_id=prior.get("_id"))
-    guest["source"] = "reissue"
-    return guest
-
-
 @api_router.post("/auth/guest/logout")
 async def auth_guest_logout(request: Request):
-    """Guest Exit — revoke this session and opt the IP out of auto-re-admit.
-
-    Without opt-out, AuthGate would immediately mint a new guest session for the
-    same IP (returning-guest auto-admit), so Exit appeared broken.
-    """
+    """Guest Exit — revoke this guest session."""
     tok = _extract_bearer(request, "x-guest-token")
-    ip = _client_ip(request)
     now_iso = datetime.now(timezone.utc).isoformat()
     if tok:
         try:
             await db.guest_sessions.update_one(
                 {"_id": tok, "revoked_at": {"$exists": False}},
                 {"$set": {"revoked_at": now_iso, "revoked_reason": "guest_logout"}},
-            )
-        except Exception:
-            pass
-    if ip:
-        try:
-            await db.guest_ip_names.update_one(
-                {"_id": ip},
-                {
-                    "$set": {
-                        "opted_out": True,
-                        "opted_out_at": now_iso,
-                        "last_token": None,
-                        "updated_at": now_iso,
-                    }
-                },
-                upsert=True,
             )
         except Exception:
             pass
@@ -3719,7 +3513,7 @@ async def auth_state(request: Request):
                 admin_session_expires_at = _session_market_expiry_utc(created).isoformat()
         except Exception:
             admin_session_expires_at = None
-    # Suggest previous guest name + auto-admit returning guests on the same IP.
+    # IP-based names are not identity proof and must not be disclosed here.
     suggested_guest_name = None
     auto_guest_token = None
     auto_guest_name = None
@@ -3735,25 +3529,6 @@ async def auth_state(request: Request):
             except Exception:
                 guest_expires_at = _next_6am_ist_utc().isoformat()
     ip = _client_ip(request)
-    if needs_guest_name and ip:
-        try:
-            row = await _find_one_capped(db.guest_ip_names, {"_id": ip})
-            if row and row.get("name"):
-                suggested_guest_name = row["name"]
-        except Exception:
-            pass
-        try:
-            auto = None if maintenance_mode else await _try_auto_guest_for_ip(ip, request)
-            if auto and auto.get("token"):
-                auto_guest_token = auto["token"]
-                auto_guest_name = auto.get("name") or suggested_guest_name
-                auto_guest_expires_in = auto.get("expires_in_seconds")
-                auto_guest_expires_at = auto.get("expires_at")
-                # Reflect admitted state immediately for this response shape
-                # (client will store the token and re-fetch).
-                suggested_guest_name = auto_guest_name or suggested_guest_name
-        except Exception as e:
-            logger.warning(f"auto guest for IP failed: {e}")
     pending_access_count = 0
     if is_admin:
         pending_access_count = await _pending_access_count()
@@ -3767,7 +3542,7 @@ async def auth_state(request: Request):
         "local_dev_admin_bypass": _is_local_dev_admin_bypass_request(request),
         "is_guest": is_guest,
         "guest_name": guest_name,
-        "needs_guest_name": needs_guest_name and not auto_guest_token,
+        "needs_guest_name": needs_guest_name,
         "suggested_guest_name": suggested_guest_name,
         "auto_guest_token": auto_guest_token,
         "auto_guest_name": auto_guest_name,
@@ -3945,24 +3720,6 @@ async def auth_revoke_guest(token: str, _admin: bool = Depends(require_admin)):
         {"_id": tok, "revoked_at": {"$exists": False}},
         {"$set": {"revoked_at": now_iso, "revoked_reason": "admin_kick"}},
     )
-    # Stop same-IP auto-re-admit until they request access again.
-    ip = existing.get("ip")
-    if ip:
-        try:
-            await db.guest_ip_names.update_one(
-                {"_id": ip},
-                {
-                    "$set": {
-                        "opted_out": True,
-                        "opted_out_at": now_iso,
-                        "requires_reapproval": True,
-                        "last_token": None,
-                        "updated_at": now_iso,
-                    }
-                },
-            )
-        except Exception:
-            pass
     return {"ok": True, "token": tok, "revoked": True}
 
 
@@ -4082,20 +3839,6 @@ async def auth_block_ip(payload: BlockIpIn, _admin: bool = Depends(require_admin
         upsert=True,
     )
     kicked = await _revoke_guests_for_ip(ip, "ip_blocked")
-    try:
-        await db.guest_ip_names.update_one(
-            {"_id": ip},
-            {"$set": {
-                "requires_reapproval": True,
-                "opted_out": True,
-                "opted_out_at": now_iso,
-                "last_token": None,
-                "updated_at": now_iso,
-            }},
-            upsert=True,
-        )
-    except Exception:
-        pass
     # Reject pending requests from this IP
     try:
         await db.access_requests.update_many(
@@ -6545,7 +6288,9 @@ class DeskGuideIn(BaseModel):
     holidays: List[Any] = Field(default_factory=list)
     book: Optional[Dict[str, Any]] = None
     vix: Optional[float] = None
+    vix_quote: Optional[Dict[str, Any]] = None
     giftPct: Optional[float] = None
+    gift_quote: Optional[Dict[str, Any]] = None
     weekday: Optional[int] = None
     band: Optional[str] = None
     surface: Optional[str] = None
@@ -6608,7 +6353,11 @@ async def get_desk_guide(role: str = Depends(require_desk_user)):
 
 
 @api_router.post("/desk-guide")
-async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_user)):
+async def post_desk_guide(
+    body: DeskGuideIn,
+    request: Request,
+    role: str = Depends(require_desk_user),
+):
     """Coach over outside tape (movers/news) plus clipped book. Optional GPT."""
     payload = body.model_dump()
     flags = resolve_desk_ai(tracker.settings if tracker else {})
@@ -6628,9 +6377,15 @@ async def post_desk_guide(body: DeskGuideIn, role: str = Depends(require_desk_us
             payload["outside"] = desk_guide_svc.carry_outside(outside)
         else:
             payload["outside"] = outside
-    except Exception:
-        pass
-    return await desk_guide_svc.maybe_guide(payload)
+    except Exception as exc:
+        logger.warning("desk-guide outside evidence unavailable: %s", type(exc).__name__)
+        payload["outside"] = {"available": False}
+    cache_scope = await _ledger_owner(request, role)
+    return await desk_guide_svc.maybe_guide(
+        payload,
+        cache_scope=cache_scope,
+        allow_force=role == "admin",
+    )
 
 
 @api_router.get("/desk-memory")
@@ -6639,7 +6394,7 @@ async def desk_memory(
     days: int = 60,
     role: str = Depends(require_desk_user),
 ):
-    """Closed-short win rates from trade_cycles. Compact lines only — no fills."""
+    """Owner-scoped, aggregate-only strategy memory; never return individual cycles."""
     if db is None:
         raise HTTPException(503, "Database unavailable")
     owner = await _ledger_owner(request, role)
@@ -6659,8 +6414,9 @@ async def desk_memory(
             query,
             {"_id": 0, "events": 0, "fills": 0},
         ).to_list(length=2000)
-    except Exception:
-        docs = []
+    except Exception as exc:
+        logger.exception("desk-memory query failed")
+        raise HTTPException(503, "Trade memory unavailable") from exc
     cycles = ledger.filter_cycles(docs, start=start, end=end, status="closed")
     return ledger.summarize_trade_memory(cycles)
 
@@ -7211,7 +6967,6 @@ async def _ensure_mongo_indexes():
         await db.guest_sessions.create_index("ip")
         await db.admin_remember_devices.create_index("ip")
         await db.admin_remember_devices.create_index("expires_at")
-        await db.guest_ip_names.create_index("updated_at")
         await db.access_requests.create_index([("status", 1), ("created_at", -1)])
         await db.access_requests.create_index([("ip", 1), ("status", 1)])
         await db.blocked_ips.create_index("blocked_at")

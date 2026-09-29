@@ -458,13 +458,23 @@ export default function Header({
     const open = () => setMobileToolsOpen(true);
     const toggle = () => setMobileToolsOpen((v) => !v);
     const close = () => setMobileToolsOpen(false);
+    const closeForDialog = () => {
+      flushSync(() => {
+        setMobileToolsOpen(false);
+        setAdminMenuOpen(false);
+      });
+    };
     window.addEventListener("oi-open-admin-tools", open);
     window.addEventListener("oi-toggle-admin-tools", toggle);
     window.addEventListener("oi-close-admin-tools", close);
+    window.addEventListener("oi-admin-open-access", closeForDialog);
+    window.addEventListener("oi-admin-open-password", closeForDialog);
     return () => {
       window.removeEventListener("oi-open-admin-tools", open);
       window.removeEventListener("oi-toggle-admin-tools", toggle);
       window.removeEventListener("oi-close-admin-tools", close);
+      window.removeEventListener("oi-admin-open-access", closeForDialog);
+      window.removeEventListener("oi-admin-open-password", closeForDialog);
     };
   }, []);
   useEffect(() => {
@@ -756,11 +766,11 @@ export default function Header({
             <Database className={`w-4 h-4 mr-1.5 ${refreshing ? "animate-pulse" : ""}`} />
             {refreshing ? "Refreshing…" : "Fresh"}
           </Button>
-          <Button data-testid="btn-mobile-upload" size="sm" onClick={onOpenUpload} className="rounded-sm min-h-11 bg-sky-600 hover:bg-sky-700 text-white">
+          <Button data-testid="btn-mobile-upload" size="sm" onClick={() => openAdminSheet(onOpenUpload)} className="rounded-sm min-h-11 bg-sky-600 hover:bg-sky-700 text-white">
             <UploadCloud className="w-4 h-4 mr-1.5" />
             Upload
           </Button>
-          <Button data-testid="btn-mobile-telegram" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={onOpenTelegramPrefs}>
+          <Button data-testid="btn-mobile-telegram" variant="outline" size="sm" className="rounded-sm min-h-11" onClick={() => openAdminSheet(onOpenTelegramPrefs)}>
             <Send className="w-4 h-4 mr-1.5" />
             Telegram
           </Button>

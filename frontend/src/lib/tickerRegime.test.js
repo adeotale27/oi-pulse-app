@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describeTickerRegime, getTickerRegime } from "./tickerRegime.js";
+import { describeTickerRegime, getTickerRegime, tickerRegimeChipClass } from "./tickerRegime.js";
 
 assert.equal(getTickerRegime(0, true, 25000, 25010, 24990, 25000, 25000), "steady");
 assert.equal(getTickerRegime(NaN, false, 25000, 25100, 24900, null), "unavailable");
@@ -56,5 +56,10 @@ const d = describeTickerRegime(0.05, false, 24000, 24120, 23920, 24019, 24010);
 assert.equal(d.key, "range");
 assert.equal(d.label, "RANGING");
 assert.match(d.why, /range/i);
+assert.match(tickerRegimeChipClass("bear-trend"), /bg-red-200 text-red-950/);
+assert.match(tickerRegimeChipClass("range"), /bg-blue-200 text-blue-950/);
+assert.match(tickerRegimeChipClass("bull-trend"), /bg-emerald-200 text-emerald-950/);
+assert.match(tickerRegimeChipClass("risk-off"), /bg-rose-300 text-rose-950/);
+assert.match(tickerRegimeChipClass("steady"), /bg-amber-200 text-amber-950/);
 
 console.log("tickerRegime.test.js: ok");

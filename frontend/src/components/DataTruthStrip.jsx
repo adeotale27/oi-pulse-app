@@ -7,6 +7,11 @@ const TONE = {
     badge: "bg-white text-emerald-800",
     pulse: "bg-emerald-600",
   },
+  premarket: {
+    bar: "bg-[#022c22] text-emerald-50 border-[#011f18] dark:bg-[#021f18] dark:border-black",
+    badge: "bg-emerald-100 text-emerald-950",
+    pulse: "bg-emerald-300",
+  },
   session: {
     // Dark forest green (not mint) — deeper than LIVE emerald-600
     bar: "bg-[#022c22] text-emerald-50 border-[#011f18] dark:bg-[#021f18] dark:border-black",
@@ -32,6 +37,8 @@ const TONE = {
 export default function DataTruthStrip({
   dataStatus,
   marketOpen,
+  preMarket = false,
+  pollStartsAt = "09:15",
   mode,
   snapshotTs,
   emphasize = false,
@@ -48,12 +55,14 @@ export default function DataTruthStrip({
       buildDataTruth({
         dataStatus,
         marketOpen,
+        preMarket,
+        pollStartsAt,
         mode,
         snapshotTs,
       }),
     // tick refreshes relative age wording when cache_age is present
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dataStatus, marketOpen, mode, snapshotTs, tick],
+    [dataStatus, marketOpen, preMarket, pollStartsAt, mode, snapshotTs, tick],
   );
 
   const tone = TONE[truth.tone] || TONE.offline;

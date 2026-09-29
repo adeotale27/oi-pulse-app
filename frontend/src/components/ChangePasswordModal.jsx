@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +59,7 @@ export default function ChangePasswordModal({ open, onOpenChange }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-4 h-4" /> Change Password
+            <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription>
             Your Login ID stays as <b>Adeotale</b>. Only the password changes.

@@ -19,7 +19,6 @@ import DataLoadingState from "@/components/DataLoadingState";
  *   2. Guest name prompt (when public access is open but caller has no guest token)
  *   3. Pass-through (admin or guest already authenticated)
  *
- * Returning guests (same IP + previously approved name) are auto-admitted.
  * Admin Remember-me restores via /auth/remember-login. Admin is NOT kicked at
  * market close unless Settings → expire_admin_on_market_close is explicitly ON.
  */
@@ -41,7 +40,6 @@ export default function AuthGate({ children }) {
   const [waitStatus, setWaitStatus] = useState(null); // pending | rejected | null
   const lastActivityRef = useRef(Date.now());
   const pendingPollRef = useRef(null);
-  const autoGuestRef = useRef(false);
   const admittingRef = useRef(false);
   const ipMismatchToastedRef = useRef(false);
 
@@ -71,32 +69,6 @@ export default function AuthGate({ children }) {
         lastErr = err;
       }
       if (!data) throw lastErr || new Error("auth state unavailable");
-
-      // Returning guest on same IP — auto-login without a click.
-      if (
-        data?.auto_guest_token &&
-        !data.is_admin &&
-        !data.is_guest &&
-        !autoGuestRef.current
-      ) {
-        autoGuestRef.current = true;
-        persistGuestAuth({
-          token: data.auto_guest_token,
-          name: data.auto_guest_name || data.suggested_guest_name || "",
-          expiresInSeconds: data.auto_guest_expires_in,
-          expiresAt: data.auto_guest_expires_at,
-        });
-        clearAdminAuth({ clearRemember: false });
-        toast.success(`Welcome back, ${data.auto_guest_name || data.suggested_guest_name || "guest"}`);
-        // Re-fetch so is_guest is true with the new header token.
-        const { data: again } = await withTimeout(api.get("/auth/state", { timeout: 2500 }), 2800, "auth state timeout");
-        setState({ loading: false, ...again });
-        try {
-          window.__oi_last_auth_state = again;
-          window.dispatchEvent(new CustomEvent("oi-admin-auth-state", { detail: again }));
-        } catch (_) { /* noop */ }
-        return;
-      }
 
       if (data.requires_login && !data.is_admin) {
         clearGuestAuth();

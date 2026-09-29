@@ -1,5 +1,11 @@
 """Guards against origin stampedes that show up as Cloudflare 520/524."""
 from pathlib import Path
+import asyncio
+from types import SimpleNamespace
+
+from starlette.requests import Request
+
+import server
 
 ROOT = Path(__file__).resolve().parents[1]
 TRACKER = (ROOT / "oi_tracker.py").read_text(encoding="utf-8")
@@ -75,6 +81,99 @@ def test_poll_loop_does_not_reload_settings_every_tick():
 def test_auth_state_survives_missing_db():
     src = _fn(SERVER, "auth_state")
     assert "if db is None" in src
+
+
+def test_guest_auth_does_not_restore_or_disclose_identity_by_ip():
+    state = _fn(SERVER, "auth_state")
+    guest_start = _fn(SERVER, "auth_guest_start")
+    kite_start = SERVER.index("async def _load_user_kite_doc")
+    kite_end = SERVER.index("\nasync def _save_user_kite", kite_start)
+    kite_lookup = SERVER[kite_start:kite_end]
+    assert "_try_auto_guest_for_ip" not in SERVER
+    assert "guest_ip_names" not in SERVER
+    assert "guest_ip_names" not in state
+    assert "auto_guest_token = None" in state
+    assert "ever_approved" not in guest_start
+    assert "returning_auto" not in guest_start
+    assert 'find_one({"ip": ip, "status": "pending"})' not in guest_start
+    assert "guest_name" not in kite_lookup
+    assert "guest_token" in kite_lookup
+
+
+def test_auth_state_never_returns_prior_guest_from_ip(monkeypatch):
+    async def no_admin(request):
+        return None
+
+    async def no_guest(request):
+        return None
+
+    async def public_open():
+        return True, None
+
+    async def no_platform_config():
+        return {}
+
+    async def no_maintenance():
+        return False
+
+    async def no_auth_user_kite(is_admin, guest):
+        return {}
+
+    monkeypatch.setattr(server, "db", object())
+    monkeypatch.setattr(server, "tracker", None)
+    monkeypatch.setattr(server, "_get_public_access_state", public_open)
+    monkeypatch.setattr(server, "_load_platform_config", no_platform_config)
+    monkeypatch.setattr(server, "_get_maintenance_state", no_maintenance)
+    monkeypatch.setattr(server, "_admin_from_request", no_admin)
+    monkeypatch.setattr(server, "_guest_from_request", no_guest)
+    monkeypatch.setattr(server, "_get_guest_require_approval", lambda: _async_value(True))
+    monkeypatch.setattr(server, "_auth_user_kite_payload", no_auth_user_kite)
+    monkeypatch.setattr(server, "_is_ip_blocked", lambda ip: _async_value(False))
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/auth/state",
+        "query_string": b"",
+        "headers": [],
+        "client": ("198.51.100.12", 4321),
+        "server": ("testserver", 80),
+    }
+
+    result = asyncio.run(server.auth_state(Request(scope)))
+
+    assert result["needs_guest_name"] is True
+    assert result["suggested_guest_name"] is None
+    assert result["auto_guest_token"] is None
+
+
+def test_guest_kite_lookup_does_not_use_ip_or_name(monkeypatch):
+    class KiteCollection:
+        def __init__(self):
+            self.queries = []
+
+        async def find_one(self, query):
+            self.queries.append(query)
+            return None
+
+    kites = KiteCollection()
+    monkeypatch.setattr(server, "db", SimpleNamespace(user_kite=kites))
+    result = asyncio.run(server._load_user_kite_doc({"name": "Shared Name", "ip": "198.51.100.12"}))
+    assert result is None
+    assert kites.queries == []
+
+
+def test_desk_guide_cache_is_scoped_and_force_is_admin_only():
+    start = SERVER.index("async def post_desk_guide")
+    end = SERVER.index("\n@api_router.", start)
+    route = SERVER[start:end]
+    assert "cache_scope=cache_scope" in route
+    assert 'allow_force=role == "admin"' in route
+
+
+async def _async_value(value):
+    return value
 
 
 def test_admin_auth_returns_service_unavailable_when_mongo_is_down():
