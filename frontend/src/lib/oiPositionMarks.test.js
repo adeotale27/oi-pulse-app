@@ -19,6 +19,9 @@ assert.equal(strikeFromRow({ tradingsymbol: "NIFTY2692223350PE" }), 23350);
 assert.equal(parseOptionSymbol("NIFTY2692223350PE").expiry, "2026-09-22");
 assert.equal(parseOptionSymbol("NIFTY26SEP2223350PE").expiry, "2026-09-22");
 assert.equal(parseOptionSymbol("NIFTY26SEP2223350PE").strike, 23350);
+assert.equal(parseOptionSymbol("SENSEX2600174000CE").expiry, "2026-10-01");
+assert.equal(parseOptionSymbol("SENSEX26O0174000CE").expiry, "2026-10-01");
+assert.equal(parseOptionSymbol("SENSEX26N0171500PE").expiry, "2026-11-01");
 assert.equal(sameChartExpiry("2026-09-22", "2026-09-22"), true);
 assert.equal(sameChartExpiry("2026-09-29", "2026-09-22"), false);
 assert.equal(sameChartExpiry("2026-09-22", null), true);
@@ -43,6 +46,14 @@ assert.ok(!nifty.some((m) => m.strike === 80000));
 assert.ok(!nifty.some((m) => m.strike === 24000));
 assert.equal(openOiMarks(rows, "NIFTY", "2026-09-29").some((m) => m.strike === 25000), true);
 assert.equal(openOiMarks(rows, "NIFTY", "2026-10-27").some((m) => m.strike === 24000 && m.side === "PE"), true);
+const sensexShorts = openOiMarks([
+  { tradingsymbol: "SENSEX2600174000CE", index: "SENSEX", quantity: -300, lot_size: 20 },
+  { tradingsymbol: "SENSEX2600171500PE", index: "SENSEX", quantity: -300, lot_size: 20 },
+], "SENSEX", "2026-10-01");
+assert.deepEqual(sensexShorts.map(({ strike, side, tag, qty }) => ({ strike, side, tag, qty })), [
+  { strike: 74000, side: "CE", tag: "S", qty: -300 },
+  { strike: 71500, side: "PE", tag: "S", qty: -300 },
+]);
 assert.deepEqual(peTopKey({ pe_down: 10, pe_up: 1, pe_base: 5 }), "pe_down");
 assert.deepEqual(ceTopKey({ ce_up: 3, ce_base: 2, ce_down: 0 }), "ce_up");
 

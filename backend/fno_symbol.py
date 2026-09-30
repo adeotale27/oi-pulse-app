@@ -40,9 +40,10 @@ _MCX_MONTHLY = re.compile(
     rf"^(?P<idx>{_MCX_OPT_NAMES})(?P<yy>\d{{2}})(?P<mon>[A-Z]{{3}})"
     rf"(?P<strike>\d{{2,6}})(?P<side>CE|PE)$"
 )
-# Compact weekly: NIFTY2681123050CE (yy + month digit + dd + strike)
+# Compact weekly: NIFTY2681123050CE (yy + month code + dd + strike).
+# BSE's short month codes use 0/O for October, N for November, and D for December.
 _COMPACT = re.compile(
-    rf"^(?P<idx>{INDEXES})(?P<yy>\d{{2}})(?P<m>\d)(?P<dd>\d{{2}})"
+    rf"^(?P<idx>{INDEXES})(?P<yy>\d{{2}})(?P<m>[0-9OND])(?P<dd>\d{{2}})"
     rf"(?P<strike>\d{{4,6}})(?P<side>CE|PE)$"
 )
 
@@ -171,9 +172,13 @@ def parse_fno_option_symbol(ts: str) -> Optional[dict[str, Any]]:
     m = _COMPACT.match(ts)
     if m:
         yyyy = 2000 + int(m.group("yy"))
-        month = int(m.group("m"))
+        month_code = m.group("m")
+        if month_code.isdigit():
+            month = 10 if month_code == "0" else int(month_code)
+        else:
+            month = {"O": 10, "N": 11, "D": 12}[month_code]
         day = int(m.group("dd"))
-        if month < 1 or month > 9 or day < 1 or day > 31:
+        if month < 1 or month > 12 or day < 1 or day > 31:
             return None
         return {
             "index": m.group("idx"),
