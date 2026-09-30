@@ -111,6 +111,20 @@
   font-size: 15px;
 }
 
+[data-testid="positions-panel"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.positions-panel-heading,
+.positions-panel-title-group,
+.positions-panel-title-main,
+.positions-panel-title-meta,
+.positions-panel-warning,
+.positions-panel-toolbar {
+  min-width: 0;
+}
+
 .risk-management-content .position-meter-metric {
   min-height: 0;
   padding: 11px 13px;
@@ -1069,6 +1083,48 @@
 }
 
 @media (max-width: 640px) {
+  [data-testid="positions-panel"] {
+    padding: 10px;
+  }
+
+  .positions-panel-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .positions-panel-title-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .positions-panel-title-main,
+  .positions-panel-title-meta {
+    width: 100%;
+  }
+
+  .positions-panel-title-meta {
+    padding-left: 28px;
+  }
+
+  .positions-panel-warning {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    gap: 6px;
+    padding-top: 7px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .positions-panel-warning [data-testid="btn-position-meter"] {
+    margin-left: auto;
+  }
+
+  .positions-panel-toolbar {
+    gap: 6px;
+  }
+
   .position-meter-impact,
   .position-meter-method {
     padding: 14px;
@@ -1103,6 +1159,10 @@
   .position-meter-impact-row {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px 12px;
+  }
+
+  .dark .positions-panel-warning {
+    border-color: #30465f;
   }
 
   .position-meter-impact-scale {

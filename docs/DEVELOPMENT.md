@@ -7,6 +7,11 @@ Before making any change, use the canonical
 frontend/backend file locations, comment rules, tests, documentation, version
 updates, and shipping steps for every AI or human agent.
 
+The Positions phone header keeps the page title, position status, and warning
+controls on separate compact rows. Its PositionMeter entry is labeled "PMeter"
+on phone widths and retains the full name on larger screens. Keep mobile chrome
+within the panel width without changing controls or Positions behavior.
+
 For an app-owner request to audit the full application locally, follow the
 read-only [end-to-end audit workflow](./END_TO_END_AUDIT.md) and create a dated,
 sanitized report in `docs/audits/`. The first-run example is
