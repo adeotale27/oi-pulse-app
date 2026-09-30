@@ -100,6 +100,15 @@ Refused on weekends/holidays so Friday’s last session is not wiped. Use when t
 
 CSV download builds from the current/previous client snapshots — no extra server round-trip beyond what’s already loaded.
 
+### Position option-symbol parsing
+
+`GET /positions` enriches option rows by parsing the broker `tradingsymbol` into
+underlying, strike, side, and expiry. Compact BSE weekly month codes include
+`0`/`O` for October, `N` for November, and `D` for December. The Positions risk
+columns and OI chart's position badges depend on these parsed fields; if a new
+broker symbol format is not recognized, raw broker P&L may still appear while
+those derived fields and expiry-matched badges are omitted.
+
 ---
 
 ## Modes
