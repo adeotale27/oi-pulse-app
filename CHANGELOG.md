@@ -1,5 +1,9 @@
 # Changelog
 
+## V16.05 — 2026-09-30
+
+Recognized compact BSE weekly option expiry month codes in Positions, restoring parsed strike/side/expiry fields and expiry-matched short/long markers on OI Change and Open Interest charts.
+
 ## V16.04 — 2026-09-29
 
 Improved Desk AI session brief readability with larger, separate evidence cards, plain-language OI labels, clearly labeled sources and timestamps, and distinct live/stale status badges.

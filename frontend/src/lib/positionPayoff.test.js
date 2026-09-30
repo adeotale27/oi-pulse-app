@@ -32,6 +32,10 @@ assert.equal(
   positionExpiryISO({ expiry_yy: "26", expiry_code: "AUG11", expiry_day: 11 }),
   "2026-08-11",
 );
+assert.equal(
+  positionExpiryISO({ expiry_yy: "26", expiry_code: "1001", expiry_day: 1 }),
+  "2026-10-01",
+);
 
 const map = groupPositionsByIndex([
   { isOpt: true, index: "NIFTY", tradingsymbol: "A" },

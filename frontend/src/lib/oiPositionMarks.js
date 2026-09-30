@@ -7,6 +7,11 @@ const MON = {
   JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
   JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12,
 };
+const COMPACT_MONTH = { "0": 10, O: 10, N: 11, D: 12 };
+
+function compactMonthNumber(code) {
+  return COMPACT_MONTH[code] || Number(code);
+}
 
 function isoFromYmd(yyyy, month, day) {
   if (!yyyy || !month || !day) return null;
@@ -31,22 +36,28 @@ export function parseOptionSymbol(ts) {
   if (monthly && MON[monthly[3]]) {
     return { strike: Number(monthly[4]), side: monthly[5], expiry: null };
   }
-  const compactCe = s.match(/^([A-Z]+)(\d{2})(\d)(\d{2})(\d{4,6})(CE|PE)$/);
+  const compactCe = s.match(/^([A-Z]+)(\d{2})([0-9OND])(\d{2})(\d{4,6})(CE|PE)$/);
   if (compactCe) {
     const yyyy = 2000 + Number(compactCe[2]);
+    const month = compactMonthNumber(compactCe[3]);
+    const expiry = isoFromYmd(yyyy, month, Number(compactCe[4]));
+    if (!expiry) return null;
     return {
       strike: Number(compactCe[5]),
       side: compactCe[6],
-      expiry: isoFromYmd(yyyy, Number(compactCe[3]), Number(compactCe[4])),
+      expiry,
     };
   }
-  const compactC = s.match(/^([A-Z]+)(\d{2})(\d)(\d{2})(\d{4,6})(C|P)$/);
+  const compactC = s.match(/^([A-Z]+)(\d{2})([0-9OND])(\d{2})(\d{4,6})(C|P)$/);
   if (compactC) {
     const yyyy = 2000 + Number(compactC[2]);
+    const month = compactMonthNumber(compactC[3]);
+    const expiry = isoFromYmd(yyyy, month, Number(compactC[4]));
+    if (!expiry) return null;
     return {
       strike: Number(compactC[5]),
       side: compactC[6] === "P" ? "PE" : "CE",
-      expiry: isoFromYmd(yyyy, Number(compactC[3]), Number(compactC[4])),
+      expiry,
     };
   }
   return null;
