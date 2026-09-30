@@ -144,6 +144,7 @@ Root-level `backend_*.py` / `p0_regression_test.py` scripts hit a running API â€
 | Symptom | Check |
 |---------|--------|
 | `MONGO_URL` KeyError on boot | `backend/.env` missing or not loaded |
+| `Desk is still starting (Mongo/OI tracker not ready)` during Kite login | Check backend logs and Mongo connectivity. Startup retries transient Mongo connection failures with backoff; wait until `/api/status` reports `booting: false`. Kite request tokens are single-use; after the desk is ready, start a fresh broker login and submit its new token. |
 | CORS errors | `CORS_ORIGINS` includes `http://localhost:3000` |
 | Always OFFLINE | Kite credentials / access token expired â€” use Morning Refresh |
 | Empty chart after Fresh Pull | Expected until first successful Kite pull; confirm LIVE + market hours |

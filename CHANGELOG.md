@@ -1,5 +1,57 @@
 # Changelog
 
+## V17.12 — 2026-09-30
+
+Added a compact PositionMeter "Check now" list for urgent sold legs with same-strike hedge quantities, paired expiry-day/near-strike attention using existing Positions flags, an explicit LTP-before-costs premium-capture note, and visibility into the existing booked-loss and available-margin guards.
+
+## V17.11 — 2026-09-30
+
+Expanded PositionMeter with open-short premium captured and weighted capture percentage, renamed decay runway to "Premium left to decay," added named near-strike/risk explanations and urgency-first full-book sorting, showed same-strike CE/PE hedge offsets, and made Positions-read freshness and missing option quote timestamps explicit.
+
+## V17.10 — 2026-09-30
+
+Added the existing broker-reported booked-plus-open Today P&L to PositionMeter and a clearly qualified "Still to earn" estimate for remaining extrinsic value in open short options. The estimate excludes hedge costs and is withheld when a short leg lacks data.
+
+## V17.09 — 2026-09-30
+
+Reduced PositionMeter's default page height by removing the all-book scenario chart and risk-distribution bar from the main view, collapsing strike/scenario details per expiry, and reducing the summary to open P&L, net Delta, and alerts. Extra whole-book estimates remain available in a collapsed section.
+
+## V17.08 — 2026-09-30
+
+Made PositionMeter seller-focused: sold options are tested with same-index, same-expiry bought hedges together, bought legs are not alerted for premium decay alone, and positions group by expiry with strikes in ascending order. Added package-level net Greeks, P&L, stress scenarios, and CE/PE buy/sell quantities by strike. Threshold explanations now use the current close value of sold options in the package.
+
+## V17.07 — 2026-09-30
+
+Simplified PositionMeter’s risk visualization into plain-language market changes with estimated rupee outcomes, moved advanced scenarios behind an expandable section, and kept risk-method details available without filling the default view with Greek terminology.
+
+## V17.06 — 2026-09-30
+
+Added an INR-normalized Greek sensitivity visualization with net and gross leg impacts, withheld incomplete-book totals instead of showing partial exposures, clarified that IV/Greeks are model-derived rather than direct Kite quotes, and documented parameter units, alert mechanics, assumptions, and authoritative options references.
+
+## V17.05 — 2026-09-30
+
+Explained implied volatility and IV-point changes in plain language, made the Watch / High alert calculation and thresholds visible on PositionMeter, and showed each position's reason directly on mobile cards.
+
+## V17.04 — 2026-09-30
+
+Improved PositionMeter readability with larger type, clearer position summaries, a position-risk distribution bar, and zero-centered scenario impact bars with a shared scale. Increased mobile-card and settings legibility while preserving the compact desktop workspace.
+
+## V17.03 — 2026-09-30
+
+Replaced PositionMeter's small-move Greek scenario arithmetic with option repricing for price, IV, and time shocks, bounded long-option scenario losses by the current option value, and reset old browser alert preferences to clearer default thresholds. Added plain-language alert explanations showing the tested move and estimated position loss.
+
+## V17.02 — 2026-09-30
+
+Renamed the Positions risk subpage to PositionMeter and moved its entry button to the right side of the My Positions header. Simplified the default risk table, made exposure units explicit, and moved detailed option prices and IV movement into expandable explanations.
+
+## V17.01 — 2026-09-30
+
+Retry transient MongoDB startup connection failures with bounded backoff so the OI tracker can initialize when the database becomes reachable. Straddle history now returns the standard readiness response while the tracker is unavailable instead of raising an unhandled 500.
+
+## V17.00 — 2026-09-30
+
+Added an internal Risk Management view under Positions with portfolio summaries, position-level Greeks and explanations, configurable stress thresholds, and explicitly estimated price / IV / time scenarios. It reuses the existing Positions feed and reports missing or stale inputs rather than inventing values. Kite login now checks backend readiness before exchanging a one-time request token.
+
 ## V16.05 — 2026-09-30
 
 Recognized compact BSE weekly option expiry month codes in Positions, restoring parsed strike/side/expiry fields and expiry-matched short/long markers on OI Change and Open Interest charts.

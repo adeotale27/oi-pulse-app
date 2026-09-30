@@ -76,6 +76,7 @@ import { RADAR_AI_LAYOUT_KEY } from "@/lib/deskAiLayout";
 import PositionsAnalyzeModal from "@/components/PositionsAnalyzeModal";
 import OiRiskMeter from "@/components/OiRiskMeter";
 import PositionHeatmap from "@/components/PositionHeatmap";
+import RiskManagementPanel from "@/components/RiskManagementPanel";
 import TradeJournalModal from "@/components/TradeJournalModal";
 import PositionsInsightTiles from "@/components/PositionsInsightTiles";
 import InfoTip, { eventFromInfoTip } from "@/components/InfoTip";
@@ -542,8 +543,10 @@ export default function PositionsPanel({
   onDeskAiPositions,
   onDeskAiRadar,
   tickerByIndex = null,
+  allowRiskView = true,
 }) {
   const [positions, setPositions] = useState([]);
+  const [positionsView, setPositionsView] = useState("book");
   const [spotByIndex, setSpotByIndex] = useState({});
   const [oiByIndex, setOiByIndex] = useState({});
   const [funds, setFunds] = useState(null);
@@ -1431,13 +1434,51 @@ export default function PositionsPanel({
     );
   }
 
+  // Reuse the enriched Positions rows so risk never triggers a second broker-book fetch.
+  if (allowRiskView && positionsView === "risk") {
+    return (
+      <div className="oi-surface-lift oi-3d-stage space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-900" data-testid="positions-risk-view">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <OiPulseLogo className="h-5 w-5 shrink-0 overflow-hidden rounded-md" pulse={false} />
+            <span className="text-sm font-semibold text-slate-900">Positions</span>
+            <span className="text-[10px] text-slate-400">/</span>
+            <span className="text-sm font-semibold text-slate-700">PositionMeter</span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-sm bg-white px-2.5"
+            onClick={() => setPositionsView("book")}
+            data-testid="btn-position-meter-back"
+          >
+            My Positions
+          </Button>
+        </div>
+        <RiskManagementPanel
+          rows={rows}
+          lastRefresh={lastRefresh}
+          pollMs={pollMs}
+          dataError={error}
+          pnlToday={pnlToday}
+          dayCapital={dayCap}
+          dayBookedPct={stats.dayBookedPct}
+          fundsLeftover={stats.leftover}
+          wallet={stats.wallet}
+          loading={loading}
+          onRefresh={() => load({ force: true })}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="oi-surface-lift oi-3d-stage space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
       <div className="space-y-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
           <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md shrink-0" pulse={false} />
-          <div className="text-sm font-semibold text-slate-900 leading-tight">Live Positions</div>
+          <div className="text-sm font-semibold text-slate-900 leading-tight">My Positions</div>
           <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
             {stats.openCount} open
           </span>
@@ -1451,7 +1492,7 @@ export default function PositionsPanel({
             {POSITIONS_GUIDE}
           </InfoTip>
         </div>
-        <div className="flex items-center gap-1 text-[10px] text-slate-500 shrink-0 ml-auto" data-testid="positions-warn-at">
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1 text-[10px] text-slate-500" data-testid="positions-warn-at">
           <label title="How early to warn when market nears a sold strike">Warn @</label>
           <input
             type="number"
@@ -1469,6 +1510,19 @@ export default function PositionsPanel({
               flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
             </p>
           </InfoTip>
+          {allowRiskView && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-sm bg-white shrink-0 px-2.5 text-sky-800 border-sky-200 hover:bg-sky-50"
+              onClick={() => setPositionsView("risk")}
+              data-testid="btn-position-meter"
+              title="Open PositionMeter for all open positions"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 mr-1" />
+              PositionMeter
+            </Button>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap">

@@ -17,7 +17,7 @@ flowchart LR
 ## Frontend
 
 - Entry: `frontend/src/pages/Dashboard.jsx` (active index, OI cache, tabs).
-- Positions: `PositionsPanel.jsx` + `PositionsAnalyzeModal.jsx` + `PositionsBrainPanel.jsx` (short-book risk in `lib/positionsBrain.js`).
+- Positions: `PositionsPanel.jsx` + `PositionsAnalyzeModal.jsx` + `PositionsBrainPanel.jsx` (short-book risk in `lib/positionsBrain.js`). The internal Risk Management view uses the same enriched open-position rows and poll lifecycle; scenario calculations live in `lib/positionsRisk.js`.
 - Domain JS: `frontend/src/lib/` — `universe.js`, `positionPayoff.js`, `holidays.js`, `journalYearHeat.js`.
 - HTTP: `frontend/src/lib/api.js` (axios, admin/guest headers).
 - State: React local state + refs for poll caches. No Redux.
