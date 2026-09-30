@@ -1,5 +1,9 @@
 # Changelog
 
+## V17.13 — 2026-10-01
+
+Polished the Positions phone header into clear title, status, and warning-control rows, shortened the phone-only PositionMeter label to "PMeter," and tightened mobile sizing to prevent the Positions panel from overflowing its viewport. Desktop labels and all controls remain unchanged.
+
 ## V17.12 — 2026-09-30
 
 Added a compact PositionMeter "Check now" list for urgent sold legs with same-strike hedge quantities, paired expiry-day/near-strike attention using existing Positions flags, an explicit LTP-before-costs premium-capture note, and visibility into the existing booked-loss and available-margin guards.

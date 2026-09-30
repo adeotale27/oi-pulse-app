@@ -1443,7 +1443,10 @@ export default function PositionsPanel({
             <OiPulseLogo className="h-5 w-5 shrink-0 overflow-hidden rounded-md" pulse={false} />
             <span className="text-sm font-semibold text-slate-900">Positions</span>
             <span className="text-[10px] text-slate-400">/</span>
-            <span className="text-sm font-semibold text-slate-700">PositionMeter</span>
+            <span className="text-sm font-semibold text-slate-700">
+              <span className="sm:hidden">PMeter</span>
+              <span className="hidden sm:inline">PositionMeter</span>
+            </span>
           </div>
           <Button
             size="sm"
@@ -1474,58 +1477,63 @@ export default function PositionsPanel({
 
   return (
     <div className="oi-surface-lift oi-3d-stage space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
-      <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-          <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md shrink-0" pulse={false} />
-          <div className="text-sm font-semibold text-slate-900 leading-tight">My Positions</div>
-          <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
-            {stats.openCount} open
-          </span>
-          {stats.exitedCount > 0 && (
-            <span className="text-[10px] font-mono-data bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded-sm border border-slate-200" title="Squared off today">
-              {stats.exitedCount} exited
-            </span>
-          )}
-          <PositionsHedgeStatus hedge={hedgeStatus} />
-          <InfoTip title="Positions · seller guide" testId="positions-guide-tip">
-            {POSITIONS_GUIDE}
-          </InfoTip>
+      <div className="positions-panel-header space-y-2">
+        <div className="positions-panel-heading flex flex-wrap items-center gap-2">
+          <div className="positions-panel-title-group flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <div className="positions-panel-title-main flex min-w-0 items-center gap-2">
+              <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md shrink-0" pulse={false} />
+              <div className="whitespace-nowrap text-sm font-semibold leading-tight text-slate-900">My Positions</div>
+              <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
+                {stats.openCount} open
+              </span>
+            </div>
+            <div className="positions-panel-title-meta flex min-w-0 items-center gap-2">
+              {stats.exitedCount > 0 && (
+                <span className="text-[10px] font-mono-data bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded-sm border border-slate-200" title="Squared off today">
+                  {stats.exitedCount} exited
+                </span>
+              )}
+              <PositionsHedgeStatus hedge={hedgeStatus} />
+              <InfoTip title="Positions · seller guide" testId="positions-guide-tip">
+                {POSITIONS_GUIDE}
+              </InfoTip>
+            </div>
+          </div>
+          <div className="positions-panel-warning ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1 text-[10px] text-slate-500" data-testid="positions-warn-at">
+            <label title="How early to warn when market nears a sold strike">Warn @</label>
+            <input
+              type="number"
+              min={30} max={95} step={5}
+              value={adjustThreshPct}
+              onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
+              className="w-12 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
+              data-testid="adjust-threshold"
+            />
+            <span>% close</span>
+            <InfoTip title="When do we say “Too close”?" testId="adjust-threshold-tip">
+              <p>
+                Imagine a buffer of about <b>3%</b> from your sold strike toward the market.
+                When the market has eaten this much of that buffer (default <b>60%</b>), the row
+                flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
+              </p>
+            </InfoTip>
+            {allowRiskView && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-sm bg-white shrink-0 px-2.5 text-sky-800 border-sky-200 hover:bg-sky-50"
+                onClick={() => setPositionsView("risk")}
+                data-testid="btn-position-meter"
+                title="Open PositionMeter for all open positions"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 mr-1" />
+                <span className="sm:hidden">PMeter</span>
+                <span className="hidden sm:inline">PositionMeter</span>
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1 text-[10px] text-slate-500" data-testid="positions-warn-at">
-          <label title="How early to warn when market nears a sold strike">Warn @</label>
-          <input
-            type="number"
-            min={30} max={95} step={5}
-            value={adjustThreshPct}
-            onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
-            className="w-12 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
-            data-testid="adjust-threshold"
-          />
-          <span>% close</span>
-          <InfoTip title="When do we say “Too close”?" testId="adjust-threshold-tip">
-            <p>
-              Imagine a buffer of about <b>3%</b> from your sold strike toward the market.
-              When the market has eaten this much of that buffer (default <b>60%</b>), the row
-              flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
-            </p>
-          </InfoTip>
-          {allowRiskView && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 rounded-sm bg-white shrink-0 px-2.5 text-sky-800 border-sky-200 hover:bg-sky-50"
-              onClick={() => setPositionsView("risk")}
-              data-testid="btn-position-meter"
-              title="Open PositionMeter for all open positions"
-            >
-              <ShieldAlert className="w-3.5 h-3.5 mr-1" />
-              PositionMeter
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
+        <div className="positions-panel-toolbar flex items-center gap-2 flex-wrap">
           <Popover>
             <PopoverTrigger asChild>
               <button
