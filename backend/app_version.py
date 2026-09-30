@@ -5,7 +5,7 @@ Version: repo-root ``VERSION``.
 """
 from pathlib import Path
 
-_VERSION_FALLBACK = "16.05"
+_VERSION_FALLBACK = "17.12"
 _NAME_FALLBACK = "StrikLenz"
 
 

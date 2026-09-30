@@ -49,7 +49,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 | POST | `/cas/auto-trade/inject` | Admin Paper: fake first indicative (rehearsal before 15:20). Runbook: [CAS_AUTO_TRADE_15_20.md](./CAS_AUTO_TRADE_15_20.md) |
 | GET | `/vrp/{index}` | Volatility risk premium (EOD-ish) |
 | GET | `/straddle/{index}` (+ `/history`) | ATM straddle series |
-| GET | `/positions` | Open F&O from Kite (admin publisher book / guest own book). Anonymous 401. Header Today P&L is admin-only. |
+| GET | `/positions` | Open F&O from Kite (admin publisher book / guest own book), with `pnl_today` broker totals. Anonymous 401. Header Today P&L is admin-only. Positions and PositionMeter share this response and poller; PositionMeter derives open-short premium capture, decay runway, and strike-level hedge quantity from enriched rows. The feed does not include per-option quote timestamps or strategy IDs. Risk scenarios are client-side estimates and add no broker request. |
 | GET | `/trades/export` | Excel of stored cycles (`from`/`to` IST dates, optional `index`). Desk user. Entry + exit clocks; second sheet is fills/partials. |
 | GET | `/desk-outside` | Heavyweight cash movers + news. Pass `?index=` when the selected name is an enabled MCX contract |
 | GET/POST | `/desk-guide` | Seller coach over that outside tape; optional GPT (see [AI.md](./AI.md)) |

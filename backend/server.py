@@ -138,7 +138,7 @@ tracker = None
 
 
 def _require_tracker():
-    """Kite/OI tracker is created after Mongo boots. Saving credentials before that 500s."""
+    """Kite/OI tracker is created after Mongo boots; callers should fail before spending one-use tokens."""
     if tracker is None:
         raise HTTPException(
             status_code=503,
@@ -1118,6 +1118,7 @@ async def set_access_token_only(payload: AccessTokenOnlyIn, _admin: bool = Depen
 async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(require_admin)):
     """Exchange api_key + api_secret + request_token for a fresh access_token
     using KiteConnect.generate_session(), save it, and switch to LIVE mode."""
+    active_tracker = _require_tracker()
     try:
         from kiteconnect import KiteConnect
         kc = KiteConnect(api_key=payload.api_key)
@@ -1128,7 +1129,7 @@ async def generate_session(payload: GenerateTokenIn, _admin: bool = Depends(requ
     except Exception as e:
         raise HTTPException(400, f"{type(e).__name__}: {e}")
     try:
-        await _require_tracker().set_credentials(payload.api_key, access_token)
+        await active_tracker.set_credentials(payload.api_key, access_token)
     except HTTPException:
         raise
     except Exception as e:
@@ -1264,6 +1265,7 @@ async def vault_save(payload: VaultIn, _admin: bool = Depends(require_admin)):
 @api_router.post("/kite/refresh")
 async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_admin)):
     """One-click daily refresh: uses stored api_key + encrypted api_secret + given request_token."""
+    active_tracker = _require_tracker()
     doc = await db.credentials.find_one({"_id": "kite"})
     api_key = None
     try:
@@ -1291,17 +1293,17 @@ async def kite_refresh(payload: RefreshTokenIn, _admin: bool = Depends(require_a
     except Exception as e:
         raise HTTPException(400, f"{type(e).__name__}: {e}")
     try:
-        await _require_tracker().set_credentials(api_key, access_token)
+        await active_tracker.set_credentials(api_key, access_token)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(400, str(e))
     if data.get("user_id"):
-        tracker.kite_user_id = str(data.get("user_id"))
+        active_tracker.kite_user_id = str(data.get("user_id"))
         try:
             await db.credentials.update_one(
                 {"_id": "kite"},
-                {"$set": {"kite_user_id": tracker.kite_user_id}},
+                {"$set": {"kite_user_id": active_tracker.kite_user_id}},
                 upsert=True,
             )
         except Exception:
@@ -2678,13 +2680,14 @@ async def get_straddle_history(index_name: str, minutes: Optional[int] = Query(N
     idx = index_name.upper()
     if idx not in INDEX_CONFIG:
         raise HTTPException(404, "Unknown index")
+    active_tracker = _require_tracker()
     target_date = _resolve_straddle_trade_date(date)
     query = {"index": idx, "trade_date": target_date.isoformat()}
     if expiry:
         query["expiry"] = expiry
     # Only apply a rolling wall-clock minutes filter while the market is open.
     # On weekends/holidays/post-close, return the full last-session samples.
-    if minutes is not None and minutes < 24 * 60 and tracker.oi_session_open():
+    if minutes is not None and minutes < 24 * 60 and active_tracker.oi_session_open():
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
         query["created_at"] = {"$gte": cutoff}
     docs = await db.straddle_samples.find(query, {"_id": 0}).sort("ts", 1).to_list(length=(minutes * 120) if minutes else 5000)
@@ -6920,17 +6923,36 @@ async def _boot():
     # or kite.instruments().
     global client, db, tracker
     try:
-        mongo_url = os.environ['MONGO_URL']
-        client = AsyncIOMotorClient(
-            mongo_url,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
-        )
-        db = client[os.environ['DB_NAME']]
-        await asyncio.wait_for(client.admin.command("ping"), timeout=6)
-    except Exception as e:
-        logger.exception(f"Failed to initialize MongoDB client: {e}")
+        mongo_url = os.environ["MONGO_URL"]
+        db_name = os.environ["DB_NAME"]
+    except KeyError:
+        logger.exception("Failed to initialize MongoDB client: required environment setting is missing")
         return
+
+    retry_delay = 2
+    while True:
+        candidate_client = None
+        try:
+            candidate_client = AsyncIOMotorClient(
+                mongo_url,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+            )
+            candidate_db = candidate_client[db_name]
+            await asyncio.wait_for(candidate_client.admin.command("ping"), timeout=6)
+            client = candidate_client
+            db = candidate_db
+            break
+        except Exception as e:
+            if candidate_client is not None:
+                candidate_client.close()
+            logger.exception(
+                "MongoDB startup connection failed; retrying in %s seconds: %s",
+                retry_delay,
+                e,
+            )
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 30)
 
     _notifier_boot.set_db(db)
     try:

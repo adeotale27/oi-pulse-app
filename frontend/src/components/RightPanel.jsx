@@ -214,6 +214,7 @@ export default function RightPanel({
               onPinNearestWeekly={onPinNearestWeekly}
               positionsPollMs={positionsPollMs}
               onOpenKite={onOpenKite}
+              allowRiskView={false}
               deskAiShow={deskAiShow}
               deskAiAsk={deskAiAsk}
               deskAiPositions={deskAiPositions}
