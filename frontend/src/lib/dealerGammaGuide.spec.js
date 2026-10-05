@@ -1,7 +1,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { dealerGammaGuide, formatGexSnapshotTime } from "./metricGuides";
-import { computeDealerGamma, formatGexExposure } from "./sellCandidates";
+import { dealerGammaGuide, formatGexSnapshotTime, getGexDirectionalRead } from "./metricGuides";
+import { computeDealerGamma, formatGexExposure, formatGexLakhCrore } from "./sellCandidates";
 import { bsPrice } from "./blackScholes";
 
 describe("dealer gamma guide", () => {
@@ -89,7 +89,7 @@ describe("dealer gamma guide", () => {
       }));
     });
 
-    expect(container.querySelectorAll('[data-testid^="gex-strike-"]:not([data-testid="gex-strike-concentration"])'))
+    expect(container.querySelectorAll('[data-testid^="gex-strike-"]:not([data-testid="gex-strike-details"]):not([data-testid="gex-strike-concentration"])'))
       .toHaveLength(3);
     expect(container.querySelector('[data-testid="gex-strike-22000"]')?.textContent).toContain("+₹8.2 L Cr");
     expect(container.querySelector('[data-testid="gex-strike-22100"]')?.textContent).toContain("−₹5.4 L Cr");
@@ -104,9 +104,11 @@ describe("dealer gamma guide", () => {
     expect(container.textContent).toContain("index 21,800");
     expect(container.textContent).toContain("+200 points from index");
     expect(container.querySelector('[data-testid="gex-details"]')?.open).toBe(false);
+    expect(container.querySelector('[data-testid="gex-threshold-details"]')?.open).toBe(false);
+    expect(container.querySelector('[data-testid="gex-strike-details"]')?.open).toBe(false);
     const zoneLayout = container.querySelector('[aria-label="GEX thresholds and meanings"]')?.className;
     expect(zoneLayout).toContain("grid-cols-3");
-    expect(container.querySelectorAll('[data-testid^="gex-strike-"]:not([data-testid="gex-strike-concentration"])'))
+    expect(container.querySelectorAll('[data-testid^="gex-strike-"]:not([data-testid="gex-strike-details"]):not([data-testid="gex-strike-concentration"])'))
       .toHaveLength(3);
   });
 
@@ -126,6 +128,57 @@ describe("dealer gamma guide", () => {
     expect(formatGexExposure(-50)).toBe("−₹50.0 L Cr");
     expect(formatGexExposure(0)).toBe("₹0 L");
     expect(formatGexExposure(null)).toBe("—");
+    expect(formatGexLakhCrore(0.5)).toBe(formatGexExposure(0.5));
+  });
+
+  it.each([
+    [
+      { score: 35, priceDeltaPct: 0.12, callOiChange: 100, putOiChange: 400 },
+      "Upward lean",
+    ],
+    [
+      { score: -40, priceDeltaPct: -0.12, callOiChange: 400, putOiChange: 100 },
+      "Downward lean",
+    ],
+    [
+      { score: 10, priceDeltaPct: 0.12, callOiChange: 100, putOiChange: 400 },
+      "No clear direction",
+    ],
+    [
+      { score: 35, priceDeltaPct: -0.12, callOiChange: 100, putOiChange: 400 },
+      "Signals disagree",
+    ],
+  ])("only gives a directional lean when the evidence confirms it", (evidence, label) => {
+    expect(getGexDirectionalRead(evidence).label).toBe(label);
+  });
+
+  it("does not infer direction when price or OI history is missing", () => {
+    expect(getGexDirectionalRead({ score: 50 }).label).toBe("No clear direction");
+    expect(getGexDirectionalRead({
+      score: 50,
+      priceDeltaPct: 0.2,
+      callOiChange: 10,
+      putOiChange: Number.NaN,
+    }).label).toBe("No clear direction");
+  });
+
+  it("shows directional confirmation separately from the GEX volatility estimate", async () => {
+    await act(async () => {
+      root.render(dealerGammaGuide(0.8, {
+        directionalScore: 35,
+        priceDeltaPct: 0.12,
+        callOiChange: 100,
+        putOiChange: 400,
+        timeframeLabel: "15 mins",
+      }));
+    });
+
+    expect(container.querySelector('[data-testid="gex-directional-read"]')?.textContent)
+      .toContain("Direction check: Upward lean");
+    expect(container.querySelector('[data-testid="gex-directional-read"]')?.textContent)
+      .toContain("Uses price plus 15 mins OI change");
+    expect(container.querySelector('[data-testid="gex-simple-reading"]')?.textContent)
+      .toContain("does not say whether the index will go up or down");
   });
 
   it("returns additive per-strike GEX contributions that sum to the total", () => {

@@ -1,5 +1,21 @@
 # Changelog
 
+## V18.18 — 2026-10-05
+
+Replaced the anchored phone GEX popover with a compact, viewport-bounded bottom sheet that stays above the mobile navigation, keeps the key reading and direction check first, scrolls supporting detail internally, and dismisses on outside tap. Desktop retains its anchored popover.
+
+## V18.17 — 2026-10-05
+
+Made the GEX guide compact on phones by prioritizing the current reading and directional check, with thresholds and strike areas available in expandable sections. Kept the previous GEX formatter export name available to avoid runtime failures when cached frontend chunks are mixed during deployment.
+
+## V18.16 — 2026-10-05
+
+Added a separate, cautious GEX-panel direction check. It shows an upward or downward lean only when price change, selected-window OI change, and the existing combined dashboard bias agree; incomplete or conflicting inputs produce “No clear direction” or “Signals disagree.” Clarified that GEX estimates move conditions, not direction.
+
+## V18.15 — 2026-10-05
+
+Made the GEX guide fit phone screens with viewport-bounded width and height, horizontal overflow protection, and compact three-across threshold cards. Locked the minimized Market Intel chip to the phone's bottom-right corner regardless of saved desktop position.
+
 ## V18.14 — 2026-10-05
 
 Added left, center, and right docking controls to the Market Intel popup, matching the Overnight brief. New users get the popup on the right by default; dragged and snapped positions remain saved per browser.

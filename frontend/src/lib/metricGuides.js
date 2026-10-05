@@ -119,7 +119,56 @@ export function formatGexSnapshotTime(timestamp) {
   }).format(date)} IST`;
 }
 
-export function dealerGammaGuide(gexValue, { byStrike, updatedAt, spot, expiry } = {}) {
+export function getGexDirectionalRead({ score, priceDeltaPct, callOiChange, putOiChange } = {}) {
+  const evidence = [score, priceDeltaPct, callOiChange, putOiChange];
+  if (!evidence.every(Number.isFinite)) {
+    return {
+      label: "No clear direction",
+      detail: "Waiting for matching price, OI-change and dashboard-bias data.",
+      tone: "amber",
+    };
+  }
+
+  const oiBias = putOiChange - callOiChange;
+  if (score >= 25 && priceDeltaPct > 0 && oiBias > 0) {
+    return {
+      label: "Upward lean",
+      detail: "Price is rising, put OI is leading call OI, and the combined dashboard bias agrees. This is a lean, not a forecast.",
+      tone: "emerald",
+    };
+  }
+  if (score <= -25 && priceDeltaPct < 0 && oiBias < 0) {
+    return {
+      label: "Downward lean",
+      detail: "Price is falling, call OI is leading put OI, and the combined dashboard bias agrees. This is a lean, not a forecast.",
+      tone: "rose",
+    };
+  }
+  if (score > -25 && score < 25) {
+    return {
+      label: "No clear direction",
+      detail: "The combined dashboard bias is neutral. GEX can hint at move speed, not whether price goes up or down.",
+      tone: "amber",
+    };
+  }
+  return {
+    label: "Signals disagree",
+    detail: "Price, OI changes and the combined dashboard bias do not all point the same way. Wait for confirmation.",
+    tone: "amber",
+  };
+}
+
+export function dealerGammaGuide(gexValue, {
+  byStrike,
+  updatedAt,
+  spot,
+  expiry,
+  directionalScore,
+  priceDeltaPct,
+  callOiChange,
+  putOiChange,
+  timeframeLabel,
+} = {}) {
   const zones = [
     {
       key: "positive",
@@ -170,8 +219,19 @@ export function dealerGammaGuide(gexValue, { byStrike, updatedAt, spot, expiry }
     }
   }
   const currentZoneInfo = zones.find((zone) => zone.key === currentZone);
+  const directionalRead = getGexDirectionalRead({
+    score: directionalScore,
+    priceDeltaPct,
+    callOiChange,
+    putOiChange,
+  });
+  const directionTone = directionalRead.tone === "emerald"
+    ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950"
+    : directionalRead.tone === "rose"
+      ? "border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950"
+      : "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950";
   return (
-    <section aria-label="GEX market setup" className="space-y-2 text-xs text-slate-700 dark:text-slate-200">
+    <section aria-label="GEX market setup" className="space-y-1.5 text-xs text-slate-700 dark:text-slate-200 sm:space-y-2">
       <div
         className={`rounded-md border p-2 ${currentZoneInfo?.tone === "emerald"
           ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950"
@@ -188,97 +248,134 @@ export function dealerGammaGuide(gexValue, { byStrike, updatedAt, spot, expiry }
             </div>
           )}
         </div>
-        {currentZoneInfo && (
-          <p className="mt-0.5 text-[10px] font-medium" data-testid="gex-current-threshold">
-            {currentZoneInfo.threshold.startsWith("> ")
-              ? `Your value is above ${currentZoneInfo.threshold.slice(2)}.`
-              : currentZoneInfo.threshold.startsWith("< ")
-                ? `Your value is below ${currentZoneInfo.threshold.slice(2)}.`
-                : `Your value is between ${currentZoneInfo.threshold.replace(" to ", " and ")}.`}
-          </p>
-        )}
-        <p className="mt-0.5 text-[11px] leading-snug">{explanation}</p>
-        <p className="mt-1 text-[10px] font-medium">Use as context only—not a buy/sell instruction.</p>
-      </div>
-      <div className="grid grid-cols-3 gap-1" role="list" aria-label="GEX thresholds and meanings">
-        {zones.map((zone) => {
-          const active = zone.key === currentZone;
-          const palette = zone.tone === "emerald"
-            ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-            : zone.tone === "rose"
-              ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
-              : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300";
-          return (
-            <div
-              key={zone.key}
-              role="listitem"
-              aria-current={active ? "true" : undefined}
-              data-testid={`gex-zone-${zone.key}`}
-              className={`flex min-w-0 flex-col items-start gap-1 rounded-md border px-1.5 py-1.5 ${active ? `${palette} ring-1 ring-current font-semibold` : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"}`}
-            >
-              <div className="w-full min-w-0">
-                <div className="break-words font-semibold text-[9px] leading-tight">{zone.threshold}</div>
-                <div className="mt-1 text-[10px] font-semibold leading-tight">{zone.label}</div>
-                <div className="mt-0.5 break-words text-[9px] leading-tight">{zone.explanation}</div>
-              </div>
-              {active && <div className="rounded bg-white/70 px-1 py-0.5 text-[8px] uppercase tracking-wide dark:bg-slate-900/70">Current</div>}
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-[9px] text-slate-500 dark:text-slate-400">
-        ₹0.5 L Cr means ₹50,000 crore. “L Cr” means lakh crore.
-      </p>
-      {topStrikes && (
-        <div className="space-y-1" data-testid="gex-strike-concentration">
-          <div className="font-semibold text-slate-900 dark:text-slate-100">
-            Strike areas to watch{spot ? ` · index ${Number(spot).toLocaleString("en-IN")}` : ""}
-          </div>
-          {expiry && <p className="text-[9px] text-slate-500 dark:text-slate-400">Expiry: {expiry}</p>}
-          <p className="text-[9px] text-slate-500 dark:text-slate-400" aria-label="Strike chart legend">
-            Estimated call-side (green) / put-side (red) concentration
-          </p>
-          {topStrikes.length ? (
-            <div className="space-y-1.5">
-              {topStrikes.map((point) => {
-                const barWidth = (Math.abs(point.gexLakhCrorePer1Pct) / maxStrikeGex) * 50;
-                const positive = point.gexLakhCrorePer1Pct > 0;
-                const distance = Number.isFinite(spot) ? point.strike - spot : null;
-                return (
-                  <div key={point.strike} data-testid={`gex-strike-${point.strike}`}>
-                    <div className="mb-0.5 flex justify-between gap-2 text-[10px]">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">
-                        {`Strike ${Number(point.strike).toLocaleString("en-IN")}`}
-                        {distance != null && <span className="ml-1 text-[9px] font-normal text-slate-500">{`${distance > 0 ? "+" : ""}${Math.round(distance)} points from index`}</span>}
-                      </span>
-                      <span className={`whitespace-nowrap ${positive ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}>
-                        {formatGexExposure(point.gexLakhCrorePer1Pct)}
-                      </span>
-                    </div>
-                    <div
-                      className="relative h-2 overflow-hidden rounded bg-slate-100 dark:bg-slate-700"
-                      role="img"
-                      aria-label={`Strike ${point.strike}: estimated ${positive ? "call-side" : "put-side"} concentration, ${formatGexExposure(point.gexLakhCrorePer1Pct)} per 1% index move`}
-                    >
-                      <span className="absolute inset-y-0 left-1/2 w-px bg-slate-400 dark:bg-slate-300" />
-                      <span
-                        className={`absolute inset-y-0 ${positive ? "bg-emerald-500" : "bg-rose-500"}`}
-                        style={positive
-                          ? { left: "50%", width: `${barWidth}%` }
-                          : { left: `${50 - barWidth}%`, width: `${barWidth}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-slate-500 dark:text-slate-400">No notable strike concentration in the available chain.</p>
+        <div className="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 text-[9px] leading-snug sm:text-[10px]">
+          {currentZoneInfo && (
+            <span className="font-medium" data-testid="gex-current-threshold">
+              {currentZoneInfo.threshold.startsWith("> ")
+                ? `Your value is above ${currentZoneInfo.threshold.slice(2)}.`
+                : currentZoneInfo.threshold.startsWith("< ")
+                  ? `Your value is below ${currentZoneInfo.threshold.slice(2)}.`
+                  : `Your value is between ${currentZoneInfo.threshold.replace(" to ", " and ")}.`}
+            </span>
           )}
-          <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
-            These are modelled watch areas only—not support or resistance, and not guaranteed to affect price.
+          {byStrike && (
+            <span className="text-slate-500 dark:text-slate-400" data-testid="gex-updated-at">
+              Snapshot: {snapshotTime || "time unavailable"}
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-[10px] leading-snug sm:text-[11px]">
+          <span className="sm:hidden">Move-speed clue—not direction.</span>
+          <span className="hidden sm:inline">{explanation}</span>
+        </p>
+        <p className="mt-0.5 text-[9px] font-medium sm:hidden">Estimate only · Not a buy/sell signal.</p>
+        <p className="mt-1 hidden text-[10px] font-medium sm:block">Use as context only—not a buy/sell instruction.</p>
+      </div>
+      <div className={`rounded-md border px-2 py-1.5 sm:p-2 ${directionTone}`} data-testid="gex-directional-read">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">Direction check: {directionalRead.label}</span>
+          {Number.isFinite(directionalScore) && (
+            <span className="text-[9px] text-slate-500 dark:text-slate-400">
+              dashboard bias {directionalScore > 0 ? "+" : ""}{directionalScore}
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 hidden text-[10px] leading-snug sm:block">{directionalRead.detail}</p>
+        <p className="mt-0.5 text-[9px] text-slate-500 dark:text-slate-400">
+          <span className="sm:hidden">Price + {timeframeLabel || "selected-window"} OI + desk bias</span>
+          <span className="hidden sm:inline">
+            Uses price plus {timeframeLabel || "selected-window"} OI change and the combined dashboard bias—not GEX alone.
+          </span>
+        </p>
+      </div>
+      <details className="rounded border border-slate-200 px-2 py-1.5 dark:border-slate-700" data-testid="gex-threshold-details">
+        <summary className="cursor-pointer text-[10px] font-medium text-slate-600 dark:text-slate-300">
+          Thresholds
+        </summary>
+        <div className="mt-1.5">
+          <div className="grid min-w-0 grid-cols-3 gap-1" role="list" aria-label="GEX thresholds and meanings">
+            {zones.map((zone) => {
+              const active = zone.key === currentZone;
+              const palette = zone.tone === "emerald"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                : zone.tone === "rose"
+                  ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                  : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300";
+              return (
+                <div
+                  key={zone.key}
+                  role="listitem"
+                  aria-current={active ? "true" : undefined}
+                  data-testid={`gex-zone-${zone.key}`}
+                  className={`flex min-w-0 flex-col items-start gap-1 rounded-md border px-1 py-1.5 sm:px-1.5 ${active ? `${palette} ring-1 ring-current font-semibold` : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"}`}
+                >
+                  <div className="w-full min-w-0">
+                    <div className="break-words font-semibold text-[8px] leading-tight sm:text-[9px]">{zone.threshold}</div>
+                    <div className="mt-1 text-[10px] font-semibold leading-tight">{zone.label}</div>
+                    <div className="mt-0.5 break-words text-[8px] leading-tight sm:text-[9px]">{zone.explanation}</div>
+                  </div>
+                  {active && <div className="rounded bg-white/70 px-1 py-0.5 text-[8px] uppercase tracking-wide dark:bg-slate-900/70">Current</div>}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-[9px] text-slate-500 dark:text-slate-400">
+            ₹0.5 L Cr means ₹50,000 crore. “L Cr” means lakh crore.
           </p>
         </div>
+      </details>
+      {topStrikes && (
+        <details className="rounded border border-slate-200 px-2 py-1.5 dark:border-slate-700" data-testid="gex-strike-details">
+          <summary className="cursor-pointer text-[10px] font-medium text-slate-600 dark:text-slate-300">
+            Strike areas to watch{spot ? ` · index ${Number(spot).toLocaleString("en-IN")}` : ""}
+          </summary>
+          <div className="mt-1.5 space-y-1" data-testid="gex-strike-concentration">
+            {expiry && <p className="text-[9px] text-slate-500 dark:text-slate-400">Expiry: {expiry}</p>}
+            <p className="text-[9px] text-slate-500 dark:text-slate-400" aria-label="Strike chart legend">
+              Estimated call-side (green) / put-side (red) concentration
+            </p>
+            {topStrikes.length ? (
+              <div className="space-y-1.5">
+                {topStrikes.map((point) => {
+                  const barWidth = (Math.abs(point.gexLakhCrorePer1Pct) / maxStrikeGex) * 50;
+                  const positive = point.gexLakhCrorePer1Pct > 0;
+                  const distance = Number.isFinite(spot) ? point.strike - spot : null;
+                  return (
+                    <div key={point.strike} data-testid={`gex-strike-${point.strike}`}>
+                      <div className="mb-0.5 flex justify-between gap-2 text-[10px]">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          {`Strike ${Number(point.strike).toLocaleString("en-IN")}`}
+                          {distance != null && <span className="ml-1 text-[9px] font-normal text-slate-500">{`${distance > 0 ? "+" : ""}${Math.round(distance)} points from index`}</span>}
+                        </span>
+                        <span className={`whitespace-nowrap ${positive ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}>
+                          {formatGexExposure(point.gexLakhCrorePer1Pct)}
+                        </span>
+                      </div>
+                      <div
+                        className="relative h-2 overflow-hidden rounded bg-slate-100 dark:bg-slate-700"
+                        role="img"
+                        aria-label={`Strike ${point.strike}: estimated ${positive ? "call-side" : "put-side"} concentration, ${formatGexExposure(point.gexLakhCrorePer1Pct)} per 1% index move`}
+                      >
+                        <span className="absolute inset-y-0 left-1/2 w-px bg-slate-400 dark:bg-slate-300" />
+                        <span
+                          className={`absolute inset-y-0 ${positive ? "bg-emerald-500" : "bg-rose-500"}`}
+                          style={positive
+                            ? { left: "50%", width: `${barWidth}%` }
+                            : { left: `${50 - barWidth}%`, width: `${barWidth}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-slate-500 dark:text-slate-400">No notable strike concentration in the available chain.</p>
+            )}
+            <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+              These are modelled watch areas only—not support or resistance, and not guaranteed to affect price.
+            </p>
+          </div>
+        </details>
       )}
       <details className="rounded border border-slate-200 px-2 py-1.5 dark:border-slate-700" data-testid="gex-details">
         <summary className="cursor-pointer text-[10px] font-medium text-slate-600 dark:text-slate-300">
@@ -292,11 +389,6 @@ export function dealerGammaGuide(gexValue, { byStrike, updatedAt, spot, expiry }
           <p>The displayed amount is estimated hedging notional for a 1% index move, not an index-point target.</p>
         </div>
       </details>
-      {byStrike && (
-        <p className="border-t border-slate-200 pt-1.5 text-[9px] text-slate-500 dark:border-slate-700 dark:text-slate-400" data-testid="gex-updated-at">
-          Snapshot: {snapshotTime || "time unavailable"}
-        </p>
-      )}
     </section>
   );
 }

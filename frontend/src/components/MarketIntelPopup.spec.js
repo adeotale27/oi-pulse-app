@@ -57,4 +57,26 @@ describe("MarketIntelPopup docking", () => {
     expect(Number.parseInt(popup.style.left, 10)).toBe(window.innerWidth - width - 12);
     expect(localStorage.getItem(MI_POPUP_LEFT_KEY)).toBe(String(window.innerWidth - width - 12));
   });
+
+  it("keeps the minimized phone chip fixed to the bottom-right despite a saved desktop position", async () => {
+    localStorage.setItem(MI_POPUP_LEFT_KEY, "140");
+    jest.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: query === "(max-width: 767px)",
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    }));
+    expect(window.matchMedia("(max-width: 767px)").matches).toBe(true);
+
+    await act(async () => {
+      root.render(<MarketIntelPopup enabled />);
+    });
+
+    const chip = container.querySelector('[data-testid="market-intel-popup-chip"]');
+    expect(chip.style.left).toBe("");
+    expect(chip.style.right).toBe("12px");
+    expect(chip.style.bottom).toBe("52px");
+    expect(localStorage.getItem(MI_POPUP_LEFT_KEY)).toBe("140");
+  });
 });
