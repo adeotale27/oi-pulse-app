@@ -123,7 +123,12 @@ function Ticker({ label, data }) {
   );
 }
 
-export default function MaintenanceScreen({ onRetry, retrying = false }) {
+export default function MaintenanceScreen({
+  onRetry,
+  retrying = false,
+  walkthroughUnavailable = false,
+  notice,
+}) {
   const marketOpen = isMarketOpenNow();
   const reduceMotion = useReducedMotion();
   const [liveMarket, setLiveMarket] = useState(null);
@@ -135,6 +140,10 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
   });
 
   useEffect(() => {
+    if (walkthroughUnavailable) {
+      setLiveMarket(null);
+      return undefined;
+    }
     let cancelled = false;
     const load = async () => {
       const [tickerResult, extrasResult] = await Promise.allSettled([fetchTickers(), fetchExtras()]);
@@ -154,9 +163,13 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [walkthroughUnavailable]);
 
   useEffect(() => {
+    if (walkthroughUnavailable) {
+      setNiftyHistory({ points: [], source: null, loading: false, unavailable: false });
+      return undefined;
+    }
     let cancelled = false;
     const load = async () => {
       try {
@@ -197,7 +210,7 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [walkthroughUnavailable]);
 
   const liveByName = new Map((liveMarket?.tickers || []).map((item) => [
     String(item.index || item.label).toUpperCase(),
@@ -207,7 +220,7 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
 
   // Extend stored snapshots only with the existing live ticker while the session is open.
   useEffect(() => {
-    if (!marketOpen || !Number.isFinite(niftyLivePrice) || niftyLivePrice <= 0) return;
+    if (walkthroughUnavailable || !marketOpen || !Number.isFinite(niftyLivePrice) || niftyLivePrice <= 0) return;
     const timestamp = new Date().toISOString();
     setNiftyHistory((previous) => ({
       ...previous,
@@ -215,7 +228,7 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
       source: "live_window",
       unavailable: false,
     }));
-  }, [marketOpen, niftyLivePrice]);
+  }, [marketOpen, niftyLivePrice, walkthroughUnavailable]);
   const displayedTick = ["NIFTY", "SENSEX", "BANKNIFTY"].map((label) => [
     label,
     liveByName.get(label) || { price: null, changePct: null },
@@ -265,18 +278,22 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
         <div className="maintenance-status-pill rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-200">
           Under maintenance
         </div>
-        <div className="maintenance-status-pill flex items-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-200">
-          <span className="h-2 w-2 rounded-full bg-emerald-300" />
-          {marketOpen ? "Market live" : "Market closed"}
-        </div>
+        {!walkthroughUnavailable ? (
+          <div className="maintenance-status-pill flex items-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-200">
+            <span className="h-2 w-2 rounded-full bg-emerald-300" />
+            {marketOpen ? "Market live" : "Market closed"}
+          </div>
+        ) : null}
       </header>
-      <div className="maintenance-ticker relative z-10 mx-auto mt-2 w-full max-w-7xl overflow-hidden border-y border-white/10 py-2 font-mono text-[10px] text-slate-300">
-        <div className="admin-login-ticker-track">
-          {[0, 1, 2, 3].map((copy) => <div className="admin-login-ticker-copy" key={copy} aria-hidden={copy > 0}>
-            {headerTick.map(([label, data]) => <Ticker label={label} data={data} key={label} />)}
-          </div>)}
+      {!walkthroughUnavailable ? (
+        <div className="maintenance-ticker relative z-10 mx-auto mt-2 w-full max-w-7xl overflow-hidden border-y border-white/10 py-2 font-mono text-[10px] text-slate-300">
+          <div className="admin-login-ticker-track">
+            {[0, 1, 2, 3].map((copy) => <div className="admin-login-ticker-copy" key={copy} aria-hidden={copy > 0}>
+              {headerTick.map(([label, data]) => <Ticker label={label} data={data} key={label} />)}
+            </div>)}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <main className="relative z-10 mx-auto grid w-full max-w-7xl min-h-0 flex-1 items-center gap-5 overflow-hidden py-5 lg:grid-cols-[.9fr_1.1fr] lg:py-3">
         <section className="maintenance-hero max-w-xl">
@@ -284,45 +301,74 @@ export default function MaintenanceScreen({ onRetry, retrying = false }) {
             <Wrench className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> The market robot is on a coffee break
           </div>
           <h1 className="text-[2.65rem] font-black leading-[.95] tracking-[-.06em] sm:text-6xl">
-            StrikLenz is<br /><span className="text-emerald-300">brewing</span> better trades.
+            {walkthroughUnavailable ? (
+              <>StrikLenz is<br /><span className="text-emerald-300">under maintenance.</span></>
+            ) : (
+              <>StrikLenz is<br /><span className="text-emerald-300">brewing</span> better trades.</>
+            )}
           </h1>
           <p className="mt-3 max-w-lg text-[13px] leading-5 text-slate-300 sm:mt-4 sm:text-base sm:leading-6">
-            We&apos;re tuning the desk behind the scenes. Please try again shortly.
+            {walkthroughUnavailable
+              ? notice || "The public walkthrough is paused. Please check with the administrator for updates."
+              : "We're tuning the desk behind the scenes. Please try again shortly."}
           </p>
           <div className="mt-4 flex flex-col gap-2.5 sm:mt-5 sm:flex-row sm:flex-wrap sm:gap-3">
             <button type="button" onClick={onRetry} disabled={retrying} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 disabled:opacity-60">
               <RefreshCw className={retrying ? "h-4 w-4 animate-spin motion-reduce:animate-none" : "h-4 w-4"} />
-              {retrying ? "Checking desk…" : "Try the desk again"}
+              {retrying ? "Checking desk…" : walkthroughUnavailable ? "Check for updates" : "Try the desk again"}
             </button>
             <div className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
-              <Coffee className="h-4 w-4 text-amber-300" /> No action needed. Sip responsibly.
+              <Coffee className="h-4 w-4 text-amber-300" />
+              {walkthroughUnavailable ? "The public preview will return when enabled." : "No action needed. Sip responsibly."}
             </div>
           </div>
         </section>
 
-        <section className="maintenance-artwork relative mx-auto h-56 w-full max-w-2xl sm:h-72 lg:h-[min(27rem,100%)]" aria-label="NIFTY chart and StrikLenz robot">
-          <motion.div className="maintenance-nifty-card relative left-auto top-auto w-full rounded-2xl border border-emerald-300/20 bg-transparent p-3 sm:p-4" animate={reduceMotion ? undefined : { y: [0, -8, 0] }} transition={reduceMotion ? undefined : { duration: 5, repeat: Infinity, ease: "easeInOut" }}>
-            <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-200">
-              <span>NIFTY pulse{historyLabel ? ` · ${historyLabel}` : ""}</span>
-              {lastNiftyPoint ? <strong className="font-mono text-white">{formatIndex(lastNiftyPoint.price)}</strong> : <Activity className="h-3.5 w-3.5 shrink-0" />}
+        <section className="maintenance-artwork relative mx-auto h-56 w-full max-w-2xl sm:h-72 lg:h-[min(27rem,100%)]" aria-label={walkthroughUnavailable ? "StrikLenz walkthrough maintenance notice" : "NIFTY chart and StrikLenz robot"}>
+          {walkthroughUnavailable ? (
+            <div className="maintenance-nifty-card relative left-auto top-auto flex min-h-40 w-full flex-col justify-center rounded-2xl border border-emerald-300/20 bg-transparent p-5 sm:min-h-48 sm:p-7">
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-amber-200">
+                <Activity className="h-4 w-4" /> Public walkthrough
+              </div>
+              <p className="mt-3 text-xl font-bold text-white sm:text-2xl">Preview temporarily paused</p>
+              <p className="mt-2 max-w-md text-sm leading-6 text-slate-300">
+                The dashboard preview and its sample market data are unavailable while the site is under maintenance.
+              </p>
             </div>
-            <div className="mt-2 h-20 sm:mt-3 sm:h-28" aria-label={historyStatus}>
-              {niftyHistory.points.length >= 2
-                ? <MiniChart points={niftyHistory.points} />
-                : <div className="flex h-full items-center justify-center px-2 text-center text-[9px] text-slate-400">{historyStatus}</div>}
-            </div>
-            <div className="mt-2 flex justify-between gap-2 font-mono text-[9px] text-slate-400">
-              <span>{historyStatus}</span>
-              <span className={marketOpen ? "text-emerald-300" : "text-slate-400"}>{marketOpen ? "MARKET LIVE" : "MARKET CLOSED"}</span>
-            </div>
-          </motion.div>
+          ) : (
+            <motion.div className="maintenance-nifty-card relative left-auto top-auto w-full rounded-2xl border border-emerald-300/20 bg-transparent p-3 sm:p-4" animate={reduceMotion ? undefined : { y: [0, -8, 0] }} transition={reduceMotion ? undefined : { duration: 5, repeat: Infinity, ease: "easeInOut" }}>
+              <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-200">
+                <span>NIFTY pulse{historyLabel ? ` · ${historyLabel}` : ""}</span>
+                {lastNiftyPoint ? <strong className="font-mono text-white">{formatIndex(lastNiftyPoint.price)}</strong> : <Activity className="h-3.5 w-3.5 shrink-0" />}
+              </div>
+              <div className="mt-2 h-20 sm:mt-3 sm:h-28" aria-label={historyStatus}>
+                {niftyHistory.points.length >= 2
+                  ? <MiniChart points={niftyHistory.points} />
+                  : <div className="flex h-full items-center justify-center px-2 text-center text-[9px] text-slate-400">{historyStatus}</div>}
+              </div>
+              <div className="mt-2 flex justify-between gap-2 font-mono text-[9px] text-slate-400">
+                <span>{historyStatus}</span>
+                <span className={marketOpen ? "text-emerald-300" : "text-slate-400"}>{marketOpen ? "MARKET LIVE" : "MARKET CLOSED"}</span>
+              </div>
+            </motion.div>
+          )}
 
           <motion.div className="absolute right-[0%] top-[13%] hidden w-[34%] rounded-2xl border border-white/10 bg-slate-950/80 p-4 shadow-xl backdrop-blur sm:block" animate={reduceMotion ? undefined : { y: [0, 9, 0] }} transition={reduceMotion ? undefined : { duration: 4.5, repeat: Infinity, ease: "easeInOut" }}>
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">System thoughts</div>
             <div className="mt-3 space-y-2 font-mono text-[10px]">
-              <div className="text-emerald-300">✓ candles polished</div>
-              <div className="text-amber-300">… coffee acquired</div>
-              <div className="text-sky-300">… bias recalculating</div>
+              {walkthroughUnavailable ? (
+                <>
+                  <div className="text-emerald-300">✓ market data access paused</div>
+                  <div className="text-amber-300">… waiting for admin update</div>
+                  <div className="text-sky-300">… preview will return when enabled</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-emerald-300">✓ candles polished</div>
+                  <div className="text-amber-300">… coffee acquired</div>
+                  <div className="text-sky-300">… bias recalculating</div>
+                </>
+              )}
             </div>
           </motion.div>
 

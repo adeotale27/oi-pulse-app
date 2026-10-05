@@ -17,6 +17,22 @@ flowchart LR
 ## Frontend
 
 - Entry: `frontend/src/pages/Dashboard.jsx` (active index, OI cache, tabs).
+- Public showcase: `frontend/src/pages/SiteWalkthrough.jsx` gates an anonymous
+  `/sitewalkthrough` route, then mounts the real `Dashboard.jsx` in demo mode.
+  Route isolation recognizes case and percent-encoded variants as well, matching
+  React Router's route behavior.
+  `lib/siteWalkthroughApi.js` supplies fictional fixtures through an Axios
+  adapter scoped to this pathname; dashboard reads do not reach the backend,
+  and writes are held in memory. The only backend request is the public
+  `/auth/state` availability check. Raw spot and straddle WebSockets are
+  disabled; CAS and admin-only surfaces remain hidden.
+  Synthetic index quotes, OI, options, and straddles share a deterministic
+  clock and follow regular 09:15–15:30 IST NSE hours, with published
+  special-session hours honored; closed markets hold the prior final sample.
+  Fixture-backed Desk AI context and stable-cadence sample alerts are labelled.
+  Admins control availability from the Header's Admin Settings menu; a disabled
+  walkthrough stops at the public auth-state check and shows the maintenance
+  screen without mounting the demo dashboard.
 - Positions: `PositionsPanel.jsx` + `PositionsAnalyzeModal.jsx` + `PositionsBrainPanel.jsx` (short-book risk in `lib/positionsBrain.js`). The internal Risk Management view uses the same enriched open-position rows and poll lifecycle; scenario calculations live in `lib/positionsRisk.js`.
 - Domain JS: `frontend/src/lib/` — `universe.js`, `positionPayoff.js`, `holidays.js`, `journalYearHeat.js`.
 - HTTP: `frontend/src/lib/api.js` (axios, admin/guest headers).

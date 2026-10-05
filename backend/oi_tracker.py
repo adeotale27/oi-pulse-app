@@ -182,6 +182,7 @@ def resolve_desk_ai(settings: Optional[Dict[str, Any]] = None) -> Dict[str, bool
 
 
 DEFAULT_SETTINGS = {
+    "sitewalkthrough_enabled": True,
     "threshold_pct": 15.0,      # % OI change to trigger alert
     "cooldown_seconds": 120,    # per-index alert cooldown
     "compare_minutes": 3,       # compare with snapshot from N minutes ago
@@ -514,6 +515,7 @@ class OITracker:
 
     async def save_settings(self, patch: Dict[str, Any]):
         allowed = {
+            "sitewalkthrough_enabled",
             "threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices",
             "oi_poll_interval_seconds", "straddle_poll_interval_seconds",
             "positions_poll_interval_seconds",

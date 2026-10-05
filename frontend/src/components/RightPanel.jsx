@@ -37,6 +37,7 @@ export default function RightPanel({
   visiblePages = [],
   adminPages = null,
   isAdmin = false,
+  demoMode = false,
   hideMarketIntel = false,
   // props for panel contents
   alerts,
@@ -149,7 +150,7 @@ export default function RightPanel({
             <div className="flex-1 min-h-0">
               <DeskAiBar
                 activeIndex={activeIndex}
-                visible={deskAiShow && isAdmin}
+                visible={deskAiShow && (isAdmin || demoMode)}
                 askAi={deskAiAsk}
                 variant="panel"
                 isAdmin={isAdmin}
@@ -275,7 +276,7 @@ export default function RightPanel({
             />
           )}
           {selectedView === "market-intel" && (
-            <MarketIntelPage compact />
+            <MarketIntelPage compact demoMode={demoMode} />
           )}
           {selectedView === "adrs" && (
             <GlobalMarketsPage isAdmin={isAdmin} userKey={adrUserKey} active={selectedView === "adrs"} />

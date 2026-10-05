@@ -27,7 +27,7 @@ import {
 import { AlertTriangle, TrendingUp, TrendingDown, Info, Zap, ArrowRightLeft, Shield } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import InfoTip from "./InfoTip";
-import { computeSellCandidates } from "@/lib/sellCandidates";
+import { computeSellCandidates, formatGexExposure } from "@/lib/sellCandidates";
 import {
   ivRankGuide, vrpGuide, dealerGammaGuide, vixGuide, scoreGuide, verdictGuide,
 } from "@/lib/metricGuides";
@@ -242,11 +242,11 @@ export default function SellCandidatesPanel({
         />
         <Pill
           label="Dealer γ (GEX)"
-          value={dealer.gexT != null ? `${dealer.gexT >= 0 ? "+" : ""}${dealer.gexT.toFixed(1)}T` : "—"}
+          value={formatGexExposure(dealer.gexLakhCrorePer1Pct)}
           sub={dealer.label}
           tone={dealer.tone}
           testId="scpill-dealer-gamma"
-          tip={dealerGammaGuide(dealer.gexT)}
+          tip={dealerGammaGuide(dealer.gexLakhCrorePer1Pct, { byStrike: dealer.byStrike })}
         />
         <Pill
           label="India VIX"

@@ -14,7 +14,7 @@ The publisher Kite token polls the option chain on a cadence you set (15 / 30 / 
 
 | Surface | Why it is there |
 |---------|-----------------|
-| **OI Change** | Call vs Put OI delta vs a chosen lookback (1m … session) |
+| **OI Change** | Call vs Put OI delta vs a chosen lookback (1m … session), with a compact GEX guide, snapshot time, and estimated rupee hedging notional per 1% move in Indian units (watch areas, not support/resistance; dealer sign is an assumption) |
 | **Open Interest** | Strike bars, writer-defense map, last-pull truth |
 | **Strike Table** | Compact CE/PE grid with optional gamma / institution chips |
 | **Sell Candidates** | Strikes the desk treats as writer-friendly |
@@ -73,6 +73,7 @@ Details: [docs/DATA.md](docs/DATA.md) · APIs: [docs/ABOUT.md](docs/ABOUT.md).
 | Tracked indices, alert focus, poll seconds, market close | **Admin configuration** (gear) |
 | Market Memory visibility for all desk users | Admin configuration → **Data collection** |
 | **Public vs Admin pages** (two ticks per tile) | Admin configuration → Public / Admin dashboard pages |
+| Public site walkthrough ON/OFF | Header → **Admin Settings** → Site walkthrough |
 | Site-wide guest access ON/OFF | Header **Public** switch |
 | Extra guest pages (Positions, Sell Candidates, Index Risk) | Public icon menu (same flags as settings) |
 | Publisher Kite key / daily token | **Kite API** |
@@ -101,9 +102,29 @@ yarn start
 
 Full env: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). CAS 15:20 Auto Trade (admin clocks, Live vs Paper, trade logic): [docs/CAS_AUTO_TRADE_15_20.md](docs/CAS_AUTO_TRADE_15_20.md). Leaving Emergent / Oracle Cloud / GoDaddy DNS: [docs/HOSTING.md](docs/HOSTING.md). Optional LLM over OI + positions: [docs/AI.md](docs/AI.md). Domain shortlist: [docs/DOMAINS.md](docs/DOMAINS.md).
 
+## Public product walkthrough
+
+Share **`/sitewalkthrough`** to let anyone explore the real StrikLenz dashboard
+without signing in. It uses clearly labelled fictional sample data through a
+route-scoped API adapter; dashboard reads never reach market, account, or
+database endpoints, and writes stay in memory and disappear on refresh. The
+sample indices, OI, options, and straddles move together during regular NSE
+sessions (09:15–15:30 IST, weekdays excluding full holidays); published
+special-session hours are followed when scheduled. Values freeze at the prior
+session close when the market is closed. The walkthrough omits CAS and all
+admin surfaces, including the admin-only journal. The dashboard includes a
+fictional Desk AI cash/news/breadth brief and sample strike-change alerts; alerts
+arrive on a stable 90-second demo cadence during the session and are labelled as
+samples. Administrators enable or disable the public route in the header's
+**Admin Settings → Site walkthrough** toggle. When disabled, the route shows a
+branded maintenance screen and requests no market data. Enabling site-wide
+maintenance also disables this route; returning the main site to live does not
+re-enable the walkthrough until an admin explicitly turns it on. This is not a
+live market feed or an account preview.
+
 The **Market Events Chrome extension** is **not** in this app. It lives in [adeotale27/Market_Events](https://github.com/adeotale27/Market_Events). A Pulse-only copy of that tree is on orphan branch `cursor/market-events-1bf9` (do not merge it into `main`).
 
-In the app, click the **logo** or **V5.00** to open the same product story.
+In the app, click the **logo** or the current **version label** to open the same product story.
 
 ---
 

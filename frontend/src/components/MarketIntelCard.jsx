@@ -332,8 +332,10 @@ export default function MarketIntelCard({
   const missingSources = evidence
     ? evidenceNames.filter((name) => !sourceNames.has(name))
     : [];
-  const inferenceLabel = guide?.source === "llm"
-    ? "AI inference"
+  const inferenceLabel = guide?.sample
+    ? "Fictional walkthrough read"
+    : guide?.source === "llm"
+      ? "AI inference"
     : guide
       ? "Rule-based read"
       : "Current market context";

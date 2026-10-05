@@ -1,8 +1,13 @@
 import React from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { renderToStaticMarkup } from "react-dom/server";
 import MaintenanceScreen, { MiniChart } from "./MaintenanceScreen";
+import { api, fetchExtras, fetchTickers } from "@/lib/api";
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock("@/hooks/useLiveDemo", () => ({
   isMarketOpenNow: () => false,
@@ -64,6 +69,45 @@ describe("MaintenanceScreen", () => {
     expect(markup).toContain('stroke-dasharray="0.08 0.92"');
     expect(markup).toContain("<circle");
     expect(markup).toContain("maintenance-chart-pulse");
+  });
+
+  it("renders a data-free walkthrough maintenance notice", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(MaintenanceScreen, {
+        walkthroughUnavailable: true,
+        notice: "Please check with the administrator for updates.",
+        onRetry: () => {},
+      }),
+    );
+
+    expect(markup).toContain("StrikLenz is<br");
+    expect(markup).toContain("under maintenance.");
+    expect(markup).toContain("Please check with the administrator for updates.");
+    expect(markup).toContain("Preview temporarily paused");
+    expect(markup).not.toContain("Market live");
+    expect(markup).not.toContain("Loading NIFTY history");
+  });
+
+  it("does not request ticker or history data when the walkthrough is disabled", async () => {
+    api.get.mockClear();
+    fetchExtras.mockClear();
+    fetchTickers.mockClear();
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(React.createElement(MaintenanceScreen, {
+        walkthroughUnavailable: true,
+        onRetry: () => {},
+      }));
+    });
+
+    expect(api.get).not.toHaveBeenCalled();
+    expect(fetchExtras).not.toHaveBeenCalled();
+    expect(fetchTickers).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+    container.remove();
   });
 
   it("keeps phone chart and robot in separate, bounded side-by-side areas", () => {

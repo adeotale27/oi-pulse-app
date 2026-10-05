@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, GripHorizontal, Maximize2, Minimize2, Newspaper, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, GripHorizontal, Maximize2, Minimize2, Newspaper, X } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   bandClass,
@@ -89,6 +89,11 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
     const next = clampCarryLeft(px, w, isPhone() ? 280 : PANEL_W);
     setLeftPx(next);
     writeNum(MI_POPUP_LEFT_KEY, next);
+  };
+
+  const snap = (mode) => {
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    setLeft(snapCarryLeft(mode, w, isPhone() ? 280 : PANEL_W));
   };
 
   const clampBottom = useCallback((raw) => {
@@ -373,6 +378,17 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
           <div className="min-w-0 text-sm font-semibold leading-tight">Mkt Intel</div>
         </div>
         <div className="md:hidden min-w-0 flex-1 text-sm font-semibold leading-tight">Mkt Intel</div>
+        <div className="hidden md:inline-flex items-center rounded-md bg-white/50 p-0.5" data-testid="mi-popup-dock-toggle">
+          <button type="button" onClick={() => snap("left")} className="rounded p-1 opacity-80 hover:opacity-100" aria-label="Snap market intelligence left" title="Left">
+            <AlignLeft className="h-3 w-3" />
+          </button>
+          <button type="button" onClick={() => snap("center")} className="rounded p-1 opacity-80 hover:opacity-100" aria-label="Snap market intelligence to center" title="Center">
+            <AlignCenter className="h-3 w-3" />
+          </button>
+          <button type="button" onClick={() => snap("right")} className="rounded p-1 opacity-80 hover:opacity-100" aria-label="Snap market intelligence right" title="Right">
+            <AlignRight className="h-3 w-3" />
+          </button>
+        </div>
         <div className="ml-auto flex items-center shrink-0" data-testid="mi-popup-pager">
           <span className="text-[10px] text-rose-800/80 mr-0.5 font-mono-data whitespace-nowrap">
             {n ? `${Math.min(idx, Math.max(n, 1) - 1) + 1} / ${n}` : "0 / 0"}

@@ -175,6 +175,25 @@ You own DNS at GoDaddy. Two patterns:
 
 Do **not** use GoDaddy’s parked/forwarding page. That breaks `/api`.
 
+### Prevent stale frontend chunks
+
+React serves content-hashed JavaScript and CSS files. When a new build replaces
+those files while a browser or CDN still has an older `index.html`, users can
+get `ChunkLoadError` or CSS chunk errors. Configure every production host and
+CDN so that:
+
+- The app shell (`index.html`), including SPA-fallback responses such as
+  `/dashboard`, is revalidated on every visit (`no-cache` or stricter).
+- Content-hashed `/static/*` assets may be cached as immutable for a long time.
+- A release uploads the complete new asset set before switching the HTML shell;
+  retain the prior hashed assets during rollout where possible.
+- `/api/*` responses are not cached as static assets.
+
+The frontend also performs one cooldown-limited cache-busting reload after
+recognized JavaScript or CSS chunk failures. This is recovery for an already
+stale page; it does not replace correct HTML/asset cache headers or a coherent
+deployment.
+
 After DNS:
 
 1. Set `CORS_ORIGINS=https://striklenz.com,https://www.striklenz.com,https://admin.striklenz.com` (real origins only), `TRUSTED_HOSTS=striklenz.com,www.striklenz.com,admin.striklenz.com`, and `API_DOCS_ENABLED=false`. Set Kite Connect redirect URL to `https://striklenz.com/kite-callback` (not aaisnamkeen.com).

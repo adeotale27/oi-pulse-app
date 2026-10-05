@@ -152,6 +152,23 @@ def _live_settings() -> dict:
         return tracker.settings
     return dict(DEFAULT_SETTINGS)
 
+
+async def _get_sitewalkthrough_enabled() -> bool:
+    if tracker and isinstance(getattr(tracker, "settings", None), dict):
+        return bool(tracker.settings.get("sitewalkthrough_enabled", True))
+    if db is None:
+        return bool(DEFAULT_SETTINGS.get("sitewalkthrough_enabled", True))
+    try:
+        saved = await _find_one_capped(db.settings, {"_id": "alerts"}) or {}
+    except Exception:
+        logger.exception("Could not read persisted site walkthrough availability")
+        return False
+    return bool(saved.get(
+        "sitewalkthrough_enabled",
+        DEFAULT_SETTINGS.get("sitewalkthrough_enabled", True),
+    ))
+
+
 # Straddle sample retention (hours)
 STRADDLE_RETENTION_HOURS = int(os.environ.get("STRADDLE_RETENTION_HOURS", "6"))
 STRADDLE_INDICES = ["NIFTY", "SENSEX"]
@@ -907,6 +924,7 @@ DASHBOARD_PAGE_KEYS = {
 
 class SettingsIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    sitewalkthrough_enabled: Optional[bool] = None
     threshold_pct: Optional[float] = None
     cooldown_seconds: Optional[int] = None
     compare_minutes: Optional[int] = None
@@ -1594,6 +1612,8 @@ async def get_settings(reload: bool = Query(False)):
 @api_router.post("/settings")
 async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_admin)):
     patch = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if patch.get("sitewalkthrough_enabled") is True and await _get_maintenance_state():
+        raise HTTPException(409, "Site walkthrough cannot be enabled while site maintenance is active")
     if "mcx_desk_on" in patch:
         try:
             from universe import set_mcx_desk_available
@@ -3140,6 +3160,7 @@ async def get_config():
         "alert_enabled_indices": [i for i in (s.get("alert_enabled_indices") or []) if i in enabled] or s.get("alert_enabled_indices"),
         "visible_pages": s.get("visible_pages"),
         "admin_visible_pages": s.get("admin_visible_pages"),
+        "sitewalkthrough_enabled": bool(s.get("sitewalkthrough_enabled", True)),
         "market_open_ist": s.get("market_open_ist", open_hm),
         "market_close_ist": s.get("market_close_ist", close_hm),
         "second_session_ist": s.get("second_session_ist", "12:00"),
@@ -3481,6 +3502,7 @@ async def auth_state(request: Request):
             "requires_login": False,
             "public_access_open": True,
             "public_landing_enabled": False,
+            "sitewalkthrough_enabled": bool(_live_settings().get("sitewalkthrough_enabled", True)),
             "maintenance_mode": False,
             "public_access_expires_at": None,
             "is_admin": _is_local_dev_admin_bypass_request(request),
@@ -3497,6 +3519,9 @@ async def auth_state(request: Request):
     platform_doc = await _load_platform_config()
     public_landing_enabled = bool((platform_doc or {}).get("public_landing_enabled", False))
     maintenance_mode = await _get_maintenance_state()
+    sitewalkthrough_enabled = await _get_sitewalkthrough_enabled()
+    if maintenance_mode:
+        sitewalkthrough_enabled = False
     admin_sess = await _admin_from_request(request)
     is_admin = admin_sess is not None
     guest_sess = None if is_admin else (await _guest_from_request(request))
@@ -3539,6 +3564,7 @@ async def auth_state(request: Request):
         "requires_login": requires_login,
         "public_access_open": open_,
         "public_landing_enabled": public_landing_enabled,
+        "sitewalkthrough_enabled": sitewalkthrough_enabled,
         "maintenance_mode": maintenance_mode,
         "public_access_expires_at": expires_at_iso,
         "is_admin": is_admin,
@@ -3605,6 +3631,15 @@ async def auth_toggle_maintenance(payload: MaintenanceModeIn, request: Request):
     if db is None:
         raise HTTPException(503, "Service unavailable")
     try:
+        # Force the preview off on either transition, including sites already under
+        # maintenance before this setting was introduced; admins can re-enable it afterward.
+        await db.settings.update_one(
+            {"_id": "alerts"},
+            {"$set": {"sitewalkthrough_enabled": False}},
+            upsert=True,
+        )
+        if tracker and isinstance(getattr(tracker, "settings", None), dict):
+            tracker.settings["sitewalkthrough_enabled"] = False
         await db.settings.update_one(
             {"_id": "maintenance_mode"},
             {
@@ -3618,7 +3653,14 @@ async def auth_toggle_maintenance(payload: MaintenanceModeIn, request: Request):
         )
     except Exception:
         raise HTTPException(503, "Service unavailable")
-    return {"ok": True, "maintenance_mode": bool(payload.enabled)}
+    sitewalkthrough_enabled = await _get_sitewalkthrough_enabled()
+    if payload.enabled:
+        sitewalkthrough_enabled = False
+    return {
+        "ok": True,
+        "maintenance_mode": bool(payload.enabled),
+        "sitewalkthrough_enabled": sitewalkthrough_enabled,
+    }
 
 
 @api_router.post("/auth/public-access", dependencies=[])

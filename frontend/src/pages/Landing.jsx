@@ -32,7 +32,7 @@ function Logo({ className = "" }) {
   );
 }
 
-function Nav() {
+function Nav({ walkthroughEnabled }) {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -51,6 +51,7 @@ function Nav() {
           ))}
         </nav>
         <div className="hidden items-center gap-3 md:flex">
+          {walkthroughEnabled && <Link to="/sitewalkthrough" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">Explore demo</Link>}
           <Link to="/login" className="text-sm font-semibold text-slate-700 hover:text-slate-900">Login</Link>
           <Link to="/login" className="slz-btn-primary inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition">
             Get Started <ArrowRight className="h-4 w-4" />
@@ -66,6 +67,7 @@ function Nav() {
             {NAV_LINKS.map((l) => (
               <a key={l.id} href={l.href} onClick={() => setOpen(false)} className="text-sm font-medium text-slate-700">{l.label}</a>
             ))}
+            {walkthroughEnabled && <Link to="/sitewalkthrough" onClick={() => setOpen(false)} className="text-sm font-semibold text-emerald-700">Explore interactive demo</Link>}
             <Link to="/login" className="slz-btn-primary mt-2 rounded-full px-4 py-2.5 text-center text-sm font-semibold">Get Started</Link>
           </div>
         </div>
@@ -99,7 +101,7 @@ function Ticker({ snap }) {
   );
 }
 
-function Hero({ snap }) {
+function Hero({ snap, walkthroughEnabled }) {
   return (
     <section className="relative overflow-hidden pt-28 pb-10 md:pt-36">
       <div className="slz-aurora" />
@@ -120,6 +122,11 @@ function Hero({ snap }) {
             <Link to="/login" className="slz-btn-primary inline-flex items-center gap-2 rounded-full px-6 py-3 text-base font-semibold transition">
               Start free <ArrowRight className="h-5 w-5" />
             </Link>
+            {walkthroughEnabled && (
+              <Link to="/sitewalkthrough" className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-6 py-3 text-base font-semibold text-emerald-800 transition hover:border-emerald-400 hover:bg-emerald-50">
+                Explore interactive demo <ArrowRight className="h-5 w-5" />
+              </Link>
+            )}
             <a href="#premium" className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-6 py-3 text-base font-semibold text-slate-800 transition hover:border-emerald-400">
               See Premium
             </a>
@@ -400,7 +407,7 @@ function Footer() {
   );
 }
 
-export default function Landing() {
+export default function Landing({ walkthroughEnabled = true }) {
   const snap = useLiveDemo(1500);
   const [cfg, setCfg] = useState(null);
 
@@ -416,9 +423,9 @@ export default function Landing() {
 
   return (
     <div className="slz slz-light min-h-screen">
-      <Nav />
+      <Nav walkthroughEnabled={walkthroughEnabled} />
       <main>
-        <Hero snap={snap} />
+        <Hero snap={snap} walkthroughEnabled={walkthroughEnabled} />
         <Ticker snap={snap} />
         <Features />
         <ProductDemo snap={snap} />

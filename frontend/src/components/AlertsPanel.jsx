@@ -62,9 +62,19 @@ export default function AlertsPanel({
                   )}
                   <span>{a.index}</span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-mono-data">
-                  {formatTime(a.created_at)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {a.sample ? (
+                    <span
+                      className="rounded-sm border border-violet-200 bg-violet-50 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-violet-700"
+                      data-testid="sample-alert-badge"
+                    >
+                      Sample
+                    </span>
+                  ) : null}
+                  <span className="text-[10px] text-slate-500 font-mono-data">
+                    {formatTime(a.created_at)}
+                  </span>
+                </div>
               </div>
               <div className="text-[11px] text-slate-700 mt-1">{a.direction}</div>
               <div className="text-[10px] text-slate-500 font-mono-data mt-1">

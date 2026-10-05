@@ -11,6 +11,7 @@
 // -----------------------------------------------------------------------------
 
 import React from "react";
+import { formatGexExposure } from "./sellCandidates";
 
 const rowBase = "flex items-center justify-between gap-3 py-1";
 const zoneClass = (active, tone) => {
@@ -104,26 +105,199 @@ export function vrpGuide(vrp) {
 // ---------------------------------------------------------------------------
 // Dealer Gamma (GEX-lite)
 // ---------------------------------------------------------------------------
-export function dealerGammaGuide(gexT) {
+export function formatGexSnapshotTime(timestamp) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  }).format(date)} IST`;
+}
+
+export function dealerGammaGuide(gexValue, { byStrike, updatedAt, spot, expiry } = {}) {
   const zones = [
-    { key: "positive", range: "> +50 T", label: "Long gamma · sticky range",       tone: "emerald" },
-    { key: "neutral",  range: "-50 to +50 T", label: "Neutral · no tailwind",       tone: "amber" },
-    { key: "negative", range: "< -50 T", label: "Short gamma · trending / expansion", tone: "rose" },
+    {
+      key: "positive",
+      threshold: "> +₹0.5 L Cr",
+      label: "May calm moves",
+      explanation: "Positive estimate; hedging may soften swings.",
+      tone: "emerald",
+    },
+    {
+      key: "neutral",
+      threshold: "−₹0.5 to +₹0.5 L Cr",
+      label: "No clear clue",
+      explanation: "No strong lean toward calmer or faster moves.",
+      tone: "amber",
+    },
+    {
+      key: "negative",
+      threshold: "< −₹0.5 L Cr",
+      label: "Moves may speed up",
+      explanation: "Negative estimate; swings could extend.",
+      tone: "rose",
+    },
   ];
-  let currentZone = null, action = null;
-  if (gexT != null) {
-    if (gexT > 50)       { currentZone = "positive"; action = "Dealers are long gamma → hedging dampens moves. Range-bound regime, safer to sell strangles / iron condors."; }
-    else if (gexT < -50) { currentZone = "negative"; action = "Dealers are short gamma → hedging accelerates moves. Avoid naked selling; only defensive spreads."; }
-    else                 { currentZone = "neutral";  action = "No structural tailwind for premium sellers — trade with tighter risk parameters."; }
+  const topStrikes = Array.isArray(byStrike)
+    ? byStrike
+      .filter((point) => Number.isFinite(point.gexLakhCrorePer1Pct) && Number.isFinite(point.strike) && point.gexLakhCrorePer1Pct !== 0)
+      .sort((a, b) => Math.abs(b.gexLakhCrorePer1Pct) - Math.abs(a.gexLakhCrorePer1Pct))
+      .slice(0, 3)
+    : null;
+  const maxStrikeGex = topStrikes?.reduce((max, point) => Math.max(max, Math.abs(point.gexLakhCrorePer1Pct)), 0) || 0;
+  const snapshotTime = formatGexSnapshotTime(updatedAt);
+  let currentZone = null;
+  let reading = "Waiting for option-chain data.";
+  let explanation = "Once option-chain data is available, this gives a rough idea of whether option hedging could dampen or amplify moves.";
+  if (gexValue != null) {
+    if (gexValue > 0.5) {
+      currentZone = "positive";
+      reading = "Moves may be calmer";
+      explanation = "The estimate leans toward hedging softening moves. It does not say whether the index will go up or down.";
+    } else if (gexValue < -0.5) {
+      currentZone = "negative";
+      reading = "Moves could get faster";
+      explanation = "The estimate warns that hedging could add to a move. Be extra careful with option selling without protection.";
+    } else {
+      currentZone = "neutral";
+      reading = "No clear GEX clue";
+      explanation = "This estimate does not strongly lean toward calmer or faster moves. Let price action guide the decision.";
+    }
   }
+  const currentZoneInfo = zones.find((zone) => zone.key === currentZone);
   return (
-    <ZoneTable
-      title="Dealer Gamma (GEX)"
-      description="Aggregate dealer gamma exposure. Positive = market makers hedge INTO stability. Negative = hedging accelerates moves (trend regime)."
-      zones={zones}
-      currentZone={currentZone}
-      action={action}
-    />
+    <section aria-label="GEX market setup" className="space-y-2 text-xs text-slate-700 dark:text-slate-200">
+      <div
+        className={`rounded-md border p-2 ${currentZoneInfo?.tone === "emerald"
+          ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950"
+          : currentZoneInfo?.tone === "rose"
+            ? "border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950"
+            : "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950"}`}
+        data-testid="gex-simple-reading"
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="font-semibold text-slate-900 dark:text-slate-100">{reading}</div>
+          {gexValue != null && (
+            <div className="whitespace-nowrap font-semibold text-slate-900 dark:text-slate-100" data-testid="gex-current-value">
+              {formatGexExposure(gexValue)}
+            </div>
+          )}
+        </div>
+        {currentZoneInfo && (
+          <p className="mt-0.5 text-[10px] font-medium" data-testid="gex-current-threshold">
+            {currentZoneInfo.threshold.startsWith("> ")
+              ? `Your value is above ${currentZoneInfo.threshold.slice(2)}.`
+              : currentZoneInfo.threshold.startsWith("< ")
+                ? `Your value is below ${currentZoneInfo.threshold.slice(2)}.`
+                : `Your value is between ${currentZoneInfo.threshold.replace(" to ", " and ")}.`}
+          </p>
+        )}
+        <p className="mt-0.5 text-[11px] leading-snug">{explanation}</p>
+        <p className="mt-1 text-[10px] font-medium">Use as context only—not a buy/sell instruction.</p>
+      </div>
+      <div className="grid grid-cols-3 gap-1" role="list" aria-label="GEX thresholds and meanings">
+        {zones.map((zone) => {
+          const active = zone.key === currentZone;
+          const palette = zone.tone === "emerald"
+            ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+            : zone.tone === "rose"
+              ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
+              : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300";
+          return (
+            <div
+              key={zone.key}
+              role="listitem"
+              aria-current={active ? "true" : undefined}
+              data-testid={`gex-zone-${zone.key}`}
+              className={`flex min-w-0 flex-col items-start gap-1 rounded-md border px-1.5 py-1.5 ${active ? `${palette} ring-1 ring-current font-semibold` : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"}`}
+            >
+              <div className="w-full min-w-0">
+                <div className="break-words font-semibold text-[9px] leading-tight">{zone.threshold}</div>
+                <div className="mt-1 text-[10px] font-semibold leading-tight">{zone.label}</div>
+                <div className="mt-0.5 break-words text-[9px] leading-tight">{zone.explanation}</div>
+              </div>
+              {active && <div className="rounded bg-white/70 px-1 py-0.5 text-[8px] uppercase tracking-wide dark:bg-slate-900/70">Current</div>}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[9px] text-slate-500 dark:text-slate-400">
+        ₹0.5 L Cr means ₹50,000 crore. “L Cr” means lakh crore.
+      </p>
+      {topStrikes && (
+        <div className="space-y-1" data-testid="gex-strike-concentration">
+          <div className="font-semibold text-slate-900 dark:text-slate-100">
+            Strike areas to watch{spot ? ` · index ${Number(spot).toLocaleString("en-IN")}` : ""}
+          </div>
+          {expiry && <p className="text-[9px] text-slate-500 dark:text-slate-400">Expiry: {expiry}</p>}
+          <p className="text-[9px] text-slate-500 dark:text-slate-400" aria-label="Strike chart legend">
+            Estimated call-side (green) / put-side (red) concentration
+          </p>
+          {topStrikes.length ? (
+            <div className="space-y-1.5">
+              {topStrikes.map((point) => {
+                const barWidth = (Math.abs(point.gexLakhCrorePer1Pct) / maxStrikeGex) * 50;
+                const positive = point.gexLakhCrorePer1Pct > 0;
+                const distance = Number.isFinite(spot) ? point.strike - spot : null;
+                return (
+                  <div key={point.strike} data-testid={`gex-strike-${point.strike}`}>
+                    <div className="mb-0.5 flex justify-between gap-2 text-[10px]">
+                      <span className="font-medium text-slate-700 dark:text-slate-200">
+                        {`Strike ${Number(point.strike).toLocaleString("en-IN")}`}
+                        {distance != null && <span className="ml-1 text-[9px] font-normal text-slate-500">{`${distance > 0 ? "+" : ""}${Math.round(distance)} points from index`}</span>}
+                      </span>
+                      <span className={`whitespace-nowrap ${positive ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}>
+                        {formatGexExposure(point.gexLakhCrorePer1Pct)}
+                      </span>
+                    </div>
+                    <div
+                      className="relative h-2 overflow-hidden rounded bg-slate-100 dark:bg-slate-700"
+                      role="img"
+                      aria-label={`Strike ${point.strike}: estimated ${positive ? "call-side" : "put-side"} concentration, ${formatGexExposure(point.gexLakhCrorePer1Pct)} per 1% index move`}
+                    >
+                      <span className="absolute inset-y-0 left-1/2 w-px bg-slate-400 dark:bg-slate-300" />
+                      <span
+                        className={`absolute inset-y-0 ${positive ? "bg-emerald-500" : "bg-rose-500"}`}
+                        style={positive
+                          ? { left: "50%", width: `${barWidth}%` }
+                          : { left: `${50 - barWidth}%`, width: `${barWidth}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-slate-500 dark:text-slate-400">No notable strike concentration in the available chain.</p>
+          )}
+          <p className="text-[9px] leading-snug text-slate-500 dark:text-slate-400">
+            These are modelled watch areas only—not support or resistance, and not guaranteed to affect price.
+          </p>
+        </div>
+      )}
+      <details className="rounded border border-slate-200 px-2 py-1.5 dark:border-slate-700" data-testid="gex-details">
+        <summary className="cursor-pointer text-[10px] font-medium text-slate-600 dark:text-slate-300">
+          What is GEX, and what does the amount mean?
+        </summary>
+        <div className="mt-1.5 space-y-1.5 text-[10px] leading-snug text-slate-600 dark:text-slate-300">
+          <p>GEX is a rough estimate of how option-market hedging might affect the size of index moves. It does not predict direction.</p>
+          <p>₹ amount = estimated hedging value for a 1% index move. It is not money known to be held or traded by dealers.</p>
+          <p data-testid="gex-method">The estimate assumes calls add positive gamma and puts negative gamma. NSE does not publish trade sides, so actual dealer positions—and even this assumed sign—cannot be confirmed.</p>
+          <p>Green/red bars show the model’s call-side/put-side estimate for each strike. They are not confirmed support or resistance.</p>
+          <p>The displayed amount is estimated hedging notional for a 1% index move, not an index-point target.</p>
+        </div>
+      </details>
+      {byStrike && (
+        <p className="border-t border-slate-200 pt-1.5 text-[9px] text-slate-500 dark:border-slate-700 dark:text-slate-400" data-testid="gex-updated-at">
+          Snapshot: {snapshotTime || "time unavailable"}
+        </p>
+      )}
+    </section>
   );
 }
 

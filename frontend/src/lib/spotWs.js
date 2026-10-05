@@ -1,5 +1,10 @@
 // Lightweight reconnection wrapper for live spot price WebSocket
+import { isSiteWalkthroughPath } from "@/lib/siteWalkthroughApi";
+
 export function connectSpotWS(onMessage, onOpen, onClose, options = {}) {
+  if (isSiteWalkthroughPath()) {
+    return { stop: () => {}, isStarted: () => false };
+  }
   const { allowDuringQuiescent = false } = options;
   let urlOrigin = "";
   try {

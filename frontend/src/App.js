@@ -1,6 +1,6 @@
 import "@/App.css";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import AuthGate from "@/components/AuthGate";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
@@ -11,8 +11,10 @@ import MaintenanceScreen from "@/components/MaintenanceScreen";
 import DataLoadingState from "@/components/DataLoadingState";
 import { installDeskErrorLog } from "@/lib/errorLog";
 import { api } from "@/lib/api";
+import { isSiteWalkthroughPath } from "@/lib/siteWalkthroughApi";
 
 const Landing = lazy(() => import("@/pages/Landing"));
+const SiteWalkthrough = lazy(() => import("@/pages/SiteWalkthrough"));
 const Login = lazy(() => import("@/pages/Login"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
@@ -28,6 +30,7 @@ function PublicEntry() {
   const [showLanding, setShowLanding] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [walkthroughEnabled, setWalkthroughEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const loadState = useCallback(() => {
@@ -37,11 +40,13 @@ function PublicEntry() {
         setShowLanding(!!data?.public_landing_enabled);
         setMaintenanceMode(!!data?.maintenance_mode);
         setIsAdmin(!!data?.is_admin);
+        setWalkthroughEnabled(data?.sitewalkthrough_enabled !== false);
       })
       .catch(() => {
         setShowLanding(false);
         setMaintenanceMode(false);
         setIsAdmin(false);
+        setWalkthroughEnabled(false);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -54,24 +59,24 @@ function PublicEntry() {
   if (maintenanceMode && !isAdmin) {
     return <MaintenanceScreen retrying={loading} onRetry={loadState} />;
   }
-  return showLanding ? <Landing /> : <AdminLogin />;
+  return showLanding ? <Landing walkthroughEnabled={walkthroughEnabled} /> : <AdminLogin />;
 }
 
-function App() {
-  const isAdminHost =
-    window.location.hostname === "admin.striklenz.com";
+function AppRoutes({ isAdminHost }) {
+  const location = useLocation();
+  const isWalkthrough = isSiteWalkthroughPath();
 
   useEffect(() => {
-    installDeskErrorLog();
-  }, []);
+    if (!isWalkthrough) installDeskErrorLog();
+  }, [isWalkthrough]);
+
   return (
-    <div className="App">
-      <ErrorBoundary>
-      <BrowserRouter>
-        <Suspense fallback={<BootFallback />}>
+    <>
+      <Suspense fallback={<BootFallback />}>
         <Routes>
           {isAdminHost ? (
             <>
+              <Route path="/sitewalkthrough" element={<SiteWalkthrough />} />
               <Route path="/" element={<AdminLogin />} />
               <Route path="/admin" element={<AdminLogin />} />
               <Route path="/admin/login" element={<AdminLogin />} />
@@ -88,6 +93,7 @@ function App() {
             </>
           ) : (
             <>
+              <Route path="/sitewalkthrough" element={<SiteWalkthrough />} />
               <Route path="/" element={<PublicEntry />} />
               <Route path="/login" element={<Login />} />
               <Route path="/admin" element={<AdminLogin />} />
@@ -107,16 +113,33 @@ function App() {
             </>
           )}
         </Routes>
-        </Suspense>
-      </BrowserRouter>
-      </ErrorBoundary>
-      <Suspense fallback={null}>
-        <AboutAppModal />
       </Suspense>
-      <Toaster />
-      <MobileAlertTray />
-      <DesktopAlertInbox />
-      <PwaNotifyPrompt />
+      {!isWalkthrough ? (
+        <>
+          <Suspense fallback={null}>
+            <AboutAppModal />
+          </Suspense>
+          <Toaster />
+          <MobileAlertTray />
+          <DesktopAlertInbox />
+          <PwaNotifyPrompt />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function App() {
+  const isAdminHost =
+    window.location.hostname === "admin.striklenz.com";
+
+  return (
+    <div className="App">
+      <ErrorBoundary>
+        <BrowserRouter>
+          <AppRoutes isAdminHost={isAdminHost} />
+        </BrowserRouter>
+      </ErrorBoundary>
     </div>
   );
 }

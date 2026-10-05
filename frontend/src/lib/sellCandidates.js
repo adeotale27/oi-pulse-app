@@ -32,6 +32,17 @@ const CONTRACT_MULT = {
 // Sensible defaults if the caller doesn't provide.
 const DEFAULT_RISK_FREE_RATE = 0.065;
 
+export function formatGexExposure(valueLakhCrore, decimals = 1) {
+  if (!Number.isFinite(valueLakhCrore)) return "—";
+  const sign = valueLakhCrore > 0 ? "+" : valueLakhCrore < 0 ? "−" : "";
+  const magnitude = Math.abs(valueLakhCrore);
+  if (magnitude >= 0.1) return `${sign}₹${magnitude.toFixed(decimals)} L Cr`;
+  const crore = magnitude * 100_000;
+  if (crore >= 1) return `${sign}₹${crore.toLocaleString("en-IN", { maximumFractionDigits: 0 })} Cr`;
+  const lakh = crore * 100;
+  return `${sign}₹${lakh.toLocaleString("en-IN", { maximumFractionDigits: 0 })} L`;
+}
+
 // ---------------------------------------------------------------------------
 // Volatility smile: per-strike CE / PE IV, plus a smile-skew premium flag.
 // ---------------------------------------------------------------------------
@@ -53,25 +64,18 @@ export function computeVolatilitySmile({ strikes, spot, T, r = DEFAULT_RISK_FREE
 }
 
 // ---------------------------------------------------------------------------
-// Dealer Gamma Exposure ("GEX-lite").
-//
-// Convention used (SqueezeMetrics-style, common in retail dashboards):
-//   GEX_i = Γ_CE_i × OI_CE_i × spot² × mult × 100
-//         - Γ_PE_i × OI_PE_i × spot² × mult × 100
-//   GEX = Σ_i GEX_i
-//
-// Interpretation:
-//   GEX > 0  → dealers net long gamma → hedging flows dampen moves → SIDEWAYS
-//   GEX < 0  → dealers net short gamma → hedging flows chase moves → TRENDING
-//
-// Thresholds are empirical — scaled to the magnitudes we see in NSE OI data.
+// This is a GEX estimate, not measured dealer inventory. NSE does not publish
+// trade-side data, so the common calls-positive / puts-negative convention is
+// an unverified assumption. Convert Γ × OI × lot × spot² × 1% to ₹ lakh crore
+// of estimated delta-hedge notional per 1% underlying move.
 // ---------------------------------------------------------------------------
 export function computeDealerGamma({ strikes, spot, T, r = DEFAULT_RISK_FREE_RATE, indexName }) {
   if (!strikes?.length || !spot || !(T > 0)) {
-    return { gex: 0, regime: "unknown", label: "—", tone: "slate" };
+    return { gex: 0, gexLakhCrorePer1Pct: 0, byStrike: [], regime: "unknown", label: "—", tone: "slate" };
   }
   const mult = CONTRACT_MULT[indexName] || 50;
   let gex = 0;
+  const byStrike = [];
   for (const s of strikes) {
     const ceIv = s.ce_ltp > 0 ? impliedVol(s.ce_ltp, spot, s.strike, T, r, true) : null;
     const peIv = s.pe_ltp > 0 ? impliedVol(s.pe_ltp, spot, s.strike, T, r, false) : null;
@@ -79,16 +83,21 @@ export function computeDealerGamma({ strikes, spot, T, r = DEFAULT_RISK_FREE_RAT
     const peG = peIv ? greeks(spot, s.strike, T, r, peIv, false).gamma : 0;
     const ceContrib = (ceG || 0) * (s.ce_oi || 0) * spot * spot * mult;
     const peContrib = (peG || 0) * (s.pe_oi || 0) * spot * spot * mult;
-    gex += ceContrib - peContrib;
+    const strikeGex = ceContrib - peContrib;
+    gex += strikeGex;
+    byStrike.push({
+      strike: s.strike,
+      gexLakhCrorePer1Pct: strikeGex / 1e14,
+    });
   }
-  // Normalise to trillions for a friendly display. Empirically GEX for
-  // NIFTY-scale indices sits in the ±100-1000T range on typical days.
-  const gexT = gex / 1e12;
+  const gexLakhCrorePer1Pct = gex / 1e14;
+  // The existing ±50 threshold was expressed in gex / 1e12 units; this is its
+  // exactly equivalent value after converting to lakh crore per 1% move.
   let regime, label, tone;
-  if (gexT > 50) { regime = "positive"; label = "Sticky range"; tone = "emerald"; }
-  else if (gexT < -50) { regime = "negative"; label = "Trending / expansion"; tone = "rose"; }
+  if (gexLakhCrorePer1Pct > 0.5) { regime = "positive"; label = "Sticky range"; tone = "emerald"; }
+  else if (gexLakhCrorePer1Pct < -0.5) { regime = "negative"; label = "Trending / expansion"; tone = "rose"; }
   else { regime = "neutral"; label = "Neutral"; tone = "amber"; }
-  return { gex, gexT, regime, label, tone };
+  return { gex, gexLakhCrorePer1Pct, byStrike, regime, label, tone };
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +210,7 @@ export function computeSellCandidates({
       },
       candidates: { ce: [], pe: [] },
       smile: { points: [], meanIv: null },
-      dealer: { gex: 0, gexT: 0, regime: "unknown", label: "—", tone: "slate" },
+      dealer: { gex: 0, gexLakhCrorePer1Pct: 0, byStrike: [], regime: "unknown", label: "—", tone: "slate" },
       ivRank: null,
       vix: { now: vixNow, changePct: null },
       walls: {},
@@ -213,7 +222,7 @@ export function computeSellCandidates({
       verdict: { tradeable: false, reasons: ["Waiting for live snapshot..."] },
       candidates: { ce: [], pe: [] },
       smile: { points: [], meanIv: null },
-      dealer: { gex: 0, gexT: 0, regime: "unknown", label: "—", tone: "slate" },
+      dealer: { gex: 0, gexLakhCrorePer1Pct: 0, byStrike: [], regime: "unknown", label: "—", tone: "slate" },
       ivRank: null,
       vix: { now: vixNow, changePct: null },
       walls: {},
@@ -235,7 +244,7 @@ export function computeSellCandidates({
   // ---- Market-wide verdict for "bad day to sell" ----
   const reasons = [];
   if (dealer.regime === "negative") {
-    reasons.push(`Dealer gamma strongly negative (${dealer.gexT.toFixed(1)}T) — dealers hedge into moves, expect trending / expansion.`);
+    reasons.push(`Estimated GEX is negative (${formatGexExposure(dealer.gexLakhCrorePer1Pct)}) under the assumed dealer sign — moves may extend.`);
   }
   if (ivRank != null && ivRank < 15) {
     reasons.push(`IV Rank ${ivRank} — premium is very cheap; sellers under-compensated for risk.`);
