@@ -1,5 +1,65 @@
 # Changelog
 
+## V18.14 — 2026-10-05
+
+Added left, center, and right docking controls to the Market Intel popup, matching the Overnight brief. New users get the popup on the right by default; dragged and snapped positions remain saved per browser.
+
+## V18.13 — 2026-10-05
+
+Clarified the GEX guide with explicit positive, neutral, and negative cutoffs, the current value's comparison to its cutoff, and a plain-language explanation for each range. Reworked the thresholds into readable phone-width rows and explained that ₹0.5 L Cr equals ₹50,000 crore.
+
+## V18.12 — 2026-10-05
+
+Corrected the GEX amount to estimated rupee hedging notional per 1% index move and present it in Indian lakh/crore units. The guide now makes the unverified calls-positive/puts-negative assumption and selected expiry explicit, alongside the timestamp and largest strike watch areas. Improved recovery from stale JavaScript/CSS chunks with a cooldown-limited cache-busting reload, and documented production cache/deployment requirements.
+
+## V18.11 — 2026-10-05
+
+Made GEX compact on phone screens, reduced the strike visualization to the three largest areas, and switched displayed GEX values and thresholds to Indian lakh-crore notation across the dashboard and Sell Candidates. Added a concise explanation of what the unit and colored bars mean.
+
+## V18.10 — 2026-10-05
+
+Made the GEX popover phone-friendly with responsive width and internal scrolling, and explained that T is a model-scale trillion rather than rupees changing hands or index points. The strike chart now explains green/positive and red/negative values in terms of this model’s call-side and put-side estimates.
+
+## V18.09 — 2026-10-05
+
+Added the OI snapshot time and a ranked, signed view of the largest modeled GEX strike areas. Clarified that these areas are not support/resistance and that GEX does not reveal dealers’ actual positions or predict market direction. The total GEX calculation now always uses the full available option chain, independent of the chart’s visible strike range.
+
+## V18.08 — 2026-10-05
+
+Rewrote the GEX popover in plain language, added a visual three-zone market-regime guide, and clarified a cautious action for the current reading. GEX remains an estimate and is not presented as a standalone trade signal.
+
+## V18.07 — 2026-10-05
+
+Added a dedicated GEX levels popover beside the OI Change replay controls. It explains the dealer-gamma regime for the current index, shows today’s GEX value, and clarifies how positive vs negative gamma exposure changes market behavior.
+
+## V18.06 — 2026-10-04
+
+Align route isolation with React Router's case-insensitive walkthrough matching so case or encoded path variants cannot bypass the demo API and WebSocket guards.
+
+## V18.05 — 2026-10-04
+
+Keep the walkthrough explicitly disabled when site maintenance ends, including sites where maintenance was already active before walkthrough gating was deployed.
+
+## V18.04 — 2026-10-04
+
+Keep the walkthrough unavailable and visibly off during site-wide maintenance; prevent enabling it until maintenance is cleared, then require the admin to enable it manually.
+
+## V18.03 — 2026-10-04
+
+Fixed persistence for the Site walkthrough toggle, made site-wide maintenance turn the walkthrough off until an admin explicitly re-enables it, and populated the preview with four realistic fictional Market Intelligence items and four sample alerts.
+
+## V18.02 — 2026-10-04
+
+Moved the public walkthrough switch from Admin configuration into the header's Admin Settings menu, added a branded no-market-data maintenance screen when the preview is disabled, and populated the isolated walkthrough with labelled Desk AI sample context and stable-cadence strike alerts.
+
+## V18.01 — 2026-10-03
+
+Made the public walkthrough's fictional indices, OI, option premiums, positions, and straddles move coherently during NSE market hours. The demo follows regular 09:15–15:30 IST sessions and listed special-session hours, reuses the prior session close outside market hours, and refreshes demo index quotes more frequently without changing normal dashboard polling.
+
+## V18.00 — 2026-10-03
+
+Added an anonymous `/sitewalkthrough` view of the real StrikLenz dashboard, backed by fictional sample fixtures and route-scoped in-memory writes. CAS and admin-only surfaces are excluded; the dashboard cannot reach market/account APIs, MongoDB, or broker services. Added an administrator toggle under Dashboard pages and public landing-page entry points.
+
 ## V17.13 — 2026-10-01
 
 Polished the Positions phone header into clear title, status, and warning-control rows, shortened the phone-only PositionMeter label to "PMeter," and tightened mobile sizing to prevent the Positions panel from overflowing its viewport. Desktop labels and all controls remain unchanged.

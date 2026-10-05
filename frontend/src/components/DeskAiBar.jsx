@@ -196,7 +196,7 @@ export default function DeskAiBar({
 
   if (!visible) return null;
 
-  const source = guide?.source === "llm" ? "AI" : "rules";
+  const source = guide?.sample ? "sample" : guide?.source === "llm" ? "AI" : "rules";
   const llmLive = source === "AI";
   const movers = filterCashHeavyMovers(outside?.movers || []);
   const briefing = (outside?.briefing || guide?.guide || "").trim();
@@ -218,13 +218,15 @@ export default function DeskAiBar({
       </span>
       <span
         className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${
-          llmLive
+          source === "sample"
+            ? "border-violet-300 bg-violet-50 text-violet-800 dark:bg-violet-950 dark:text-violet-200 dark:border-violet-800"
+            : llmLive
             ? "border-emerald-600 bg-emerald-600 text-white"
             : "border-slate-300 bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300"
         }`}
         data-testid="desk-ai-source"
       >
-        {llmLive ? "Live GPT" : "Rules"}
+        {source === "sample" ? "Sample" : llmLive ? "Live GPT" : "Rules"}
       </span>
       {askAi ? (
         <button

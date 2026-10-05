@@ -4,7 +4,7 @@ export const ADMIN_DIALOGS = [
   { id: "journal", label: "Trade journal" },
   { id: "error-log", label: "Error log" },
   { id: "api-configuration", label: "API configuration" },
-  { id: "admin-configs", label: "Admin Configs" },
+  { id: "admin-configs", label: "Admin configuration" },
   { id: "index-management", label: "Index management" },
   { id: "desk-ai-keys", label: "Desk AI keys" },
   { id: "market-intel", label: "Market Intel settings" },

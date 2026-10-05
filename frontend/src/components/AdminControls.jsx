@@ -325,7 +325,10 @@ export default function AdminControls({
       const { data } = await api.post("/auth/maintenance", { enabled: !!enabled });
       setState((prev) => ({ ...(prev || {}), is_admin: true, maintenance_mode: !!data?.maintenance_mode }));
       window.dispatchEvent(new CustomEvent("oi-maintenance-state", {
-        detail: { maintenance_mode: !!data?.maintenance_mode },
+        detail: {
+          maintenance_mode: !!data?.maintenance_mode,
+          sitewalkthrough_enabled: data?.sitewalkthrough_enabled,
+        },
       }));
       toast.success(enabled ? "Maintenance mode enabled" : "Desk is live again");
     } catch (e) {

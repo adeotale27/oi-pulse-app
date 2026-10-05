@@ -53,14 +53,16 @@ function ErrorLogBadge({ count }) {
   );
 }
 
-function AdminToggleTile({ label, on, onChange, testId, className = "" }) {
+function AdminToggleTile({ label, on, onChange, testId, className = "", disabled = false }) {
   return (
     <button
       type="button"
       aria-pressed={!!on}
+      disabled={disabled}
       onClick={() => onChange?.(!on)}
-      className={`flex min-h-9 items-center justify-between gap-1.5 rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-left text-[10px] font-medium cursor-pointer dark:border-slate-700 dark:bg-slate-900 ${className}`}
+      className={`flex min-h-9 items-center justify-between gap-1.5 rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-left text-[10px] font-medium ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} dark:border-slate-700 dark:bg-slate-900 ${className}`}
       data-testid={testId}
+      title={disabled ? "Unavailable while site maintenance is active" : undefined}
     >
       <span className="truncate text-[10px] font-medium">{label}</span>
       <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${on ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
@@ -172,6 +174,7 @@ function HeaderTodayPnl({ enabled, status: _status, pollMs: _pollMs = 30_000, cl
 export { HeaderTodayPnl };
 
 export default function Header({
+  demoMode = false,
   status,
   current,
   dataStatus,
@@ -207,6 +210,9 @@ export default function Header({
   publicAccessOpen = null,
   publicLandingEnabled = false,
   onTogglePublicLanding,
+  siteWalkthroughEnabled = true,
+  siteWalkthroughDisabled = false,
+  onToggleSiteWalkthrough,
   /** Slim one-line index + VIX/GIFT rail instead of tall ticker tiles. */
   headerRail = false,
   onToggleHeaderRail,
@@ -247,7 +253,7 @@ export default function Header({
       if (data) setAuthState(data);
     }, []);
     const load = async () => {
-      if (assumedAdmin) return;
+      if (assumedAdmin || demoMode) return;
       try {
         const { data } = await api.get("/auth/state");
         apply(data);
@@ -255,7 +261,7 @@ export default function Header({
         console.error("[Header] auth_state fetch failed", err);
       }
     };
-    useQuiescentAwarePolling(load, 60_000, [assumedAdmin], {
+    useQuiescentAwarePolling(load, 60_000, [assumedAdmin, demoMode], {
       immediate: false,
       allowDuringQuiescent: true,
       dedupeKey: "header-auth",
@@ -281,12 +287,12 @@ export default function Header({
   }, [assumedAdmin, publicAccessOpen, publicLandingEnabled]);
 
   // Dev override: allow forcing admin UI without X-Admin-Token for local debugging.
-  const devForce = (typeof window !== "undefined") && (process.env.NODE_ENV !== "production") && (
+  const devForce = !demoMode && (typeof window !== "undefined") && (process.env.NODE_ENV !== "production") && (
     localStorage.getItem("oi_dev_force_admin") === "1" || sessionStorage.getItem("oi_dev_force_admin") === "1"
   );
   // Guests never see Admin/Kite. Prefer Dashboard's assumedAdmin; never promote guests.
-  const isGuestUser = !!authState.is_guest && !assumedAdmin;
-  const isAdmin = !isGuestUser && (devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest));
+  const isGuestUser = !demoMode && !!authState.is_guest && !assumedAdmin;
+  const isAdmin = !demoMode && !isGuestUser && (devForce || !!assumedAdmin || (!!authState.is_admin && !authState.is_guest));
   const showHeaderPnl = isAdmin;
   const [errorUnseen, setErrorUnseen] = useState(0);
 
@@ -435,7 +441,7 @@ export default function Header({
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const openAdminSheet = (fn) => {
     // Unmount the tools scrim (z-90) before the dialog (z-80) opens, otherwise
-    // the phone shows a blur with Admin tools still on top and no sheet.
+    // the phone shows a blur with Admin Settings still on top and no sheet.
     flushSync(() => {
       setMobileToolsOpen(false);
       setAdminMenuOpen(false);
@@ -689,7 +695,7 @@ export default function Header({
         >
           <div className="col-span-3 flex w-full items-center justify-between gap-2 px-0.5">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
-              Admin tools
+              Admin Settings
             </div>
             <button
               type="button"
@@ -706,6 +712,14 @@ export default function Header({
             on={casIepPopup}
             onChange={onToggleCasIepPopup}
             testId="mobile-toggle-iep-popup"
+          />
+          <AdminToggleTile
+            label="Site walkthrough"
+            on={siteWalkthroughEnabled}
+            onChange={siteWalkthroughDisabled ? undefined : onToggleSiteWalkthrough}
+            disabled={siteWalkthroughDisabled}
+            testId="btn-mobile-site-walkthrough"
+            className="w-full"
           />
           <AdminToggleTile
             label="Public"
@@ -1035,15 +1049,15 @@ export default function Header({
                   data-testid="btn-admin-menu"
                   size="sm"
                   className="rounded-sm bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm h-8"
-                  title="Admin tools"
+                  title="Admin Settings"
                 >
                   <Shield className="w-4 h-4 mr-1.5" />
-                  Admin
+                  Admin Settings
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-60 z-[100] border-emerald-200 bg-white shadow-2xl ring-1 ring-emerald-700/15" data-testid="admin-tools-menu">
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-500">
-                  Desk tools
+                  Admin settings
                 </DropdownMenuLabel>
                 <DropdownMenuItem
                   data-testid="menu-open-platform-settings"
@@ -1071,6 +1085,15 @@ export default function Header({
                   data-testid="menu-toggle-iep-popup"
                 >
                   Indicative price popup
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={!!siteWalkthroughEnabled}
+                  onCheckedChange={(ck) => onToggleSiteWalkthrough?.(!!ck)}
+                  onSelect={(e) => e.preventDefault()}
+                  disabled={siteWalkthroughDisabled}
+                  data-testid="menu-toggle-site-walkthrough"
+                >
+                  {siteWalkthroughDisabled ? "Site walkthrough (maintenance)" : "Site walkthrough"}
                 </DropdownMenuCheckboxItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -1126,7 +1149,7 @@ export default function Header({
                   }}
                 >
                   <Settings2 className="w-4 h-4" />
-                  Admin Configs
+                  Admin configuration
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   data-testid="menu-open-index-manager"
@@ -1282,13 +1305,21 @@ export default function Header({
           className="relative z-[50] hidden grid-cols-3 gap-2.5 border-t border-emerald-200 bg-white px-3 pb-3 pt-2 shadow-lg ring-1 ring-emerald-700/15 dark:border-emerald-800 dark:bg-slate-900 md:grid [&>button]:w-full [&>button]:min-w-0 [&>button]:justify-center [&>button]:text-[11px]"
         >
           <div className="col-span-3 w-full px-0.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-            Admin tools
+            Admin Settings
           </div>
           <IepPopupSwitch
             className="w-full"
             on={casIepPopup}
             onChange={onToggleCasIepPopup}
             testId="tablet-toggle-iep-popup"
+          />
+          <AdminToggleTile
+            label="Site walkthrough"
+            on={siteWalkthroughEnabled}
+            onChange={siteWalkthroughDisabled ? undefined : onToggleSiteWalkthrough}
+            disabled={siteWalkthroughDisabled}
+            testId="btn-tablet-site-walkthrough"
+            className="w-full"
           />
           <AdminToggleTile
             label="Public landing"
@@ -1309,7 +1340,7 @@ export default function Header({
           </Button>
           <Button data-testid="btn-tablet-settings" variant="outline" size="sm" className="rounded-sm" onClick={() => openAdminSheet(onOpenSettings)}>
             <Settings2 className="w-4 h-4 mr-1.5" />
-            Admin Configs
+            Admin configuration
           </Button>
           <Button
             data-testid="btn-tablet-index-manager"

@@ -6,7 +6,7 @@ import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
 import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload, readMiFeedCache, writeMiFeedCache } from "@/lib/marketIntel";
 import { todayIST } from "@/lib/holidays";
 
-export default function MarketIntelPage({ compact = false, isAdmin = false }) {
+export default function MarketIntelPage({ compact = false, isAdmin = false, demoMode = false }) {
   const [filt, setFilt] = useState("all");
   const [items, setItems] = useState([]);
   const [prefs, setPrefs] = useState(null);
@@ -62,7 +62,7 @@ export default function MarketIntelPage({ compact = false, isAdmin = false }) {
     }
 
     const gen = ++feedGen.current;
-    const cached = readMiFeedCache(selectedDate, filt);
+    const cached = demoMode ? null : readMiFeedCache(selectedDate, filt);
     if (cached) {
       setItems(cached);
       setErr(null);
@@ -72,7 +72,7 @@ export default function MarketIntelPage({ compact = false, isAdmin = false }) {
       const r = await api.get("/market-intel", { params: { filter: filt, date: selectedDate }, timeout: 25000 });
       if (gen !== feedGen.current) return;
       const next = r.data?.items || [];
-      writeMiFeedCache(selectedDate, filt, next);
+      if (!demoMode) writeMiFeedCache(selectedDate, filt, next);
       setItems(next);
       setErr(null);
     } catch (e) {
@@ -81,7 +81,7 @@ export default function MarketIntelPage({ compact = false, isAdmin = false }) {
     } finally {
       if (gen === feedGen.current) setLoading(false);
     }
-  }, [filt, selectedDate, minDate, maxDate, configLoaded]);
+  }, [filt, selectedDate, minDate, maxDate, configLoaded, demoMode]);
 
   useEffect(() => {
     let cancelled = false;

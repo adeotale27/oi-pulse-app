@@ -1,6 +1,6 @@
 import { Component } from "react";
 import { APP_NAME } from "@/lib/appVersion";
-import { reportDeskError } from "@/lib/errorLog";
+import { recoverFromChunkLoad, reportDeskError } from "@/lib/errorLog";
 
 /** Keep the desk usable if a view throws — avoid a blank white screen. */
 export default class ErrorBoundary extends Component {
@@ -21,6 +21,7 @@ export default class ErrorBoundary extends Component {
         stack: err?.stack || "",
         source: "boundary",
       });
+      recoverFromChunkLoad(err?.message || String(err));
     } catch {
       /* noop */
     }

@@ -16,6 +16,7 @@ export default function DeskAiMobileSheet({
   showDeskAi,
   onDeskAiChange,
   isAdmin = false,
+  demoMode = false,
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -40,17 +41,17 @@ export default function DeskAiMobileSheet({
           </DialogDescription>
         </DialogHeader>
         <div className="flex-1 min-h-0 overflow-y-auto">
-          {showDeskAi && isAdmin ? (
+          {showDeskAi && (isAdmin || demoMode) ? (
             <DeskAiBar
               activeIndex={activeIndex}
               visible
               askAi
               variant="panel"
-              isAdmin
+              isAdmin={isAdmin}
             />
           ) : (
             <p className="text-sm text-slate-600 px-1 py-6">
-              {isAdmin
+              {isAdmin || demoMode
                 ? "Turn Desk AI on to load the tape."
                 : "Desk AI is admin-only so the public desk does not show our book."}
             </p>

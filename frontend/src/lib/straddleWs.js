@@ -1,5 +1,10 @@
 // Lightweight reconnection wrapper for Straddle WebSocket
+import { isSiteWalkthroughPath } from "@/lib/siteWalkthroughApi";
+
 export function connectStraddleWS(index, opts = {}, onMessage, onOpen, onClose, options = {}) {
+  if (isSiteWalkthroughPath()) {
+    return { stop: () => {}, isStarted: () => false };
+  }
   const { allowDuringQuiescent = false } = options;
   let urlOrigin = "";
   try {

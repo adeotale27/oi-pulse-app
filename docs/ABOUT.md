@@ -17,9 +17,32 @@ Stack: **React (CRA/craco) + FastAPI + Motor/MongoDB + Kite Connect**.
 | **Guest** | Public access ON; full name required. If **Require approval** is ON (default), Access Control must approve every new access request. A lost/expired token requires a fresh request; an IP address or display name never restores access. If approval is OFF, a guest session is minted immediately | `X-Guest-Token` |
 | **Blocked IP** | Admin can block/unblock IPs; blocked clients cannot enter as guest | — |
 
-Auth state: `GET /api/auth/state` (public flag, admin/guest flags, pending request count).
+Auth state: `GET /api/auth/state` (public flag, admin/guest flags, pending request count, and public walkthrough availability).
 
 Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_approval?: bool }` (admin). `require_approval` defaults **true** when unset. Guests are kicked when Public turns off. Access requests: list / approve / reject under `/api/auth/access-requests*`.
+
+### Public product walkthrough
+
+The frontend route **`/sitewalkthrough`** (including case variants) is an anonymous, public preview of the
+real Dashboard UI. A route-scoped Axios adapter supplies fictional sample data
+and contains all dashboard writes in memory; only the public `/auth/state`
+availability check reaches the backend. It never connects to Kite or reads
+real account/database data. CAS and every admin-only surface, including the
+trade journal, remain unavailable. The route can be enabled or disabled in
+the header **Admin Settings → Site walkthrough** toggle. Demo changes reset on
+refresh and are never broker orders, guest data, or saved records. Index quotes,
+OI, options, and straddles evolve together from a deterministic fictional clock
+during regular NSE sessions (09:15–15:30 IST, weekdays excluding full
+holidays); published special-session hours are followed when scheduled.
+Fictional Desk AI cash/news/breadth data and stable-cadence strike alerts are
+available in the preview and are explicitly labelled as samples. Outside
+trading hours market values remain at the prior session close. When the toggle
+is off, `/sitewalkthrough` displays the branded maintenance screen without
+requesting market data. The availability toggle is persisted with dashboard
+settings and is returned by the public auth-state endpoint used by the route.
+Enabling site-wide maintenance also turns the walkthrough off; returning the
+main site to live leaves the walkthrough disabled until an admin explicitly
+turns it back on.
 
 ---
 
@@ -30,7 +53,7 @@ Public toggle: `POST /api/auth/public-access` `{ open: true|false, require_appro
 |--------|------|-------|
 | GET | `/` | API hello + **product version** |
 | GET | `/health` `/ready` `/api/health` | K8s readiness — 200 without Kite/Yahoo |
-| GET | `/version` | Public `{ name, version, version_label }` (V5.01 …) |
+| GET | `/version` | Public `{ name, version, version_label }` for the current product release |
 | GET | `/status` | Mode (`kite`/`offline`), market hours, tracker health, `app_version` |
 | GET | `/admin/indices` `/search` `/inspect` | Admin: registry + Kite discovery |
 | POST | `/admin/indices/sync` `{name}/enable` `{name}/disable` | Admin: dump refresh + toggle (keeps history) |

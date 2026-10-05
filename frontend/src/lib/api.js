@@ -1,5 +1,6 @@
 import axios from "axios";
 import { shouldWipeTokensOn401 } from "@/lib/authBoot";
+import { isSiteWalkthroughPath, siteWalkthroughAdapter } from "@/lib/siteWalkthroughApi";
 
 export { apiDetail } from "@/lib/apiErrors";
 
@@ -30,15 +31,34 @@ export const INDEX_ADMIN_TIMEOUT_MS = 90000;
 let __inflightExtras = null;
 let __lastExtrasFetchAt = 0;
 let __extrasCache = null; // { data, fetchedAt }
+let __walkthroughExtrasInflight = null;
+let __walkthroughExtrasCache = null;
 const EXTRAS_CACHE_TTL_MS = 3000; // 3s cache to coalesce very rapid repeat callers
 
 // Singleton poller state
 let __extrasSubscribers = new Set();
 let __extrasPollerId = null;
 let __extrasPollMs = 30_000; // default poll interval
+let __walkthroughExtrasSubscribers = new Set();
+let __walkthroughExtrasPollerId = null;
+let __walkthroughExtrasStartTimer = null;
 
 export async function fetchExtras() {
   const now = Date.now();
+
+  if (isSiteWalkthroughPath()) {
+    if (__walkthroughExtrasCache && now - __walkthroughExtrasCache.fetchedAt < EXTRAS_CACHE_TTL_MS) {
+      return __walkthroughExtrasCache.data;
+    }
+    if (__walkthroughExtrasInflight) return __walkthroughExtrasInflight;
+    __walkthroughExtrasInflight = api.get("/tickers/extras").then((r) => {
+      __walkthroughExtrasCache = { data: r.data, fetchedAt: Date.now() };
+      return r.data;
+    }).finally(() => {
+      __walkthroughExtrasInflight = null;
+    });
+    return __walkthroughExtrasInflight;
+  }
 
   // Return cached data for very short TTL to avoid bursty duplicate requests
   if (__extrasCache && now - (__extrasCache.fetchedAt || 0) < EXTRAS_CACHE_TTL_MS) {
@@ -120,9 +140,52 @@ function __stopExtrasPoller() {
   if (process.env.NODE_ENV !== 'production') try { console.debug('[extrasPoller] stopped'); } catch (_) {}
 }
 
+function __startWalkthroughExtrasPoller(ms = 30_000) {
+  if (__walkthroughExtrasPollerId) return;
+  const load = async (source) => {
+    try {
+      const data = await fetchExtras();
+      __walkthroughExtrasSubscribers.forEach((subscriber) => {
+        try { subscriber(data, { source }); } catch (_) {}
+      });
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[walkthrough extras] sample fetch failed", error?.message || error);
+      }
+    }
+  };
+  load("init");
+  __walkthroughExtrasPollerId = setInterval(() => load("poll"), ms);
+}
+
+function __stopWalkthroughExtrasPoller() {
+  if (__walkthroughExtrasPollerId) clearInterval(__walkthroughExtrasPollerId);
+  if (__walkthroughExtrasStartTimer) clearTimeout(__walkthroughExtrasStartTimer);
+  __walkthroughExtrasPollerId = null;
+  __walkthroughExtrasStartTimer = null;
+}
+
 // Public: subscribe to extras updates. Returns an unsubscribe function.
 export function subscribeExtras(cb, options = {}) {
   const { immediate = true, pollMs = __extrasPollMs, delayMs = 0 } = options || {};
+  if (isSiteWalkthroughPath()) {
+    __walkthroughExtrasSubscribers.add(cb);
+    if (immediate && __walkthroughExtrasCache) {
+      try { cb(__walkthroughExtrasCache.data, { source: "walkthrough-cache" }); } catch (_) {}
+    }
+    if (delayMs > 0 && !__walkthroughExtrasPollerId && !__walkthroughExtrasStartTimer) {
+      __walkthroughExtrasStartTimer = setTimeout(() => {
+        __walkthroughExtrasStartTimer = null;
+        if (__walkthroughExtrasSubscribers.size) __startWalkthroughExtrasPoller(pollMs);
+      }, delayMs);
+    } else if (delayMs === 0) {
+      __startWalkthroughExtrasPoller(pollMs);
+    }
+    return () => {
+      __walkthroughExtrasSubscribers.delete(cb);
+      if (__walkthroughExtrasSubscribers.size === 0) __stopWalkthroughExtrasPoller();
+    };
+  }
   __extrasSubscribers.add(cb);
   if (delayMs > 0 && !__extrasPollerId) {
     setTimeout(() => {
@@ -226,6 +289,7 @@ export function clearAdminAuth({ clearRemember = false } = {}) {
 
 // Attach admin OR guest token (mutually exclusive — admin wins).
 api.interceptors.request.use((config) => {
+  if (isSiteWalkthroughPath()) return config;
   try {
     const at = authStorage.get("oi_admin_token");
     if (at) {
@@ -244,6 +308,13 @@ api.interceptors.request.use((config) => {
       } catch (_) {}
     }
   } catch (_) { /* ignore */ }
+  return config;
+});
+
+api.interceptors.request.use((config) => {
+  if (isSiteWalkthroughPath() && !config.skipSiteWalkthroughMock) {
+    config.adapter = siteWalkthroughAdapter;
+  }
   return config;
 });
 
@@ -282,6 +353,11 @@ export function invalidateConfigCache() {
 export function fetchConfig(opts = {}) {
   const force = !!opts.force;
   const now = Date.now();
+  if (isSiteWalkthroughPath()) {
+    return api
+      .get("/config", { timeout: 4000, params: force ? { _: now } : undefined })
+      .then((r) => r.data);
+  }
   if (!force && __configCache && now - __configCache.at < CONFIG_TTL_MS) {
     return Promise.resolve(__configCache.data);
   }
@@ -383,6 +459,9 @@ export const fetchStraddleHistory = (idx, minutes = 60, opts = {}) => {
   const params = { ...opts };
   if (minutes != null) params.minutes = minutes;
   const key = `${idx}|${params.minutes || ""}|${params.expiry || ""}|${params.date || ""}`;
+  if (isSiteWalkthroughPath()) {
+    return api.get(`/straddle/${idx}/history`, { params, timeout: 20000 }).then((r) => r.data);
+  }
   const hit = __straddleHist.get(key);
   if (hit?.data && Date.now() - hit.at < STRADDLE_HIST_TTL_MS) return Promise.resolve(hit.data);
   if (hit?.inflight) return hit.inflight;

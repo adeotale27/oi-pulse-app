@@ -7,6 +7,30 @@ Before making any change, use the canonical
 frontend/backend file locations, comment rules, tests, documentation, version
 updates, and shipping steps for every AI or human agent.
 
+### Public product walkthrough
+
+The `/sitewalkthrough` route is an anonymous preview of the actual Dashboard,
+not a separate mock interface. `lib/siteWalkthroughApi.js` must intercept every
+dashboard request on that pathname with fictional fixtures and in-memory
+write handling; unknown fixtures must never fall through to live data. The
+only permitted backend request is the public `/auth/state` check used to
+respect the administrator's walkthrough toggle. Keep CAS, admin controls, and
+the real trade journal hidden, and keep spot/straddle WebSockets disabled.
+Label all values as fictional sample data. Edits must reset on refresh and
+must never reach MongoDB, account data, or broker services.
+The sample indices, OI, option premiums, and straddles share a deterministic
+clock, evolve only during NSE sessions (regular 09:15–15:30 IST, excluding
+weekends and full holidays; published special sessions follow their listed
+hours), and freeze at the prior session close otherwise. Keep the walkthrough's
+faster refresh cadence isolated from normal dashboard polling.
+Desk AI cash movers, breadth, news, and the rule-based brief must come from
+fictional fixtures; sample strike alerts use stable 90-second IDs so dashboard
+polls produce occasional in-app notifications rather than repeated toasts.
+Clearly mark these as samples and do not issue sound/browser notifications for
+them. The administrator controls availability from **Header → Admin Settings →
+Site walkthrough**, not Admin configuration. When disabled, render the branded
+maintenance screen and do not mount the dashboard or fetch market data.
+
 The Positions phone header keeps the page title, position status, and warning
 controls on separate compact rows. Its PositionMeter entry is labeled "PMeter"
 on phone widths and retains the full name on larger screens. Keep mobile chrome

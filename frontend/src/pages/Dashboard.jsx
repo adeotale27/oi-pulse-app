@@ -63,7 +63,9 @@ import {
   loadTileOrder,
   saveTileOrder,
 } from "@/lib/tabOrder";
-import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide } from "@/lib/metricGuides";
+import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide, dealerGammaGuide } from "@/lib/metricGuides";
+import { computeDealerGamma, formatGexExposure } from "@/lib/sellCandidates";
+import { yearsToExpiry } from "@/lib/blackScholes";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight, Play, HelpCircle, Bell } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
@@ -85,7 +87,7 @@ import { useHugeShiftMonitor } from "@/hooks/useHugeShiftMonitor";
 import { loadOISettings } from "@/lib/oiSettings";
 import { playForAlert, unlockSounds } from "@/lib/sounds";
 import { flushHiddenAlerts, surfaceAlert } from "@/lib/alertSurface";
-import { applyUploadedHolidays, isTradingDayIST, nextTradingDayIST, todayIST } from "@/lib/holidays";
+import { applyUploadedHolidays, isTradingDayIST, nextTradingDayIST, specialSessionOpenMinute, todayIST } from "@/lib/holidays";
 import { hugeShiftToastCopy, oiBoardAlertCopy, oiPctCopy, oiPressureCopy } from "@/lib/oiAlertCopy";
 
 import { DESK_IDS, INDEX_STEP, normalizeEnabledIndices, isMcxMajorId } from "@/lib/universe";
@@ -118,6 +120,11 @@ const DASHBOARD_PAGES = [
 // frontend-side alert on each data-pull for the currently viewed timeframe.
 const ALERT_INTENSITY = 0.35;
 const NOTIF_LS = "oiDeskNotif";
+const WALKTHROUGH_PAGES = [
+  "oi-change", "open-interest", "strike-table", "sell-candidates", "buildup",
+  "positions", "alerts", "activity", "holidays", "straddle", "index-events",
+  "market-intel", "adrs",
+];
 
 function loadNotifEnabled() {
   try {
@@ -231,7 +238,7 @@ function resolveMinutes(tf) {
   return Number(tf) || 15;
 }
 
-export default function Dashboard() {
+export default function Dashboard({ demoMode = false }) {
   const [activeIndex, setActiveIndex] = useState(() => {
     try {
       const day = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", weekday: "short" }).format(new Date());
@@ -243,7 +250,11 @@ export default function Dashboard() {
   const [previous, setPrevious] = useState(null);
   const [status, setStatus] = useState(null);
   const [showMarketMemory, setShowMarketMemory] = useState(true);
+  const [siteWalkthroughEnabled, setSiteWalkthroughEnabled] = useState(true);
   const [authState, setAuthState] = useState(() => {
+    if (demoMode) {
+      return { is_admin: false, is_guest: false, guest_name: null, admin_display_name: null };
+    }
     try {
       const last = typeof window !== "undefined" ? window.__oi_last_auth_state : null;
       if (last && typeof last === "object") return last;
@@ -285,8 +296,8 @@ export default function Dashboard() {
   const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
   const [pulsePull, setPulsePull] = useState(false); // green flash on each fresh pull
   const [oiSettings, setOiSettings] = useState(loadOISettings());
-  const [visiblePages, setVisiblePages] = useState(BOOT_VISIBLE_PAGES);
-  const [adminVisiblePages, setAdminVisiblePages] = useState(BOOT_VISIBLE_PAGES);
+  const [visiblePages, setVisiblePages] = useState(demoMode ? WALKTHROUGH_PAGES : BOOT_VISIBLE_PAGES);
+  const [adminVisiblePages, setAdminVisiblePages] = useState(demoMode ? [] : BOOT_VISIBLE_PAGES);
   const [pagesReady, setPagesReady] = useState(false);
   const [tabOrder, setTabOrder] = useState(() => loadTabOrder());
   const [tileOrder, setTileOrder] = useState(() => loadTileOrder());
@@ -430,6 +441,10 @@ export default function Dashboard() {
   const [replayJumpTs, setReplayJumpTs] = useState(null);
   const clearReplayJump = useCallback(() => setReplayJumpTs(null), []);
   useEffect(() => {
+    if (demoMode) {
+      setGlobalMarketsEnabled(true);
+      return undefined;
+    }
     let live = true;
     api.get("/global-markets/status", { timeout: 5000 })
       .then(({ data }) => { if (live) setGlobalMarketsEnabled(data?.enabled !== false); })
@@ -439,7 +454,7 @@ export default function Dashboard() {
     };
     window.addEventListener("global-markets-config-saved", onSaved);
     return () => { live = false; window.removeEventListener("global-markets-config-saved", onSaved); };
-  }, []);
+  }, [demoMode]);
   useEffect(() => {
     const openFilteredErrorLog = (event) => {
       setErrorLogSource(event?.detail?.source || "");
@@ -447,7 +462,7 @@ export default function Dashboard() {
     };
     window.addEventListener("oi-open-error-log", openFilteredErrorLog);
     return () => window.removeEventListener("oi-open-error-log", openFilteredErrorLog);
-  }, []);
+  }, [demoMode]);
   useEffect(() => {
     if (!replayOpen) setReplayFrame(null);
   }, [replayOpen]);
@@ -671,6 +686,7 @@ export default function Dashboard() {
     || !!status?.has_kite_credentials
     || !!status?.kite_ok;
   const startUserKite = async () => {
+    if (demoMode) return;
     try {
       const data = await userKiteLoginUrl();
       const href = safeHttpUrl(data?.login_url);
@@ -702,6 +718,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (demoMode) return undefined;
     let stopped = false;
     let conn;
     const t = setTimeout(() => {
@@ -772,7 +789,7 @@ export default function Dashboard() {
       clearTimeout(t);
       try { conn?.stop(); } catch (_) { /* noop */ }
     };
-  }, [status]);
+  }, [status, demoMode]);
 
   const tabOn = useCallback(
     (id) => id !== "adrs" && pageAllowed(id, {
@@ -926,6 +943,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (demoMode) return undefined;
     if (typeof window === "undefined") return undefined;
     const qs = new URLSearchParams(window.location.search);
     const token = qs.get("request_token");
@@ -950,9 +968,10 @@ export default function Dashboard() {
       }
     })();
     return () => { cancelled = true; };
-  }, [authState.is_admin, authState.is_guest, loadStatus]);
+  }, [authState.is_admin, authState.is_guest, loadStatus, demoMode]);
 
   useEffect(() => {
+    if (demoMode) return undefined;
     if (typeof window === "undefined") return undefined;
     const qs = new URLSearchParams(window.location.search);
     if (qs.get("kite") !== "connected") return undefined;
@@ -964,7 +983,7 @@ export default function Dashboard() {
     refreshPositionsBook().catch(() => {});
     loadStatus();
     return undefined;
-  }, [loadStatus]);
+  }, [loadStatus, demoMode]);
 
   const [historyReady, setHistoryReady] = useState(true);
   const [availableHistoryMin, setAvailableHistoryMin] = useState(0);
@@ -1285,6 +1304,7 @@ export default function Dashboard() {
 
   // Load expiries for the active index (hydrate from warm cache when available).
   useEffect(() => {
+    if (demoMode) return undefined;
     let cancelled = false;
     const cached = expiryByIndexRef.current[activeIndex];
     if (cached?.selected || cached?.fetched) {
@@ -1309,7 +1329,7 @@ export default function Dashboard() {
       if (!cancelled) setExpiryReady(true); // allow unscoped fetch as fallback
     });
     return () => { cancelled = true; };
-  }, [activeIndex, ensureExpiryForIndex]);
+  }, [activeIndex, ensureExpiryForIndex, demoMode]);
 
   const handleChangeExpiry = async (exp) => {
     setSelectedExpiry(exp);
@@ -1380,20 +1400,24 @@ export default function Dashboard() {
           windowLabel: winLabel,
           strikes: a.strikes,
         });
+        const isDemoSample = demoMode && a.sample === true;
         surfaceAlert({
           toastFn,
           variant: isBullish ? "success" : "error",
-          title,
-          description: desc || [
+          title: isDemoSample ? `Sample · ${title}` : title,
+          description: isDemoSample
+            ? `Illustrative walkthrough alert · ${desc || a.direction || "OI move"}`
+            : desc || [
             a.index,
             a.direction,
             a.price != null ? `Price ${Number(a.price).toFixed(2)}` : null,
             a.atm != null ? `ATM ${a.atm}` : null,
           ].filter(Boolean).join(" · "),
           duration: 8000,
-          soundKind: "reversal",
-          playSound: playForAlert,
-          pushFn: push,
+          // Sample alerts stay inside the app and cannot masquerade as live push or sound alerts.
+          soundKind: isDemoSample ? undefined : "reversal",
+          playSound: isDemoSample ? undefined : playForAlert,
+          pushFn: isDemoSample ? undefined : push,
           pushTitle: `OI Reversal · ${a.index}`,
           pushBody: a.direction || a.message || "OI alert",
         });
@@ -1405,7 +1429,7 @@ export default function Dashboard() {
     } catch (e) {
       console.error("loadAlerts failed", e);
     }
-  }, [push, nseLive, status]);
+  }, [push, nseLive, status, demoMode]);
 
   const loadTickers = useCallback(async () => {
     try {
@@ -1451,6 +1475,12 @@ export default function Dashboard() {
       console.error("loadTickers failed", e);
     }
   }, []);
+  // Seed demo header data immediately instead of waiting for closed-market polling.
+  useEffect(() => {
+    if (!demoMode) return;
+    loadTickers();
+    loadAlerts();
+  }, [demoMode, loadAlerts, loadTickers]);
 
   // ---- Straddle + Positions poll intervals (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(15000); // until /config: then straddle_poll_interval_seconds
@@ -1497,6 +1527,9 @@ export default function Dashboard() {
     }
     if (Array.isArray(d.visible_pages)) setVisiblePages(sanitizePageList(d.visible_pages));
     if (Array.isArray(d.admin_visible_pages)) setAdminVisiblePages(sanitizePageList(d.admin_visible_pages));
+    if (typeof d.sitewalkthrough_enabled === "boolean") {
+      setSiteWalkthroughEnabled(d.sitewalkthrough_enabled);
+    }
     if (Array.isArray(d.enabled_indices) && d.enabled_indices.length) {
       const next = normalizeEnabledIndices(d.enabled_indices, !!d.mcx_desk_on);
       setEnabledIndices(next);
@@ -1562,15 +1595,47 @@ export default function Dashboard() {
     }
   }, [applyServerSettings]);
 
+  const toggleSiteWalkthrough = useCallback(async (enabled) => {
+    const previous = siteWalkthroughEnabled;
+    setSiteWalkthroughEnabled(enabled);
+    try {
+      // Save only this admin setting; anonymous walkthrough availability is checked by /auth/state.
+      await api.post("/settings", { sitewalkthrough_enabled: enabled });
+      invalidateConfigCache();
+      toast.success(`Site walkthrough ${enabled ? "enabled" : "disabled"}`);
+    } catch (error) {
+      setSiteWalkthroughEnabled(previous);
+      toast.error(error?.response?.data?.detail || "Could not update the site walkthrough");
+    }
+  }, [siteWalkthroughEnabled]);
+
+  useEffect(() => {
+    const onMaintenanceState = (event) => {
+        const details = event.detail || {};
+        if (typeof details.sitewalkthrough_enabled === "boolean") {
+          setSiteWalkthroughEnabled(details.sitewalkthrough_enabled && details.maintenance_mode !== true);
+        } else if (details.maintenance_mode === true) {
+          setSiteWalkthroughEnabled(false);
+        }
+        if (typeof details.maintenance_mode === "boolean") {
+          setAuthState((current) => ({ ...current, maintenance_mode: details.maintenance_mode }));
+        }
+        invalidateConfigCache();
+      };
+    window.addEventListener("oi-maintenance-state", onMaintenanceState);
+    return () => window.removeEventListener("oi-maintenance-state", onMaintenanceState);
+  }, []);
+
   // Boot: pull /config once so poll interval is correct before first OI tick.
   useEffect(() => {
     fetchConfig().then((data) => {
       applyServerSettings(data || {});
     }).catch(() => { setPagesReady(true); });
-  }, [applyServerSettings]);
+  }, [applyServerSettings, demoMode]);
 
   // Auth state — AuthGate already fetched; listen, then refresh later (no boot stampede).
   useEffect(() => {
+    if (demoMode) return undefined;
     let cancelled = false;
     const refreshAuth = async () => {
       try {
@@ -1605,7 +1670,7 @@ export default function Dashboard() {
       window.removeEventListener("oi-admin-auth-state", onState);
       window.removeEventListener("oi-admin-open-indices", onIndices);
     };
-  }, []);
+  }, [demoMode]);
 
   useEffect(() => {
     const onSaved = (e) => applyServerSettings(e?.detail);
@@ -1615,13 +1680,16 @@ export default function Dashboard() {
 
   useQuiescentAwarePolling(fetchSettings, 60000, [fetchSettings, status?.market?.is_market_open], { status, dedupeKey: "dash-settings", delayMs: 8000 });
 
-  // Status polling stops after close. A single pre-open wake-up lets the
-  // browser observe the 09:00 live/pre-market transition without polling
-  // throughout the overnight period.
+  // Status polling stops after close. Wake the demo at its actual session open;
+  // normal desks retain the existing 09:00 pre-market wake-up.
   useEffect(() => {
     const now = new Date();
     const today = todayIST();
     const tradingDate = isTradingDayIST(today) ? today : nextTradingDayIST(today);
+    const regularWakeMinute = demoMode ? 9 * 60 + 15 : 9 * 60;
+    const todayOpenMinute = demoMode
+      ? (specialSessionOpenMinute(today) ?? regularWakeMinute)
+      : regularWakeMinute;
     const parts = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Kolkata",
       hour: "2-digit",
@@ -1630,13 +1698,18 @@ export default function Dashboard() {
     }).formatToParts(now);
     const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
     const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
-    const todayPreOpen = tradingDate === today && hour * 60 + minute < 9 * 60;
+    const todayPreOpen = tradingDate === today && hour * 60 + minute < todayOpenMinute;
     const targetDate = todayPreOpen ? today : nextTradingDayIST(today);
-    const target = new Date(`${targetDate}T03:30:00.000Z`); // 09:00 IST
+    const targetOpenMinute = demoMode
+      ? (specialSessionOpenMinute(targetDate) ?? regularWakeMinute)
+      : regularWakeMinute;
+    const targetHour = String(Math.floor(targetOpenMinute / 60)).padStart(2, "0");
+    const targetMinute = String(targetOpenMinute % 60).padStart(2, "0");
+    const target = new Date(`${targetDate}T${targetHour}:${targetMinute}:00+05:30`);
     const delay = Math.max(0, target.getTime() - Date.now());
     const id = window.setTimeout(() => loadStatus(), delay);
     return () => window.clearTimeout(id);
-  }, [loadStatus, status?.market?.is_market_open]);
+  }, [demoMode, loadStatus, status?.market?.is_market_open]);
 
   useQuiescentAwarePolling(loadStatus, 15000, [loadStatus], { status, dedupeKey: "dash-status", delayMs: 800 });
   const oiStatus = status
@@ -1666,7 +1739,8 @@ export default function Dashboard() {
     if (expiryCaughtUp) return;
     loadOI();
   }, [timeframe, activeIndex, selectedExpiry, loadOI]);
-  useQuiescentAwarePolling(loadTickers, 60000, [loadTickers, status?.market?.is_market_open], { status, dedupeKey: "dash-tickers", delayMs: 2500, allowDuringQuiescent: true });
+  // The walkthrough only polls local fixtures, so keep its three sample indices visibly animated.
+  useQuiescentAwarePolling(loadTickers, demoMode ? 5000 : 60000, [loadTickers, status?.market?.is_market_open, demoMode], { status, dedupeKey: "dash-tickers", delayMs: 2500, allowDuringQuiescent: true });
   useQuiescentAwarePolling(
     async () => {
       await loadAlerts();
@@ -1933,6 +2007,19 @@ export default function Dashboard() {
       atmPeDelta, atmCeDelta, priceDeltaPct, score, label, tone,
     };
   }, [filteredCurrent, previous, changeSummary]);
+
+  const gexToday = useMemo(() => {
+    if (!current?.strikes?.length || !current?.price || !current?.expiry) return null;
+    const T = yearsToExpiry(current.expiry, Date.now());
+    if (!(T > 0)) return null;
+    return computeDealerGamma({
+      strikes: current.strikes,
+      spot: current.price,
+      T,
+      r: 0.065,
+      indexName: activeIndex,
+    });
+  }, [current, activeIndex]);
 
   // Configurable "OI Change" toast threshold — user-editable in the warming-up
   // banner (see below). Persisted in localStorage.
@@ -2375,6 +2462,12 @@ export default function Dashboard() {
 
   return (
     <div className="oi-shell relative h-[100dvh] max-h-[100dvh] flex flex-col overflow-hidden overscroll-none">
+      {demoMode && (
+        <div className="z-40 flex min-h-9 flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-center text-[11px] text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100">
+          <span className="rounded-full bg-amber-200 px-2 py-0.5 font-bold tracking-wide dark:bg-amber-900">PUBLIC DEMO</span>
+          <span>StrikLenz dashboard · fictional sample data · changes are temporary and reset on refresh</span>
+        </div>
+      )}
       {authState.is_guest && (
         <GuestBanner
           guestName={authState.guest_name}
@@ -2392,7 +2485,7 @@ export default function Dashboard() {
           lastPulledAt={lastPulledAt}
           status={status}
           isAdmin={!!authState.is_admin}
-          onOpenCreds={() => setCredsOpen(true)}
+          onOpenCreds={() => { if (!demoMode && authState.is_admin) setCredsOpen(true); }}
           mobileTicker={mobileIndexTicker}
           pollMs={pollMs}
         />
@@ -2408,26 +2501,32 @@ export default function Dashboard() {
           onOpenUpload={() => setUploadOpen(true)}
         />
       )}
-      <OvernightGapBrief
-        isAdmin={!!authState.is_admin}
-        indices={enabledIndices.length ? enabledIndices : INDICES}
-        vix={current?.vix || status?.vix}
-        activeIndex={activeIndex}
-        popupOpacity={popupOpacity.overnight}
-      />
+      {!demoMode && (
+        <OvernightGapBrief
+          isAdmin={!!authState.is_admin}
+          indices={enabledIndices.length ? enabledIndices : INDICES}
+          vix={current?.vix || status?.vix}
+          activeIndex={activeIndex}
+          popupOpacity={popupOpacity.overnight}
+        />
+      )}
       <CasIepPopup
-        enabled={!!casIepPopup && iepWindowOn}
+        enabled={!demoMode && !!casIepPopup && iepWindowOn}
         quotes={tickerQuotes}
         endLabel={casIepCfg.endIst}
         popupOpacity={popupOpacity.indicative}
       />
       <Header
+        demoMode={demoMode}
         status={status}
         current={current}
         dataStatus={dataStatus}
         assumedAdmin={!!authState.is_admin}
         publicAccessOpen={!!authState.public_access_open}
         publicLandingEnabled={!!authState.public_landing_enabled}
+        siteWalkthroughEnabled={siteWalkthroughEnabled}
+        siteWalkthroughDisabled={!!authState.maintenance_mode}
+        onToggleSiteWalkthrough={toggleSiteWalkthrough}
         onTogglePublicLanding={async (enabled) => {
           try {
             await api.post("/auth/public-landing", { enabled });
@@ -2770,6 +2869,36 @@ export default function Dashboard() {
                           />
                           <span>Show OI</span>
                         </label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              data-testid="btn-gex-levels"
+                              className="text-xs flex items-center gap-1.5 text-violet-600 hover:text-violet-700 hover:underline disabled:opacity-60 disabled:no-underline"
+                              disabled={!gexToday}
+                            >
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-violet-100 text-violet-700 font-bold text-[10px]">Γ</span>
+                              <span>GEX guide</span>
+                              {gexToday && (
+                                <span data-testid="gex-trigger-value" className="font-semibold text-violet-700">
+                                  {formatGexExposure(gexToday.gexLakhCrorePer1Pct)}
+                                </span>
+                              )}
+                            </button>
+                          </PopoverTrigger>
+                          {gexToday && (
+                            <PopoverContent align="start" className="max-h-[70vh] w-[calc(100vw-2rem)] max-w-[calc(100vw-1rem)] space-y-2 overflow-y-auto overscroll-contain p-3 text-xs text-slate-700 sm:max-h-[min(70vh,32rem)] sm:w-[360px]">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-semibold text-slate-900 text-sm">GEX guide · {activeIndex}</div>
+                              </div>
+                              {dealerGammaGuide(gexToday.gexLakhCrorePer1Pct, {
+                                byStrike: gexToday.byStrike,
+                                updatedAt: current?.timestamp,
+                                spot: current?.price,
+                                expiry: current?.expiry,
+                              })}
+                            </PopoverContent>
+                          )}
+                        </Popover>
                         <button
                           data-testid="btn-replay-change"
                           onClick={() => setReplayOpen((v) => !v)}
@@ -3245,7 +3374,7 @@ export default function Dashboard() {
 
                   {(tabOn("market-intel")) && (
                     <TabsContent value="market-intel" forceMount className={activeTab === "market-intel" ? "mt-0" : "hidden"}>
-                      <MarketIntelPage isAdmin={!!authState.is_admin} />
+                      <MarketIntelPage isAdmin={!!authState.is_admin} demoMode={demoMode} />
                     </TabsContent>
                   )}
                   {(tabOn("adrs")) && (
@@ -3307,6 +3436,7 @@ export default function Dashboard() {
                       onChangeView={setRightPanelView}
                       onClose={() => setRightPanelOpen(false)}
                       isAdmin={!!authState.is_admin}
+                      demoMode={demoMode}
                       visiblePages={visiblePages}
                       adminPages={adminVisiblePages}
                       hideMarketIntel={!tabOn("market-intel")}
@@ -3453,7 +3583,7 @@ export default function Dashboard() {
       )}
 
       <MarketIntelPopup
-        enabled={!!(authState.is_admin || authState.is_guest)}
+        enabled={demoMode || !!(authState.is_admin || authState.is_guest)}
         popupOpacity={popupOpacity.marketIntel}
         onOpenPage={() => {
           if (tabOn("market-intel")) setActiveTab("market-intel");
@@ -3465,6 +3595,7 @@ export default function Dashboard() {
         onOpenChange={setDeskAiMobileOpen}
         activeIndex={activeIndex}
         isAdmin={!!authState.is_admin}
+        demoMode={demoMode}
         showDeskAi={deskAiShow}
         onDeskAiChange={(next) => {
           if (typeof next?.show === "boolean") patchDeskAi({ desk_ai_show: next.show });
