@@ -14,7 +14,7 @@ The publisher Kite token polls the option chain on a cadence you set (15 / 30 / 
 
 | Surface | Why it is there |
 |---------|-----------------|
-| **OI Change** | Call vs Put OI delta vs a chosen lookback (1m … session), with a compact GEX guide, snapshot time, and estimated rupee hedging notional per 1% move in Indian units (watch areas, not support/resistance; dealer sign is an assumption) |
+| **OI Change** | Call vs Put OI delta vs a chosen lookback (1m … session), with a compact GEX guide, snapshot time, and estimated rupee hedging notional per 1% move in Indian units (watch areas, not support/resistance; dealer sign is an assumption). On phones, GEX opens in a short bottom sheet with the current reading and direction check first; thresholds and strike areas expand on demand. The separate up/down lean requires price, OI-change and dashboard-bias agreement; otherwise it says there is no clear direction. |
 | **Open Interest** | Strike bars, writer-defense map, last-pull truth |
 | **Strike Table** | Compact CE/PE grid with optional gamma / institution chips |
 | **Sell Candidates** | Strikes the desk treats as writer-friendly |

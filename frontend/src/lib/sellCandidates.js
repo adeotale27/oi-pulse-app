@@ -43,6 +43,9 @@ export function formatGexExposure(valueLakhCrore, decimals = 1) {
   return `${sign}₹${lakh.toLocaleString("en-IN", { maximumFractionDigits: 0 })} L`;
 }
 
+// Keep the former name available while browsers may still run a cached caller chunk.
+export const formatGexLakhCrore = formatGexExposure;
+
 // ---------------------------------------------------------------------------
 // Volatility smile: per-strike CE / PE IV, plus a smile-skew premium flag.
 // ---------------------------------------------------------------------------

@@ -72,6 +72,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { fetchOIChange, fetchAlerts, clearAlerts, fetchStatus, fetchVRP, fetchTickers, fetchConfig, invalidateConfigCache, api, completeUserKiteSession, userKiteLoginUrl, prefetchStraddleHistory } from "@/lib/api";
 import { friendlyKiteConnectError } from "@/lib/kiteConnectError";
 import { safeHttpUrl } from "@/lib/safeUrl";
@@ -291,6 +292,7 @@ export default function Dashboard({ demoMode = false }) {
   // decrease overlay. Flip to OFF to see ONLY the signed delta change bars around a y=0 baseline.
   const [showOI, setShowOI] = useState(true);
   const [replayOpen, setReplayOpen] = useState(false);
+  const [gexGuideOpen, setGexGuideOpen] = useState(false);
   const [lastPulledAt, setLastPulledAt] = useState(null);
   const [lastUpdatedByIndex, setLastUpdatedByIndex] = useState({});
   const [lastPullChange, setLastPullChange] = useState(null); // { ce, pe, at }
@@ -2020,6 +2022,17 @@ export default function Dashboard({ demoMode = false }) {
       indexName: activeIndex,
     });
   }, [current, activeIndex]);
+  const gexGuide = gexToday ? dealerGammaGuide(gexToday.gexLakhCrorePer1Pct, {
+    byStrike: gexToday.byStrike,
+    updatedAt: current?.timestamp,
+    spot: current?.price,
+    expiry: current?.expiry,
+    directionalScore: marketIntel?.score,
+    priceDeltaPct: marketIntel?.priceDeltaPct,
+    callOiChange: changeSummary?.ce,
+    putOiChange: changeSummary?.pe,
+    timeframeLabel,
+  }) : null;
 
   // Configurable "OI Change" toast threshold — user-editable in the warming-up
   // banner (see below). Persisted in localStorage.
@@ -2872,8 +2885,8 @@ export default function Dashboard({ demoMode = false }) {
                         <Popover>
                           <PopoverTrigger asChild>
                             <button
-                              data-testid="btn-gex-levels"
-                              className="text-xs flex items-center gap-1.5 text-violet-600 hover:text-violet-700 hover:underline disabled:opacity-60 disabled:no-underline"
+                              data-testid="btn-gex-levels-desktop"
+                              className="hidden sm:inline-flex text-xs items-center gap-1.5 text-violet-600 hover:text-violet-700 hover:underline disabled:opacity-60 disabled:no-underline"
                               disabled={!gexToday}
                             >
                               <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-violet-100 text-violet-700 font-bold text-[10px]">Γ</span>
@@ -2886,19 +2899,47 @@ export default function Dashboard({ demoMode = false }) {
                             </button>
                           </PopoverTrigger>
                           {gexToday && (
-                            <PopoverContent align="start" className="max-h-[70vh] w-[calc(100vw-2rem)] max-w-[calc(100vw-1rem)] space-y-2 overflow-y-auto overscroll-contain p-3 text-xs text-slate-700 sm:max-h-[min(70vh,32rem)] sm:w-[360px]">
+                            <PopoverContent
+                              align="center"
+                              collisionPadding={8}
+                              className="box-border min-w-0 w-[360px] max-w-[calc(100vw-1rem)] max-h-[min(70vh,32rem)] space-y-1.5 overflow-x-hidden overflow-y-auto overscroll-contain p-3 text-xs text-slate-700"
+                            >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="font-semibold text-slate-900 text-sm">GEX guide · {activeIndex}</div>
                               </div>
-                              {dealerGammaGuide(gexToday.gexLakhCrorePer1Pct, {
-                                byStrike: gexToday.byStrike,
-                                updatedAt: current?.timestamp,
-                                spot: current?.price,
-                                expiry: current?.expiry,
-                              })}
+                              {gexGuide}
                             </PopoverContent>
                           )}
                         </Popover>
+                        {gexToday && (
+                          <button
+                            type="button"
+                            data-testid="btn-gex-levels"
+                            className="sm:hidden inline-flex min-h-8 items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-violet-800 active:bg-violet-100"
+                            onClick={() => setGexGuideOpen(true)}
+                          >
+                            <span aria-hidden="true">Γ</span>
+                            <span>GEX</span>
+                            <span className="tabular-nums">{formatGexExposure(gexToday.gexLakhCrorePer1Pct)}</span>
+                          </button>
+                        )}
+                        {/* A bottom sheet avoids the chart-overlapping, anchor-positioned phone popover. */}
+                        <Dialog open={gexGuideOpen} onOpenChange={setGexGuideOpen}>
+                          <DialogContent
+                            overlayClassName="bg-black/25"
+                            className="hidden max-md:flex max-md:fixed max-md:inset-x-2 max-md:bottom-[calc(env(safe-area-inset-bottom)+3.5rem)] max-md:left-2 max-md:top-auto max-md:h-auto max-md:max-h-[min(52dvh,26rem)] max-md:w-auto max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:flex-col max-md:gap-2 max-md:overflow-hidden max-md:rounded-xl max-md:p-3"
+                          >
+                            <div className="shrink-0 border-b border-slate-200 pb-2 dark:border-slate-700">
+                              <DialogTitle className="text-sm">GEX · {activeIndex}</DialogTitle>
+                              <DialogDescription className="mt-1 text-[10px]">
+                                Move-speed estimate and separate direction check.
+                              </DialogDescription>
+                            </div>
+                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 text-xs">
+                              {gexGuide}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
                         <button
                           data-testid="btn-replay-change"
                           onClick={() => setReplayOpen((v) => !v)}

@@ -211,6 +211,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
 
   const onPointerDown = (e, kind) => {
     bringToFront();
+    if (isPhone() && minimized) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const startBottom = bottomPx != null ? bottomPx : dockClearance();
@@ -267,6 +268,9 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
   const item = n ? items[Math.min(idx, n - 1)] : null;
   const phoneOpen = typeof window !== "undefined" && isPhone();
   const posStyle = (() => {
+    if (phoneOpen && minimized) {
+      return { bottom: `${dockClearance()}px`, left: "auto", right: "12px" };
+    }
     const bottom = phoneOpen && !minimized
       ? `${dockClearance()}px`
       : (bottomPx != null ? `${bottomPx}px` : undefined);
@@ -313,7 +317,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        title="Open market news · drag to move"
+        title={phoneOpen ? "Open market news" : "Open market news · drag to move"}
         aria-label="Mkt Intel"
       >
         <Newspaper className="w-3.5 h-3.5 shrink-0" />

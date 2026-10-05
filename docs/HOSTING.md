@@ -179,7 +179,8 @@ Do **not** use GoDaddy’s parked/forwarding page. That breaks `/api`.
 
 React serves content-hashed JavaScript and CSS files. When a new build replaces
 those files while a browser or CDN still has an older `index.html`, users can
-get `ChunkLoadError` or CSS chunk errors. Configure every production host and
+get `ChunkLoadError`, CSS chunk errors, or a missing-export runtime error when
+chunks from different releases are combined. Configure every production host and
 CDN so that:
 
 - The app shell (`index.html`), including SPA-fallback responses such as
