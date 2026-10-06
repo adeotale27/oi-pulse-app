@@ -29,7 +29,7 @@ export default function PwaNotifyPrompt() {
     }
     const t = setTimeout(() => {
       toast.message("Turn on notifications for this Home Screen app", {
-        description: "Get OI reversal and huge-shift alerts while StrikLenz is on your phone.",
+        description: "Get high-impact Market Intel news, OI reversal, and huge-shift alerts while StrikLenz is on your phone.",
         duration: 16000,
         action: {
           label: "Enable",

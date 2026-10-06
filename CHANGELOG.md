@@ -1,5 +1,17 @@
 # Changelog
 
+## V18.21 — 2026-10-06
+
+Removed the deprecated TypeScript `baseUrl` setting from the frontend JavaScript project config while preserving the `@/` source alias.
+
+## V18.20 — 2026-10-06
+
+Kept the GEX guide available after expiry by calculating against the snapshot timestamp and, when that chain has expired, using the last valid snapshot from the same IST session. The retained reading is timestamped and does not carry directional confirmation from newer data.
+
+## V18.19 — 2026-10-06
+
+Added alerts for newly arriving impact-ranked Market Intel stories: an in-app toast while the desk is open and an OS notification when backgrounded if desk notifications are enabled. Existing queued headlines are baselined on first load to prevent stale alert bursts. Centered and enlarged the phone GEX sheet slightly, keeping a small edge margin.
+
 ## V18.18 — 2026-10-05
 
 Replaced the anchored phone GEX popover with a compact, viewport-bounded bottom sheet that stays above the mobile navigation, keeps the key reading and direction check first, scrolls supporting detail internally, and dismisses on outside tap. Desktop retains its anchored popover.

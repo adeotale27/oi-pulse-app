@@ -66,8 +66,19 @@ function clearMinimized() {
   try { localStorage.removeItem(MI_POPUP_MIN_KEY); } catch { /* noop */ }
 }
 
+export function collectNewMarketIntelItems(items, seenIds, hasBaseline) {
+  const newItems = [];
+  (Array.isArray(items) ? items : []).forEach((news) => {
+    const id = news.event_cluster_id;
+    if (!id || seenIds.has(id)) return;
+    seenIds.add(id);
+    if (hasBaseline) newItems.push(news);
+  });
+  return newItems;
+}
+
 /** In-app Market Intel sheet — same dock/minimize pattern as the overnight carry brief. */
-export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 92 }) {
+export default function MarketIntelPopup({ enabled, onOpenPage, onNewsAlert, popupOpacity = 92 }) {
   const [items, setItems] = useState([]);
   const [idx, setIdx] = useState(0);
   const [minimized, setMinimized] = useState(() => readMinimized());
@@ -78,11 +89,15 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
   const [leftPx, setLeftPx] = useState(() => readNum(MI_POPUP_LEFT_KEY));
   const [bottomPx, setBottomPx] = useState(() => readNum(MI_POPUP_BOTTOM_KEY));
   const idxRef = useRef(0);
+  const seenNewsIdsRef = useRef(new Set());
+  const hasInitialNewsRef = useRef(false);
+  const onNewsAlertRef = useRef(onNewsAlert);
   const dragRef = useRef(null);
   const boxRef = useRef(null);
   const skipClickRef = useRef(false);
   const { bringToFront, zIndexClass } = useFloatingDockFocus("market-intel", enabled);
   idxRef.current = idx;
+  onNewsAlertRef.current = onNewsAlert;
 
   const setLeft = (px) => {
     const w = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -138,6 +153,8 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
     if (!enabled) {
       setItems([]);
       setIdx(0);
+      seenNewsIdsRef.current.clear();
+      hasInitialNewsRef.current = false;
       return undefined;
     }
     let cancelled = false;
@@ -149,6 +166,13 @@ export default function MarketIntelPopup({ enabled, onOpenPage, popupOpacity = 9
           setLoadError(null);
           const next = r.data?.items || [];
           setDockUntilNext(r.data?.dock_until_next !== false);
+          const newItems = collectNewMarketIntelItems(next, seenNewsIdsRef.current, hasInitialNewsRef.current);
+          // The first response is the existing queue, not newly arriving news;
+          // baselining it avoids a burst of stale alerts on page load.
+          if (hasInitialNewsRef.current && newItems.length) {
+            onNewsAlertRef.current?.(newItems[0], newItems.length - 1);
+          }
+          hasInitialNewsRef.current = true;
           setItems((prev) => {
             const curId = prev[idxRef.current]?.event_cluster_id;
             const found = next.findIndex((x) => x.event_cluster_id === curId);

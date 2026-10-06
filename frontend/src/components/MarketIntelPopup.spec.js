@@ -1,6 +1,6 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import MarketIntelPopup from "./MarketIntelPopup";
+import MarketIntelPopup, { collectNewMarketIntelItems } from "./MarketIntelPopup";
 import { MI_POPUP_LEFT_KEY, MI_POPUP_MIN_KEY } from "@/lib/marketIntel";
 
 jest.mock("@/lib/api", () => ({
@@ -79,4 +79,14 @@ describe("MarketIntelPopup docking", () => {
     expect(chip.style.bottom).toBe("52px");
     expect(localStorage.getItem(MI_POPUP_LEFT_KEY)).toBe("140");
   });
+
+  it("suppresses the existing queue and returns each newly arriving Market Intel story once", () => {
+    const seenIds = new Set();
+    const previousStory = { event_cluster_id: "old-story", title: "Previously queued story", impact_band: "HIGH" };
+    const newStory = { event_cluster_id: "new-story", title: "New RBI announcement", impact_band: "CRITICAL" };
+    expect(collectNewMarketIntelItems([previousStory], seenIds, false)).toEqual([]);
+    expect(collectNewMarketIntelItems([newStory, previousStory], seenIds, true)).toEqual([newStory]);
+    expect(collectNewMarketIntelItems([newStory, previousStory], seenIds, true)).toEqual([]);
+  });
+
 });

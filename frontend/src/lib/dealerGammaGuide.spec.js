@@ -1,7 +1,12 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { dealerGammaGuide, formatGexSnapshotTime, getGexDirectionalRead } from "./metricGuides";
-import { computeDealerGamma, formatGexExposure, formatGexLakhCrore } from "./sellCandidates";
+import {
+  computeDealerGamma,
+  computeDealerGammaFromSnapshots,
+  formatGexExposure,
+  formatGexLakhCrore,
+} from "./sellCandidates";
 import { bsPrice } from "./blackScholes";
 
 describe("dealer gamma guide", () => {
@@ -66,6 +71,57 @@ describe("dealer gamma guide", () => {
     expect(container.textContent).toContain("₹0.5 L Cr means ₹50,000 crore");
   });
 
+  it("uses the last valid same-session GEX snapshot after expiry", () => {
+    const current = {
+      expiry: "2026-10-06",
+      price: 25000,
+      strikes: [{ strike: 25000, ce_oi: 100, pe_oi: 100, ce_ltp: 100, pe_ltp: 100 }],
+      timestamp: "2026-10-06T10:10:00.000Z",
+    };
+    const previous = {
+      ...current,
+      timestamp: "2026-10-06T09:55:00.000Z",
+    };
+
+    const result = computeDealerGammaFromSnapshots({ current, previous, indexName: "NIFTY" });
+
+    expect(result?.snapshot).toBe(previous);
+    expect(result?.isRetained).toBe(true);
+  });
+
+  it("does not use a previous-session GEX snapshot as an expiry fallback", () => {
+    const current = {
+      expiry: "2026-10-06",
+      price: 25000,
+      strikes: [{ strike: 25000, ce_oi: 100, pe_oi: 100, ce_ltp: 100, pe_ltp: 100 }],
+      timestamp: "2026-10-06T10:10:00.000Z",
+    };
+    const previous = {
+      ...current,
+      timestamp: "2026-10-05T10:10:00.000Z",
+    };
+
+    expect(computeDealerGammaFromSnapshots({ current, previous, indexName: "NIFTY" })).toBeNull();
+  });
+
+  it("keeps GEX unavailable when there is no current option-chain snapshot", () => {
+    expect(computeDealerGammaFromSnapshots({ current: null, previous: null, indexName: "NIFTY" })).toBeNull();
+  });
+
+  it("uses the current snapshot timestamp for post-market GEX", () => {
+    const current = {
+      expiry: "2026-10-13",
+      price: 25000,
+      strikes: [{ strike: 25000, ce_oi: 100, pe_oi: 100, ce_ltp: 100, pe_ltp: 100 }],
+      timestamp: "2026-10-06T10:10:00.000Z",
+    };
+
+    const result = computeDealerGammaFromSnapshots({ current, indexName: "NIFTY" });
+
+    expect(result?.snapshot).toBe(current);
+    expect(result?.isRetained).toBe(false);
+  });
+
   it("highlights no zone and explains unavailable readings", async () => {
     await act(async () => {
       root.render(dealerGammaGuide(null));
@@ -118,6 +174,19 @@ describe("dealer gamma guide", () => {
     });
 
     expect(container.textContent).toContain("Snapshot: time unavailable");
+  });
+
+  it("labels the expiry fallback as the last valid snapshot", async () => {
+    await act(async () => {
+      root.render(dealerGammaGuide(0.2, {
+        byStrike: [],
+        updatedAt: "2026-10-06T09:55:00.000Z",
+        snapshotLabel: "Last valid snapshot",
+      }));
+    });
+
+    expect(container.querySelector('[data-testid="gex-updated-at"]')?.textContent)
+      .toContain("Last valid snapshot:");
   });
 
   it("formats estimated rupee exposure in lakh, crore, and lakh-crore units", () => {

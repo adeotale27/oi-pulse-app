@@ -64,7 +64,7 @@ import {
   saveTileOrder,
 } from "@/lib/tabOrder";
 import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide, dealerGammaGuide } from "@/lib/metricGuides";
-import { computeDealerGamma, formatGexExposure } from "@/lib/sellCandidates";
+import { computeDealerGammaFromSnapshots, formatGexExposure } from "@/lib/sellCandidates";
 import { yearsToExpiry } from "@/lib/blackScholes";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight, Play, HelpCircle, Bell } from "lucide-react";
@@ -581,7 +581,6 @@ export default function Dashboard({ demoMode = false }) {
     if (!notifEnabled) return;
     pushOs(title, body);
   }, [notifEnabled, pushOs]);
-
   useEffect(() => {
     const t = window.setTimeout(() => {
       api.get("/holidays").then((r) => {
@@ -807,6 +806,23 @@ export default function Dashboard({ demoMode = false }) {
     })),
     [authState.is_admin, visiblePages, adminVisiblePages, pagesReady, globalMarketsEnabled],
   );
+
+  const notifyMarketNews = useCallback((article, additionalCount = 0) => {
+    if (demoMode || !article?.title) return;
+    const band = article.impact_band || "HIGH";
+    const headline = `${article.title}${additionalCount ? ` (+${additionalCount} more)` : ""}`;
+    toast.warning(`Market news · ${band}`, {
+      description: headline,
+      duration: 12000,
+      action: {
+        label: "View",
+        onClick: () => {
+          if (tabOn("market-intel")) setActiveTab("market-intel");
+        },
+      },
+    });
+    push(`Market news · ${band}`, headline);
+  }, [demoMode, push, tabOn]);
 
   useEffect(() => {
     const allowedTabs = orderPages(DASHBOARD_PAGES, tabOrder)
@@ -2011,27 +2027,19 @@ export default function Dashboard({ demoMode = false }) {
   }, [filteredCurrent, previous, changeSummary]);
 
   const gexToday = useMemo(() => {
-    if (!current?.strikes?.length || !current?.price || !current?.expiry) return null;
-    const T = yearsToExpiry(current.expiry, Date.now());
-    if (!(T > 0)) return null;
-    return computeDealerGamma({
-      strikes: current.strikes,
-      spot: current.price,
-      T,
-      r: 0.065,
-      indexName: activeIndex,
-    });
-  }, [current, activeIndex]);
+    return computeDealerGammaFromSnapshots({ current, previous, indexName: activeIndex });
+  }, [current, previous, activeIndex]);
   const gexGuide = gexToday ? dealerGammaGuide(gexToday.gexLakhCrorePer1Pct, {
     byStrike: gexToday.byStrike,
-    updatedAt: current?.timestamp,
-    spot: current?.price,
-    expiry: current?.expiry,
-    directionalScore: marketIntel?.score,
-    priceDeltaPct: marketIntel?.priceDeltaPct,
-    callOiChange: changeSummary?.ce,
-    putOiChange: changeSummary?.pe,
+    updatedAt: gexToday.snapshot.timestamp,
+    spot: gexToday.snapshot.price,
+    expiry: gexToday.snapshot.expiry,
+    directionalScore: gexToday.isRetained ? null : marketIntel?.score,
+    priceDeltaPct: gexToday.isRetained ? null : marketIntel?.priceDeltaPct,
+    callOiChange: gexToday.isRetained ? null : changeSummary?.ce,
+    putOiChange: gexToday.isRetained ? null : changeSummary?.pe,
     timeframeLabel,
+    snapshotLabel: gexToday.isRetained ? "Last valid snapshot" : undefined,
   }) : null;
 
   // Configurable "OI Change" toast threshold — user-editable in the warming-up
@@ -2927,7 +2935,7 @@ export default function Dashboard({ demoMode = false }) {
                         <Dialog open={gexGuideOpen} onOpenChange={setGexGuideOpen}>
                           <DialogContent
                             overlayClassName="bg-black/25"
-                            className="hidden max-md:flex max-md:fixed max-md:inset-x-2 max-md:bottom-[calc(env(safe-area-inset-bottom)+3.5rem)] max-md:left-2 max-md:top-auto max-md:h-auto max-md:max-h-[min(52dvh,26rem)] max-md:w-auto max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:flex-col max-md:gap-2 max-md:overflow-hidden max-md:rounded-xl max-md:p-3"
+                            className="hidden max-md:flex max-md:fixed max-md:left-[6px] max-md:right-[6px] max-md:top-1/2 max-md:bottom-auto max-md:h-auto max-md:max-h-[min(70dvh,38rem)] max-md:w-auto max-md:max-w-none max-md:translate-x-0 max-md:translate-y-[-50%] max-md:flex-col max-md:gap-2 max-md:overflow-hidden max-md:rounded-xl max-md:p-3"
                           >
                             <div className="shrink-0 border-b border-slate-200 pb-2 dark:border-slate-700">
                               <DialogTitle className="text-sm">GEX · {activeIndex}</DialogTitle>
@@ -3626,6 +3634,7 @@ export default function Dashboard({ demoMode = false }) {
       <MarketIntelPopup
         enabled={demoMode || !!(authState.is_admin || authState.is_guest)}
         popupOpacity={popupOpacity.marketIntel}
+        onNewsAlert={notifyMarketNews}
         onOpenPage={() => {
           if (tabOn("market-intel")) setActiveTab("market-intel");
         }}

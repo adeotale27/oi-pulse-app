@@ -103,6 +103,54 @@ export function computeDealerGamma({ strikes, spot, T, r = DEFAULT_RISK_FREE_RAT
   return { gex, gexLakhCrorePer1Pct, byStrike, regime, label, tone };
 }
 
+export function computeDealerGammaFromSnapshots({ current, previous, indexName }) {
+  const calculate = (snapshot) => {
+    const timestampMs = Date.parse(snapshot?.timestamp || "");
+    if (!snapshot?.strikes?.length || !snapshot.price || !snapshot.expiry || !Number.isFinite(timestampMs)) {
+      return null;
+    }
+    const T = yearsToExpiry(snapshot.expiry, timestampMs);
+    if (!(T > 0)) return null;
+    return {
+      ...computeDealerGamma({
+        strikes: snapshot.strikes,
+        spot: snapshot.price,
+        T,
+        r: 0.065,
+        indexName,
+      }),
+      snapshot,
+      isRetained: snapshot !== current,
+    };
+  };
+
+  const currentReading = calculate(current);
+  if (currentReading) return currentReading;
+
+  // At expiry, use only the same session's prior chain; never carry GEX across sessions.
+  const previousDate = Date.parse(previous?.timestamp || "");
+  const currentDate = Date.parse(current?.timestamp || "");
+  const currentExpired = current?.expiry
+    && Number.isFinite(currentDate)
+    && !(yearsToExpiry(current.expiry, currentDate) > 0);
+  const istDay = (timestamp) => (
+    Number.isFinite(timestamp)
+      ? new Date(timestamp + 330 * 60 * 1000).toISOString().slice(0, 10)
+      : null
+  );
+  if (
+    !currentExpired
+    || !previous
+    || previous.expiry !== current.expiry
+    || previousDate >= currentDate
+    || !istDay(currentDate)
+    || istDay(previousDate) !== istDay(currentDate)
+  ) {
+    return null;
+  }
+  return calculate(previous);
+}
+
 // ---------------------------------------------------------------------------
 // Fresh writing detector.
 // A strike shows "fresh call writing" when CE OI increased meaningfully AND

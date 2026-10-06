@@ -91,6 +91,7 @@ Refused on weekends/holidays so Friday’s last session is not wiped. Use when t
 | Concern | Where | Behavior |
 |---------|-------|----------|
 | Active index / expiry | `Dashboard.jsx` | Drives chart + table; cache hydrated in `oiCacheRef` |
+| GEX snapshot | `Dashboard.jsx` + `sellCandidates.js` | Calculates at the OI snapshot time; if that expiry has elapsed, may show the prior valid snapshot from the same IST session and labels it as retained. It never carries an expiry fallback across sessions. |
 | Timeframe pills | Client | Re-request change window; does not re-fetch Kite |
 | Strike filter | Sidebar min/max or ATM ± N | `atmWindow` in `strikeRange.js`: ±N recenters on live ATM as spot moves; `"all"` is the full chain. Manual min/max stops follow until a ±N chip is picked. |
 | Compact mode | `localStorage.compact` | Default **on** for viewports ≤1280px (more chart, less chrome) |
