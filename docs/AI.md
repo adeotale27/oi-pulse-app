@@ -29,6 +29,14 @@ Desk AI is **open for the whole desk** (admin and guests share one switch). It i
 
 There is no chart strip and no Desk AI section in Admin configuration.
 
+The floating Market Intel popup uses the same impact-ranked news candidates as
+the Market Intel page. Newly arriving candidates produce an in-app alert; if
+the user's existing desk-notification setting and browser permission are on,
+they also produce an OS notification while the page is not focused. The first
+poll only establishes a baseline, so old queued headlines do not fire a burst
+of alerts after opening the desk. These alerts report news; they do not alter
+OI signals or trades.
+
 ## APIs
 
 - **GET /api/desk-outside** — optional `?index=GOLD` when that MCX name is selected; otherwise cash heavyweight tape. Cached ~45s.

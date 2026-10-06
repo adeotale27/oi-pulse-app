@@ -168,6 +168,7 @@ export function dealerGammaGuide(gexValue, {
   callOiChange,
   putOiChange,
   timeframeLabel,
+  snapshotLabel,
 } = {}) {
   const zones = [
     {
@@ -260,7 +261,7 @@ export function dealerGammaGuide(gexValue, {
           )}
           {byStrike && (
             <span className="text-slate-500 dark:text-slate-400" data-testid="gex-updated-at">
-              Snapshot: {snapshotTime || "time unavailable"}
+              {snapshotLabel || "Snapshot"}: {snapshotTime || "time unavailable"}
             </span>
           )}
         </div>

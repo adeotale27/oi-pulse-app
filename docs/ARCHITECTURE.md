@@ -34,6 +34,7 @@ flowchart LR
   walkthrough stops at the public auth-state check and shows the maintenance
   screen without mounting the demo dashboard.
 - Positions: `PositionsPanel.jsx` + `PositionsAnalyzeModal.jsx` + `PositionsBrainPanel.jsx` (short-book risk in `lib/positionsBrain.js`). The internal Risk Management view uses the same enriched open-position rows and poll lifecycle; scenario calculations live in `lib/positionsRisk.js`.
+- Market Intel popup polls the user's already-scored `/market-intel/popup` candidates. It suppresses the existing queue on first load, then alerts once per newly appearing event cluster; foreground users get an in-app toast and opted-in users get the existing OS notification when the page is backgrounded. It does not create a separate news source or market signal.
 - Domain JS: `frontend/src/lib/` — `universe.js`, `positionPayoff.js`, `holidays.js`, `journalYearHeat.js`.
 - HTTP: `frontend/src/lib/api.js` (axios, admin/guest headers).
 - State: React local state + refs for poll caches. No Redux.
