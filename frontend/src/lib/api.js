@@ -446,12 +446,12 @@ export async function downloadTradesExcel({ from, to, index } = {}) {
   return name;
 }
 
-export const fetchTradeCycleArchiveMonths = () =>
-  api.get("/trades/archive/months").then((r) => r.data);
+export const fetchTradeCycleArchiveRange = (fromDate, toDate) =>
+  api.get("/trades/archive/range", { params: { from: fromDate, to: toDate } }).then((r) => r.data);
 
-export async function downloadTradeCycleArchive(month) {
+export async function downloadTradeCycleArchive(fromDate, toDate) {
   const r = await api.get("/trades/archive/export", {
-    params: { month },
+    params: { from: fromDate, to: toDate },
     responseType: "blob",
     timeout: 120000,
   });
@@ -467,7 +467,7 @@ export async function downloadTradeCycleArchive(month) {
   const blob = r.data instanceof Blob ? r.data : new Blob([r.data], { type: "application/gzip" });
   const name = filenameFromDisposition(
     r.headers["content-disposition"],
-    `striklenz-cycle-archive-${month}.jsonl.gz`,
+    `striklenz-cycle-archive-${fromDate}-to-${toDate}.jsonl.gz`,
   );
   const sha256 = r.headers["x-archive-sha256"];
   const count = Number(r.headers["x-archive-cycle-count"] || 0);
@@ -483,8 +483,11 @@ export async function downloadTradeCycleArchive(month) {
   return { name, sha256, count };
 }
 
-export const compactTradeCycleArchive = (month, sha256) =>
-  api.post("/trades/archive/compact", { month, sha256 }).then((r) => r.data);
+export const compactTradeCycleArchive = (fromDate, toDate, sha256) =>
+  api.post("/trades/archive/compact", { from: fromDate, to: toDate, sha256 }).then((r) => r.data);
+
+export const deleteTradeCycleArchive = (fromDate, toDate, sha256) =>
+  api.post("/trades/archive/delete", { from: fromDate, to: toDate, sha256 }).then((r) => r.data);
 
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);

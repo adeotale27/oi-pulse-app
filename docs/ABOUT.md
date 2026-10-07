@@ -74,6 +74,9 @@ turns it back on.
 | GET | `/straddle/{index}` (+ `/history`) | ATM straddle series |
 | GET | `/positions` | Open F&O from Kite (admin publisher book / guest own book), with `pnl_today` broker totals. Anonymous 401. Header Today P&L is admin-only. Positions and PositionMeter share this response and poller; PositionMeter derives open-short premium capture, decay runway, and strike-level hedge quantity from enriched rows. The feed does not include per-option quote timestamps or strategy IDs. Risk scenarios are client-side estimates and add no broker request. |
 | GET | `/trades/export` | Excel of stored cycles (`from`/`to` IST dates, optional `index`). Desk user. Entry + exit clocks; second sheet is fills/partials. |
+| GET | `/trades/archive/range` `/trades/archive/export` | Admin: count or download owned closed cycles for exact inclusive `from`/`to` Exit Dates as gzip NDJSON. Future dates are rejected. |
+| POST | `/trades/archive/compact` | Admin: after download, SHA-256 verified removal of only raw events/fills for detailed cycles in the same inclusive date range. |
+| POST | `/trades/archive/delete` | Admin: after download, SHA-256 verified permanent deletion of owned closed cycles in the same inclusive date range. Open/partial and guest cycles are excluded. |
 | GET | `/desk-outside` | Heavyweight cash movers + news. Pass `?index=` when the selected name is an enabled MCX contract |
 | GET/POST | `/desk-guide` | Seller coach over that outside tape; optional GPT (see [AI.md](./AI.md)) |
 | POST | `/desk-ai` | Desk user: one `desk_ai_show` flag for the whole desk |

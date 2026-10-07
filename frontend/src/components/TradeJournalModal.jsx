@@ -36,6 +36,7 @@ import TradeCycleArchiveButton from "@/components/TradeCycleArchiveButton";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const EMPTY_JOURNAL_DAYS = [];
 
 function todayIstYmd(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -198,6 +199,8 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const [year, setYear] = useState(() => now.getFullYear());
   const [month, setMonth] = useState(() => now.getMonth() + 1);
   const [tab, setTab] = useState("calendar");
+  const [localArchive, setLocalArchive] = useState(null);
+  const [archiveView, setArchiveView] = useState(false);
   const [data, setData] = useState(null);
   const [yearData, setYearData] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -234,9 +237,9 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || archiveView) return;
     loadMonth(year, month);
-  }, [open, year, month, loadMonth]);
+  }, [open, year, month, archiveView, loadMonth]);
 
   useEffect(() => {
     if (!open) return;
@@ -258,23 +261,63 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
     return () => { cancelled = true; };
   }, [open, periodFrom, periodTo, periodIndex]);
 
+  const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+  const importedMonthDays = useMemo(
+    () => archiveView && localArchive?.byDate
+      ? Object.values(localArchive.byDate).filter((day) => day.date.startsWith(monthKey))
+      : [],
+    [archiveView, localArchive, monthKey],
+  );
+  const savedMonthDays = data?.days || EMPTY_JOURNAL_DAYS;
+  const calendarDays = useMemo(
+    () => archiveView ? importedMonthDays : savedMonthDays,
+    [archiveView, importedMonthDays, savedMonthDays],
+  );
   const byDate = useMemo(() => {
     const m = new Map();
-    (data?.days || []).forEach((d) => m.set(d.date, d));
+    calendarDays.forEach((d) => m.set(d.date, d));
     return m;
-  }, [data]);
+  }, [calendarDays]);
 
   const cells = useMemo(() => monthMatrix(year, month), [year, month]);
   const weeks = useMemo(() => weekBuckets(cells, byDate), [cells, byDate]);
-  const stats = data?.stats || {};
+  const archiveStats = useMemo(() => {
+    if (!archiveView) return null;
+    const cyclePnls = importedMonthDays.flatMap((day) => day.cycles.map(
+      (cycle) => Number(cycle.booked_pnl ?? cycle.realised) || 0,
+    ));
+    const winners = cyclePnls.filter((pnl) => pnl > 0);
+    const losers = cyclePnls.filter((pnl) => pnl < 0);
+    const grossWins = winners.reduce((total, pnl) => total + pnl, 0);
+    const grossLosses = Math.abs(losers.reduce((total, pnl) => total + pnl, 0));
+    const dayWins = importedMonthDays.filter((day) => day.booked_pnl > 0).length;
+    const net = importedMonthDays.reduce((total, day) => total + day.booked_pnl, 0);
+    const averageWin = winners.length ? grossWins / winners.length : 0;
+    const averageLoss = losers.length ? grossLosses / losers.length : 0;
+    return {
+      net_pnl: net,
+      trading_days: importedMonthDays.length,
+      trade_win_rate: cyclePnls.length ? (100 * winners.length) / cyclePnls.length : 0,
+      trade_wins: winners.length,
+      trade_losses: losers.length,
+      win_rate: importedMonthDays.length ? (100 * dayWins) / importedMonthDays.length : 0,
+      profit_factor: grossLosses ? grossWins / grossLosses : (grossWins ? "∞" : "—"),
+      avg_win: averageWin,
+      avg_loss: averageLoss,
+      avg_win_loss_ratio: averageLoss ? (averageWin / averageLoss).toFixed(2) : "—",
+      booked_pct: null,
+      desk_score: "—",
+    };
+  }, [archiveView, importedMonthDays]);
+  const stats = archiveView ? (archiveStats || {}) : (data?.stats || {});
   const tagsCatalog = data?.tags || [];
   const maxAbs = useMemo(() => {
     let m = 1;
-    (data?.days || []).forEach((d) => {
+    calendarDays.forEach((d) => {
       m = Math.max(m, Math.abs(cellPnl(d)));
     });
     return m;
-  }, [data]);
+  }, [calendarDays]);
 
   const shiftMonth = (dir) => {
     let m = month + dir;
@@ -288,6 +331,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   };
 
   const goThisMonth = () => {
+    if (archiveView) setArchiveView(false);
     const t = data?.today || todayIstYmd();
     setYear(Number(t.slice(0, 4)));
     setMonth(Number(t.slice(5, 7)));
@@ -337,6 +381,11 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   };
 
   const openDay = async (iso) => {
+    if (archiveView) {
+      setSelected((current) => current === iso ? null : iso);
+      setDayDoc(null);
+      return;
+    }
     if (selected === iso && dayDoc) {
       setSelected(null);
       setDayDoc(null);
@@ -425,13 +474,13 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   };
 
   const monthLabel = new Date(year, month - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
-  const today = data?.today;
+  const today = archiveView ? null : data?.today;
   const avgWin = Number(stats.avg_win) || 0;
   const avgLoss = Math.abs(Number(stats.avg_loss) || 0);
   const barTotal = avgWin + avgLoss || 1;
   const heat = useMemo(
-    () => overlayMonthOnYearHeat(yearData?.heatmap, data, year, month),
-    [yearData, data, year, month],
+    () => overlayMonthOnYearHeat(yearData?.heatmap, archiveView ? null : data, year, month),
+    [yearData, data, year, month, archiveView],
   );
   const heatMax = Math.max(1, ...(heat?.month_nets || []).map((v) => Math.abs(v)));
   const yearStats = useMemo(() => {
@@ -446,6 +495,24 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const focused = !!(selected && dayDoc && tab === "calendar");
   const periodStats = periodData?.stats || {};
   const periodChips = ["ALL", ...DESK_IDS];
+  const selectedArchiveDay = archiveView ? localArchive?.byDate?.[selected] : null;
+  // Uploaded cycle records remain in this tab's React state and never enter journal APIs.
+  const importArchive = (archive) => {
+    setLocalArchive(archive);
+    setArchiveView(true);
+    const firstArchiveDate = archive.fromDate || `${archive.month}-01`;
+    setYear(Number(firstArchiveDate.slice(0, 4)));
+    setMonth(Number(firstArchiveDate.slice(5, 7)));
+    setTab("calendar");
+    setSelected(null);
+    setDayDoc(null);
+  };
+  const clearLocalArchive = () => {
+    setLocalArchive(null);
+    setArchiveView(false);
+    setSelected(null);
+    setDayDoc(null);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -481,7 +548,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
             </button>
             <button
               type="button"
-              onClick={() => setTab("year")}
+              onClick={() => { setArchiveView(false); setTab("year"); }}
               className={`h-8 px-3 rounded-full text-[12px] font-semibold ${tab === "year" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
               data-testid="journal-year-tab"
             >
@@ -494,7 +561,9 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
           {!focused && (
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2" data-testid="journal-period-panel">
               <div className="grid grid-cols-1 gap-2 min-w-0 sm:flex sm:flex-wrap sm:items-end">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0 sm:contents">
+            {!archiveView && (
+            <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0 sm:contents">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 min-w-0 block">
                   From
                   <input
@@ -533,8 +602,12 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </div>
                 {periodLoading ? <span className="text-[11px] text-slate-400">Updating…</span> : null}
                 <DownloadTradesButton compact from={periodFrom} to={periodTo} index={periodIndex} />
-                <TradeCycleArchiveButton />
+                </>
+                )}
+                <TradeCycleArchiveButton onArchiveLoaded={importArchive} />
               </div>
+              {!archiveView && (
+              <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Booked profit</div>
@@ -587,17 +660,48 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                   ))}
                 </div>
               )}
+              </>
+              )}
               {/* Hidden for now: Kite withdrawal/deposit feed is not available.
                   The estimate logic remains available for future use when Kite exposes a proper ledger. */}
             </div>
           )}
           {tab === "calendar" && (
             <>
+              {archiveView && !focused && (
+                <div className="flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 sm:flex-row sm:items-center sm:justify-between" data-testid="journal-local-archive-banner">
+                  <div>
+                    <div className="font-semibold">Viewing uploaded trade-cycle P&amp;L · {localArchive?.name}</div>
+                    <div className="mt-0.5">Browser-tab memory only; not uploaded or saved. Refreshing or closing this tab clears it. These cycle totals are separate from the saved daily journal P&amp;L.</div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-full border-amber-400 bg-white text-amber-900"
+                      onClick={() => setArchiveView(false)}
+                      data-testid="journal-show-saved"
+                    >
+                      Show saved journal
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 rounded-full bg-rose-700 text-white hover:bg-rose-800"
+                      onClick={clearLocalArchive}
+                      data-testid="journal-clear-local-archive"
+                    >
+                      Clear local archive
+                    </Button>
+                  </div>
+                </div>
+              )}
               {!focused && (
               <>
               <div className="lg:hidden rounded-xl border border-emerald-200 bg-white px-3 py-2 flex items-center justify-between gap-2 shadow-sm min-w-0">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Month booked</div>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">{archiveView ? "Local cycle P&L" : "Month booked"}</div>
                   <div className={`text-lg font-bold font-mono-data leading-tight ${Number(stats.net_pnl) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                     {privacy ? "••••" : <Money v={stats.net_pnl} />}
                     {stats.booked_pct != null ? (
@@ -614,7 +718,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
                   <Gauge pct={stats.trade_win_rate} />
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">Trade win %</div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">{archiveView ? "Cycle win %" : "Trade win %"}</div>
                     <div className="text-lg font-semibold font-mono-data text-slate-900">{stats.trade_win_rate ?? 0}%</div>
                     <div className="text-[10px] text-slate-600">
                       {stats.trade_wins || 0} booked wins · {stats.trade_losses || 0} losses
@@ -636,7 +740,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
                   <Gauge pct={stats.win_rate} />
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">Day win %</div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600 font-semibold">{archiveView ? "Archive day win %" : "Day win %"}</div>
                     <div className="text-lg font-semibold font-mono-data text-slate-900">{stats.win_rate ?? 0}%</div>
                     <div className="text-[10px] text-slate-600 flex items-center gap-1">
                       <Trophy className="w-3 h-3 text-amber-600" />
@@ -883,8 +987,57 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
               </motion.div>
               )}
               </AnimatePresence>
+              {archiveView && selectedArchiveDay ? (
+                <section className="rounded-2xl border border-amber-200 bg-white p-3 shadow-sm" data-testid="journal-local-archive-day">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {new Date(`${selectedArchiveDay.date}T12:00:00`).toLocaleDateString("en-IN", {
+                          weekday: "short", day: "numeric", month: "short", year: "numeric",
+                        })} · {selectedArchiveDay.cycles.length} closed cycle{selectedArchiveDay.cycles.length === 1 ? "" : "s"}
+                      </h3>
+                      <p className="text-[10px] text-slate-500">Cycle-ledger total from the uploaded archive; not the saved journal snapshot.</p>
+                    </div>
+                    <div className={`font-mono-data text-base font-bold ${selectedArchiveDay.booked_pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                      {privacy ? "••••" : exactPnl(selectedArchiveDay.booked_pnl)}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedArchiveDay.cycles.map((cycle, index) => {
+                      const pnl = Number(cycle.booked_pnl ?? cycle.realised) || 0;
+                      const identity = cycle.cycle_id || `${cycle.tradingsymbol || "cycle"}-${index}`;
+                      return (
+                        <article key={identity} className="rounded-lg border border-slate-200 p-2.5" data-testid="journal-local-archive-cycle">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="break-words text-xs font-semibold text-slate-900">
+                                {cycle.display_name || cycle.tradingsymbol || "Trade cycle"}
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-slate-600">
+                                {[cycle.index, cycle.side, cycle.direction, `qty ${cycle.closed_quantity ?? "—"}`].filter(Boolean).join(" · ")}
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-slate-500">
+                                Entry {cycle.entry_time_ist || cycle.entry_date || "—"} · Exit {cycle.exit_time_ist || cycle.exit_date || "—"}
+                              </div>
+                            </div>
+                            <div className={`shrink-0 font-mono-data text-xs font-bold ${pnl >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                              {privacy ? "••••" : exactPnl(pnl)}
+                            </div>
+                          </div>
+                          <details className="mt-2 text-[10px]">
+                            <summary className="cursor-pointer font-semibold text-emerald-800">View full archived record</summary>
+                            <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-slate-50 p-2 text-[9px] text-slate-700">
+                              {privacy ? "Hidden while privacy mode is enabled." : JSON.stringify(cycle, null, 2)}
+                            </pre>
+                          </details>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              ) : null}
               {loading && !focused && <div className="text-xs text-slate-600">Loading calendar…</div>}
-              {!focused && (
+              {!focused && !archiveView && (
                 <p className="text-[10px] text-slate-500 leading-snug">
                   Day % = booked P&amp;L <b>after charges</b> ÷ that morning’s <b>wallet</b> (Kite opening cash + collateral). Not leftover margin, not SPAN on hedges, not leveraged notional. Weekly/monthly % use the first stored wallet of that week/month. Kite Connect does not publish withdrawals — estimated in/out is the gap vs the prior close.
                 </p>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { X, Moon, AlertTriangle, Minimize2, Maximize2, GripHorizontal, AlignLeft, AlignCenter, AlignRight, Sparkles } from "lucide-react";
 import { api, fetchOIChange, fetchJournalPeriod, subscribeExtras } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
+import { isOiPolling } from "@/lib/marketTimes";
 import {
   CARRY_PANEL_WIDTH,
   clampCarryLeft,
@@ -333,6 +334,11 @@ export default function OvernightGapBrief({
     if (!active || minimized) return;
     const names = overnightBiasIndices(ist.weekday, activeIndex);
     if (!names.length) return;
+    const marketStatusRes = await api.get("/market/status").catch((error) => {
+      console.error("Carry brief market status failed; skipping OI refresh", error);
+      return null;
+    });
+    if (!isOiPolling(marketStatusRes?.data)) return;
     setLoading(true);
     try {
       const rows = [];
