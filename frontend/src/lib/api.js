@@ -445,6 +445,47 @@ export async function downloadTradesExcel({ from, to, index } = {}) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
   return name;
 }
+
+export const fetchTradeCycleArchiveMonths = () =>
+  api.get("/trades/archive/months").then((r) => r.data);
+
+export async function downloadTradeCycleArchive(month) {
+  const r = await api.get("/trades/archive/export", {
+    params: { month },
+    responseType: "blob",
+    timeout: 120000,
+  });
+  const type = r.headers["content-type"] || "";
+  if (type.includes("application/json")) {
+    const text = await r.data.text();
+    let detail = "Could not download trade archive";
+    try {
+      detail = JSON.parse(text)?.detail || detail;
+    } catch { /* blob was not json */ }
+    throw new Error(detail);
+  }
+  const blob = r.data instanceof Blob ? r.data : new Blob([r.data], { type: "application/gzip" });
+  const name = filenameFromDisposition(
+    r.headers["content-disposition"],
+    `striklenz-cycle-archive-${month}.jsonl.gz`,
+  );
+  const sha256 = r.headers["x-archive-sha256"];
+  const count = Number(r.headers["x-archive-cycle-count"] || 0);
+  if (!sha256 || !count) throw new Error("Archive response is missing its verification details");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  return { name, sha256, count };
+}
+
+export const compactTradeCycleArchive = (month, sha256) =>
+  api.post("/trades/archive/compact", { month, sha256 }).then((r) => r.data);
+
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);
 export const fetchStraddle = (idx, opts = {}) =>

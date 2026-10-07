@@ -1,4 +1,6 @@
+import asyncio
 from datetime import datetime, timezone, timedelta
+from types import SimpleNamespace
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -21,7 +23,6 @@ from trade_journal import (
     period_stats,
     journal_session_ymd,
     is_pre_session_auto_snapshot,
-    is_stale_carryover_snapshot,
     mongo_upsert_ops,
 )
 
@@ -165,7 +166,7 @@ def test_journal_session_ymd_preopen_stays_on_last_session():
     assert journal_session_ymd(datetime(2026, 9, 2, 9, 20, tzinfo=IST)) == "2026-09-02"
 
 
-def test_preopen_clone_of_yesterday_is_stale():
+def test_preopen_calendar_clone_is_identified_for_cleanup():
     pre = datetime(2026, 9, 2, 2, 51, tzinfo=IST)
     clone = {
         "date": "2026-09-02",
@@ -178,21 +179,90 @@ def test_preopen_clone_of_yesterday_is_stale():
         "notes": "",
         "tags": [],
     }
-    prev = {
-        "date": "2026-09-01",
-        "booked_pnl": -394790.5,
-        "exited_count": 21,
-        "win_trades": 10,
-        "loss_trades": 11,
-    }
     assert is_pre_session_auto_snapshot(clone, pre) is True
     assert is_pre_session_auto_snapshot({**clone, "notes": "review"}, pre) is False
     assert is_pre_session_auto_snapshot(clone, datetime(2026, 9, 2, 10, 0, tzinfo=IST)) is False
-    assert is_stale_carryover_snapshot(clone, prev) is True
-    assert is_stale_carryover_snapshot(
-        {**clone, "booked_pnl": -1200, "exited_count": 2, "win_trades": 0, "loss_trades": 2},
-        prev,
-    ) is False
+
+
+def test_journal_purge_preserves_matching_current_session_pnl(monkeypatch):
+    import server
+
+    now = datetime(2026, 9, 2, 10, 0, tzinfo=IST)
+    assert iso_is_trading_day("2026-09-02")
+    rows = [
+        {
+            "date": "2026-09-01",
+            "booked_pnl": 1200,
+            "exited_count": 2,
+            "win_trades": 1,
+            "loss_trades": 1,
+        },
+        {
+            "date": "2026-09-02",
+            "booked_pnl": 1200,
+            "exited_count": 2,
+            "win_trades": 1,
+            "loss_trades": 1,
+        },
+    ]
+
+    class Cursor:
+        async def to_list(self, length):
+            return rows[:length]
+
+    class JournalCollection:
+        deleted_query = None
+
+        def find(self, _query, _projection):
+            return Cursor()
+
+        async def delete_many(self, query):
+            self.deleted_query = query
+            return SimpleNamespace(deleted_count=1)
+
+    collection = JournalCollection()
+    monkeypatch.setattr(server, "db", SimpleNamespace(trade_journal=collection))
+    monkeypatch.setattr(server, "now_ist", lambda: now)
+
+    assert asyncio.run(server._purge_closed_session_journal_autos()) == 0
+    assert collection.deleted_query is None
+
+
+def test_matching_prior_day_pnl_is_still_saved_for_current_session(monkeypatch):
+    import server
+
+    now = datetime(2026, 9, 2, 10, 0, tzinfo=IST)
+    existing = {"date": "2026-09-02", "booked_pnl": 1200, "pnl_exited": 1200}
+
+    class JournalCollection:
+        updated_ops = None
+
+        async def find_one(self, query, *_args, **_kwargs):
+            assert query == {"date": "2026-09-02"}
+            return existing
+
+        async def update_one(self, _query, update, **_kwargs):
+            self.updated_ops = update
+
+    collection = JournalCollection()
+    monkeypatch.setattr(server, "db", SimpleNamespace(trade_journal=collection))
+    monkeypatch.setattr(server, "now_ist", lambda: now)
+    async def no_charges(**_kwargs):
+        return None
+
+    monkeypatch.setattr(server, "_maybe_journal_charges", no_charges)
+    monkeypatch.setattr(server, "_journal_enabled_indices", lambda: [])
+    payload = {
+        "pnl_today": {"open": 0, "exited": 1200, "booked": 1200, "total": 1200},
+        "positions": [
+            {"tradingsymbol": "NIFTY 24000 CE", "side": "CE", "quantity": 0, "exited": True, "booked_pnl": 2400},
+            {"tradingsymbol": "NIFTY 24000 PE", "side": "PE", "quantity": 0, "exited": True, "booked_pnl": -1200},
+        ],
+        "exited_count": 2,
+    }
+    asyncio.run(server._snapshot_trade_journal(payload))
+
+    assert collection.updated_ops["$set"]["booked_pnl"] == 1200
 
 
 def test_sanitize_clips_and_tags():
@@ -813,4 +883,3 @@ def test_repeat_snapshot_does_not_clobber_a_different_day():
     out = apply_snapshot(existing, later)
     assert out["date"] == "2026-09-15"
     assert out["trading_date"] == "2026-09-15"
-
