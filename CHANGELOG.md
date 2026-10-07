@@ -1,5 +1,9 @@
 # Changelog
 
+## V18.41 — 2026-10-07
+
+Stop suppressing or deleting current session-day P&L just because its values match the previous session. Add admin-only monthly trade-cycle archives with explicit, hash-verified compaction after the download is saved outside the app; daily P&L and compact summaries remain in MongoDB.
+
 ## V18.40 — 2026-10-07
 
 Refined phone layout for Admin settings: the two save actions stack at full width below the scrolling controls, remain visible, and wrap their setting-count badges cleanly on narrow screens.

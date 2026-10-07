@@ -1,16 +1,18 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Request, Depends
 from fastapi import WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import asyncio
+import gzip
 import logging
 import math
 import re
 import time
+import tempfile
 import ipaddress
 from collections import defaultdict, deque
 from pathlib import Path
@@ -20,6 +22,7 @@ from datetime import datetime, timezone, timedelta, date
 
 # Delay motor client creation until startup to avoid heavy connection objects during import.
 from motor.motor_asyncio import AsyncIOMotorClient
+from bson import json_util
 from pymongo.errors import AutoReconnect, ServerSelectionTimeoutError
 
 from app_version import APP_NAME, APP_VERSION, APP_VERSION_LABEL
@@ -5332,11 +5335,7 @@ async def _journal_live_session_today(day: str) -> bool:
 
 
 async def _purge_closed_session_journal_autos() -> int:
-    """Drop Sat/Sun/full-holiday P&L rows created by the Positions poll. Keep user notes.
-
-    Also drop a new calendar date that cloned last session's book (Kite day P&L
-    stays until the next open).
-    """
+    """Drop Sat/Sun/full-holiday P&L rows created by the Positions poll. Keep user notes."""
     if db is None:
         return 0
     n = 0
@@ -5364,18 +5363,10 @@ async def _purge_closed_session_journal_autos() -> int:
     dates = [d.get("date") for d in docs if journal.is_closed_session_auto_snapshot(d)]
     now = now_ist()
     cal = journal.ist_ymd(now)
-    sess = journal.journal_session_ymd(now)
     by_date = {str(d.get("date") or "")[:10]: d for d in docs if d.get("date")}
     today_doc = by_date.get(cal)
     if today_doc and journal.is_pre_session_auto_snapshot(today_doc, now):
         dates.append(cal)
-    prev_day = None
-    if cal:
-        older = sorted((k for k in by_date if k < cal), reverse=True)
-        prev_day = older[0] if older else None
-    if today_doc and prev_day and not journal.has_user_journal_content(today_doc):
-        if journal.is_stale_carryover_snapshot(today_doc, by_date[prev_day]):
-            dates.append(cal)
     dates = list({x for x in dates if x})
     if not dates:
         return 0
@@ -5417,18 +5408,6 @@ async def _snapshot_trade_journal(
     try:
         snap = journal.snapshot_from_positions(payload, date=day)
         existing = await db.trade_journal.find_one({"date": day})
-        prev_book = await db.trade_journal.find_one(
-            {"date": {"$lt": day}},
-            {
-                "date": 1, "trading_date": 1, "booked_pnl": 1, "pnl_exited": 1,
-                "exited_count": 1, "win_trades": 1, "loss_trades": 1,
-            },
-            sort=[("date", -1)],
-        )
-        if journal.is_stale_carryover_snapshot(snap, prev_book):
-            if existing and not journal.has_user_journal_content(existing):
-                await db.trade_journal.delete_one({"date": day})
-            return
         if snap.get("funds_base") and (not existing or existing.get("inferred_cashflow") is None):
             prev = await db.trade_journal.find_one(
                 {"date": {"$lt": day}},
@@ -5547,6 +5526,11 @@ class JournalShotIn(BaseModel):
     name: Optional[str] = None
     mime: Optional[str] = "image/jpeg"
     data: str
+
+
+class TradeCycleArchiveCompactIn(BaseModel):
+    month: str
+    sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
 
 
 async def _journal_year_payload(y: int) -> Dict[str, Any]:
@@ -5822,6 +5806,187 @@ async def export_trades(
             "Cache-Control": "no-store",
         },
     )
+
+
+CYCLE_ARCHIVE_RETENTION_DAYS = 90
+CYCLE_ARCHIVE_SPOOL_MEMORY_BYTES = 8 * 1024 * 1024
+
+
+def _next_cycle_archive_month(year: int, month_number: int) -> date:
+    if month_number == 12:
+        return date(year + 1, 1, 1)
+    return date(year, month_number + 1, 1)
+
+
+def _trade_cycle_archive_month_bounds(month: str) -> tuple[str, str, str]:
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month or ""):
+        raise HTTPException(400, "month must be YYYY-MM")
+    year, month_number = (int(part) for part in month.split("-"))
+    try:
+        start = date(year, month_number, 1)
+        next_month = _next_cycle_archive_month(year, month_number)
+    except ValueError as exc:
+        raise HTTPException(400, "month must be a valid calendar month") from exc
+    cutoff = now_ist().date() - timedelta(days=CYCLE_ARCHIVE_RETENTION_DAYS)
+    if next_month - timedelta(days=1) >= cutoff:
+        raise HTTPException(400, f"Only fully closed months older than {CYCLE_ARCHIVE_RETENTION_DAYS} days can be archived")
+    return start.isoformat(), next_month.isoformat(), cutoff.isoformat()
+
+
+def _trade_cycle_archive_query(owner_id: str, start: str, end: str) -> dict:
+    return {
+        "owner_id": owner_id,
+        "status": "closed",
+        "exit_date": {"$gte": start, "$lt": end},
+        "$or": [
+            {"events": {"$exists": True, "$ne": []}},
+            {"fills": {"$exists": True, "$ne": []}},
+        ],
+    }
+
+
+async def _trade_cycle_archive_lines(query: dict):
+    cursor = db.trade_cycles.find(query).sort("_id", 1)
+    async for doc in cursor:
+        yield (json_util.dumps(doc, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+async def _stream_spooled_archive(archive):
+    try:
+        archive.seek(0)
+        while True:
+            chunk = archive.read(1024 * 1024)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        archive.close()
+
+
+@api_router.get("/trades/archive/months")
+async def trade_cycle_archive_months(
+    request: Request,
+    _admin: bool = Depends(require_admin),
+):
+    """List this admin's fully eligible months that still contain fill details."""
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    owner_id = await _ledger_owner(request, "admin")
+    cutoff = (now_ist().date() - timedelta(days=CYCLE_ARCHIVE_RETENTION_DAYS)).isoformat()
+    query = {
+        "owner_id": owner_id,
+        "status": "closed",
+        "exit_date": {"$lt": cutoff},
+        "$or": [
+            {"events": {"$exists": True, "$ne": []}},
+            {"fills": {"$exists": True, "$ne": []}},
+        ],
+    }
+    try:
+        counts: Dict[str, int] = {}
+        cursor = db.trade_cycles.find(query, {"_id": 0, "exit_date": 1})
+        async for doc in cursor:
+            exit_date = str(doc.get("exit_date") or "")
+            month = exit_date[:7]
+            if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                continue
+            year, month_number = (int(part) for part in month.split("-"))
+            try:
+                next_month = _next_cycle_archive_month(year, month_number)
+            except ValueError:
+                continue
+            if next_month - timedelta(days=1) >= date.fromisoformat(cutoff):
+                continue
+            counts[month] = counts.get(month, 0) + 1
+    except Exception as exc:
+        logging.getLogger("server").exception("Could not list trade-cycle archive months")
+        raise HTTPException(503, "Could not load archive months") from exc
+    return {
+        "retention_days": CYCLE_ARCHIVE_RETENTION_DAYS,
+        "cutoff": cutoff,
+        "months": [{"month": key, "count": counts[key]} for key in sorted(counts)],
+    }
+
+
+@api_router.get("/trades/archive/export")
+async def export_trade_cycle_archive(
+    request: Request,
+    month: str = Query(...),
+    _admin: bool = Depends(require_admin),
+):
+    """Download one old month of full closed-cycle documents as gzip NDJSON."""
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    start, end, _cutoff = _trade_cycle_archive_month_bounds(month)
+    owner_id = await _ledger_owner(request, "admin")
+    query = _trade_cycle_archive_query(owner_id, start, end)
+    archive = tempfile.SpooledTemporaryFile(max_size=CYCLE_ARCHIVE_SPOOL_MEMORY_BYTES, mode="w+b")
+    digest = hashlib.sha256()
+    count = 0
+    try:
+        with gzip.GzipFile(fileobj=archive, mode="wb", mtime=0) as compressed:
+            async for line in _trade_cycle_archive_lines(query):
+                compressed.write(line)
+                digest.update(line)
+                count += 1
+    except Exception as exc:
+        archive.close()
+        logging.getLogger("server").exception("Could not prepare trade-cycle archive for %s", month)
+        raise HTTPException(503, "Could not prepare the trade-cycle archive") from exc
+    if not count:
+        archive.close()
+        raise HTTPException(404, "No eligible cycle details remain for this month")
+    filename = f"striklenz-cycle-archive-{month}.jsonl.gz"
+    return StreamingResponse(
+        _stream_spooled_archive(archive),
+        media_type="application/gzip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Archive-SHA256": digest.hexdigest(),
+            "X-Archive-Cycle-Count": str(count),
+        },
+    )
+
+
+@api_router.post("/trades/archive/compact")
+async def compact_trade_cycle_archive(
+    payload: TradeCycleArchiveCompactIn,
+    request: Request,
+    _admin: bool = Depends(require_admin),
+):
+    """Remove old fill blobs only after the admin confirms a matching download."""
+    if db is None:
+        raise HTTPException(503, "Database unavailable")
+    start, end, _cutoff = _trade_cycle_archive_month_bounds(payload.month)
+    owner_id = await _ledger_owner(request, "admin")
+    query = _trade_cycle_archive_query(owner_id, start, end)
+    digest = hashlib.sha256()
+    count = 0
+    try:
+        async for line in _trade_cycle_archive_lines(query):
+            digest.update(line)
+            count += 1
+    except Exception as exc:
+        logging.getLogger("server").exception("Could not verify trade-cycle archive for %s", payload.month)
+        raise HTTPException(503, "Could not verify the archive against current trade details") from exc
+    if not count:
+        raise HTTPException(409, "No eligible cycle details remain; refresh the archive list")
+    if not hmac.compare_digest(payload.sha256.lower(), digest.hexdigest()):
+        raise HTTPException(409, "Trade details changed after download; download a fresh archive before compacting")
+    try:
+        result = await db.trade_cycles.update_many(query, {"$unset": {"events": "", "fills": ""}})
+    except Exception as exc:
+        logging.getLogger("server").exception("Could not compact trade-cycle details for %s", payload.month)
+        raise HTTPException(503, "Archive verified, but cycle details could not be compacted") from exc
+    compacted = int(getattr(result, "modified_count", 0) or 0)
+    return {
+        "month": payload.month,
+        "archive_count": count,
+        "compacted_count": compacted,
+        "remaining_count": max(0, count - compacted),
+        "sha256": digest.hexdigest(),
+    }
 
 
 @api_router.get("/positions/brokerage-day")

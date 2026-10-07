@@ -31,6 +31,7 @@ import { compactPnl, exactPnl, fmtInr } from "@/lib/journalMoney";
 import { bookedPct, fmtBookedPct, madeAfterCharges, weekEquity } from "@/lib/journalPct";
 import InfoTip from "@/components/InfoTip";
 import DownloadTradesButton from "@/components/DownloadTradesButton";
+import TradeCycleArchiveButton from "@/components/TradeCycleArchiveButton";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
@@ -532,6 +533,7 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
                 </div>
                 {periodLoading ? <span className="text-[11px] text-slate-400">Updating…</span> : null}
                 <DownloadTradesButton compact from={periodFrom} to={periodTo} index={periodIndex} />
+                <TradeCycleArchiveButton />
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">

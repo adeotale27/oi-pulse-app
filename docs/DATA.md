@@ -29,7 +29,16 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `guest_ip_names` | Last guest display name per IP |
 | `access_requests` | Pending/approved/rejected guest entry requests |
 | `blocked_ips` | Hard blocks |
-| `trade_journal` | Admin trade journal: one document per **session** IST date (`session_anchor_date`, not midnight). Pre-open / weekend writes stay on the last session so Kite’s still-open day P&L cannot clone yesterday onto today. Stores booked P&L from **full exits and partial closes**, `funds_base` (**wallet** = Kite opening cash + collateral + pay-in; never leftover `net`, never SPAN/`utilised`), `booked_pct` of wallet **after charges**, `funds_total` / `funds_close`, inferred `inferred_cashflow` (Kite has no withdrawal API), brokerage/`charges_total`, notes, tags, rating, screenshots. |
+| `trade_journal` | Admin trade journal: one document per **session** IST date (`session_anchor_date`, not midnight). Pre-open / weekend writes stay on the last session so Kite’s still-open day P&L cannot clone yesterday onto today. Stores booked P&L from **full exits and partial closes**, `funds_base` (**wallet** = Kite opening cash + collateral + pay-in; never leftover `net`, never SPAN/`utilised`), `booked_pct` of wallet **after charges**, `funds_total` / `funds_close`, inferred `inferred_cashflow` (Kite has no withdrawal API), brokerage/`charges_total`, notes, tags, rating, screenshots. Session-day rows have no TTL or date-based retention. Cleanup is limited to automatic non-session rows and pre-open calendar-date clones; equal P&L on consecutive days is not used to skip or delete a current session-day row. |
+| `trade_cycles` | Admin/guest broker-book trade cycles, scoped by owner and contract cycle. The admin Trade Journal can export full closed-cycle documents as monthly gzip NDJSON after the month is at least 90 days old; only after an explicit confirmation and matching SHA-256 check can it remove `events` / `fills` from that admin's closed cycles. The archive must be saved outside the app by the admin. Compact cycle fields and `partials` remain in MongoDB; guest cycles and open/partial cycles are never touched. |
+
+Trade-cycle archives are downloaded from the admin Trade Journal as
+`striklenz-cycle-archive-YYYY-MM.jsonl.gz`. Each decompressed line is one
+Extended JSON Mongo document. Keep the archive outside the application before
+confirming compaction; the API re-hashes the current cycle details and refuses
+compaction if they no longer match the downloaded archive fingerprint. Daily
+session P&L remains in `trade_journal` and is independent of trade-cycle
+compaction.
 | `error_logs` | Uncaught API errors, `logger.exception`, and desk UI crashes (`POST /api/errors`). Admin `GET /api/errors`. Tokens redacted. Same fingerprint within 5 minutes increments `count`. |
 | `admin_ui_state` | Per-admin UI watermarks (`_id` = admin username). `last_error_log_seen_at` drives the unseen Error Log badge (`GET /api/errors/unseen-count`, `POST /api/errors/mark-seen`). |
 | Constituents / events / holidays | Uploaded calendars & index members (`index_constituents`, `nse_events`, `nse_holidays`) — see [UPLOAD.md](./UPLOAD.md) for CSV columns and replace rules |
