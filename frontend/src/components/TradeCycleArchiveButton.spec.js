@@ -171,6 +171,20 @@ describe("TradeCycleArchiveButton", () => {
     expect(container.textContent).toContain("Permanently deleted 3 closed cycles");
   });
 
+  it("warns to refresh the range before retrying a timed-out mutation", async () => {
+    await openAndDownload();
+    deleteTradeCycleArchive.mockRejectedValueOnce(Object.assign(
+      new Error("timeout of 120000ms exceeded"),
+      { code: "ECONNABORTED" },
+    ));
+
+    await act(async () => container.querySelector('[data-testid="btn-cycle-archive-delete"]').click());
+    await act(async () => container.querySelector('[data-testid="btn-cycle-archive-confirm"]').click());
+
+    expect(container.textContent).toContain("Refresh the date-range count before retrying");
+    expect(deleteTradeCycleArchive).toHaveBeenCalledTimes(1);
+  });
+
   it("uploads and parses the archive in the browser, then passes it to the calendar", async () => {
     const onArchiveLoaded = jest.fn();
     const archive = { name: "striklenz-cycle-archive-2026-06.jsonl.gz", month: "2026-06", count: 1, byDate: {} };

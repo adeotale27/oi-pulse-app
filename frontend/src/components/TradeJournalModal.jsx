@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import AdminDialogNavigation from "@/components/AdminDialogNavigation";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
 import {
   fetchJournalMonth,
   fetchJournalYear,
@@ -207,6 +208,11 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const [dayDoc, setDayDoc] = useState(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [tradeCycleSaving, setTradeCycleSaving] = useState(null);
+  const [tradeCycleSettingLoading, setTradeCycleSettingLoading] = useState(false);
+  const [tradeCycleSettingSaving, setTradeCycleSettingSaving] = useState(false);
+  const [tradeCycleSettingError, setTradeCycleSettingError] = useState("");
+  const [tradeCycleSettingRetry, setTradeCycleSettingRetry] = useState(0);
   const [periodFrom, setPeriodFrom] = useState(() => {
     const t = new Date();
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-01`;
@@ -215,6 +221,55 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
   const [periodIndex, setPeriodIndex] = useState("ALL");
   const [periodData, setPeriodData] = useState(null);
   const [periodLoading, setPeriodLoading] = useState(false);
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    setTradeCycleSettingLoading(true);
+    setTradeCycleSettingError("");
+    api.get("/settings", { params: { _: Date.now() } })
+      .then(({ data: saved }) => {
+        if (cancelled) return;
+        if (!saved || typeof saved !== "object") {
+          throw new Error("Settings response was invalid");
+        }
+        setTradeCycleSaving(saved.trade_cycle_saving_enabled !== false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setTradeCycleSaving(null);
+        setTradeCycleSettingError(error?.response?.data?.detail || error.message || "Could not load the trade-cycle setting");
+      })
+      .finally(() => {
+        if (!cancelled) setTradeCycleSettingLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, tradeCycleSettingRetry]);
+
+  const toggleTradeCycleSaving = async () => {
+    if (tradeCycleSaving === null || tradeCycleSettingSaving) return;
+    const nextValue = !tradeCycleSaving;
+    setTradeCycleSettingSaving(true);
+    setTradeCycleSettingError("");
+    try {
+      const { data: saved } = await api.post("/settings", {
+        trade_cycle_saving_enabled: nextValue,
+      });
+      if (typeof saved?.trade_cycle_saving_enabled !== "boolean") {
+        throw new Error("The server did not confirm the trade-cycle setting");
+      }
+      setTradeCycleSaving(saved.trade_cycle_saving_enabled);
+      toast.success(saved.trade_cycle_saving_enabled
+        ? "Your trade-cycle history is now being saved"
+        : "Your trade-cycle history will no longer be saved");
+    } catch (error) {
+      const message = error?.response?.data?.detail || error.message || "Could not save the trade-cycle setting";
+      setTradeCycleSettingError(message);
+      toast.error(message);
+    } finally {
+      setTradeCycleSettingSaving(false);
+    }
+  };
+
   const loadMonth = useCallback(async (y, m) => {
     setLoading(true);
     try {
@@ -558,6 +613,45 @@ export default function TradeJournalModal({ open, onOpenChange, privacy = false 
         </div>
 
         <div className="px-3 sm:px-5 py-3 lg:py-2 space-y-3 flex-1 min-h-0 overflow-y-auto max-lg:pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-slate-800">
+                Save my trade cycles
+                <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] ${tradeCycleSaving ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                  {tradeCycleSettingLoading ? "Loading" : tradeCycleSaving ? "On" : "Off"}
+                </span>
+              </div>
+              <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
+                Off stops saving your admin cycle history. Existing cycles and daily Journal P&amp;L stay; guest history is unchanged.
+              </p>
+              {tradeCycleSettingError ? (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-rose-700" role="alert">
+                  <span>{tradeCycleSettingError}</span>
+                  {tradeCycleSaving === null ? (
+                    <button
+                      type="button"
+                      className="font-semibold underline underline-offset-2"
+                      onClick={() => setTradeCycleSettingRetry((retry) => retry + 1)}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-label="Save my trade cycles"
+              aria-checked={tradeCycleSaving === true}
+              disabled={tradeCycleSaving === null || tradeCycleSettingLoading || tradeCycleSettingSaving}
+              onClick={toggleTradeCycleSaving}
+              data-testid="journal-trade-cycle-saving"
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-50 ${tradeCycleSaving ? "bg-emerald-600" : "bg-slate-300"}`}
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${tradeCycleSaving ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
+          </div>
           {!focused && (
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2" data-testid="journal-period-panel">
               <div className="grid grid-cols-1 gap-2 min-w-0 sm:flex sm:flex-wrap sm:items-end">

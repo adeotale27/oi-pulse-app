@@ -57,7 +57,7 @@ turns it back on.
 | GET | `/status` | Mode (`kite`/`offline`), market hours, tracker health, `app_version` |
 | GET | `/admin/indices` `/search` `/inspect` | Admin: registry + Kite discovery |
 | POST | `/admin/indices/sync` `{name}/enable` `{name}/disable` | Admin: dump refresh + toggle (keeps history) |
-| GET | `/settings` / POST `/settings` | Admin settings (enabled indices, alert windows, market close, etc.) |
+| GET | `/settings` / POST `/settings` | Admin settings (enabled indices, alert windows, market close, trade-cycle persistence, etc.) |
 | GET | `/oi/{index}` | Latest snapshot |
 | GET | `/oi/{index}/change` | Current vs N-minutes-ago + multi-window deltas |
 | GET | `/history/{index}` | Snapshot timeline for Replay |

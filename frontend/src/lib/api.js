@@ -484,10 +484,18 @@ export async function downloadTradeCycleArchive(fromDate, toDate) {
 }
 
 export const compactTradeCycleArchive = (fromDate, toDate, sha256) =>
-  api.post("/trades/archive/compact", { from: fromDate, to: toDate, sha256 }).then((r) => r.data);
+  api.post(
+    "/trades/archive/compact",
+    { from: fromDate, to: toDate, sha256 },
+    { timeout: 120000 },
+  ).then((r) => r.data);
 
 export const deleteTradeCycleArchive = (fromDate, toDate, sha256) =>
-  api.post("/trades/archive/delete", { from: fromDate, to: toDate, sha256 }).then((r) => r.data);
+  api.post(
+    "/trades/archive/delete",
+    { from: fromDate, to: toDate, sha256 },
+    { timeout: 120000 },
+  ).then((r) => r.data);
 
 export const fetchVRP = (idx, days = 30) =>
   api.get(`/vrp/${idx}`, { params: { days } }).then((r) => r.data);

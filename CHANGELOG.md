@@ -1,5 +1,13 @@
 # Changelog
 
+## V18.47 — 2026-10-08
+
+Add a Journal toggle to pause/resume saving future admin trade-cycle history without deleting existing cycles or changing daily Journal P&L; guest cycle history remains independent.
+
+## V18.46 — 2026-10-07
+
+Give archive compaction/deletion a two-minute browser timeout, batch verified archive deletions with ownership/status/date rechecks, and advise admins to refresh the range before retrying an ambiguous timed-out request.
+
 ## V18.45 — 2026-10-07
 
 Replace the Trade Journal cycle archive's month/age selection with an exact inclusive Exit Date range shared by preview, download, compaction, and permanent deletion; continue accepting existing monthly archive uploads.

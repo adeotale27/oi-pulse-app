@@ -1,9 +1,13 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { fetchJournalDay } from "@/lib/api";
+import { api, fetchJournalDay } from "@/lib/api";
 import TradeJournalModal from "./TradeJournalModal";
 
 jest.mock("@/lib/api", () => ({
+  api: {
+    get: jest.fn(),
+    post: jest.fn(),
+  },
   fetchJournalMonth: async () => ({
     today: "2026-10-07",
     days: [],
@@ -179,11 +183,33 @@ describe("TradeJournalModal local archive calendar", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     global.IS_REACT_ACT_ENVIRONMENT = true;
+    api.get.mockResolvedValue({ data: { trade_cycle_saving_enabled: true } });
+    api.post.mockResolvedValue({ data: { trade_cycle_saving_enabled: true } });
   });
 
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    jest.clearAllMocks();
+  });
+
+  it("saves the admin trade-cycle preference without changing saved daily journal P&L", async () => {
+    api.post.mockResolvedValueOnce({ data: { trade_cycle_saving_enabled: false } });
+    await act(async () => root.render(
+      <TradeJournalModal open onOpenChange={() => {}} />,
+    ));
+
+    const toggle = container.querySelector('[data-testid="journal-trade-cycle-saving"]');
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(container.textContent).toContain("daily Journal P&L stay");
+    expect(container.textContent).toContain("guest history is unchanged");
+
+    await act(async () => toggle.click());
+
+    expect(api.post).toHaveBeenCalledWith("/settings", {
+      trade_cycle_saving_enabled: false,
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
   });
 
   it("shows imported cycle P&L in a separate calendar and never opens the saved-day editor", async () => {

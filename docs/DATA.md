@@ -30,7 +30,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `access_requests` | Pending/approved/rejected guest entry requests |
 | `blocked_ips` | Hard blocks |
 | `trade_journal` | Admin trade journal: one document per **session** IST date (`session_anchor_date`, not midnight). Pre-open / weekend writes stay on the last session so Kite’s still-open day P&L cannot clone yesterday onto today. Stores booked P&L from **full exits and partial closes**, `funds_base` (**wallet** = Kite opening cash + collateral + pay-in; never leftover `net`, never SPAN/`utilised`), `booked_pct` of wallet **after charges**, `funds_total` / `funds_close`, inferred `inferred_cashflow` (Kite has no withdrawal API), brokerage/`charges_total`, notes, tags, rating, screenshots. Session-day rows have no TTL or date-based retention. Cleanup is limited to automatic non-session rows and pre-open calendar-date clones; equal P&L on consecutive days is not used to skip or delete a current session-day row. |
-| `trade_cycles` | Admin/guest broker-book trade cycles, scoped by owner and contract cycle. The admin Trade Journal can export this admin's closed-cycle documents for an exact inclusive Exit Date range as gzip NDJSON. After explicit confirmation and a matching SHA-256 check over that same range, Compact removes only `events` / `fills`; permanent Delete removes the selected closed cycles. Both actions require downloading the matching archive first. Guest cycles, open/partial cycles, and dates outside the range are never touched. Compact retains summaries and partials; Delete does not. |
+| `trade_cycles` | Admin/guest broker-book trade cycles, scoped by owner and contract cycle. The Journal's **Save my trade cycles** toggle controls only future admin cycle writes; it defaults on for existing installations. Turning it off keeps existing cycle records and daily `trade_journal` P&L, and does not affect guest cycle history. The admin Trade Journal can export this admin's closed-cycle documents for an exact inclusive Exit Date range as gzip NDJSON. After explicit confirmation and a matching SHA-256 check over that same range, Compact removes only `events` / `fills`; permanent Delete removes the selected closed cycles. Both actions require downloading the matching archive first. Guest cycles, open/partial cycles, and dates outside the range are never touched. Compact retains summaries and partials; Delete does not. |
 
 Trade-cycle archives are downloaded from the admin Trade Journal as
 `striklenz-cycle-archive-YYYY-MM-DD-to-YYYY-MM-DD.jsonl.gz`. Each decompressed
@@ -39,7 +39,9 @@ application before confirming either action. The API re-hashes the same
 inclusive date range and refuses to compact or delete if it no longer matches
 the downloaded archive fingerprint. After compaction, a fresh archive can still
 be downloaded with the retained summaries and used to delete those closed
-cycles if desired. Previously downloaded monthly archives remain uploadable.
+cycles if desired. Deletion rechecks owner, closed status, and dates while
+removing verified IDs in bounded batches. Large compact/delete requests may take
+up to two minutes from the browser. Previously downloaded monthly archives remain uploadable.
 Delete is irreversible from the app; the external archive is the recovery copy.
 
 An admin may also upload a downloaded `.jsonl.gz` archive into the Trade Journal.
