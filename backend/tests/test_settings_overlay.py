@@ -1,7 +1,7 @@
 DEFAULT_SETTINGS = {
     "oi_poll_interval_seconds": 15,
     "straddle_poll_interval_seconds": 15,
-    "positions_poll_interval_seconds": 30,
+    "positions_poll_interval_seconds": 2,
     "threshold_pct": 15.0,
 }
 

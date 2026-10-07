@@ -9,8 +9,8 @@ import {
   shouldPollPositionsBook,
   openLiveCount,
   POSITIONS_BOOK_LIVE_MS,
-  POSITIONS_BOOK_BOOT_MS,
   clampPositionsBookPollMs,
+  positionsBookPollDelayMs,
 } from "./positionsBookPoll";
 
 export {
@@ -26,6 +26,7 @@ let lastAt = 0;
 let timer = null;
 let startCount = 0;
 let pollMs = POSITIONS_BOOK_LIVE_MS;
+let lastRequestStartedAt = 0;
 const listeners = new Set();
 
 function notify(payload) {
@@ -70,6 +71,8 @@ export function refreshPositionsBook() {
 export async function fetchPositionsBook({ force = false, settleExpiry = false } = {}) {
   if (inflight && !settleExpiry) return inflight;
   if (!force && !settleExpiry && lastPayload && Date.now() - lastAt < 900) return lastPayload;
+  // Schedule from request start so a slow response doesn't add another full poll interval.
+  lastRequestStartedAt = Date.now();
   const req = api
     .get("/positions", {
       timeout: 12000,
@@ -92,14 +95,12 @@ function scheduleNext() {
   if (startCount <= 0) return;
   if (timer) clearTimeout(timer);
   const session = shouldPollPositionsBook();
-  let ms;
-  if (!lastPayload) {
-    ms = POSITIONS_BOOK_BOOT_MS;
-  } else if (!session) {
-    ms = 60_000;
-  } else {
-    ms = pollMs;
-  }
+  const ms = positionsBookPollDelayMs({
+    hasPayload: Boolean(lastPayload),
+    sessionOpen: session,
+    pollMs,
+    requestStartedAt: lastRequestStartedAt,
+  });
   timer = setTimeout(() => {
     const liveNow = shouldPollPositionsBook();
     const pull = liveNow || !lastPayload;

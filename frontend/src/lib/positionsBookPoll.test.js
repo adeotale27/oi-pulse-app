@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import {
+  clampPositionsBookPollMs,
+  positionsBookPollDelayMs,
+} from "./positionsBookPoll.js";
 
 function openLiveCount(payload) {
   const rows = payload?.positions;
@@ -20,14 +24,40 @@ assert.equal(
 );
 assert.equal(openLiveCount({ positions: [{ quantity: 10, exited: true }] }), 0);
 
-function clampPositionsBookPollMs(ms) {
-  const n = Number(ms);
-  if (!Number.isFinite(n) || n <= 0) return 30000;
-  return Math.max(5000, Math.min(3_600_000, Math.round(n)));
-}
 assert.equal(clampPositionsBookPollMs(15_000), 15_000);
-assert.equal(clampPositionsBookPollMs(1000), 5000);
-assert.equal(clampPositionsBookPollMs(0), 30000);
+assert.equal(clampPositionsBookPollMs(2000), 2000);
+assert.equal(clampPositionsBookPollMs(1000), 1000);
+assert.equal(clampPositionsBookPollMs(0), 2000);
 assert.equal(clampPositionsBookPollMs(9999999), 3_600_000);
+assert.equal(
+  positionsBookPollDelayMs({
+    hasPayload: true,
+    sessionOpen: true,
+    pollMs: 2000,
+    requestStartedAt: 10_000,
+    now: 11_500,
+  }),
+  500,
+);
+assert.equal(
+  positionsBookPollDelayMs({
+    hasPayload: true,
+    sessionOpen: true,
+    pollMs: 1000,
+    requestStartedAt: 10_000,
+    now: 11_500,
+  }),
+  0,
+);
+assert.equal(
+  positionsBookPollDelayMs({
+    hasPayload: false,
+    sessionOpen: false,
+    pollMs: 2000,
+    requestStartedAt: 10_000,
+    now: 11_500,
+  }),
+  1500,
+);
 
 console.log("positionsBookPoll.test.js ok");

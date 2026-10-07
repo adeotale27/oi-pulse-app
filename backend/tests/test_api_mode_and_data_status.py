@@ -294,7 +294,12 @@ def test_admin_settings_update_and_effect(monkeypatch):
 
     class FakeTrackerForSettings:
         def __init__(self):
-            self.settings = {"oi_poll_interval_seconds": 15, "straddle_poll_interval_seconds": 60}
+            self.settings = {
+                "oi_poll_interval_seconds": 15,
+                "straddle_poll_interval_seconds": 60,
+                "visible_pages": ["oi-change", "ipo-watch"],
+                "admin_visible_pages": ["adrs", "ipo-watch"],
+            }
         async def save_settings(self, patch):
             self.settings.update(patch)
             return self.settings
@@ -307,15 +312,81 @@ def test_admin_settings_update_and_effect(monkeypatch):
             "alert_indices_override_date": "2099-01-01",
             "oi_poll_interval_seconds": 30,
             "straddle_poll_interval_seconds": 60,
-            "positions_poll_interval_seconds": 15,
+            "positions_poll_interval_seconds": 2,
         })
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["oi_poll_interval_seconds"] == 30
-        assert data["positions_poll_interval_seconds"] == 15
+        assert data["positions_poll_interval_seconds"] == 2
+        assert data["visible_pages"] == ["oi-change"]
+        assert data["admin_visible_pages"] == ["adrs"]
         # GET /api/config should reflect the new poll interval
         cfg = client.get("/api/config").json()
         assert cfg["poll_interval_seconds"] == 30
-        assert cfg["positions_poll_interval_seconds"] == 15
+        assert cfg["positions_poll_interval_seconds"] == 2
+        one_second = client.post("/api/settings", json={
+            "_id": "alerts",
+            "positions_poll_interval_seconds": 1,
+        })
+        assert one_second.status_code == 200, one_second.text
+        assert one_second.json()["positions_poll_interval_seconds"] == 1
+        assert client.get("/api/config").json()["positions_poll_interval_seconds"] == 1
+        rejected = client.post("/api/settings", json={
+            "_id": "alerts",
+            "positions_poll_interval_seconds": 0,
+        })
+        assert rejected.status_code == 400
+        invalid_page = client.post("/api/settings", json={
+            "visible_pages": ["ipo-watch"],
+        })
+        assert invalid_page.status_code == 400
+        migrated_pages = client.post("/api/settings", json={
+            "visible_pages": ["oi-change", "ipo-watch"],
+        })
+        assert migrated_pages.status_code == 200, migrated_pages.text
+        assert migrated_pages.json()["visible_pages"] == ["oi-change"]
+        migrated_indices = client.post("/api/settings", json={
+            "enabled_indices": ["NIFTY", "OLDINDEX"],
+            "alert_enabled_indices": ["NIFTY", "OLDINDEX"],
+            "straddle_enabled_indices": ["SENSEX", "OLDINDEX"],
+        })
+        assert migrated_indices.status_code == 200, migrated_indices.text
+        assert migrated_indices.json()["enabled_indices"] == ["NIFTY"]
+        assert migrated_indices.json()["alert_enabled_indices"] == ["NIFTY"]
+        assert migrated_indices.json()["straddle_enabled_indices"] == ["SENSEX"]
     finally:
         server.app.dependency_overrides.pop(server.require_admin, None)
+
+
+def test_settings_reads_drop_retired_dashboard_page_ids(monkeypatch):
+    class FakeSettingsTracker:
+        settings = {
+            **server.DEFAULT_SETTINGS,
+            "visible_pages": ["oi-change", "ipo-watch", "positions"],
+            "admin_visible_pages": ["ipo-watch", "adrs"],
+            "enabled_indices": ["NIFTY", "OLDINDEX"],
+            "alert_enabled_indices": ["OLDINDEX"],
+            "straddle_enabled_indices": ["SENSEX", "OLDINDEX"],
+            "weekday_dashboard_defaults": {"0": "OLDINDEX", "1": "NIFTY"},
+            "lot_sizes": {"NIFTY": 25, "OLDINDEX": 10},
+        }
+
+    monkeypatch.setattr(server, "tracker", FakeSettingsTracker())
+    monkeypatch.setattr(server, "db", None)
+    client = TestClient(server.app)
+
+    response = client.get("/api/settings")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["visible_pages"] == ["oi-change", "positions"]
+    assert data["admin_visible_pages"] == ["adrs"]
+    assert data["enabled_indices"] == ["NIFTY"]
+    assert data["alert_enabled_indices"] == ["NIFTY"]
+    assert "OLDINDEX" not in data["straddle_enabled_indices"]
+    assert data["weekday_dashboard_defaults"] == {"1": "NIFTY"}
+    assert data["lot_sizes"] == {"NIFTY": 25}
+    config = client.get("/api/config").json()
+    assert config["visible_pages"] == ["oi-change", "positions"]
+    assert config["admin_visible_pages"] == ["adrs"]
+    assert config["enabled_indices"] == ["NIFTY"]

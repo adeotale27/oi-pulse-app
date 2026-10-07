@@ -267,12 +267,15 @@ export function scoreStrikePressure({
 
   score = Math.max(-100, Math.min(100, score));
   if (hysteresisKey) score = hysteresis(hysteresisKey, score);
-  if (!votes && sessionToward === 0 && !crossed && history.length < 2) {
+  // A single post-refresh point cannot establish direction; don't present it as neutral.
+  const warmingUp = !votes && sessionToward === 0 && !crossed && history.length < 2;
+  if (warmingUp) {
     reasons.push("Waiting for path — using live distance only");
   }
   return {
     score,
     label: labelFromScore(score),
+    warmingUp,
     reasons,
     dist,
     spot: S,
@@ -282,6 +285,9 @@ export function scoreStrikePressure({
 }
 
 export function formatPressureCompact(result) {
+  if (result?.warmingUp) {
+    return { arrow: "…", pressure: "WARMING UP", impact: "NEUTRAL" };
+  }
   const label = result?.label || PRESSURE_LABELS.neutral;
   const impact = result?.impact || "NEUTRAL";
   if (label === PRESSURE_LABELS.unavailable) return { arrow: "—", pressure: label, impact: "NEUTRAL" };

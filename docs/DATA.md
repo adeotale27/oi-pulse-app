@@ -55,7 +55,10 @@ Kite Connect ──► OITracker (asyncio poll) ──► oi_snapshots
 1. **Poll** — While the market is in session (regular hours or Muhurat / special session, or `FORCE_ALWAYS_POLL`), tracker fetches option chain for each **enabled** index and selected expiry. Kite Connect does not expose a holiday/session-open endpoint; hours come from the NSE calendar plus a live quote last_trade_time check.
 2. **Normalize** — Snapshot includes spot, ATM, PCR, per-strike CE/PE OI, VIX when available, `timestamp` / `created_at`.
 3. **Upsert** — Written to `oi_snapshots` with uniqueness on `(index, expiry, timestamp)`.
-4. **On demand** — Boot fetches OI for the **open index** only; other chips load when selected. FII/DII and impact fetch when that tile is opened. Positions poll only on the Positions tab. Index management **Search/Sync** loads the Kite name list — login and `/expiries` do not dump `kite.instruments()`. Auth 520/timeout does not sign you out.
+4. **On demand** — Boot fetches OI for the **open index** only; other chips load when selected. FII/DII and impact fetch when that tile is opened. The Header and Positions page share one `/positions` poll during the cash session; Admin config controls its interval (1–3600 seconds, default 2). The interval is measured between request starts, not added after each response; in-flight requests are never duplicated. Index management **Search/Sync** loads the Kite name list — login and `/expiries` do not dump `kite.instruments()`. Auth 520/timeout does not sign you out.
+   Dashboard info-tile dropdowns are mutually exclusive within each responsive row: opening Holiday, FII/DII, Events, or Index Impact closes the previously opened tile.
+   Settings reads omit retired dashboard page and underlying IDs from page ticks, enabled/alert/straddle index lists, weekday defaults, and lot-size maps. Writes drop retired IDs when valid selections remain, but reject selection lists that contain no current required pages or indices.
+   Admin configuration has separate saves for shared desk settings and browser-local signal thresholds. Each action reports its own changed-setting count and successful timestamp; a failed save stays visible inline without clearing either form. The save bar remains in view while configuration content scrolls, and the phone layout stacks full-width save controls below the form. Lot sizes can be saved to the browser independently and are also included with a desk save to keep the shared lot-size configuration synchronized.
 
 ### Market Memory
 
@@ -91,7 +94,7 @@ Refused on weekends/holidays so Friday’s last session is not wiped. Use when t
 | Concern | Where | Behavior |
 |---------|-------|----------|
 | Active index / expiry | `Dashboard.jsx` | Drives chart + table; cache hydrated in `oiCacheRef` |
-| GEX snapshot | `Dashboard.jsx` + `sellCandidates.js` | Calculates at the OI snapshot time; if that expiry has elapsed, may show the prior valid snapshot from the same IST session and labels it as retained. It never carries an expiry fallback across sessions. |
+| GEX snapshot | `Dashboard.jsx` + `sellCandidates.js` | Calculates at the OI snapshot time, using valid option legs within a fixed ±3% spot band and the configured contract lot size to avoid far-wing quote noise and stale multipliers. The displayed estimate can still change when the live snapshot changes. If that expiry has elapsed, it may show the prior valid snapshot from the same IST session and labels it as retained; it never carries an expiry fallback across sessions. |
 | Timeframe pills | Client | Re-request change window; does not re-fetch Kite |
 | Strike filter | Sidebar min/max or ATM ± N | `atmWindow` in `strikeRange.js`: ±N recenters on live ATM as spot moves; `"all"` is the full chain. Manual min/max stops follow until a ±N chip is picked. |
 | Compact mode | `localStorage.compact` | Default **on** for viewports ≤1280px (more chart, less chrome) |

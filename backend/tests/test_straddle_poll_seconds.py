@@ -20,6 +20,13 @@ def test_straddle_poll_clamp_range_only():
     assert clamp_straddle_poll_seconds(None) == 15
 
 
+def test_positions_poll_accepts_one_second_and_only_clamps_out_of_range_values():
+    assert clamp_positions_poll_seconds({"positions_poll_interval_seconds": 2}) == 2
+    assert clamp_positions_poll_seconds({"positions_poll_interval_seconds": 1}) == 1
+    assert clamp_positions_poll_seconds({"positions_poll_interval_seconds": 0}) == 1
+    assert clamp_positions_poll_seconds({}) == 2
+
+
 def test_mongo_doc_overrides_in_memory_defaults():
     settings = {
         "oi_poll_interval_seconds": 15,

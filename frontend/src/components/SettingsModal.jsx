@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Settings2, Bell, Clock, Database, LayoutGrid, Activity } from "lucide-react";
 import { loadOISettings, saveOISettings, DEFAULT_OI_SETTINGS } from "@/lib/oiSettings";
 import { settingsAreWritable } from "@/lib/settingsWriteGuard";
+import { countChangedSettings } from "@/lib/settingsSnapshot";
 import InfoTip from "@/components/InfoTip";
 
 import { DESK_IDS, isMcxMajorId } from "@/lib/universe";
@@ -35,6 +36,9 @@ const DASHBOARD_PAGES = [
   { id: "adrs", label: "Global Markets" },
 ];
 const ALL_PAGE_IDS = DASHBOARD_PAGES.map((p) => p.id);
+const VALID_PAGE_IDS = new Set(ALL_PAGE_IDS);
+const LAST_DESK_SAVE_KEY = "oiSettingsStatus.lastDeskSaveAt";
+const LAST_DEVICE_SAVE_KEY = "oiSettingsStatus.lastDeviceSaveAt";
 const SETTINGS_PANES = [
   { id: "alerts", label: "Alerts", hint: "OI reversal, tracked names, today focus" },
   { id: "market", label: "Market timing", hint: "Hours, CAS IEP preview, session TTL", admin: true },
@@ -42,6 +46,35 @@ const SETTINGS_PANES = [
   { id: "pages", label: "Dashboard pages", hint: "Public vs admin ticks, OI extras", admin: true },
   { id: "signals", label: "Chart signals", hint: "Huge shift, gamma, velocity, lots" },
 ];
+
+function readSavedAt(key) {
+  try {
+    const value = Number(localStorage.getItem(key));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeSavedAt(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // The save itself has succeeded; this timestamp is only a convenience.
+  }
+}
+
+function formatSavedAt(value) {
+  if (!value) return "Not recorded";
+  return new Date(value).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }) + " IST";
+}
 
 function normalizeLoadedSettings(d) {
   const next = { ...(d || {}) };
@@ -81,12 +114,22 @@ export default function SettingsModal({
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [savedDeskSettings, setSavedDeskSettings] = useState(null);
+  const [savedLocalSettings, setSavedLocalSettings] = useState(null);
+  const [lastDeskSavedAt, setLastDeskSavedAt] = useState(() => readSavedAt(LAST_DESK_SAVE_KEY));
+  const [lastDeviceSavedAt, setLastDeviceSavedAt] = useState(() => readSavedAt(LAST_DEVICE_SAVE_KEY));
+  const [lastLoadedAt, setLastLoadedAt] = useState(null);
+  const [saveError, setSaveError] = useState("");
   const [pane, setPane] = useState("alerts");
 
   useEffect(() => {
     if (!open) return;
     setLoadError(null);
+    setSaveError("");
     setSettings(null);
+    const storedLocal = loadOISettings();
+    setLocal(storedLocal);
+    setSavedLocalSettings(storedLocal);
     api.get("/settings", {
       params: { _: Date.now(), reload: 1 },
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
@@ -94,21 +137,25 @@ export default function SettingsModal({
       .then((r) => {
         const d = normalizeLoadedSettings(r.data || {});
         setSettings(d);
+        setSavedDeskSettings(d);
+        setLastLoadedAt(Date.now());
         const enabled = Array.isArray(d.enabled_indices) ? d.enabled_indices : [];
         const known = Array.isArray(d.known_indices) ? d.known_indices : [];
         const pool = [...new Set([...known, ...enabled])].filter(Boolean);
         if (pool.length) setKnownIndices(pool);
         const kiteLots = d.lot_sizes && typeof d.lot_sizes === "object" ? d.lot_sizes : {};
-        setLocal((prev) => {
-          const lotSize = { ...prev.lotSize };
-          Object.entries(kiteLots).forEach(([k, v]) => {
-            const n = Number(v);
-            if (k && n > 0 && !lotSize[k]) lotSize[k] = n;
-          });
-          const next = { ...prev, lotSize };
-          saveOISettings(next);
-          return next;
+        const lotSize = { ...storedLocal.lotSize };
+        Object.entries(kiteLots).forEach(([k, v]) => {
+          const n = Number(v);
+          if (k && n > 0 && !lotSize[k]) lotSize[k] = n;
         });
+        const nextLocal = { ...storedLocal, lotSize };
+        setLocal(nextLocal);
+        if (saveOISettings(nextLocal)) {
+          setSavedLocalSettings(nextLocal);
+        } else {
+          setSaveError("Could not sync saved lot sizes to this browser. Check browser storage permissions.");
+        }
       })
       .catch((e) => {
         setLoadError(e?.response?.data?.detail || e.message || "Failed to load settings");
@@ -121,7 +168,7 @@ export default function SettingsModal({
           straddle_enabled_indices: ["NIFTY", "SENSEX"],
           oi_poll_interval_seconds: 15,
           straddle_poll_interval_seconds: 15,
-          positions_poll_interval_seconds: 30,
+          positions_poll_interval_seconds: 2,
           market_open_ist: "09:15",
           market_close_ist: "15:40",
           second_session_ist: "12:00",
@@ -144,7 +191,6 @@ export default function SettingsModal({
           indicative_popup_opacity: 92,
         });
       });
-    setLocal(loadOISettings());
   }, [open, isAdmin, loadAttempt]);
 
   const toggleIndex = (idx) => {
@@ -214,95 +260,118 @@ export default function SettingsModal({
   const setLocalField = (k, v) => setLocal((prev) => ({ ...prev, [k]: v }));
   const setLot = (idx, v) => setLocal((prev) => ({ ...prev, lotSize: { ...prev.lotSize, [idx]: v } }));
 
-  const submit = async () => {
-    if (isAdmin && !settingsAreWritable({ loaded: settings !== null, error: loadError })) {
-      toast.error("Saved settings could not be loaded. Retry before saving.");
+  const savePersonalSettings = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      if (!saveOISettings(local)) {
+        throw new Error("Could not save personal settings to this browser. Check browser storage permissions and retry.");
+      }
+      setSavedLocalSettings(local);
+      const savedAt = Date.now();
+      setLastDeviceSavedAt(savedAt);
+      storeSavedAt(LAST_DEVICE_SAVE_KEY, savedAt);
+      onLocalSaved?.(local);
+      toast.success("Personal thresholds saved on this device");
+    } catch (e) {
+      const message = e?.response?.data?.detail || e.message || "Unexpected save error";
+      setSaveError(`Personal save failed: ${message}`);
+      toast.error("Failed to save personal thresholds: " + message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveDeskSettings = async () => {
+    if (!settingsAreWritable({ loaded: settings !== null, error: loadError })) {
+      const message = "Saved desk settings could not be loaded. Retry before saving.";
+      setSaveError(`Desk save failed: ${message}`);
+      toast.error(message);
       return;
     }
     setSaving(true);
+    setSaveError("");
     try {
-      // Always persist local thresholds first so they aren't lost if server POST fails.
-      saveOISettings(local);
-      onLocalSaved?.(local);
-      if (isAdmin) {
-        let positionsPoll = parseInt(settings.positions_poll_interval_seconds, 10);
-        if (!Number.isFinite(positionsPoll)) positionsPoll = 30;
-        positionsPoll = Math.min(3600, Math.max(5, positionsPoll));
-        const payload = {
-          threshold_pct: settings.threshold_pct,
-          cooldown_seconds: settings.cooldown_seconds,
-          compare_minutes: settings.compare_minutes,
-          enabled_indices: settings.enabled_indices,
-          straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => knownIndices.includes(i)),
-          alert_enabled_indices: (settings.alert_enabled_indices || []).filter((i) => knownIndices.includes(i)),
-          weekday_dashboard_defaults: settings.weekday_dashboard_defaults || { "0": "NIFTY", "1": "NIFTY", "2": "SENSEX", "3": "SENSEX", "4": "NIFTY" },
-          lot_sizes: local.lotSize || {},
-          oi_poll_interval_seconds: settings.oi_poll_interval_seconds,
-          straddle_poll_interval_seconds: settings.straddle_poll_interval_seconds,
-          positions_poll_interval_seconds: positionsPoll,
-          market_open_ist: settings.market_open_ist,
-          market_close_ist: settings.market_close_ist,
-          second_session_ist: settings.second_session_ist,
-          cas_iep_enabled: settings.cas_iep_enabled !== false,
-          cas_iep_start_ist: settings.cas_iep_start_ist || "15:20",
-          cas_iep_end_ist: settings.cas_iep_end_ist || "15:30",
-          cas_iep_interval_seconds: settings.cas_iep_interval_seconds ?? 5,
-          cas_iep_force: !!settings.cas_iep_force,
-          expire_admin_on_market_close: settings.expire_admin_on_market_close,
-          admin_session_ttl_minutes: settings.admin_session_ttl_minutes,
-          mcx_desk_on: !!settings.mcx_desk_on,
-          show_strike_range: settings.show_strike_range,
-          show_market_memory: settings.show_market_memory !== false,
-          show_writer_defense: settings.show_writer_defense,
-          show_suggestion: settings.show_suggestion,
-          show_chart_signals: settings.show_chart_signals,
-          position_mark_glow_after_close: settings.position_mark_glow_after_close !== false,
-          position_mark_glow_pct: (() => {
-            const v = Number(settings.position_mark_glow_pct);
-            return Number.isFinite(v) && v >= 0.01 ? v : 1;
-          })(),
-          alert_toast_opacity: settings.alert_toast_opacity ?? 90,
-          overnight_popup_opacity: settings.overnight_popup_opacity ?? 92,
-          market_intel_popup_opacity: settings.market_intel_popup_opacity ?? 92,
-          indicative_popup_opacity: settings.indicative_popup_opacity ?? 92,
-          market_intel_ingest_seconds: settings.market_intel_ingest_seconds,
-          market_intel_retention_days: settings.market_intel_retention_days,
-          market_intel_min_history_days: settings.market_intel_min_history_days,
-          market_intel_popup_enabled: settings.market_intel_popup_enabled !== false,
-          visible_pages: Array.from(new Set(
-            (Array.isArray(settings.visible_pages) ? settings.visible_pages : []).filter((id) => !HARD_ADMIN_PAGES.has(id)),
-          )),
-          admin_visible_pages: Array.from(new Set(
-            (Array.isArray(settings.admin_visible_pages) && settings.admin_visible_pages.length
-              ? settings.admin_visible_pages
-              : ALL_PAGE_IDS
-            ).filter((id) => !HARD_ADMIN_PAGES.has(id)),
-          )),
-        };
-        if (!payload.visible_pages.length) {
-          toast.error("Keep at least one public page visible");
-          setSaving(false);
-          return;
-        }
-        if (!payload.admin_visible_pages.length) {
-          toast.error("Keep at least one page on your dashboard");
-          setSaving(false);
-          return;
-        }
-        const { data } = await api.post("/settings", payload);
-        const saved = normalizeLoadedSettings(data || payload);
-        setSettings(saved);
-        toast.success("Settings saved — polling & alerts updated");
-        onSaved?.(saved);
-        try {
-          window.dispatchEvent(new CustomEvent("oi-settings-saved", { detail: saved }));
-        } catch { /* noop */ }
-      } else {
-        toast.success("Local thresholds saved");
+      const knownIndexSet = new Set(knownIndices);
+      const enabledIndices = (settings.enabled_indices || []).filter((index) => knownIndexSet.has(index));
+      const alertIndices = (settings.alert_enabled_indices || []).filter((index) => knownIndexSet.has(index));
+      if (!enabledIndices.length || !alertIndices.length) {
+        throw new Error("Select at least one currently available index for tracking and alerts.");
       }
-      onOpenChange(false);
+      let positionsPoll = parseInt(settings.positions_poll_interval_seconds, 10);
+      if (!Number.isFinite(positionsPoll)) positionsPoll = 2;
+      positionsPoll = Math.min(3600, Math.max(1, positionsPoll));
+      const payload = {
+        threshold_pct: settings.threshold_pct,
+        cooldown_seconds: settings.cooldown_seconds,
+        compare_minutes: settings.compare_minutes,
+        enabled_indices: enabledIndices,
+        straddle_enabled_indices: (settings.straddle_enabled_indices || []).filter((i) => knownIndexSet.has(i)),
+        alert_enabled_indices: alertIndices,
+        weekday_dashboard_defaults: settings.weekday_dashboard_defaults || { "0": "NIFTY", "1": "NIFTY", "2": "SENSEX", "3": "SENSEX", "4": "NIFTY" },
+        lot_sizes: local.lotSize || {},
+        oi_poll_interval_seconds: settings.oi_poll_interval_seconds,
+        straddle_poll_interval_seconds: settings.straddle_poll_interval_seconds,
+        positions_poll_interval_seconds: positionsPoll,
+        market_open_ist: settings.market_open_ist,
+        market_close_ist: settings.market_close_ist,
+        second_session_ist: settings.second_session_ist,
+        cas_iep_enabled: settings.cas_iep_enabled !== false,
+        cas_iep_start_ist: settings.cas_iep_start_ist || "15:20",
+        cas_iep_end_ist: settings.cas_iep_end_ist || "15:30",
+        cas_iep_interval_seconds: settings.cas_iep_interval_seconds ?? 5,
+        cas_iep_force: !!settings.cas_iep_force,
+        expire_admin_on_market_close: settings.expire_admin_on_market_close,
+        admin_session_ttl_minutes: settings.admin_session_ttl_minutes,
+        mcx_desk_on: !!settings.mcx_desk_on,
+        show_strike_range: settings.show_strike_range,
+        show_market_memory: settings.show_market_memory !== false,
+        show_writer_defense: settings.show_writer_defense,
+        show_suggestion: settings.show_suggestion,
+        show_chart_signals: settings.show_chart_signals,
+        position_mark_glow_after_close: settings.position_mark_glow_after_close !== false,
+        position_mark_glow_pct: (() => {
+          const v = Number(settings.position_mark_glow_pct);
+          return Number.isFinite(v) && v >= 0.01 ? v : 1;
+        })(),
+        alert_toast_opacity: settings.alert_toast_opacity ?? 90,
+        overnight_popup_opacity: settings.overnight_popup_opacity ?? 92,
+        market_intel_popup_opacity: settings.market_intel_popup_opacity ?? 92,
+        indicative_popup_opacity: settings.indicative_popup_opacity ?? 92,
+        market_intel_ingest_seconds: settings.market_intel_ingest_seconds,
+        market_intel_retention_days: settings.market_intel_retention_days,
+        market_intel_min_history_days: settings.market_intel_min_history_days,
+        market_intel_popup_enabled: settings.market_intel_popup_enabled !== false,
+        visible_pages: Array.from(new Set(
+          (Array.isArray(settings.visible_pages) ? settings.visible_pages : [])
+            .filter((id) => VALID_PAGE_IDS.has(id) && !HARD_ADMIN_PAGES.has(id)),
+        )),
+        admin_visible_pages: Array.from(new Set(
+          (Array.isArray(settings.admin_visible_pages) && settings.admin_visible_pages.length
+            ? settings.admin_visible_pages
+            : ALL_PAGE_IDS
+          ).filter((id) => VALID_PAGE_IDS.has(id) && !HARD_ADMIN_PAGES.has(id)),
+        )),
+      };
+      if (!payload.visible_pages.length) throw new Error("Keep at least one public page visible");
+      if (!payload.admin_visible_pages.length) throw new Error("Keep at least one page on your dashboard");
+      const { data } = await api.post("/settings", payload);
+      const saved = normalizeLoadedSettings(data || payload);
+      setSettings(saved);
+      setSavedDeskSettings(saved);
+      const deskSavedAt = Date.now();
+      setLastDeskSavedAt(deskSavedAt);
+      storeSavedAt(LAST_DESK_SAVE_KEY, deskSavedAt);
+      setLoadError(null);
+      onSaved?.(saved);
+      try {
+        window.dispatchEvent(new CustomEvent("oi-settings-saved", { detail: saved }));
+      } catch { /* noop */ }
+      toast.success("Desk settings saved to server");
     } catch (e) {
-      toast.error("Failed to save settings: " + (e?.response?.data?.detail || e.message));
+      const message = e?.response?.data?.detail || e.message || "Unexpected save error";
+      setSaveError(`Desk save failed: ${message}`);
+      toast.error("Failed to save desk settings: " + message);
     } finally {
       setSaving(false);
     }
@@ -310,29 +379,92 @@ export default function SettingsModal({
 
   const resetLocal = () => {
     setLocal({ ...DEFAULT_OI_SETTINGS });
-    toast.info("Frontend thresholds reset to defaults (not yet saved)");
+    toast.info("Browser-local thresholds reset; save to apply");
   };
+
+  const deskDraft = settings ? { ...settings, lot_sizes: local.lotSize || {} } : null;
+  const deskChangeCount = isAdmin
+    ? countChangedSettings(deskDraft, savedDeskSettings)
+    : 0;
+  const personalChangeCount = countChangedSettings(local, savedLocalSettings);
+  const deskDirty = deskChangeCount > 0;
+  const deviceDirty = personalChangeCount > 0;
+  const configurationLoaded = settings !== null && !loadError;
+  const deskStatus = loadError
+    ? "Unavailable"
+    : deskDirty
+      ? "Unsaved changes"
+      : configurationLoaded
+        ? "Loaded"
+        : "Loading";
+  const deviceStatus = deviceDirty ? "Unsaved changes" : "Saved in this browser";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="settings-modal" className="max-w-2xl max-h-[min(90dvh,calc(100dvh-1rem))] overflow-y-auto overflow-x-hidden min-w-0 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:translate-y-0 max-md:w-[calc(100vw-1rem)]">
+      <DialogContent data-testid="settings-modal" className="flex h-[min(90dvh,calc(100dvh-1rem))] max-h-[min(90dvh,calc(100dvh-1rem))] max-w-2xl min-w-0 flex-col gap-3 overflow-hidden max-sm:gap-2 max-sm:p-4 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:translate-y-0 max-md:w-[calc(100vw-1rem)]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex flex-wrap items-center gap-2">
             <Settings2 className="w-4 h-4" />
               {isAdmin ? "Admin configuration" : "Settings"}
             <AdminDialogNavigation />
           </DialogTitle>
           <DialogDescription>
-              Pick a tile, then edit that group. Alerts and chart signals are local+server; Market timing, data, and pages are admin-only.
+            Pick a tile, then edit that group. Save shared desk settings and browser-local thresholds separately.
           </DialogDescription>
         </DialogHeader>
 
-        {loadError && (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-xs px-3 py-2">
-            <span>{loadError} — fallback values are shown; saving server settings is disabled until saved settings load.</span>
+        <div className="flex flex-wrap gap-1.5 text-[10px]" data-testid="settings-storage-labels">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
+            Desk configuration <b className="ml-1 text-slate-800">{isAdmin ? "Saved to server" : "Admin-managed"}</b>
+          </span>
+          <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-blue-700">
+            Personal thresholds <b className="ml-1">Saved on this device</b>
+          </span>
+        </div>
+
+        <div
+          className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs ${
+            loadError ? "border-rose-200 bg-rose-50 text-rose-800" : "border-slate-200 bg-slate-50 text-slate-700"
+          }`}
+          role={loadError ? "alert" : "status"}
+          aria-live="polite"
+          data-testid="settings-health"
+        >
+          <div className="min-w-0">
+            <div className="font-semibold">
+              {loadError ? "Configuration unavailable" : configurationLoaded ? "Configuration loaded" : "Loading configuration…"}
+              {!loadError && (deskDirty || deviceDirty)
+                ? <span className="ml-2 text-amber-700">Unsaved changes</span>
+                : null}
+            </div>
+            <div className="mt-0.5 flex flex-wrap gap-x-3 text-[10px]">
+              <span>Desk (server): <b>{deskStatus}</b></span>
+              <span>Personal settings (this device): <b>{deviceStatus}</b></span>
+            </div>
+            <div className="mt-0.5 text-[10px]">
+              {lastLoadedAt ? `Loaded ${formatSavedAt(lastLoadedAt)}` : "Load time not available"}
+              {" · "}Last saved: desk {formatSavedAt(lastDeskSavedAt)}, device {formatSavedAt(lastDeviceSavedAt)}
+            </div>
+            {loadError ? (
+              <p className="mt-1 break-words text-[11px]">{loadError} — saved desk settings are required before server changes can be saved.</p>
+            ) : null}
+            {saveError ? (
+              <p className="mt-1 break-words text-[11px] text-rose-700" data-testid="settings-save-error">
+                Save failed: {saveError}
+              </p>
+            ) : null}
+          </div>
+          {loadError ? (
             <Button type="button" size="sm" variant="outline" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
               Retry load
             </Button>
+          ) : null}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" data-testid="settings-scroll-content">
+        {loadError && (
+          <div className="rounded-md bg-amber-50 px-3 py-2 text-[10px] text-amber-800">
+            Fallback values are shown. Server settings cannot be saved until the saved configuration loads successfully.
           </div>
         )}
 
@@ -778,17 +910,17 @@ export default function SettingsModal({
                   <Label className="text-xs uppercase tracking-wider text-slate-500 mb-2 block flex items-center gap-1">
                     Positions Auto-Refresh (seconds)
                     <InfoTip title="Positions Poll Interval">
-                      How often the Positions desk reloads the live Kite book. Header Today P&L (admin only) uses the same poll. Saved to the database; opening this panel always reloads that value. Whole seconds, 5–3600. Default 30.
+                      Target time between the starts of consecutive Positions requests. A slow broker response does not add another full wait, and requests never overlap. Header Today P&L uses the same poll. Very short intervals make frequent broker requests; increase it to reduce request volume. Whole seconds, 1–3600. Default 2.
                     </InfoTip>
                   </Label>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
                       inputMode="numeric"
-                      min={5}
+                      min={1}
                       max={3600}
                       step={1}
-                      value={settings.positions_poll_interval_seconds ?? 30}
+                      value={settings.positions_poll_interval_seconds ?? 2}
                       onChange={(e) => {
                         const raw = e.target.value;
                         if (raw === "") {
@@ -801,8 +933,8 @@ export default function SettingsModal({
                       }}
                       onBlur={() => {
                         let n = parseInt(settings.positions_poll_interval_seconds, 10);
-                        if (!Number.isFinite(n)) n = 30;
-                        n = Math.min(3600, Math.max(5, n));
+                        if (!Number.isFinite(n)) n = 2;
+                        n = Math.min(3600, Math.max(1, n));
                         setSettings({ ...settings, positions_poll_interval_seconds: n });
                       }}
                       className="w-28 h-8 text-sm font-mono-data"
@@ -810,6 +942,9 @@ export default function SettingsModal({
                     />
                     <span className="text-xs text-slate-500">seconds</span>
                   </div>
+                  <p className="mt-1 text-[10px] leading-snug text-slate-500">
+                    Target interval between request starts. Slow responses won’t overlap; if one takes longer than this value, the next request starts as soon as it finishes.
+                  </p>
                 </div>
 
                 <div>
@@ -962,6 +1097,9 @@ export default function SettingsModal({
 
           {pane === "signals" ? (
           <>
+          <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-[10px] leading-snug text-blue-800" data-testid="signal-storage-note">
+            These signal thresholds and alert windows are saved in this browser only; they do not change other users’ settings. Lot sizes below can be saved separately on this device or synced to the desk.
+          </div>
           <section className="space-y-3 pt-2">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 flex items-center gap-1">
               Huge OI shift popup (ATM ± 1 strikes)
@@ -1090,6 +1228,7 @@ export default function SettingsModal({
               <Label className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">
                 Lot sizes
               </Label>
+              <p className="mb-1 text-[10px] text-slate-500">Personal Save stores these on this device; Desk Save also syncs them to the shared desk.</p>
               <div className="grid grid-cols-3 gap-2">
                 {knownIndices.map((idx) => (
                   <div key={idx} className="flex flex-col">
@@ -1109,29 +1248,48 @@ export default function SettingsModal({
           </section>
           </>
           ) : null}
+          </div>
+        </>
+        )}
         </div>
 
-        <div className="flex justify-between items-center pt-3 border-t border-slate-200">
+        <div className="flex flex-col items-stretch gap-2 border-t border-slate-200 bg-background pt-3 sm:flex-row sm:items-center sm:justify-between" data-testid="settings-save-bar">
           <Button
             variant="ghost"
             size="sm"
             onClick={resetLocal}
-            className="text-xs text-slate-500 hover:text-slate-800"
+            className="self-start text-xs text-slate-500 hover:text-slate-800"
             data-testid="btn-reset-local"
           >
             Reset thresholds
           </Button>
-          <Button
-            data-testid="btn-save-settings"
-            onClick={submit}
-            disabled={saving || (isAdmin && !settingsAreWritable({ loaded: settings !== null, error: loadError }))}
-            className="rounded-sm bg-slate-900 hover:bg-slate-800"
-          >
-            {saving ? "Saving…" : "Save"}
-          </Button>
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:justify-end" data-testid="settings-save-actions">
+            {isAdmin ? (
+              <Button
+                data-testid="btn-save-desk-settings"
+                onClick={saveDeskSettings}
+                disabled={saving || deskChangeCount === 0 || !settingsAreWritable({ loaded: settings !== null, error: loadError })}
+                className="w-full rounded-sm bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:opacity-70 sm:w-auto max-sm:flex-col max-sm:gap-1 max-sm:whitespace-normal max-sm:leading-tight"
+              >
+                {saving ? "Saving…" : "Save desk settings"}
+                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white max-sm:whitespace-normal" data-testid="desk-change-count">
+                  {deskChangeCount} {deskChangeCount === 1 ? "setting" : "settings"} changed
+                </span>
+              </Button>
+            ) : null}
+            <Button
+              data-testid="btn-save-personal-settings"
+              onClick={savePersonalSettings}
+              disabled={saving || personalChangeCount === 0}
+              className="w-full rounded-sm bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70 sm:w-auto max-sm:flex-col max-sm:gap-1 max-sm:whitespace-normal max-sm:leading-tight"
+            >
+              {saving ? "Saving…" : "Save personal thresholds"}
+              <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white max-sm:whitespace-normal" data-testid="personal-change-count">
+                {personalChangeCount} {personalChangeCount === 1 ? "setting" : "settings"} changed
+              </span>
+            </Button>
+          </div>
         </div>
-        </>
-        )}
       </DialogContent>
     </Dialog>
   );

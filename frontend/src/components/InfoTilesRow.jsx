@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import HolidayBadge from "@/components/HolidayBadge";
 import FiiDiiBadge from "@/components/FiiDiiBadge";
 import MarketEventsBadge from "@/components/MarketEventsBadge";
@@ -27,6 +27,7 @@ export default function InfoTilesRow({
 }) {
   const [draggingId, setDraggingId] = useState(null);
   const [overId, setOverId] = useState(null);
+  const [openTile, setOpenTile] = useState(null);
   const skipClickRef = useRef(false);
   const canReorder = typeof onReorder === "function";
   const canFavorite = typeof onFavorite === "function";
@@ -36,26 +37,25 @@ export default function InfoTilesRow({
     const all = [
       {
         id: "holiday",
-        node: <HolidayBadge onOpenCalendar={onOpenHolidays} />,
+        Component: HolidayBadge,
+        props: { onOpenCalendar: onOpenHolidays },
       },
       {
         id: "fii-dii",
-        node: <FiiDiiBadge isAdmin={!!isAdmin} />,
+        Component: FiiDiiBadge,
+        props: { isAdmin: !!isAdmin },
       },
       {
         id: "events",
-        node: <MarketEventsBadge onClick={onOpenHolidays} />,
+        Component: MarketEventsBadge,
+        props: { onClick: onOpenHolidays },
       },
     ];
     if (showImpact) {
       all.push({
         id: "impact",
-        node: (
-          <MarketImpactBadge
-            activeIndex={activeIndex}
-            onOpenIndexEvents={onOpenIndexEvents}
-          />
-        ),
+        Component: MarketImpactBadge,
+        props: { activeIndex, onOpenIndexEvents },
       });
     }
     return all;
@@ -137,6 +137,23 @@ export default function InfoTilesRow({
     onFavorite(id);
   };
 
+  const onTileOpenChange = useCallback((id, nextOpen) => {
+    setOpenTile((current) => {
+      if (nextOpen) return id;
+      return current === id ? null : current;
+    });
+  }, []);
+  const onHolidayOpenChange = useCallback((nextOpen) => onTileOpenChange("holiday", nextOpen), [onTileOpenChange]);
+  const onFiiDiiOpenChange = useCallback((nextOpen) => onTileOpenChange("fii-dii", nextOpen), [onTileOpenChange]);
+  const onEventsOpenChange = useCallback((nextOpen) => onTileOpenChange("events", nextOpen), [onTileOpenChange]);
+  const onImpactOpenChange = useCallback((nextOpen) => onTileOpenChange("impact", nextOpen), [onTileOpenChange]);
+  const openChangeByTile = {
+    holiday: onHolidayOpenChange,
+    "fii-dii": onFiiDiiOpenChange,
+    events: onEventsOpenChange,
+    impact: onImpactOpenChange,
+  };
+
   const tipParts = [];
   if (canReorder) tipParts.push("Drag to reorder");
   if (canFavorite) tipParts.push("double-click to pin first");
@@ -182,7 +199,11 @@ export default function InfoTilesRow({
               canReorder ? "cursor-grab active:cursor-grabbing" : ""
             } ${isDrag ? "opacity-40" : ""} ${isOver ? "ring-2 ring-emerald-400" : ""}`}
           >
-            {t.node}
+            <t.Component
+              {...t.props}
+              open={openTile === t.id}
+              onOpenChange={openChangeByTile[t.id]}
+            />
           </div>
         );
       })}

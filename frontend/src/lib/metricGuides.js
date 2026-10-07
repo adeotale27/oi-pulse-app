@@ -11,7 +11,7 @@
 // -----------------------------------------------------------------------------
 
 import React from "react";
-import { formatGexExposure } from "./sellCandidates";
+import { formatGexExposure, GEX_SPOT_BAND_PCT } from "./sellCandidates";
 
 const rowBase = "flex items-center justify-between gap-3 py-1";
 const zoneClass = (active, tone) => {
@@ -169,6 +169,9 @@ export function dealerGammaGuide(gexValue, {
   putOiChange,
   timeframeLabel,
   snapshotLabel,
+  spotBandPct = GEX_SPOT_BAND_PCT,
+  includedStrikeCount,
+  sourceStrikeCount,
 } = {}) {
   const zones = [
     {
@@ -386,6 +389,7 @@ export function dealerGammaGuide(gexValue, {
           <p>GEX is a rough estimate of how option-market hedging might affect the size of index moves. It does not predict direction.</p>
           <p>₹ amount = estimated hedging value for a 1% index move. It is not money known to be held or traded by dealers.</p>
           <p data-testid="gex-method">The estimate assumes calls add positive gamma and puts negative gamma. NSE does not publish trade sides, so actual dealer positions—and even this assumed sign—cannot be confirmed.</p>
+          <p data-testid="gex-coverage">Only valid option quotes within ±{spotBandPct}% of spot are included{Number.isFinite(includedStrikeCount) ? ` (${includedStrikeCount} of ${sourceStrikeCount ?? "—"} chain strikes contributed)` : ""}. This fixed band avoids far-wing quote noise dominating the estimate.</p>
           <p>Green/red bars show the model’s call-side/put-side estimate for each strike. They are not confirmed support or resistance.</p>
           <p>The displayed amount is estimated hedging notional for a 1% index move, not an index-point target.</p>
         </div>

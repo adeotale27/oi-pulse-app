@@ -104,8 +104,22 @@ import { optionSide, optionSideLabel } from "@/lib/optionSide";
 
 const PRIVACY_LS_KEY = "oi_positions_privacy";
 const PRIVACY_MASK = "••••";
+const POSITIONS_TABLE_COLUMN_WEIGHTS = {
+  instrument: 225,
+  avg: 62,
+  ltp: 62,
+  pnl: 78,
+  tilt: 55,
+  theta: 75,
+  stillEarn: 80,
+  iv: 55,
+  dte: 62,
+  status: 84,
+  atmDist: 92,
+  strikePressure: 125,
+};
 
-function loadPrivacyMode() {
+export function loadPositionsPrivacyMode() {
   try {
     return localStorage.getItem(PRIVACY_LS_KEY) === "1";
   } catch {
@@ -113,7 +127,7 @@ function loadPrivacyMode() {
   }
 }
 
-function savePrivacyMode(on) {
+export function savePositionsPrivacyMode(on) {
   try {
     localStorage.setItem(PRIVACY_LS_KEY, on ? "1" : "0");
     // Same-tab listeners (Header Today P&L) — `storage` only fires cross-tab.
@@ -220,29 +234,22 @@ function ExitedChip() {
   );
 }
 
-/** Zerodha-style product badge — muted when exited. */
-function ProductBadge({ product, exited }) {
+/** Keep product type as plain metadata so the option side remains the scan anchor. */
+function ProductLabel({ product, exited }) {
   const p = String(product || "—").toUpperCase();
   return (
-    <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${
-        exited
-          ? "bg-slate-100 text-slate-400 border border-slate-200/60"
-          : "bg-violet-100 text-violet-700 border border-violet-200/70"
-      }`}
-      data-testid="product-badge"
-    >
+    <span className={`font-mono-data font-medium ${exited ? "text-slate-400" : "text-slate-500"}`} data-testid="product-label">
       {p}
     </span>
   );
 }
 
-/** CALL / PUT chip sits on the same row as NRML / MIS on phone cards and desktop. */
+/** CALL / PUT comes first; product type follows as unboxed metadata. */
 function ProductSidePair({ row, exited }) {
   return (
-    <div className="inline-flex flex-row flex-nowrap items-center gap-1">
-      <ProductBadge product={row.product} exited={exited} />
+    <div className="inline-flex flex-row flex-nowrap items-center gap-1.5">
       <OptionSideBadge row={row} exited={exited} />
+      <ProductLabel product={row.product} exited={exited} />
     </div>
   );
 }
@@ -257,8 +264,8 @@ function OptionSideBadge({ row, exited }) {
         exited
           ? "bg-slate-100 text-slate-400 border border-slate-200/60"
           : call
-            ? "bg-rose-100 text-rose-800 border border-rose-200/70"
-            : "bg-emerald-100 text-emerald-800 border border-emerald-200/70"
+            ? "bg-rose-50 text-rose-700 border border-rose-200"
+            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
       }`}
       data-testid="option-side-badge"
     >
@@ -380,10 +387,10 @@ function positionExpiryLabel(row) {
 function PositionInstrumentMeta({ row, exited = false, privacy = false }) {
   const expiry = positionExpiryLabel(row);
   return (
-    <div className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] ${exited ? "text-slate-300" : "text-slate-700"}`}>
+    <div className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] ${exited ? "text-slate-300" : "text-slate-500"}`}>
       <ProductSidePair row={row} exited={exited} />
-      <span className={`font-mono-data font-bold ${exited ? "" : "text-slate-800"}`}>Qty: {privacy ? PRIVACY_MASK : (exited ? 0 : row.quantity)}</span>
-      {expiry ? <span className={`font-mono-data ${exited ? "" : "text-slate-700"}`}>{expiry}</span> : null}
+      <span className={`font-mono-data font-medium ${exited ? "" : "text-slate-600"}`}>Qty: {privacy ? PRIVACY_MASK : (exited ? 0 : row.quantity)}</span>
+      {expiry ? <span className={`font-mono-data ${exited ? "" : "text-slate-500"}`}>{expiry}</span> : null}
     </div>
   );
 }
@@ -459,18 +466,31 @@ function StrikePressureCell({ result }) {
     c.impact === "HIGH RISK" ? "text-rose-700" :
     c.impact === "CAUTION" ? "text-amber-800" :
     c.impact === "FAVOURABLE" ? "text-emerald-700" : "text-slate-500";
+  const impactSurface =
+    c.impact === "HIGH RISK" ? "bg-rose-50" :
+    c.impact === "CAUTION" ? "bg-amber-50" :
+    c.impact === "FAVOURABLE" ? "bg-emerald-50" : "";
   const impactMark =
     c.impact === "HIGH RISK" ? "🔴" :
     c.impact === "CAUTION" ? "⚠" :
     c.impact === "FAVOURABLE" ? "✓" : "";
   return (
     <span className="inline-flex flex-wrap items-center gap-0.5 max-w-full" data-testid="strike-pressure-cell">
-      <span className="font-semibold text-slate-800">
+      <span className={`font-semibold ${
+        c.impact === "HIGH RISK" ? "text-rose-700" :
+        c.impact === "CAUTION" ? "text-amber-800" :
+        c.impact === "FAVOURABLE" ? "text-emerald-700" : "text-slate-800"
+      }`}>
         {c.arrow} {c.pressure === PRESSURE_LABELS.unavailable ? "N/A" : c.pressure.replace("STRONG ", "STR ")}
       </span>
-      <span className={`text-[10px] ${impactTone}`}>{impactMark} {c.impact === "NEUTRAL" ? "" : c.impact}</span>
+      {c.impact !== "NEUTRAL" && (
+        <span className={`rounded-sm px-1 text-[10px] font-semibold ${impactTone} ${impactSurface}`}>
+          {impactMark} {c.impact}
+        </span>
+      )}
       <InfoTip title="Strike pressure" size="xs" testId="strike-pressure-tip">
-        <p><b>STRIKE PRESSURE:</b> {result.label}</p>
+        <p><b>STRIKE PRESSURE:</b> {result.warmingUp ? "WARMING UP" : result.label}</p>
+        {result.warmingUp && <p>Collecting fresh price movement after refresh. Direction will appear once another sample is available.</p>}
         {result.spot != null && <p>Underlying: {Math.round(result.spot)}</p>}
         {result.strike != null && <p>Strike: {result.strike}</p>}
         {result.dist != null && <p>Distance: {Math.round(result.dist)} pts</p>}
@@ -531,7 +551,9 @@ export default function PositionsPanel({
   expiriesMeta = [],
   onPinNearestWeekly,
   onAdjustmentAlert,
-  positionsPollMs = 30000,
+  privacyMode: controlledPrivacyMode,
+  onPrivacyModeChange,
+  positionsPollMs = 2000,
   onOpenKite,
   hasKiteCredentials = null,
   pollEnabled = true,
@@ -565,7 +587,8 @@ export default function PositionsPanel({
   const [secsLeft, setSecsLeft] = useState(() => Math.max(1, Math.round(positionsPollMs / 1000)));
   const [colVis, setColVis] = useState(() => loadColumnVisibility());
   const [colOrder, setColOrder] = useState(() => loadColumnOrder());
-  const [privacyMode, setPrivacyMode] = useState(() => loadPrivacyMode());
+  const [localPrivacyMode, setLocalPrivacyMode] = useState(() => loadPositionsPrivacyMode());
+  const privacyMode = controlledPrivacyMode ?? localPrivacyMode;
   const [colsOpen, setColsOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [oiRiskOpen, setOiRiskOpen] = useState(false);
@@ -631,7 +654,7 @@ export default function PositionsPanel({
     width: 288,
     align: "right",
   });
-  const pollMs = Math.max(5000, Number(positionsPollMs) || 30000);
+  const pollMs = Math.max(1000, Number(positionsPollMs) || 2000);
   useEffect(() => {
     setPositionsBookPollMs(pollMs);
   }, [pollMs]);
@@ -679,6 +702,10 @@ export default function PositionsPanel({
     const ids = visibleColumnIds(colVis, colOrder);
     return toggles.strikePressure ? ids : ids.filter((id) => id !== "strikePressure");
   }, [colVis, colOrder, toggles.strikePressure]);
+  const shownColumnWeight = shownCols.reduce(
+    (total, id) => total + (POSITIONS_TABLE_COLUMN_WEIGHTS[id] || 64),
+    0,
+  );
   const closeRadar = useCallback(() => setOiRiskOpen(false), []);
   const onColDrop = useCallback((fromId, toId) => {
     setColOrder((prev) => {
@@ -1219,10 +1246,11 @@ export default function PositionsPanel({
       vixNow: vix,
       vixOpen,
       indexName: activeIndex,
+      lotSize: oiSettings?.lotSize?.[activeIndex],
       step,
       vrp,
     });
-  }, [current, previous, vix, vixOpen, activeIndex, step, vrp]);
+  }, [current, previous, vix, vixOpen, activeIndex, oiSettings?.lotSize, step, vrp]);
 
   const sellsSnap = useMemo(() => {
     if (dayCap.stopSellIdeas) return null;
@@ -1476,13 +1504,13 @@ export default function PositionsPanel({
   }
 
   return (
-    <div className="oi-surface-lift oi-3d-stage space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
+    <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 sm:p-4" data-testid="positions-panel">
       <div className="positions-panel-header space-y-2">
         <div className="positions-panel-heading flex flex-wrap items-center gap-2">
           <div className="positions-panel-title-group flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <div className="positions-panel-title-main flex min-w-0 items-center gap-2">
               <OiPulseLogo className="w-5 h-5 overflow-hidden rounded-md shrink-0" pulse={false} />
-              <div className="whitespace-nowrap text-sm font-semibold leading-tight text-slate-900">My Positions</div>
+              <div className="whitespace-nowrap text-sm font-semibold leading-tight text-slate-900">Live Positions</div>
               <span className="text-[10px] font-mono-data bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-sm" title="Open legs">
                 {stats.openCount} open
               </span>
@@ -1499,39 +1527,62 @@ export default function PositionsPanel({
               </InfoTip>
             </div>
           </div>
-          <div className="positions-panel-warning ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1 text-[10px] text-slate-500" data-testid="positions-warn-at">
-            <label title="How early to warn when market nears a sold strike">Warn @</label>
-            <input
-              type="number"
-              min={30} max={95} step={5}
-              value={adjustThreshPct}
-              onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
-              className="w-12 h-7 px-1 text-xs border border-slate-200 rounded-sm font-mono-data bg-white"
-              data-testid="adjust-threshold"
-            />
-            <span>% close</span>
-            <InfoTip title="When do we say “Too close”?" testId="adjust-threshold-tip">
-              <p>
-                Imagine a buffer of about <b>3%</b> from your sold strike toward the market.
-                When the market has eaten this much of that buffer (default <b>60%</b>), the row
-                flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
-              </p>
-            </InfoTip>
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <div className="positions-panel-warning inline-flex h-8 shrink-0 flex-wrap items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2 text-[10px] text-slate-600" data-testid="positions-warn-at">
+              <label title="How early to warn when market nears a sold strike">Warn @</label>
+              <input
+                type="number"
+                min={30} max={95} step={5}
+                value={adjustThreshPct}
+                onChange={(e) => setAdjustThreshPct(Number(e.target.value))}
+                className="h-6 w-12 rounded-sm border border-slate-200 bg-white px-1 text-xs font-mono-data"
+                data-testid="adjust-threshold"
+              />
+              <span>% close</span>
+              <InfoTip title="When do we say “Too close”?" testId="adjust-threshold-tip">
+                <p>
+                  Imagine a buffer of about <b>3%</b> from your sold strike toward the market.
+                  When the market has eaten this much of that buffer (default <b>60%</b>), the row
+                  flips to <b>Too close</b>. Raise the % for fewer warnings; lower it for earlier ones.
+                </p>
+              </InfoTip>
+            </div>
             {allowRiskView && (
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 rounded-sm bg-white shrink-0 px-2.5 text-sky-800 border-sky-200 hover:bg-sky-50"
+                className="h-8 shrink-0 rounded-sm border-slate-200 bg-white px-2.5 text-slate-700 hover:bg-slate-50"
                 onClick={() => setPositionsView("risk")}
                 data-testid="btn-position-meter"
                 title="Open PositionMeter for all open positions"
               >
-                <ShieldAlert className="w-3.5 h-3.5 mr-1" />
+                <ShieldAlert className="mr-1 h-3.5 w-3.5" />
                 <span className="sm:hidden">PMeter</span>
                 <span className="hidden sm:inline">PositionMeter</span>
               </Button>
             )}
           </div>
+          {controlledPrivacyMode === undefined && (
+            <label
+              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer select-none items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+              title="Mask Qty, Avg, P&L and ₹ amounts on Positions and Today P&L in the header"
+              data-testid="positions-privacy-toggle"
+            >
+              {privacyMode ? <EyeOff className="h-3.5 w-3.5 text-slate-600" /> : <Eye className="h-3.5 w-3.5 text-slate-600" />}
+              <span>Privacy</span>
+              <Switch
+                checked={privacyMode}
+                onCheckedChange={(on) => {
+                  const next = !!on;
+                  setLocalPrivacyMode(next);
+                  onPrivacyModeChange?.(next);
+                  savePositionsPrivacyMode(next);
+                }}
+                className="scale-90 origin-center"
+                data-testid="positions-privacy-switch"
+              />
+            </label>
+          )}
         </div>
         <div className="positions-panel-toolbar flex items-center gap-2 flex-wrap">
           <Popover>
@@ -1642,30 +1693,13 @@ export default function PositionsPanel({
               </div>
             </PopoverContent>
           </Popover>
-          <label
-            className="inline-flex items-center gap-2 h-8 px-2.5 rounded-sm border border-slate-300 bg-white text-[13px] font-semibold text-slate-900 cursor-pointer select-none hover:border-slate-500 hover:bg-slate-50"
-            title="Mask Qty, Avg, P&L and ₹ amounts on Positions and Today P&L in the header"
-            data-testid="positions-privacy-toggle"
-          >
-            {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-slate-800" /> : <Eye className="w-3.5 h-3.5 text-slate-800" />}
-            <span className="text-slate-900">Privacy</span>
-            <Switch
-              checked={privacyMode}
-              onCheckedChange={(on) => {
-                setPrivacyMode(!!on);
-                savePrivacyMode(!!on);
-              }}
-              className="scale-90 origin-center"
-              data-testid="positions-privacy-switch"
-            />
-          </label>
           <Button
             size="sm"
             variant="outline"
             className={`h-8 rounded-full bg-white shrink-0 px-2.5 ${
               oiRiskOpen
                 ? "text-rose-900 border-rose-400 bg-rose-50"
-                : "text-rose-800 border-rose-200 hover:bg-rose-50"
+                : "text-slate-700 border-slate-200 hover:bg-slate-50"
             }`}
             onClick={() => setOiRiskOpen((v) => !v)}
             data-testid="btn-oi-risk-meter"
@@ -1679,7 +1713,7 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-sm bg-white shrink-0 text-emerald-800 border-emerald-200 hover:bg-emerald-50 px-2.5"
+            className="h-8 rounded-sm bg-white shrink-0 text-slate-700 border-slate-200 hover:bg-slate-50 px-2.5"
             onClick={() => setJournalOpen(true)}
             data-testid="btn-trade-journal"
             title="Monthly P&L calendar and session notes"
@@ -1692,7 +1726,7 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-sm bg-white shrink-0 text-emerald-800 border-emerald-300 hover:bg-emerald-50 px-2.5"
+            className="h-8 rounded-sm bg-white shrink-0 text-slate-700 border-slate-200 hover:bg-slate-50 px-2.5"
             onClick={onOpenKite}
             data-testid="btn-positions-connect-zerodha-toolbar"
             title="Your book uses your Zerodha login. OI charts still use the publisher feed."
@@ -1711,7 +1745,7 @@ export default function PositionsPanel({
               <Button
                 size="sm"
                 variant="outline"
-                className={`h-8 rounded-sm shrink-0 px-2.5 ${brainRiskActive ? "text-rose-900 border-rose-400 bg-rose-50 brain-risk-pulse" : "text-violet-700 border-violet-200 bg-white hover:bg-violet-50"}`}
+                className={`h-8 rounded-sm shrink-0 px-2.5 ${brainRiskActive ? "text-rose-900 border-rose-400 bg-rose-50 brain-risk-pulse" : "text-slate-700 border-slate-200 bg-white hover:bg-slate-50"}`}
                 onClick={() => setBrainOpen(true)}
                 disabled={!rows.length || !!isGuest}
                 data-testid="btn-brain-positions"
@@ -1725,7 +1759,7 @@ export default function PositionsPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-sm bg-white shrink-0 text-orange-700 border-orange-200 hover:bg-orange-50 px-2.5"
+            className="h-8 rounded-sm bg-white shrink-0 text-slate-700 border-slate-200 hover:bg-slate-50 px-2.5"
             onClick={() => setAnalyzeOpen(true)}
             disabled={!rows.length}
             data-testid="btn-analyze-positions"
@@ -1737,7 +1771,7 @@ export default function PositionsPanel({
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-sm bg-white px-2"
+              className="h-8 rounded-sm bg-white px-2 text-slate-700 border-slate-200 hover:bg-slate-50"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.preventDefault();
@@ -2205,9 +2239,19 @@ export default function PositionsPanel({
       </div>
 
       {/* Desktop table */}
-      <div className="oi-surface-lift hidden md:block overflow-auto rounded-lg border border-slate-200/80 bg-white">
-        <table className="w-full text-sm font-mono-data">
-          <thead className="bg-slate-50/90 text-slate-500 uppercase tracking-wider text-xs sticky top-0 z-10">
+      <div className="hidden md:block overflow-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full table-auto text-[13px] leading-6 font-mono-data lg:table-fixed">
+          <colgroup>
+            {shownCols.map((id) => (
+              <col
+                key={id}
+                style={{
+                  width: `${((POSITIONS_TABLE_COLUMN_WEIGHTS[id] || 64) / shownColumnWeight) * 100}%`,
+                }}
+              />
+            ))}
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-slate-50 text-slate-600 uppercase tracking-wide text-xs">
             <tr className="border-b border-slate-200/80">
               {shownCols.map((id) => {
                 const align = columnAlign(id);
@@ -2243,7 +2287,7 @@ export default function PositionsPanel({
                       const from = e.dataTransfer.getData("text/col");
                       if (from) onColDrop(from, id);
                     }}
-                    className={`${align === "right" ? "text-right" : "text-left"} px-2.5 py-1.5 font-semibold cursor-grab active:cursor-grabbing select-none`}
+                    className={`${align === "right" ? "text-right" : "text-left"} px-1.5 py-1.5 font-semibold cursor-grab active:cursor-grabbing select-none`}
                     title="Drag to reorder"
                   >
                     <span className="inline-flex items-center gap-1">
@@ -2274,7 +2318,7 @@ export default function PositionsPanel({
                 <tr data-testid="live-section-divider">
                   <td
                     colSpan={Math.max(shownCols.length, 1)}
-                    className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-emerald-900 bg-emerald-50/90 border-y border-emerald-100"
+                    className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-700 bg-slate-50 border-y border-slate-200"
                   >
                     <button
                       type="button"
@@ -2319,18 +2363,18 @@ export default function PositionsPanel({
                     : r.exited
                     ? "bg-slate-100/70 text-slate-400 opacity-[0.58]"
                     : r.breachedAdjust
-                      ? "bg-rose-50/80"
+                      ? "bg-rose-50/80 hover:bg-rose-100/60"
                       : idx % 2 === 0
-                        ? "bg-white"
-                        : "bg-emerald-50/25"
-                }`}
+                        ? "bg-white hover:bg-slate-50"
+                        : "bg-slate-50/55 hover:bg-slate-100/70"
+                } transition-colors`}
               >
                 {shownCols.map((id) => {
                   const align = columnAlign(id);
                   const tdAlign = align === "right" ? "text-right" : "";
                   if (id === "instrument") {
                     return (
-                      <td key={id} className="px-3 py-1.5 min-w-[16rem]">
+                      <td key={id} className="px-2 py-1.5 min-w-[12rem]">
                         <div className={`font-semibold tracking-tight ${r.exited ? "text-slate-400" : "text-slate-900"}`}>
                           {positionLabel(r)}
                         </div>

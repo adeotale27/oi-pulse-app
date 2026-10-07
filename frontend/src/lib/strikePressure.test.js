@@ -4,6 +4,7 @@ import {
   scoreStrikePressure,
   positionImpact,
   computeStrikePressureForRow,
+  formatPressureCompact,
   PRESSURE_LABELS,
   computeAllStrikePressure,
   resetStrikePressureState,
@@ -112,6 +113,20 @@ describe("strike pressure", () => {
       prevAbsDistance: 160,
     });
     assert.equal(pressureToward(r), true);
+  });
+
+  it("marks a fresh post-refresh sample as warming up instead of neutral", () => {
+    const r = computeStrikePressureForRow(pos({ tradingsymbol: "WARMING-UP" }));
+    assert.equal(r.label, PRESSURE_LABELS.neutral);
+    assert.equal(r.warmingUp, true);
+    assert.equal(formatPressureCompact(r).pressure, "WARMING UP");
+  });
+
+  it("clears warming-up once a fresh prior distance is available", () => {
+    const r = computeStrikePressureForRow(pos({ tradingsymbol: "READY", spotUsed: 23190 }), {
+      prevAbsDistance: 120,
+    });
+    assert.equal(r.warmingUp, false);
   });
 
   it("volume without underlying move is not TOWARD", () => {

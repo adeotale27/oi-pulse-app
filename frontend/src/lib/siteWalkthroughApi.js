@@ -272,7 +272,7 @@ function demoConfig() {
     display_close_ist: "15:30",
     oi_poll_interval_seconds: 15,
     straddle_poll_interval_seconds: 5,
-    positions_poll_interval_seconds: 5,
+    positions_poll_interval_seconds: 2,
     market_intel_ingest_seconds: 60,
   };
 }

@@ -39,7 +39,9 @@ export function loadOISettings() {
 export function saveOISettings(s) {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
+    return true;
   } catch {}
+  return false;
 }
 
 // Helper to classify a per-minute OI velocity.

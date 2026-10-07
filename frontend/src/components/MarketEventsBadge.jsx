@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from "react";
+import { useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, CalendarClock, ChevronDown } from "lucide-react";
 import { upcomingEvents, eventsWithinDays, eventBadgeTone } from "@/lib/econCalendar";
@@ -11,13 +11,12 @@ import usePortaledMenu from "@/hooks/usePortaledMenu";
 // - Red boxed if any event is today or tomorrow.
 const MENU_WIDTH = 288;
 
-export default function MarketEventsBadge({ onClick }) {
+export default function MarketEventsBadge({ onClick, open, onOpenChange }) {
   const near = useMemo(() => eventsWithinDays(3), []);
   const upcoming = useMemo(() => upcomingEvents(10), []);
-  const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
   const panelRef = useRef(null);
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   const { pos, place } = usePortaledMenu({
     open,
     onClose: close,
@@ -29,14 +28,12 @@ export default function MarketEventsBadge({ onClick }) {
 
   const primary = near[0] || upcoming[0];
   const tileBase =
-    "oi-info-tile w-full min-h-[76px] rounded-md border px-1.5 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 overflow-hidden";
+    "oi-info-tile w-full min-h-[76px] rounded-md border px-2 py-1.5 text-left transition-colors flex flex-col gap-1 overflow-hidden";
 
   const toggle = (e) => {
     e?.stopPropagation?.();
-    setOpen((v) => {
-      if (!v) place();
-      return !v;
-    });
+    if (!open) place();
+    onOpenChange(!open);
   };
 
   if (!primary) {
@@ -50,12 +47,12 @@ export default function MarketEventsBadge({ onClick }) {
           data-testid="events-badge"
           className={`${tileBase} cursor-pointer border-slate-200 bg-white text-slate-600`}
         >
-          <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest opacity-80">
-            <CalendarClock className="w-3 h-3" />
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide opacity-80">
+            <CalendarClock className="w-3.5 h-3.5" />
             Next Event
           </div>
-          <div className="text-xs font-semibold leading-snug">There are no upcoming events</div>
-          <div className="text-[10px] leading-tight opacity-60">Tap for the event list</div>
+          <div className="text-sm font-semibold leading-snug">There are no upcoming events</div>
+          <div className="text-[11px] leading-tight opacity-70">Tap for the event list</div>
         </div>
       </div>
     );
@@ -91,18 +88,18 @@ export default function MarketEventsBadge({ onClick }) {
         aria-haspopup={extras.length > 0 ? "menu" : undefined}
         aria-expanded={extras.length > 0 ? open : undefined}
       >
-        <div className="flex items-center gap-1 text-[8px] uppercase tracking-widest opacity-80">
-          {urgent ? <AlertTriangle className="w-2.5 h-2.5" /> : <CalendarClock className="w-2.5 h-2.5" />}
+        <div className="flex items-center gap-1 text-[9px] uppercase tracking-wide opacity-80">
+          {urgent ? <AlertTriangle className="w-3 h-3" /> : <CalendarClock className="w-3 h-3" />}
           <span className="truncate">Next Event · {rel}</span>
           <span className="ml-auto inline-flex items-center gap-0.5 opacity-70">
             {extras.length > 0 ? `+${extras.length}` : null}
             <ChevronDown className={`w-2.5 h-2.5 transition-transform ${open ? "rotate-180" : ""}`} />
           </span>
         </div>
-        <div className="text-[10px] font-semibold leading-tight truncate" data-testid="events-badge-name">
+        <div className="text-[12px] font-semibold leading-tight truncate" data-testid="events-badge-name">
           {primary.name}
         </div>
-        <div className="text-[9px] leading-tight opacity-80 font-mono-data truncate">
+        <div className="text-[11px] leading-tight opacity-90 font-mono-data truncate">
           {formatDatePretty(primary.date)}
         </div>
       </div>

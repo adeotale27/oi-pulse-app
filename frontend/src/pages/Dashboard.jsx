@@ -44,7 +44,7 @@ import ApiConfigurationModal from "@/components/ApiConfigurationModal";
 import { ADMIN_DIALOGS, getAdminDialogKeyDirection, getNextAdminDialog } from "@/lib/adminDialogCycle";
 import ReplayScrubber from "@/components/ReplayScrubber";
 import HolidaysTab from "@/components/HolidaysTab";
-import PositionsPanel from "@/components/PositionsPanel";
+import PositionsPanel, { loadPositionsPrivacyMode, savePositionsPrivacyMode } from "@/components/PositionsPanel";
 import SoundSettingsModal from "@/components/SoundSettingsModal";
 import UploadModal from "@/components/UploadModal";
 import EventRiskWidget from "@/components/EventRiskWidget";
@@ -67,7 +67,7 @@ import { biasGuide, pcrGuide, maxPainGuide, supportGuide, resistanceGuide, deale
 import { computeDealerGammaFromSnapshots, formatGexExposure } from "@/lib/sellCandidates";
 import { yearsToExpiry } from "@/lib/blackScholes";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight, Play, HelpCircle, Bell } from "lucide-react";
+import { PanelRightOpen, PanelLeftOpen, ChevronLeft, ChevronRight, Play, HelpCircle, Bell, Eye, EyeOff } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -277,6 +277,7 @@ export default function Dashboard({ demoMode = false }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [indexManagerOpen, setIndexManagerOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [positionsPrivacyMode, setPositionsPrivacyMode] = useState(loadPositionsPrivacyMode);
   const [errorLogOpen, setErrorLogOpen] = useState(false);
   const [errorLogSource, setErrorLogSource] = useState("");
   const [apiConfigurationOpen, setApiConfigurationOpen] = useState(false);
@@ -1502,7 +1503,7 @@ export default function Dashboard({ demoMode = false }) {
 
   // ---- Straddle + Positions poll intervals (from API settings) ----
   const [straddlePollMs, setStraddlePollMs] = useState(15000); // until /config: then straddle_poll_interval_seconds
-  const [positionsPollMs, setPositionsPollMs] = useState(30000);
+  const [positionsPollMs, setPositionsPollMs] = useState(2000);
 
   useEffect(() => {
     if (!activeIndex) return undefined;
@@ -1539,7 +1540,7 @@ export default function Dashboard({ demoMode = false }) {
     }
     const posSec = Number(d.positions_poll_interval_seconds);
     if (Number.isFinite(posSec) && posSec > 0) {
-      const next = Math.max(5000, posSec * 1000);
+      const next = Math.max(1000, posSec * 1000);
       setPositionsPollMs((prev) => (prev === next ? prev : next));
       setPositionsBookPollMs(next);
     }
@@ -2027,8 +2028,13 @@ export default function Dashboard({ demoMode = false }) {
   }, [filteredCurrent, previous, changeSummary]);
 
   const gexToday = useMemo(() => {
-    return computeDealerGammaFromSnapshots({ current, previous, indexName: activeIndex });
-  }, [current, previous, activeIndex]);
+    return computeDealerGammaFromSnapshots({
+      current,
+      previous,
+      indexName: activeIndex,
+      lotSize: oiSettings.lotSize?.[activeIndex],
+    });
+  }, [current, previous, activeIndex, oiSettings.lotSize]);
   const gexGuide = gexToday ? dealerGammaGuide(gexToday.gexLakhCrorePer1Pct, {
     byStrike: gexToday.byStrike,
     updatedAt: gexToday.snapshot.timestamp,
@@ -2040,6 +2046,9 @@ export default function Dashboard({ demoMode = false }) {
     putOiChange: gexToday.isRetained ? null : changeSummary?.pe,
     timeframeLabel,
     snapshotLabel: gexToday.isRetained ? "Last valid snapshot" : undefined,
+    spotBandPct: gexToday.spotBandPct,
+    includedStrikeCount: gexToday.includedStrikeCount,
+    sourceStrikeCount: gexToday.sourceStrikeCount,
   }) : null;
 
   // Configurable "OI Change" toast threshold — user-editable in the warming-up
@@ -3276,6 +3285,7 @@ export default function Dashboard({ demoMode = false }) {
                       current={filteredCurrent}
                       previous={previous}
                       indexName={activeIndex}
+                      lotSize={oiSettings.lotSize?.[activeIndex]}
                       vixNow={current?.vix || status?.vix}
                       vixOpen={vixSessionOpen}
                       step={indexMeta[activeIndex]?.step || INDEX_STEP[activeIndex] || 50}
@@ -3310,10 +3320,31 @@ export default function Dashboard({ demoMode = false }) {
 
                   {(tabOn("positions")) && (
                     <TabsContent value="positions" forceMount className={activeTab === "positions" ? "mt-0" : "hidden"}>
-                    <div className="text-sm font-semibold mb-2">My Positions</div>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold">My Positions</div>
+                      <label
+                        className="inline-flex h-8 shrink-0 cursor-pointer select-none items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+                        title="Mask Qty, Avg, P&L and ₹ amounts on Positions and Today P&L in the header"
+                        data-testid="positions-privacy-toggle"
+                      >
+                        {positionsPrivacyMode ? <EyeOff className="h-3.5 w-3.5 text-slate-600" /> : <Eye className="h-3.5 w-3.5 text-slate-600" />}
+                        <span>Privacy</span>
+                        <Switch
+                          checked={positionsPrivacyMode}
+                          onCheckedChange={(on) => {
+                            const next = !!on;
+                            setPositionsPrivacyMode(next);
+                            savePositionsPrivacyMode(next);
+                          }}
+                          className="scale-90 origin-center"
+                          data-testid="positions-privacy-switch"
+                        />
+                      </label>
+                    </div>
                     <PositionsPanel
                       isKiteMode={authState.is_admin ? kiteLiveConnected : true}
                       isGuest={!!authState.is_guest}
+                      privacyMode={positionsPrivacyMode}
                       hasKiteCredentials={status ? !!status.has_kite_credentials : null}
                       current={filteredCurrent || current}
                       previous={previous}

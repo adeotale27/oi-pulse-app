@@ -1,5 +1,81 @@
 # Changelog
 
+## V18.40 — 2026-10-07
+
+Refined phone layout for Admin settings: the two save actions stack at full width below the scrolling controls, remain visible, and wrap their setting-count badges cleanly on narrow screens.
+
+## V18.39 — 2026-10-07
+
+Info tiles now share one open dropdown at a time across Holiday, FII/DII, Events, and Index Impact, on both desktop and mobile rows.
+
+## V18.38 — 2026-10-07
+
+Settings dialogs keep their save actions visible while the settings content scrolls, and use clearer StrikLenz palette colors for desk and personal saves.
+
+## V18.37 — 2026-10-07
+
+Split settings persistence into separate desk/server and personal/browser saves. Each action shows a count of changed settings, reports its own save status, and can be retried independently.
+
+## V18.36 — 2026-10-07
+
+Admin configuration now shows explicit load/save health, last successful save times, inline save errors, and separate server/browser storage labels. Positions refresh help explains request-start cadence and non-overlapping requests.
+
+## V18.35 — 2026-10-07
+
+Admin settings now remove retired dashboard page and underlying IDs from saved selection lists, weekday defaults, and lot-size maps. Mixed old/new lists retain valid selections when saved, while lists with no current required selections still fail validation.
+
+## V18.34 — 2026-10-07
+
+Admin settings now filter retired dashboard page IDs such as `ipo-watch` from saved settings reads, preventing unrelated settings changes from failing validation.
+
+## V18.33 — 2026-10-07
+
+Positions refresh now accepts any whole-second interval from 1 to 3600. Its cadence is measured between request starts, so response time is no longer added to the configured delay; overlapping broker-book requests remain prevented.
+
+## V18.32 — 2026-10-07
+
+Strike Pressure now identifies the first post-refresh sample as “Warming up” instead of implying a neutral reading. Positions and Header Today P&L now default to a shared 2-second live-session refresh, configurable from 2 to 3600 seconds in Admin settings.
+
+## V18.31 — 2026-10-07
+
+Simplified Positions instrument metadata: CALL/PUT now appears before the product type, and product labels such as NRML/MIS are plain text rather than badges.
+
+## V18.30 — 2026-10-07
+
+Reduced desktop Positions table width with responsive, weighted columns and tighter cell padding. All user-configurable columns remain available, with horizontal scrolling retained as a fallback at narrower widths.
+
+## V18.29 — 2026-10-07
+
+Restored clear semantic colors in Strike Pressure: direction and impact now share the favorable, caution, and high-risk tones, while neutral readings remain understated.
+
+## V18.28 — 2026-10-07
+
+Softened the Positions instrument metadata palette: product tags are neutral, CALL/PUT tags use lighter semantic tints, and quantity/expiry details are quieter while P&L and risk colors remain distinct.
+
+## V18.27 — 2026-10-07
+
+Aligned the warning threshold and PositionMeter controls on the far right of the Live Positions row, using the existing neutral toolbar styling.
+
+## V18.26 — 2026-10-07
+
+Moved the Positions privacy control to the far right of the outer “My Positions” heading, keeping it separate from the inner “Live Positions” row.
+
+## V18.25 — 2026-10-07
+
+Moved the Positions privacy control to the far right of the title row and grouped the warning threshold with the action toolbar to make the heading cleaner and preserve working space.
+
+## V18.24 — 2026-10-07
+
+Refined the Positions workspace with a calmer neutral surface and toolbar, clearer table headers and row scanning, and a distinct “Live Positions” inner heading. Configurable metric tiles, position data, and actions are unchanged.
+
+## V18.23 — 2026-10-07
+
+Stabilized the GEX estimate by limiting contributions to valid option legs within a fixed ±3% spot band, using the configured contract lot size instead of outdated hardcoded multipliers, and showing how many chain strikes contributed. The reading remains an estimate and updates with new market snapshots.
+
+## V18.22 — 2026-10-07
+
+Kept the dashboard event-tile borders clearly visible on hover without shifting or washing out the tile, and increased the text size and spacing across the holiday, FII/DII, event, and index-impact tiles for easier reading.
+
 ## V18.21 — 2026-10-06
 
 Removed the deprecated TypeScript `baseUrl` setting from the frontend JavaScript project config while preserving the `@/` source alias.
