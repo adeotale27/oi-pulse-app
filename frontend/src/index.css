@@ -488,9 +488,7 @@ input[type="number"] {
 
   @media (hover: hover) and (pointer: fine) {
     .oi-info-tile:hover {
-      transform: translateY(-1px);
-      border-bottom-color: rgba(2, 132, 199, 0.42);
-      box-shadow: 0 1px 0 rgba(255,255,255,1) inset, 0 13px 20px -17px rgba(15,55,70,.62);
+      box-shadow: inset 0 0 0 1px rgba(14, 165, 233, .8), 0 1px 0 rgba(255,255,255,1) inset, 0 0 0 1px rgba(14,165,233,.12);
     }
   }
 
@@ -726,6 +724,20 @@ input[type="number"] {
 .oi-auth-footer-features > div { min-width: 0; flex: 1 1 0; }
 .oi-maintenance-screen > .oi-auth-footer { position: absolute; left: 0; right: 0; bottom: 0; }
 .oi-maintenance-screen .oi-maintenance-footer { bottom: 5.8rem; }
+
+.oi-info-tile {
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, outline-color 160ms ease;
+}
+.oi-info-tile:hover {
+  filter: none;
+}
+.oi-info-tile:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 1px;
+}
+.dark .oi-info-tile:hover {
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, .9), 0 0 0 1px rgba(56,189,248,.25), 0 8px 18px -14px rgba(0,0,0,.9);
+}
 
 @media (max-width: 767px) {
   .oi-auth-footer {

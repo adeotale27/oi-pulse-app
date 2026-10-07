@@ -189,7 +189,7 @@ DEFAULT_SETTINGS = {
     "enabled_indices": list(DESK_IDS),  # pollable desk underlyings only
     "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
     "straddle_poll_interval_seconds": 15,  # Dense straddle chart samples (FinanceDeft-style)
-    "positions_poll_interval_seconds": 30,  # Positions desk auto-refresh (admin)
+    "positions_poll_interval_seconds": 2,  # Positions desk auto-refresh (admin)
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
     "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "positions", "alerts", "activity", "holidays", "straddle", "index-events", "market-intel", "adrs"],
     # Admin's own dashboard tabs (independent of guest visibility)

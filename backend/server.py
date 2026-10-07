@@ -922,6 +922,61 @@ DASHBOARD_PAGE_KEYS = {
     "straddle", "index-events", "cas", "market-intel", "adrs",
 }
 
+
+def _sanitize_settings_catalog_values(settings: dict, valid_indices=None, fallback_empty=True) -> dict:
+    """Remove retired page/index IDs while preserving required-selection validation."""
+    for key in ("visible_pages", "admin_visible_pages"):
+        pages = settings.get(key)
+        if not isinstance(pages, list):
+            continue
+        valid = list(dict.fromkeys(
+            page for page in pages if isinstance(page, str) and page in DASHBOARD_PAGE_KEYS
+        ))
+        if not valid and fallback_empty:
+            defaults = DEFAULT_SETTINGS.get(key) or ["oi-change"]
+            valid = [page for page in defaults if page in DASHBOARD_PAGE_KEYS]
+        settings[key] = valid
+
+    indices = set(valid_indices if valid_indices is not None else INDEX_CONFIG)
+    for key in ("enabled_indices", "alert_enabled_indices", "straddle_enabled_indices"):
+        values = settings.get(key)
+        if not isinstance(values, list):
+            continue
+        clean = list(dict.fromkeys(
+            index for index in values if isinstance(index, str) and index in indices
+        ))
+        if not clean and fallback_empty and key in ("enabled_indices", "alert_enabled_indices"):
+            defaults = (
+                settings.get("enabled_indices") or DEFAULT_SETTINGS.get(key) or []
+                if key == "alert_enabled_indices"
+                else DEFAULT_SETTINGS.get(key) or []
+            )
+            clean = [index for index in defaults if index in indices]
+            if not clean and indices:
+                clean = [sorted(indices)[0]]
+        settings[key] = clean
+
+    weekday_defaults = settings.get("weekday_dashboard_defaults")
+    if isinstance(weekday_defaults, dict):
+        settings["weekday_dashboard_defaults"] = {
+            day: index for day, index in weekday_defaults.items()
+            if isinstance(index, str) and index in indices
+        }
+
+    lot_sizes = settings.get("lot_sizes")
+    if isinstance(lot_sizes, dict):
+        clean_lots = {}
+        for index, raw_size in lot_sizes.items():
+            try:
+                size = int(raw_size)
+            except (TypeError, ValueError):
+                continue
+            if index in indices and size > 0:
+                clean_lots[index] = size
+        settings["lot_sizes"] = clean_lots
+    return settings
+
+
 class SettingsIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     sitewalkthrough_enabled: Optional[bool] = None
@@ -931,7 +986,7 @@ class SettingsIn(BaseModel):
     enabled_indices: Optional[List[str]] = None
     oi_poll_interval_seconds: Optional[int] = None  # OI data pull interval (15/30/60)
     straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
-    positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (5–3600s)
+    positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (1–3600s)
     market_intel_ingest_seconds: Optional[int] = None
     market_intel_retention_days: Optional[int] = None
     market_intel_min_history_days: Optional[int] = None
@@ -1592,20 +1647,10 @@ async def get_settings(reload: bool = Query(False)):
             known = without_paused_mcx(known, INDEX_CONFIG)
         data["known_indices"] = known
         known_set = set(known)
-        data["alert_enabled_indices"] = [i for i in (data.get("alert_enabled_indices") or []) if i in known_set]
-        data["straddle_enabled_indices"] = [i for i in (data.get("straddle_enabled_indices") or []) if i in known_set]
-        lots = dict(data.get("lot_sizes") or {})
-        lots_out = {}
-        for k, v in lots.items():
-            try:
-                n = int(v)
-            except (TypeError, ValueError):
-                continue
-            if k in known_set and n > 0:
-                lots_out[k] = n
-        data["lot_sizes"] = lots_out
+        _sanitize_settings_catalog_values(data, known_set)
     except Exception:
         data["known_indices"] = list(INDEX_CONFIG.keys())
+        _sanitize_settings_catalog_values(data)
     return data
 
 
@@ -1620,6 +1665,15 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             set_mcx_desk_available(bool(patch["mcx_desk_on"]))
         except Exception:
             pass
+    # Older clients may submit retired IDs alongside current selections; keep valid
+    # values and let required-selection checks reject lists that contain no current IDs.
+    _sanitize_settings_catalog_values(patch, fallback_empty=False)
+    if (
+        "straddle_enabled_indices" in patch
+        and payload.straddle_enabled_indices
+        and not patch["straddle_enabled_indices"]
+    ):
+        raise HTTPException(400, "straddle_enabled_indices contains no current indices")
     if "enabled_indices" in patch:
         if not patch["enabled_indices"]:
             raise HTTPException(400, "At least one tracked index is required")
@@ -1667,8 +1721,8 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
             raise HTTPException(400, "straddle_poll_interval_seconds must be 15, 30, 60, or 120")
     if "positions_poll_interval_seconds" in patch:
         v = int(patch["positions_poll_interval_seconds"])
-        if v < 5 or v > 3600:
-            raise HTTPException(400, "positions_poll_interval_seconds must be between 5 and 3600")
+        if v < 1 or v > 3600:
+            raise HTTPException(400, "positions_poll_interval_seconds must be between 1 and 3600")
         patch["positions_poll_interval_seconds"] = v
     if "position_mark_glow_pct" in patch:
         v = float(patch["position_mark_glow_pct"])
@@ -1731,7 +1785,7 @@ async def update_settings(payload: SettingsIn, _admin: bool = Depends(require_ad
                 clean[str(k).upper()] = n
         patch["lot_sizes"] = clean
     out = await tracker.save_settings(patch)
-    return out
+    return _sanitize_settings_catalog_values(dict(out))
 
 
 class IndexEnableIn(BaseModel):
@@ -3120,14 +3174,15 @@ async def error_log_purge(
 
 @api_router.get("/config")
 async def get_config():
-    s = _live_settings()
+    s = dict(_live_settings())
     if tracker:
         try:
             await tracker.sync_poll_intervals_from_db()
             tracker._refresh_alert_indices_for_today()
-            s = tracker.settings
+            s = dict(tracker.settings)
         except Exception:
             pass
+    _sanitize_settings_catalog_values(s)
     poll_interval_seconds = clamp_oi_poll_seconds(s)
     straddle_poll = clamp_straddle_poll_seconds(s)
     positions_poll = clamp_positions_poll_seconds(s)

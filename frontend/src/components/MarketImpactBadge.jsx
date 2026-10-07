@@ -29,12 +29,11 @@ const INDEX_LABEL = {
 
 const MENU_WIDTH = 288;
 
-export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
+export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents, open, onOpenChange }) {
   const [events, setEvents] = useState([]);
-  const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
   const panelRef = useRef(null);
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   const { pos, place } = usePortaledMenu({
     open,
     onClose: close,
@@ -80,13 +79,12 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
       : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300";
 
   const tileBase =
-    "oi-info-tile w-full min-h-[76px] rounded-sm border px-1.5 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 overflow-hidden";
+    "oi-info-tile w-full min-h-[76px] rounded-sm border px-2 py-1.5 text-left transition-colors flex flex-col gap-1 overflow-hidden";
 
-  const toggle = () => {
-    setOpen((v) => {
-      if (!v) place();
-      return !v;
-    });
+  const toggle = (e) => {
+    e?.stopPropagation?.();
+    if (!open) place();
+    onOpenChange(!open);
   };
 
   const emptyCopy = pastOnly
@@ -116,11 +114,11 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <div className="flex items-center gap-1 text-[8px] uppercase tracking-widest opacity-80">
+        <div className="flex items-center gap-1 text-[9px] uppercase tracking-wide opacity-80">
           {tone === "red" ? (
-            <AlertTriangle className="w-2.5 h-2.5" />
+            <AlertTriangle className="w-3 h-3" />
           ) : (
-            <TrendingUp className="w-2.5 h-2.5" />
+            <TrendingUp className="w-3 h-3" />
           )}
 
           <span className="truncate">{primary ? `Index Impact · ${daysText(primary.days_remaining)}` : "Index Impact"}</span>
@@ -138,7 +136,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
         {primary ? (
           <>
             <div
-              className="flex items-center text-[10px] font-semibold leading-tight truncate mt-0.5"
+              className="flex items-center text-[11px] font-semibold leading-tight truncate mt-0.5"
               data-testid="market-impact-name"
             >
               <span className="truncate">
@@ -146,7 +144,7 @@ export default function MarketImpactBadge({ activeIndex, onOpenIndexEvents }) {
               </span>
               <span className="ml-2">{primary.event_type}</span>
             </div>
-            <div className="text-[9px] leading-tight opacity-80 font-mono-data truncate">
+            <div className="text-[10px] leading-tight opacity-90 font-mono-data truncate">
               {primary.weightage != null
                 ? `${primary.weightage.toFixed(2)}% Weightage`
                 : "Weightage N/A"}

@@ -72,7 +72,7 @@ export default function RightPanel({
   indexStep = 50,
   expiriesMeta = [],
   onPinNearestWeekly,
-  positionsPollMs = 30000,
+  positionsPollMs = 2000,
   onOpenKite,
   deskAiShow = false,
   deskAiAsk = true,

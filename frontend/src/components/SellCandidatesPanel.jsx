@@ -178,6 +178,7 @@ export default function SellCandidatesPanel({
   current,
   previous,
   indexName,
+  lotSize,
   vixNow,
   vixOpen,
   step,
@@ -198,9 +199,10 @@ export default function SellCandidatesPanel({
     vixNow,
     vixOpen,
     indexName,
+    lotSize,
     step,
     vrp: useVrp ? vrp : null,
-  }), [current, previous, vixNow, vixOpen, indexName, step, vrp, useVrp]);
+  }), [current, previous, vixNow, vixOpen, indexName, lotSize, step, vrp, useVrp]);
 
   const { verdict, candidates, smile, dealer, ivRank, vix, walls, expiryStale } = result;
   const atm = current?.atm;
@@ -243,10 +245,15 @@ export default function SellCandidatesPanel({
         <Pill
           label="Dealer γ (GEX)"
           value={formatGexExposure(dealer.gexLakhCrorePer1Pct)}
-          sub={dealer.label}
+          sub={`${dealer.label} · ±${dealer.spotBandPct}% · ${dealer.includedStrikeCount} strikes`}
           tone={dealer.tone}
           testId="scpill-dealer-gamma"
-          tip={dealerGammaGuide(dealer.gexLakhCrorePer1Pct, { byStrike: dealer.byStrike })}
+          tip={dealerGammaGuide(dealer.gexLakhCrorePer1Pct, {
+            byStrike: dealer.byStrike,
+            spotBandPct: dealer.spotBandPct,
+            includedStrikeCount: dealer.includedStrikeCount,
+            sourceStrikeCount: dealer.sourceStrikeCount,
+          })}
         />
         <Pill
           label="India VIX"

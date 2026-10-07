@@ -265,9 +265,9 @@ describe("dealer gamma guide", () => {
           pe_oi: 20,
         },
         {
-          strike: 110,
-          ce_ltp: bsPrice(spot, 110, T, r, sigma, true),
-          pe_ltp: bsPrice(spot, 110, T, r, sigma, false),
+          strike: 102,
+          ce_ltp: bsPrice(spot, 102, T, r, sigma, true),
+          pe_ltp: bsPrice(spot, 102, T, r, sigma, false),
           ce_oi: 10,
           pe_oi: 5,
         },
@@ -284,5 +284,40 @@ describe("dealer gamma guide", () => {
     expect(result.gexLakhCrorePer1Pct).toBeCloseTo(
       result.byStrike.reduce((sum, point) => sum + point.gexLakhCrorePer1Pct, 0),
     );
+  });
+
+  it("limits GEX to valid strikes within three percent of spot", () => {
+    const spot = 100;
+    const T = 0.1;
+    const r = 0.065;
+    const sigma = 0.2;
+    const result = computeDealerGamma({
+      strikes: [
+        { strike: 100, ce_ltp: bsPrice(spot, 100, T, r, sigma, true), pe_ltp: bsPrice(spot, 100, T, r, sigma, false), ce_oi: 100, pe_oi: 80 },
+        { strike: 102, ce_ltp: bsPrice(spot, 102, T, r, sigma, true), pe_ltp: bsPrice(spot, 102, T, r, sigma, false), ce_oi: 20, pe_oi: 10 },
+        { strike: 104, ce_ltp: bsPrice(spot, 104, T, r, sigma, true), pe_ltp: bsPrice(spot, 104, T, r, sigma, false), ce_oi: 1000000, pe_oi: 1000000 },
+        { strike: 101, ce_ltp: 0, pe_ltp: -1, ce_oi: 1000, pe_oi: 1000 },
+      ],
+      spot,
+      T,
+      r,
+      indexName: "NIFTY",
+      lotSize: 65,
+    });
+    expect(result.byStrike.map((row) => row.strike)).toEqual([100, 102]);
+    expect(result.includedStrikeCount).toBe(2);
+    expect(result.sourceStrikeCount).toBe(4);
+    expect(result.spotBandPct).toBe(3);
+  });
+
+  it("uses the configured lot size for GEX scaling", () => {
+    const params = {
+      strikes: [{ strike: 100, ce_ltp: 2, pe_ltp: 1, ce_oi: 100, pe_oi: 50 }],
+      spot: 100,
+      T: 0.1,
+      indexName: "NIFTY",
+    };
+    expect(computeDealerGamma({ ...params, lotSize: 65 }).gex)
+      .toBeCloseTo(computeDealerGamma({ ...params, lotSize: 50 }).gex * 1.3);
   });
 });

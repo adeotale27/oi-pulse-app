@@ -70,13 +70,12 @@ function SegmentTable({ title, segment }) {
  * Header tile: NSE Capital Market FII/FPI & DII (₹ crores).
  * Face = combined nets + date. Dropdown = NSE-only + NSE/BSE/MSEI tables.
  */
-export default function FiiDiiBadge({ isAdmin = false }) {
+export default function FiiDiiBadge({ isAdmin = false, open, onOpenChange }) {
   const [snap, setSnap] = useState(null);
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const anchorRef = useRef(null);
   const panelRef = useRef(null);
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   const { pos, place } = usePortaledMenu({
     open,
     onClose: close,
@@ -109,7 +108,7 @@ export default function FiiDiiBadge({ isAdmin = false }) {
   const hasData = !!(fii || dii || segments.nse?.rows?.length || segments.combined?.rows?.length);
 
   const tileBase =
-    "oi-info-tile w-full min-h-[76px] rounded-md border px-1.5 py-1 text-left transition-colors hover:brightness-95 flex flex-col gap-0.5 cursor-pointer overflow-hidden";
+    "oi-info-tile w-full min-h-[76px] rounded-md border px-2 py-1.5 text-left transition-colors flex flex-col gap-1 cursor-pointer overflow-hidden";
 
   const fiiNet = fii?.net;
   const diiNet = dii?.net;
@@ -144,11 +143,10 @@ export default function FiiDiiBadge({ isAdmin = false }) {
     }
   };
 
-  const toggle = () => {
-    setOpen((v) => {
-      if (!v) place();
-      return !v;
-    });
+  const toggle = (e) => {
+    e?.stopPropagation?.();
+    if (!open) place();
+    onOpenChange(!open);
   };
 
   return (
@@ -171,8 +169,8 @@ export default function FiiDiiBadge({ isAdmin = false }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <div className="flex items-center gap-1 text-[8px] uppercase tracking-widest opacity-80">
-          <Building2 className="w-2.5 h-2.5" />
+        <div className="flex items-center gap-1 text-[9px] uppercase tracking-wide opacity-80">
+          <Building2 className="w-3 h-3" />
           <span className="truncate">FII · DII</span>
           {snap?.stale && (
             <span
@@ -189,10 +187,10 @@ export default function FiiDiiBadge({ isAdmin = false }) {
 
         {hasData ? (
           <>
-            <div className="text-[10px] font-semibold leading-tight font-mono-data truncate" data-testid="fiidii-date">
+            <div className="text-[11px] font-semibold leading-tight font-mono-data truncate" data-testid="fiidii-date">
               {dateLabel}
             </div>
-            <div className="flex items-center justify-between gap-1 text-[9px] leading-tight font-mono-data">
+            <div className="flex items-center justify-between gap-1 text-[10px] leading-tight font-mono-data">
               <span className="truncate">
                 FII <span className={`font-semibold ${netTone(fiiNet)}`}>{fiiNet != null && fiiNet > 0 ? "+" : ""}{fmtCr(fiiNet)}</span>
               </span>

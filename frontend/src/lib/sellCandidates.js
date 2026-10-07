@@ -21,13 +21,24 @@
 
 import { impliedVol, greeks, yearsToExpiry, ivRankVsVix, expiryStillLive } from "./blackScholes";
 
-// Contract multiplier per index (roughly the lot size — good enough for a
-// relative-ordering GEX proxy; we only care about signs and magnitudes here).
+// Defaults match the desk lot-size settings; callers pass saved overrides when available.
 const CONTRACT_MULT = {
-  NIFTY: 50,
-  SENSEX: 10,
-  BANKNIFTY: 15,
+  NIFTY: 65,
+  SENSEX: 20,
+  BANKNIFTY: 30,
 };
+export const GEX_SPOT_BAND_PCT = 3;
+const emptyDealerEstimate = (sourceStrikeCount = 0) => ({
+  gex: 0,
+  gexLakhCrorePer1Pct: 0,
+  byStrike: [],
+  regime: "unknown",
+  label: "—",
+  tone: "slate",
+  spotBandPct: GEX_SPOT_BAND_PCT,
+  includedStrikeCount: 0,
+  sourceStrikeCount,
+});
 
 // Sensible defaults if the caller doesn't provide.
 const DEFAULT_RISK_FREE_RATE = 0.065;
@@ -72,24 +83,38 @@ export function computeVolatilitySmile({ strikes, spot, T, r = DEFAULT_RISK_FREE
 // an unverified assumption. Convert Γ × OI × lot × spot² × 1% to ₹ lakh crore
 // of estimated delta-hedge notional per 1% underlying move.
 // ---------------------------------------------------------------------------
-export function computeDealerGamma({ strikes, spot, T, r = DEFAULT_RISK_FREE_RATE, indexName }) {
-  if (!strikes?.length || !spot || !(T > 0)) {
-    return { gex: 0, gexLakhCrorePer1Pct: 0, byStrike: [], regime: "unknown", label: "—", tone: "slate" };
+export function computeDealerGamma({ strikes, spot, T, r = DEFAULT_RISK_FREE_RATE, indexName, lotSize }) {
+  const spotPrice = Number(spot);
+  if (!strikes?.length || !Number.isFinite(spotPrice) || spotPrice <= 0 || !Number.isFinite(T) || !(T > 0)) {
+    return emptyDealerEstimate(strikes?.length || 0);
   }
-  const mult = CONTRACT_MULT[indexName] || 50;
+  const configuredLotSize = Number(lotSize);
+  const mult = Number.isFinite(configuredLotSize) && configuredLotSize > 0
+    ? configuredLotSize
+    : CONTRACT_MULT[indexName] || 50;
   let gex = 0;
   const byStrike = [];
   for (const s of strikes) {
-    const ceIv = s.ce_ltp > 0 ? impliedVol(s.ce_ltp, spot, s.strike, T, r, true) : null;
-    const peIv = s.pe_ltp > 0 ? impliedVol(s.pe_ltp, spot, s.strike, T, r, false) : null;
-    const ceG = ceIv ? greeks(spot, s.strike, T, r, ceIv, true).gamma : 0;
-    const peG = peIv ? greeks(spot, s.strike, T, r, peIv, false).gamma : 0;
-    const ceContrib = (ceG || 0) * (s.ce_oi || 0) * spot * spot * mult;
-    const peContrib = (peG || 0) * (s.pe_oi || 0) * spot * spot * mult;
+    const strike = Number(s?.strike);
+    // Far-wing IV inversion is especially quote-sensitive, so only strikes inside
+    // the same fixed spot band contribute to this comparable exposure estimate.
+    if (!Number.isFinite(strike) || strike <= 0 || Math.abs(strike - spotPrice) / spotPrice > GEX_SPOT_BAND_PCT / 100) continue;
+    const validLegGex = (ltpValue, oiValue, isCall) => {
+      const ltp = Number(ltpValue);
+      const oi = Number(oiValue);
+      if (!Number.isFinite(ltp) || ltp <= 0 || !Number.isFinite(oi) || oi <= 0) return 0;
+      const iv = impliedVol(ltp, spotPrice, strike, T, r, isCall);
+      if (!Number.isFinite(iv) || iv <= 0) return 0;
+      const gamma = greeks(spotPrice, strike, T, r, iv, isCall).gamma;
+      return Number.isFinite(gamma) && gamma > 0 ? gamma * oi * spotPrice * spotPrice * mult : 0;
+    };
+    const ceContrib = validLegGex(s.ce_ltp, s.ce_oi, true);
+    const peContrib = validLegGex(s.pe_ltp, s.pe_oi, false);
+    if (ceContrib === 0 && peContrib === 0) continue;
     const strikeGex = ceContrib - peContrib;
     gex += strikeGex;
     byStrike.push({
-      strike: s.strike,
+      strike,
       gexLakhCrorePer1Pct: strikeGex / 1e14,
     });
   }
@@ -100,10 +125,10 @@ export function computeDealerGamma({ strikes, spot, T, r = DEFAULT_RISK_FREE_RAT
   if (gexLakhCrorePer1Pct > 0.5) { regime = "positive"; label = "Sticky range"; tone = "emerald"; }
   else if (gexLakhCrorePer1Pct < -0.5) { regime = "negative"; label = "Trending / expansion"; tone = "rose"; }
   else { regime = "neutral"; label = "Neutral"; tone = "amber"; }
-  return { gex, gexLakhCrorePer1Pct, byStrike, regime, label, tone };
+  return { gex, gexLakhCrorePer1Pct, byStrike, regime, label, tone, spotBandPct: GEX_SPOT_BAND_PCT, includedStrikeCount: byStrike.length, sourceStrikeCount: strikes.length };
 }
 
-export function computeDealerGammaFromSnapshots({ current, previous, indexName }) {
+export function computeDealerGammaFromSnapshots({ current, previous, indexName, lotSize }) {
   const calculate = (snapshot) => {
     const timestampMs = Date.parse(snapshot?.timestamp || "");
     if (!snapshot?.strikes?.length || !snapshot.price || !snapshot.expiry || !Number.isFinite(timestampMs)) {
@@ -118,6 +143,7 @@ export function computeDealerGammaFromSnapshots({ current, previous, indexName }
         T,
         r: 0.065,
         indexName,
+        lotSize,
       }),
       snapshot,
       isRetained: snapshot !== current,
@@ -240,6 +266,7 @@ export function computeSellCandidates({
   vixNow,
   vixOpen,
   indexName,
+  lotSize,
   step,
   vrp,
   r = DEFAULT_RISK_FREE_RATE,
@@ -261,7 +288,7 @@ export function computeSellCandidates({
       },
       candidates: { ce: [], pe: [] },
       smile: { points: [], meanIv: null },
-      dealer: { gex: 0, gexLakhCrorePer1Pct: 0, byStrike: [], regime: "unknown", label: "—", tone: "slate" },
+      dealer: emptyDealerEstimate(strikes.length),
       ivRank: null,
       vix: { now: vixNow, changePct: null },
       walls: {},
@@ -273,7 +300,7 @@ export function computeSellCandidates({
       verdict: { tradeable: false, reasons: ["Waiting for live snapshot..."] },
       candidates: { ce: [], pe: [] },
       smile: { points: [], meanIv: null },
-      dealer: { gex: 0, gexLakhCrorePer1Pct: 0, byStrike: [], regime: "unknown", label: "—", tone: "slate" },
+      dealer: emptyDealerEstimate(strikes.length),
       ivRank: null,
       vix: { now: vixNow, changePct: null },
       walls: {},
@@ -283,7 +310,7 @@ export function computeSellCandidates({
 
   // ---- Aggregate signals ----
   const smile = computeVolatilitySmile({ strikes, spot, T, r });
-  const dealer = computeDealerGamma({ strikes, spot, T, r, indexName });
+  const dealer = computeDealerGamma({ strikes, spot, T, r, indexName, lotSize });
   const fresh = detectFreshWriting({ current, previous });
   const migration = detectOIMigration({ current, previous, step });
   const walls = findGammaWalls(strikes);

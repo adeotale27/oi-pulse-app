@@ -219,7 +219,7 @@ export default function Header({
   /** Merge DataTruth / market / Kite banners into one slim bar. */
   slimStatusRail = false,
   /** Positions book poll interval (ms) — keeps header Today P&L fresh in background. */
-  positionsPollMs = 30_000,
+  positionsPollMs = 2_000,
   /** Unused: header P&L is admin-only so guests never see the desk book. */
   positionsPublic: _positionsPublic = true,
   onOpenDeskAiKeys,
