@@ -190,6 +190,7 @@ DEFAULT_SETTINGS = {
     "oi_poll_interval_seconds": 15,  # OI data pull interval (15/30/60 seconds)
     "straddle_poll_interval_seconds": 15,  # Dense straddle chart samples (FinanceDeft-style)
     "positions_poll_interval_seconds": 2,  # Positions desk auto-refresh (admin)
+    "trade_cycle_saving_enabled": True,  # Keep admin cycle history unless explicitly disabled in the Journal
     "straddle_enabled_indices": ["NIFTY", "SENSEX"],  # Which indices to track for straddle
     "visible_pages": ["oi-change", "open-interest", "strike-table", "buildup", "positions", "alerts", "activity", "holidays", "straddle", "index-events", "market-intel", "adrs"],
     # Admin's own dashboard tabs (independent of guest visibility)
@@ -519,6 +520,7 @@ class OITracker:
             "threshold_pct", "cooldown_seconds", "compare_minutes", "enabled_indices",
             "oi_poll_interval_seconds", "straddle_poll_interval_seconds",
             "positions_poll_interval_seconds",
+            "trade_cycle_saving_enabled",
             "straddle_enabled_indices", "visible_pages", "admin_visible_pages",
             "show_market_memory",
             "market_open_ist", "market_close_ist", "second_session_ist",

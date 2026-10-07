@@ -71,6 +71,7 @@ Details: [docs/DATA.md](docs/DATA.md) · APIs: [docs/ABOUT.md](docs/ABOUT.md).
 | Knob | Where |
 |------|--------|
 | Tracked indices, alert focus, poll seconds, market close | **Admin configuration** (gear) |
+| Save your broker-book trade-cycle history | **Trade journal → Save my trade cycles** toggle (existing cycles and daily Journal P&L are retained; guest history is separate) |
 | Market Memory visibility for all desk users | Admin configuration → **Data collection** |
 | **Public vs Admin pages** (two ticks per tile) | Admin configuration → Public / Admin dashboard pages |
 | Settings save status | Separate **Save desk settings** and **Save personal thresholds** actions show changed-setting counts; desk save status includes load/retry and last-save times |

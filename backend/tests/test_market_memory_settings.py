@@ -57,6 +57,42 @@ def test_market_memory_setting_is_persisted_by_tracker():
     )
 
 
+def test_trade_cycle_saving_setting_defaults_on_and_can_be_disabled(monkeypatch):
+    assert server.DEFAULT_SETTINGS["trade_cycle_saving_enabled"] is True
+
+    tracker = SettingsTracker()
+    monkeypatch.setattr(server, "tracker", tracker)
+    result = asyncio.run(server.update_settings(
+        server.SettingsIn(trade_cycle_saving_enabled=False),
+        _admin=True,
+    ))
+
+    assert tracker.saved == {"trade_cycle_saving_enabled": False}
+    assert result["trade_cycle_saving_enabled"] is False
+
+
+def test_tracker_persists_trade_cycle_saving_preference():
+    class SettingsCollection:
+        def __init__(self):
+            self.update = None
+
+        async def update_one(self, query, update, upsert):
+            self.update = (query, update, upsert)
+
+    tracker = OITracker.__new__(OITracker)
+    tracker.settings = {"trade_cycle_saving_enabled": True}
+    collection = SettingsCollection()
+    tracker.db = SimpleNamespace(settings=collection)
+
+    asyncio.run(tracker.save_settings({"trade_cycle_saving_enabled": False}))
+
+    assert tracker.settings["trade_cycle_saving_enabled"] is False
+    assert collection.update == (
+        {"_id": "alerts"},
+        {"$set": {"trade_cycle_saving_enabled": False}},
+        True,
+    )
+
 def test_site_walkthrough_setting_is_persisted_by_tracker():
     class SettingsCollection:
         def __init__(self):

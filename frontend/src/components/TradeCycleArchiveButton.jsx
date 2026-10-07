@@ -37,6 +37,17 @@ function daysBefore(ymd, days) {
   return value.toISOString().slice(0, 10);
 }
 
+function archiveMutationError(error, fallback) {
+  if (
+    error?.code === "ECONNABORTED"
+    || error?.message === "Network Error"
+    || /timeout/i.test(error?.message || "")
+  ) {
+    return "The request did not return in time. Refresh the date-range count before retrying; the server may have completed the operation.";
+  }
+  return error?.response?.data?.detail || error?.message || fallback;
+}
+
 export default function TradeCycleArchiveButton({ onArchiveLoaded }) {
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -127,7 +138,7 @@ export default function TradeCycleArchiveButton({ onArchiveLoaded }) {
       await loadRange();
     } catch (e) {
       setConfirmOpen(false);
-      setError(e?.response?.data?.detail || e?.message || "Could not compact archived details");
+      setError(archiveMutationError(e, "Could not compact archived details"));
     } finally {
       setBusy(false);
     }
@@ -152,7 +163,7 @@ export default function TradeCycleArchiveButton({ onArchiveLoaded }) {
       await loadRange();
     } catch (e) {
       setConfirmOpen(false);
-      setError(e?.response?.data?.detail || e?.message || "Could not delete archived cycles");
+      setError(archiveMutationError(e, "Could not delete archived cycles"));
     } finally {
       setBusy(false);
     }
@@ -202,6 +213,7 @@ export default function TradeCycleArchiveButton({ onArchiveLoaded }) {
             <div className="text-xs font-semibold text-slate-900">Archive, compact, or remove old cycles</div>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
               Choose an inclusive Exit Date range. The same dates are used for checking, downloading, compacting, or permanently deleting closed cycles; open and partial cycles are never included. Save the downloaded archive outside this app before changing stored data. Compact removes raw events/fills but keeps cycle summaries; Delete permanently removes the selected closed cycles. Neither changes daily journal P&amp;L. Upload a downloaded .jsonl.gz file to view its cycle P&amp;L in the calendar; it stays in this tab’s memory and is never sent to MongoDB.
+              {" "}Large changes can take up to two minutes; keep this window open while they finish.
             </p>
           </div>
           <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">

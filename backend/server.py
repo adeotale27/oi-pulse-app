@@ -990,6 +990,7 @@ class SettingsIn(BaseModel):
     oi_poll_interval_seconds: Optional[int] = None  # OI data pull interval (15/30/60)
     straddle_poll_interval_seconds: Optional[int] = None  # Straddle data pull interval (60 = 1 min)
     positions_poll_interval_seconds: Optional[int] = None  # Positions desk auto-refresh (1–3600s)
+    trade_cycle_saving_enabled: Optional[bool] = None  # Admin-only broker-book cycle history
     market_intel_ingest_seconds: Optional[int] = None
     market_intel_retention_days: Optional[int] = None
     market_intel_min_history_days: Optional[int] = None
@@ -5172,6 +5173,9 @@ async def _persist_trade_ledger(
     feed_ok: bool = True,
 ) -> None:
     """Upsert trade cycles from the live book. No-ops on Mongo errors."""
+    # The Journal preference suppresses only the admin's cycle history; guest books remain owner-scoped and unaffected.
+    if owner_id == "admin" and not _live_settings().get("trade_cycle_saving_enabled", True):
+        return
     if db is None or not owner_id:
         return
     now = now_ist()
@@ -5810,6 +5814,7 @@ async def export_trades(
 
 
 CYCLE_ARCHIVE_SPOOL_MEMORY_BYTES = 8 * 1024 * 1024
+CYCLE_ARCHIVE_DELETE_BATCH_SIZE = 500
 
 
 def _trade_cycle_archive_date_bounds(from_date: str, to_date: str) -> tuple[str, str]:
@@ -6019,9 +6024,10 @@ async def delete_trade_cycle_archive(
         raise HTTPException(409, "Trade details changed after download; download a fresh archive before deleting")
     try:
         deleted = 0
-        for cycle_id in cycle_ids:
-            result = await db.trade_cycles.delete_one({
-                "_id": cycle_id,
+        for offset in range(0, len(cycle_ids), CYCLE_ARCHIVE_DELETE_BATCH_SIZE):
+            # Chunk ids to keep Mongo commands bounded while avoiding one round trip per cycle.
+            result = await db.trade_cycles.delete_many({
+                "_id": {"$in": cycle_ids[offset:offset + CYCLE_ARCHIVE_DELETE_BATCH_SIZE]},
                 "owner_id": owner_id,
                 "status": "closed",
                 "exit_date": {"$gte": start, "$lte": end},

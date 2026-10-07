@@ -61,6 +61,7 @@ class MemoryTradeCycles:
     def __init__(self, rows):
         self.rows = rows
         self.update_query = None
+        self.delete_queries = []
 
     def find(self, query, projection=None):
         rows = [dict(row) for row in self.rows if _matches(row, query)]
@@ -94,6 +95,19 @@ class MemoryTradeCycles:
                 self.rows.pop(index)
                 return SimpleNamespace(deleted_count=1)
         return SimpleNamespace(deleted_count=0)
+
+    async def delete_many(self, query):
+        self.delete_queries.append(query)
+        ids = set(query["_id"]["$in"])
+        deleted = 0
+        kept = []
+        for row in self.rows:
+            if row.get("_id") in ids and _matches(row, query):
+                deleted += 1
+            else:
+                kept.append(row)
+        self.rows[:] = kept
+        return SimpleNamespace(deleted_count=deleted)
 
     async def count_documents(self, query):
         return sum(1 for row in self.rows if _matches(row, query))
@@ -283,6 +297,48 @@ def test_archive_delete_requires_matching_download_and_deletes_only_selected_dat
     remaining_ids = {row["_id"] for row in collection.rows}
     assert result["deleted_count"] == 1
     assert "admin-closed" not in remaining_ids
+    assert "guest-closed" in remaining_ids
+    assert "admin-before" in remaining_ids
+    assert "admin-after" in remaining_ids
+
+
+def test_archive_delete_batches_verified_ids_and_rechecks_owner_status_and_range(monkeypatch):
+    rows = _rows()
+    for number in range(5):
+        rows.append({
+            "_id": f"admin-in-range-{number}",
+            "owner_id": "admin",
+            "cycle_id": f"cycle-{number}",
+            "status": "closed",
+            "exit_date": "2026-06-12",
+            "booked_pnl": number,
+        })
+    collection = MemoryTradeCycles(rows)
+    _configure(monkeypatch, collection)
+    monkeypatch.setattr(server, "CYCLE_ARCHIVE_DELETE_BATCH_SIZE", 2)
+
+    async def exercise():
+        archive = await server.export_trade_cycle_archive(
+            request=None,
+            from_date="2026-06-12",
+            to_date="2026-06-12",
+            _admin=True,
+        )
+        return await server.delete_trade_cycle_archive(
+            _payload("2026-06-12", "2026-06-12", archive.headers["x-archive-sha256"]),
+            request=None,
+            _admin=True,
+        )
+
+    result = asyncio.run(exercise())
+
+    assert result["archive_count"] == 6
+    assert result["deleted_count"] == 6
+    assert [len(query["_id"]["$in"]) for query in collection.delete_queries] == [2, 2, 2]
+    assert all(query["owner_id"] == "admin" for query in collection.delete_queries)
+    assert all(query["status"] == "closed" for query in collection.delete_queries)
+    assert all(query["exit_date"] == {"$gte": "2026-06-12", "$lte": "2026-06-12"} for query in collection.delete_queries)
+    remaining_ids = {row["_id"] for row in collection.rows}
     assert "guest-closed" in remaining_ids
     assert "admin-before" in remaining_ids
     assert "admin-after" in remaining_ids
