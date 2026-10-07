@@ -21,5 +21,4 @@ assert.equal(
   false,
   "server open flag wins",
 );
-
 console.log("marketTimes.test.js: ok");

@@ -1,5 +1,21 @@
 # Changelog
 
+## V18.45 — 2026-10-07
+
+Replace the Trade Journal cycle archive's month/age selection with an exact inclusive Exit Date range shared by preview, download, compaction, and permanent deletion; continue accepting existing monthly archive uploads.
+
+## V18.44 — 2026-10-07
+
+Stop Desk AI and carry-brief OI-change requests outside the active OI polling window, using `/market/status` and failing closed if the status cannot be read.
+
+## V18.43 — 2026-10-07
+
+Extend Trade Journal cycle archives with a verified permanent-delete option for one eligible closed month, allow downloading the remaining summaries after compaction, and let admins upload gzip NDJSON archives for a separate browser-tab-only calendar view that never writes to MongoDB.
+
+## V18.42 — 2026-10-07
+
+Make the Trade Journal cycle-archive age selectable from 1–365 days, defaulting to 30, and apply the chosen threshold consistently to eligible-month listing, archive download, and compaction verification.
+
 ## V18.41 — 2026-10-07
 
 Stop suppressing or deleting current session-day P&L just because its values match the previous session. Add admin-only monthly trade-cycle archives with explicit, hash-verified compaction after the download is saved outside the app; daily P&L and compact summaries remain in MongoDB.

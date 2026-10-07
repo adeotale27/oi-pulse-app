@@ -46,15 +46,14 @@ def _matches(doc, query):
         return False
     if "$lt" in date_filter and exit_date >= date_filter["$lt"]:
         return False
-    if "$lte" in date_filter and exit_date >= date_filter["$lte"]:
+    if "$lte" in date_filter and exit_date > date_filter["$lte"]:
         return False
-    has_events = bool(doc.get("events"))
-    has_fills = bool(doc.get("fills"))
-    return (has_events or has_fills) and (
-        "$or" not in query or any(
-            ("events" in item and has_events) or ("fills" in item and has_fills)
-            for item in query["$or"]
-        )
+    if "$or" not in query:
+        return True
+    return any(
+        ("events" in item and bool(doc.get("events")))
+        or ("fills" in item and bool(doc.get("fills")))
+        for item in query["$or"]
     )
 
 
@@ -62,24 +61,21 @@ class MemoryTradeCycles:
     def __init__(self, rows):
         self.rows = rows
         self.update_query = None
-        self.update_operation = None
 
     def find(self, query, projection=None):
         rows = [dict(row) for row in self.rows if _matches(row, query)]
-        if projection and projection.get("_id") == 0:
+        if projection:
+            includes = {key for key, included in projection.items() if included == 1 and key != "_id"}
+            excludes = {key for key, included in projection.items() if included == 0}
+            if includes:
+                rows = [{key: row[key] for key in includes if key in row} for row in rows]
             for row in rows:
-                for key, included in projection.items():
-                    if included == 0:
-                        row.pop(key, None)
-                    elif key != "_id" and included == 1:
-                        for field in list(row):
-                            if field != key:
-                                row.pop(field, None)
+                for key in excludes:
+                    row.pop(key, None)
         return MemoryCursor(rows)
 
     async def update_many(self, query, operation):
         self.update_query = query
-        self.update_operation = operation
         changed = 0
         for row in self.rows:
             if not _matches(row, query):
@@ -91,6 +87,16 @@ class MemoryTradeCycles:
                     row_changed = True
             changed += int(row_changed)
         return SimpleNamespace(modified_count=changed)
+
+    async def delete_one(self, query):
+        for index, row in enumerate(self.rows):
+            if row.get("_id") == query.get("_id") and _matches(row, query):
+                self.rows.pop(index)
+                return SimpleNamespace(deleted_count=1)
+        return SimpleNamespace(deleted_count=0)
+
+    async def count_documents(self, query):
+        return sum(1 for row in self.rows if _matches(row, query))
 
 
 def _rows():
@@ -123,12 +129,36 @@ def _rows():
             "events": [{"kind": "entry", "trade_id": "o1"}],
         },
         {
-            "_id": "admin-recent",
+            "_id": "admin-before",
             "owner_id": "admin",
-            "cycle_id": "recent-cycle",
+            "cycle_id": "before-cycle",
+            "status": "closed",
+            "exit_date": "2026-06-11",
+            "events": [{"kind": "exit", "trade_id": "b1"}],
+        },
+        {
+            "_id": "admin-after",
+            "owner_id": "admin",
+            "cycle_id": "after-cycle",
+            "status": "closed",
+            "exit_date": "2026-06-13",
+            "events": [{"kind": "exit", "trade_id": "a2"}],
+        },
+        {
+            "_id": "admin-later",
+            "owner_id": "admin",
+            "cycle_id": "later-cycle",
             "status": "closed",
             "exit_date": "2026-08-12",
-            "events": [{"kind": "exit", "trade_id": "r1"}],
+            "events": [{"kind": "exit", "trade_id": "l1"}],
+        },
+        {
+            "_id": "admin-future",
+            "owner_id": "admin",
+            "cycle_id": "future-cycle",
+            "status": "closed",
+            "exit_date": "2026-10-08",
+            "events": [{"kind": "exit", "trade_id": "f1"}],
         },
     ]
 
@@ -143,52 +173,68 @@ def _configure(monkeypatch, collection):
     monkeypatch.setattr(server, "_ledger_owner", admin_owner)
 
 
-def test_archive_months_are_admin_scoped_and_require_full_90_day_month(monkeypatch):
+def _payload(start, end, digest):
+    return server.TradeCycleArchiveCompactIn(**{"from": start, "to": end, "sha256": digest})
+
+
+def test_archive_range_counts_only_owned_closed_cycles_with_inclusive_dates(monkeypatch):
     collection = MemoryTradeCycles(_rows())
     _configure(monkeypatch, collection)
 
-    response = asyncio.run(server.trade_cycle_archive_months(request=None, _admin=True))
+    response = asyncio.run(server.trade_cycle_archive_range(
+        request=None,
+        from_date="2026-06-12",
+        to_date="2026-08-12",
+        _admin=True,
+    ))
 
-    assert response["cutoff"] == "2026-07-09"
-    assert response["months"] == [{"month": "2026-06", "count": 1}]
-    assert collection.rows[1]["events"]
+    assert response == {
+        "from": "2026-06-12",
+        "to": "2026-08-12",
+        "count": 3,
+        "detail_count": 3,
+    }
 
 
-def test_cycle_archive_download_and_hash_verified_compaction(monkeypatch):
+def test_archive_download_and_hash_verified_compaction_use_exact_range(monkeypatch):
     collection = MemoryTradeCycles(_rows())
     _configure(monkeypatch, collection)
 
     async def exercise():
         response = await server.export_trade_cycle_archive(
             request=None,
-            month="2026-06",
+            from_date="2026-06-12",
+            to_date="2026-06-12",
             _admin=True,
         )
-        chunks = [chunk async for chunk in response.body_iterator]
-        compressed = b"".join(chunks)
-        raw = gzip.decompress(compressed)
+        raw = gzip.decompress(b"".join([chunk async for chunk in response.body_iterator]))
         digest = hashlib.sha256(raw).hexdigest()
         assert response.headers["x-archive-sha256"] == digest
         assert response.headers["x-archive-cycle-count"] == "1"
         assert "admin-cycle" in raw.decode("utf-8")
+        assert "before-cycle" not in raw.decode("utf-8")
+        assert "after-cycle" not in raw.decode("utf-8")
         assert "guest-cycle" not in raw.decode("utf-8")
         return await server.compact_trade_cycle_archive(
-            server.TradeCycleArchiveCompactIn(month="2026-06", sha256=digest),
+            _payload("2026-06-12", "2026-06-12", digest),
             request=None,
             _admin=True,
         )
 
     result = asyncio.run(exercise())
 
+    assert result["from"] == "2026-06-12"
+    assert result["to"] == "2026-06-12"
     assert result["archive_count"] == 1
     assert result["compacted_count"] == 1
     assert result["remaining_count"] == 0
-    admin_cycle, guest_cycle = collection.rows[:2]
-    assert "events" not in admin_cycle
-    assert "fills" not in admin_cycle
-    assert admin_cycle["booked_pnl"] == 500
-    assert admin_cycle["partials"] == [{"realised_this": 500}]
-    assert guest_cycle["events"]
+    cycles = {row["_id"]: row for row in collection.rows}
+    assert "events" not in cycles["admin-closed"]
+    assert "fills" not in cycles["admin-closed"]
+    assert cycles["admin-closed"]["booked_pnl"] == 500
+    assert cycles["guest-closed"]["events"]
+    assert cycles["admin-before"]["events"]
+    assert cycles["admin-after"]["events"]
 
 
 def test_cycle_archive_rejects_wrong_hash_without_mutating_cycles(monkeypatch):
@@ -196,37 +242,129 @@ def test_cycle_archive_rejects_wrong_hash_without_mutating_cycles(monkeypatch):
     _configure(monkeypatch, collection)
 
     with pytest.raises(HTTPException) as error:
-        asyncio.run(
-            server.compact_trade_cycle_archive(
-                server.TradeCycleArchiveCompactIn(month="2026-06", sha256="0" * 64),
-                request=None,
-                _admin=True,
-            )
-        )
+        asyncio.run(server.compact_trade_cycle_archive(
+            _payload("2026-06-12", "2026-06-12", "0" * 64),
+            request=None,
+            _admin=True,
+        ))
 
     assert error.value.status_code == 409
     assert collection.update_query is None
     assert collection.rows[0]["events"]
 
 
-def test_cycle_archive_rejects_recent_or_invalid_month(monkeypatch):
+def test_archive_delete_requires_matching_download_and_deletes_only_selected_dates(monkeypatch):
     collection = MemoryTradeCycles(_rows())
     _configure(monkeypatch, collection)
 
-    for month in ("2026-08", "2026-13"):
-        with pytest.raises(HTTPException) as error:
-            asyncio.run(
-                server.export_trade_cycle_archive(
-                    request=None,
-                    month=month,
-                    _admin=True,
-                )
+    async def exercise():
+        download = await server.export_trade_cycle_archive(
+            request=None,
+            from_date="2026-06-12",
+            to_date="2026-06-12",
+            _admin=True,
+        )
+        raw = gzip.decompress(b"".join([chunk async for chunk in download.body_iterator]))
+        digest = hashlib.sha256(raw).hexdigest()
+        with pytest.raises(HTTPException) as mismatch:
+            await server.delete_trade_cycle_archive(
+                _payload("2026-06-12", "2026-06-12", "0" * 64),
+                request=None,
+                _admin=True,
             )
-        assert error.value.status_code == 400
-    assert collection.update_query is None
+        assert mismatch.value.status_code == 409
+        return await server.delete_trade_cycle_archive(
+            _payload("2026-06-12", "2026-06-12", digest),
+            request=None,
+            _admin=True,
+        )
+
+    result = asyncio.run(exercise())
+    remaining_ids = {row["_id"] for row in collection.rows}
+    assert result["deleted_count"] == 1
+    assert "admin-closed" not in remaining_ids
+    assert "guest-closed" in remaining_ids
+    assert "admin-before" in remaining_ids
+    assert "admin-after" in remaining_ids
 
 
-def test_admin_archive_http_journey_download_verify_and_compact(monkeypatch):
+def test_compacted_range_can_be_redownloaded_then_deleted_with_fresh_fingerprint(monkeypatch):
+    rows = _rows()
+    rows.append({
+        "_id": "admin-summary-only",
+        "owner_id": "admin",
+        "cycle_id": "summary-cycle",
+        "status": "closed",
+        "exit_date": "2026-06-12",
+        "booked_pnl": -75,
+        "partials": [],
+    })
+    collection = MemoryTradeCycles(rows)
+    _configure(monkeypatch, collection)
+
+    async def exercise():
+        first = await server.export_trade_cycle_archive(
+            request=None,
+            from_date="2026-06-12",
+            to_date="2026-06-12",
+            _admin=True,
+        )
+        first_hash = first.headers["x-archive-sha256"]
+        compacted = await server.compact_trade_cycle_archive(
+            _payload("2026-06-12", "2026-06-12", first_hash),
+            request=None,
+            _admin=True,
+        )
+        assert compacted["archive_count"] == 2
+        assert compacted["detail_count"] == 1
+        assert compacted["compacted_count"] == 1
+        assert collection.rows[0]["booked_pnl"] == 500
+        assert "events" not in collection.rows[0]
+
+        refreshed = await server.export_trade_cycle_archive(
+            request=None,
+            from_date="2026-06-12",
+            to_date="2026-06-12",
+            _admin=True,
+        )
+        assert refreshed.headers["x-archive-cycle-count"] == "2"
+        deleted = await server.delete_trade_cycle_archive(
+            _payload("2026-06-12", "2026-06-12", refreshed.headers["x-archive-sha256"]),
+            request=None,
+            _admin=True,
+        )
+        return deleted
+
+    result = asyncio.run(exercise())
+    assert result["deleted_count"] == 2
+    remaining_ids = {row["_id"] for row in collection.rows}
+    assert "admin-closed" not in remaining_ids
+    assert "admin-summary-only" not in remaining_ids
+    assert "guest-closed" in remaining_ids
+    assert "admin-after" in remaining_ids
+
+
+@pytest.mark.parametrize(
+    ("from_date", "to_date"),
+    [
+        ("2026-02-30", "2026-03-01"),
+        ("2026-06-13", "2026-06-12"),
+        ("2026-10-07", "2026-10-08"),
+    ],
+)
+def test_archive_range_rejects_invalid_reversed_or_future_dates(monkeypatch, from_date, to_date):
+    _configure(monkeypatch, MemoryTradeCycles(_rows()))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(server.trade_cycle_archive_range(
+            request=None,
+            from_date=from_date,
+            to_date=to_date,
+            _admin=True,
+        ))
+    assert error.value.status_code == 400
+
+
+def test_admin_archive_http_journey_is_admin_only_and_uses_inclusive_range(monkeypatch):
     collection = MemoryTradeCycles(_rows())
 
     class AdminSessions:
@@ -239,44 +377,48 @@ def test_admin_archive_http_journey_download_verify_and_compact(monkeypatch):
                 "ttl_seconds": 3600,
             }
 
-    _configure(
-        monkeypatch,
-        collection,
-    )
-    monkeypatch.setattr(
-        server,
-        "db",
-        SimpleNamespace(trade_cycles=collection, admin_sessions=AdminSessions()),
-    )
+    _configure(monkeypatch, collection)
+    monkeypatch.setattr(server, "db", SimpleNamespace(
+        trade_cycles=collection,
+        admin_sessions=AdminSessions(),
+    ))
     client = TestClient(server.app)
 
-    unauthorized = client.get("/api/trades/archive/months")
-    assert unauthorized.status_code == 401
+    assert client.get(
+        "/api/trades/archive/range",
+        params={"from": "2026-06-12", "to": "2026-06-12"},
+    ).status_code == 401
+    assert client.post(
+        "/api/trades/archive/delete",
+        json={"from": "2026-06-12", "to": "2026-06-12", "sha256": "a" * 64},
+    ).status_code == 401
 
     headers = {"X-Admin-Token": "test-admin-token"}
-    months = client.get("/api/trades/archive/months", headers=headers)
-    assert months.status_code == 200
-    assert months.json()["months"] == [{"month": "2026-06", "count": 1}]
+    counts = client.get(
+        "/api/trades/archive/range",
+        params={"from": "2026-06-12", "to": "2026-06-12"},
+        headers=headers,
+    )
+    assert counts.status_code == 200
+    assert counts.json()["count"] == 1
 
     download = client.get(
         "/api/trades/archive/export",
-        params={"month": "2026-06"},
+        params={"from": "2026-06-12", "to": "2026-06-12"},
         headers=headers,
     )
     assert download.status_code == 200
     assert download.headers["content-type"].startswith("application/gzip")
     assert download.headers["content-disposition"].endswith(
-        'filename="striklenz-cycle-archive-2026-06.jsonl.gz"'
+        'filename="striklenz-cycle-archive-2026-06-12-to-2026-06-12.jsonl.gz"'
     )
     assert gzip.decompress(download.content).count(b"\n") == 1
-    digest = download.headers["x-archive-sha256"]
 
     compact = client.post(
         "/api/trades/archive/compact",
         headers=headers,
-        json={"month": "2026-06", "sha256": digest},
+        json={"from": "2026-06-12", "to": "2026-06-12", "sha256": download.headers["x-archive-sha256"]},
     )
     assert compact.status_code == 200
     assert compact.json()["compacted_count"] == 1
     assert "events" not in collection.rows[0]
-    assert collection.rows[0]["booked_pnl"] == 500

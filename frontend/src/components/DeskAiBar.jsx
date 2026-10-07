@@ -6,6 +6,7 @@ import { eventDisplayName } from "@/lib/carryFocus";
 import { attachDayCapital, classifyDayCapital } from "@/lib/capitalGuard";
 import { compactBookFromPositions, compactJournalFromPeriod, compactSellIdeas, compactTradeMemory, daysAgoIST, summarizeIndexTape } from "@/lib/deskAiTape";
 import { cashSessionFocusIndex, cashSessionFocusLabel, filterCashHeavyMovers, istWeekdaySun0, overnightBiasIndices } from "@/lib/deskFocus";
+import { isOiPolling } from "@/lib/marketTimes";
 import MarketIntelCard from "@/components/MarketIntelCard";
 
 const GRID_H_KEY = "oiDeskAiStripH";
@@ -56,8 +57,13 @@ export default function DeskAiBar({
       const focusIndex = cashSessionFocusIndex(weekday);
       const names = overnightBiasIndices(weekday, activeIndex).slice(0, 3);
       const today = todayIST();
+      const marketStatusRes = await api.get("/market/status").catch((error) => {
+        console.error("Desk AI market status failed; skipping OI refresh", error);
+        return { data: null };
+      });
+      const oiPolling = isOiPolling(marketStatusRes.data);
       // Trade memory is scoped to this signed-in caller; unlike the journal and publisher book, guests may use it.
-      const [st, outRes, evRes, posRes, extrasRes, journalRes, memRes, marketMemoryRes, marketStatusRes, ...oiPacks] = await Promise.all([
+      const [st, outRes, evRes, posRes, extrasRes, journalRes, memRes, marketMemoryRes, ...oiPacks] = await Promise.all([
         api.get("/desk-guide").catch(() => ({ data: null })),
         api.get("/desk-outside", { params: activeIndex ? { index: activeIndex } : {} }).catch(() => ({ data: null })),
         api.get(`/events/${focusIndex}`).catch(() => ({ data: null })),
@@ -66,8 +72,11 @@ export default function DeskAiBar({
         isAdmin ? fetchJournalPeriod(daysAgoIST(30, today), today, "ALL").catch(() => null) : Promise.resolve(null),
         api.get("/desk-memory", { params: { days: 180 } }).catch(() => ({ data: { status: "unavailable" } })),
         api.get(`/market-memory/${focusIndex}`).catch(() => ({ data: null })),
-        api.get("/market/status").catch(() => ({ data: null })),
-        ...names.map((idx) => fetchOIChange(idx, 15, { also: "session" }).catch(() => null)),
+        ...names.map((idx) => (
+          oiPolling
+            ? fetchOIChange(idx, 15, { also: "session" }).catch(() => null)
+            : Promise.resolve(null)
+        )),
       ]);
       setMeta(st.data);
       const rawOut = outRes.data || null;

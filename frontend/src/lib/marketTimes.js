@@ -144,6 +144,11 @@ export function nseCashSessionLive(status) {
   return status?.market?.is_market_open === true;
 }
 
+/** `/market/status` is the authority for whether callers should request live OI. */
+export function isOiPolling(status) {
+  return status?.is_oi_polling === true || status?.market?.is_oi_polling === true;
+}
+
 export function isMarketQuiescent(maybeStatusOrDate = undefined) {
   // Prefer live hours from status when present.
   if (maybeStatusOrDate && typeof maybeStatusOrDate === "object" && !(maybeStatusOrDate instanceof Date) && (maybeStatusOrDate.market || maybeStatusOrDate.holidays)) {
