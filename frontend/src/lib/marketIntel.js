@@ -22,11 +22,102 @@ export function bandClass(band) {
 }
 
 export function impactScoreLabel(score) {
-  return `Impact ${score ?? "—"}`;
+  return `Importance ${score ?? "—"}`;
 }
 
 export function indiaImpactLabel(score) {
   return `Indian market impact ${score ?? "—"}`;
+}
+
+export function directionalImpactLabel(direction) {
+  if (direction === "SUPPORTIVE") return "Likely market up";
+  if (direction === "NEGATIVE") return "Likely market down";
+  if (direction === "MIXED") return "Mixed signals";
+  return "Market direction unclear";
+}
+
+export function directionalBasisLabel(basis) {
+  if (basis === "HEADLINE") return "Direction read from headline.";
+  if (basis === "SUMMARY") return "Direction read from article summary; less direct than the headline.";
+  if (basis === "SOURCES") return "Direction checked against independent publisher reads.";
+  return "No clear directional cue found.";
+}
+
+export function marketTimingLabel(timing) {
+  return ({
+    IN_SESSION: "During market hours",
+    PRE_OPEN: "Before market open",
+    AFTER_CLOSE: "After market close",
+    WEEKEND_OR_HOLIDAY: "Weekend / market holiday",
+  })[timing] || "Market timing unavailable";
+}
+
+export function newsFreshnessLabel(freshness) {
+  return ({
+    CURRENT: "Recent",
+    OLD: "Older story",
+    RECEIVED_LATE: "Received more than 1h after publication",
+    PUBLISH_TIME_UNKNOWN: "Publisher time unavailable",
+    FUTURE_TIMESTAMP: "Publisher time needs checking",
+  })[freshness] || "Freshness unavailable";
+}
+
+export function sourceAgreementLabel(agreement) {
+  return ({
+    AGREE: "Independent reads agree",
+    DISAGREE: "Independent reads disagree",
+    INSUFFICIENT_DIRECTION: "Not enough directional reads",
+    SINGLE: "Single independent source",
+    UNKNOWN: "Source independence unavailable",
+  })[agreement] || "Source agreement unavailable";
+}
+
+export function marketIntelTimeLabel(value) {
+  if (!value) return "unavailable";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "unavailable";
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed) + " IST";
+}
+
+export function marketIntelPublicationLabel(value, precision) {
+  if (!value) return "time not supplied";
+  if (precision === "DATE") return String(value).slice(0, 10);
+  return marketIntelTimeLabel(value);
+}
+
+export function volatilityRiskClass(level) {
+  if (level === "HIGH") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (level === "ELEVATED") return "border-amber-200 bg-amber-50 text-amber-900";
+  if (level === "LOW") return "border-slate-200 bg-slate-100 text-slate-700";
+  return "border-slate-200 bg-white text-slate-600";
+}
+
+export function volatilitySellerNote(level) {
+  if (level === "HIGH") return "High text-based volatility read: review short-option exposure and hedges.";
+  if (level === "ELEVATED") return "Elevated text-based volatility read: review short-option exposure.";
+  if (level === "LOW") return "A low text-based catalyst read does not mean your positions are low risk.";
+  return null;
+}
+
+export function directionalImpactClass(direction) {
+  if (direction === "SUPPORTIVE") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (direction === "NEGATIVE") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (direction === "MIXED") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-slate-200 bg-slate-100 text-slate-700";
+}
+
+export function directionalPopupSurfaceClass(direction) {
+  if (direction === "SUPPORTIVE") return "border-emerald-400 bg-emerald-50 text-emerald-950";
+  if (direction === "NEGATIVE") return "border-rose-400 bg-rose-50 text-rose-950";
+  if (direction === "MIXED") return "border-amber-400 bg-amber-50 text-amber-950";
+  if (direction === "UNCLEAR") return "border-slate-300 bg-slate-50 text-slate-900";
+  return "border-rose-400 bg-rose-50 text-rose-950";
 }
 
 /** `india_macro` / `oil` → `INDIA MACRO` / `OIL` for the feed chip. */
@@ -64,4 +155,3 @@ export function readMiFeedCache(date, filt) {
 export function writeMiFeedCache(date, filt, items) {
   MI_FEED_CACHE.set(miFeedCacheKey(date, filt), Array.isArray(items) ? items : []);
 }
-

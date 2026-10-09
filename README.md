@@ -19,6 +19,7 @@ The publisher Kite token polls the option chain on a cadence you set (15 / 30 / 
 | **Strike Table** | Compact CE/PE grid with optional gamma / institution chips |
 | **Sell Candidates** | Strikes the desk treats as writer-friendly |
 | **Build-up** | Fresh OI adding vs covering |
+| **Market Intelligence** | Ranked, event-clustered news with separate direction and volatility reads, measured outcomes, and India-linked global company coverage; material news about uploaded NIFTY / SENSEX constituents is retained across sectors such as IT, steel, chemicals, and construction |
 | **Positions** | Live F&O book (admin publisher token, or guest’s own Kite) |
 | **Alerts / Activity** | Server reversal alerts + session tape; newly arriving high-impact Market Intel stories also show an in-app alert and, when enabled, a browser notification while the desk is in the background |
 | **Events / Index Risk** | Calendar + event-risk tile (upload stamps stay admin-only) |

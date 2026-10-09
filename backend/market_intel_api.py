@@ -296,6 +296,15 @@ def mount(api_router, *, require_admin, require_desk_user):
                 it.pop("_id", None)
         return {"items": items, "date": (mi.parse_feed_date(feed_date) or mi.ist_today()).isoformat()}
 
+    @api_router.get("/market-intel/performance")
+    async def mi_performance(role: str = Depends(require_desk_user)):
+        del role
+        db = _db()
+        if db is None:
+            raise HTTPException(503, "Market Intel outcome storage unavailable")
+        from market_intel_validation import performance_summary
+        return await performance_summary(db)
+
     @api_router.get("/market-intel/popup")
     async def mi_popup(request: Request, role: str = Depends(require_desk_user)):
         from server import _ledger_owner
@@ -309,7 +318,12 @@ def mount(api_router, *, require_admin, require_desk_user):
         keys = (
             "title", "impact_score", "india_relevance_score", "event_type",
             "summary", "potential", "event_cluster_id", "source_name", "impact_band",
-            "published_at",
+            "published_at", "market_direction", "directional_impact_score", "direction_basis",
+            "direction_reason", "volatility_risk", "volatility_risk_reason",
+            "india_link_status", "india_link_reason", "market_timing", "news_freshness",
+            "published_age_minutes", "arrival_delay_minutes", "independent_source_count",
+            "independent_source_names", "source_direction_agreement", "discovered_at",
+            "published_at_known", "published_at_precision",
         )
         return {
             "items": [{k: it.get(k) for k in keys} for it in items],

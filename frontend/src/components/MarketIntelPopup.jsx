@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, GripHorizontal, Maximize2, Minimize2, Newspaper, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, ChevronLeft, ChevronRight, GripHorizontal, Maximize2, Minimize2, Newspaper, X } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   bandClass,
+  directionalBasisLabel,
+  directionalImpactClass,
+  directionalImpactLabel,
+  directionalPopupSurfaceClass,
   formatEventTypeLabel,
+  marketTimingLabel,
+  newsFreshnessLabel,
+  sourceAgreementLabel,
+  marketIntelTimeLabel,
+  marketIntelPublicationLabel,
+  volatilityRiskClass,
+  volatilitySellerNote,
   impactScoreLabel,
   indiaImpactLabel,
   miMinimizeActive,
@@ -290,6 +301,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, onNewsAlert, pop
 
   const n = items.length;
   const item = n ? items[Math.min(idx, n - 1)] : null;
+  const popupSurfaceClass = directionalPopupSurfaceClass(item?.market_direction);
   const phoneOpen = typeof window !== "undefined" && isPhone();
   const posStyle = (() => {
     if (phoneOpen && minimized) {
@@ -333,7 +345,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, onNewsAlert, pop
           }
           expand();
         }}
-        className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 right-3 flex items-center rounded-full border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
+        className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 right-3 flex items-center rounded-full border-2 ${popupSurfaceClass} shadow-lg text-xs font-semibold touch-none gap-1.5 px-3 py-2 whitespace-nowrap ${
           bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""
         }`}
         style={{ ...posStyle, visibility: positionReady ? "visible" : "hidden", "--oi-popup-opacity": String(Math.max(60, Math.min(100, Number(popupOpacity) || 92)) / 100) }}
@@ -362,7 +374,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, onNewsAlert, pop
 
   return (
     <div
-      className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 border-rose-400 bg-rose-50 text-rose-950 shadow-lg pointer-events-auto h-[min(22rem,52vh)] ${
+      className={`oi-configurable-popup fixed ${zIndexClass} md:bottom-3 flex flex-col rounded-xl border-2 ${popupSurfaceClass} shadow-lg pointer-events-auto h-[min(22rem,52vh)] ${
         phoneOpen ? "left-3 right-3" : ""
       } ${bottomPx == null ? "bottom-[3.25rem] md:bottom-3" : ""}`}
       style={{
@@ -380,7 +392,7 @@ export default function MarketIntelPopup({ enabled, onOpenPage, onNewsAlert, pop
       role="dialog"
       aria-label="Market Intelligence"
     >
-      <div className="flex items-center gap-1 px-2 py-1.5 shrink-0 border-b border-rose-200">
+      <div className="flex items-center gap-1 px-2 py-1.5 shrink-0 border-b border-current/15">
         <button
           type="button"
           className="md:hidden p-1 opacity-70 touch-none min-h-11 min-w-11 inline-flex items-center justify-center"
@@ -471,13 +483,47 @@ export default function MarketIntelPopup({ enabled, onOpenPage, onNewsAlert, pop
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{item.impact_band || "HIGH"}</span>
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${bandClass(item.impact_band)}`}>{impactScoreLabel(item.impact_score)}</span>
+              <span
+                className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${directionalImpactClass(item.market_direction)}`}
+                title={`${directionalBasisLabel(item.direction_basis)} ${item.direction_reason || ""}`}
+                data-testid="mi-popup-direction"
+              >
+                {item.market_direction === "SUPPORTIVE" ? <ArrowUp aria-hidden="true" className="h-3 w-3" /> : null}
+                {item.market_direction === "NEGATIVE" ? <ArrowDown aria-hidden="true" className="h-3 w-3" /> : null}
+                {directionalImpactLabel(item.market_direction)}
+              </span>
               {item.event_type ? (
                 <span className="text-[10px] font-bold uppercase tracking-wide">{formatEventTypeLabel(item.event_type)}</span>
               ) : null}
               <span className="text-[10px] font-semibold text-rose-900">{n} critical today</span>
             </div>
             <div className="text-sm font-semibold leading-snug">{item.title}</div>
-            <div className="text-[11px] opacity-90">{indiaImpactLabel(item.india_relevance_score)}</div>
+            {item.direction_reason ? <p className="text-[11px] opacity-80" data-testid="mi-popup-direction-reason">{item.direction_reason}</p> : null}
+            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] opacity-80">
+              <span>
+                {item.independent_source_count ?? 1} independent source{(item.independent_source_count ?? 1) === 1 ? "" : "s"}
+                {(item.independent_source_names || []).length ? ` · ${item.independent_source_names.slice(0, 2).join(" / ")}` : ""}
+              </span>
+              <span>{sourceAgreementLabel(item.source_direction_agreement)}</span>
+              <span>{marketTimingLabel(item.market_timing)}</span>
+              <span>{newsFreshnessLabel(item.news_freshness)}</span>
+            </div>
+            <div className="text-[10px] opacity-75">
+              Published: {item.published_at_known ? marketIntelPublicationLabel(item.published_at, item.published_at_precision) : "time not supplied"}
+              {" · "}Received: {marketIntelTimeLabel(item.discovered_at)}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] opacity-90">{indiaImpactLabel(item.india_relevance_score)}</span>
+              <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${volatilityRiskClass(item.volatility_risk)}`} title={item.volatility_risk_reason || "Text-based catalyst assessment, not live implied volatility."}>
+                Volatility {item.volatility_risk || "unavailable"}
+              </span>
+            </div>
+            {volatilitySellerNote(item.volatility_risk) ? (
+              <p className="text-[10px] font-medium opacity-90" data-testid="mi-popup-seller-note">
+                {volatilitySellerNote(item.volatility_risk)}
+              </p>
+            ) : null}
+            {item.india_link_reason ? <p className="text-[10px] opacity-80" data-testid="mi-popup-india-link">{item.india_link_reason}</p> : null}
             {Array.isArray(item.potential) && (
               <ul className="text-[11px] list-disc pl-4">
                 {item.potential.slice(0, 4).map((p, i) => <li key={`p-${i}`}>{p}</li>)}

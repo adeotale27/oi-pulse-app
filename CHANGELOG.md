@@ -1,5 +1,33 @@
 # Changelog
 
+## V18.54 — 2026-10-09
+
+Broaden Market Intel coverage with a dedicated India-linked international company news feed and ensure material news naming uploaded NIFTY / SENSEX constituents is retained and scored as India-relevant, including IT, steel, chemicals, and construction developments.
+
+## V18.53 — 2026-10-09
+
+Move Market Intel outcome, confidence, volatility, and catalyst measurements below the news feed so the ranked headlines remain the first focus while preserving access to the same data.
+
+## V18.52 — 2026-10-09
+
+Keep Market Intel outcome samples at the event-cluster level; compare direction hit rates across heuristic-strength bands, add sample-gated volatility outcome breakdowns for RBI, crude, global rates, and earnings catalysts, and show a cautious short-option exposure review note on the feed and popup.
+
+## V18.51 — 2026-10-09
+
+Measure Market Intel volatility reads independently from direction: compare observed India VIX changes and each index's post-story high-low range with the preceding equal-length window. Keep unavailable snapshot coverage separate and withhold response rates until each risk-read/horizon group has 30 observations.
+
+## V18.50 — 2026-10-09
+
+Improve Market Intel evidence: separately assess volatility catalysts and India transmission, distinguish publisher time from app receipt and market-session timing, combine deduplicated independent-source directional reads, and measure direction alignment against existing NIFTY / SENSEX / BANKNIFTY snapshots at 15 minutes, one hour, and session close. Keep after-hours outcomes separate, exclude small moves, and hide hit rates until each index/horizon has 30 scored samples.
+
+## V18.49 — 2026-10-09
+
+Make Market Intel direction immediately scannable with up/down arrows and clear “market up” / “market down” labels; color the news popup surface to match likely direction. Reduce false directional readings by prioritizing headlines over summaries, marking summary-derived cues as less direct, suppressing negated price cues, and requiring Indian-market relevance for company-specific news.
+
+## V18.48 — 2026-10-09
+
+Separate Market Intel event importance from a new explainable headline-direction score for likely Indian-market support, pressure, mixed evidence, or unclear direction; show the assessment with restrained green/red/amber/neutral UI on the news feed and popup, and retain an explanation plus rule-confidence disclosure.
+
 ## V18.47 — 2026-10-08
 
 Add a Journal toggle to pause/resume saving future admin trade-cycle history without deleting existing cycles or changing daily Journal P&L; guest cycle history remains independent.

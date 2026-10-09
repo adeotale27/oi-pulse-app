@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, apiDetail } from "@/lib/api";
 import PageBrandTitle from "@/components/PageBrandTitle";
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { MarketIntelUserPrefs } from "@/components/DeskAiKeysAdmin";
-import { MI_FILTERS, bandClass, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, MI_RELOAD_EVENT, notifyMarketIntelReload, readMiFeedCache, writeMiFeedCache } from "@/lib/marketIntel";
+import { MI_FILTERS, bandClass, directionalBasisLabel, directionalImpactClass, directionalImpactLabel, formatEventTypeLabel, impactScoreLabel, indiaImpactLabel, marketTimingLabel, newsFreshnessLabel, sourceAgreementLabel, marketIntelTimeLabel, marketIntelPublicationLabel, volatilityRiskClass, volatilitySellerNote, MI_RELOAD_EVENT, notifyMarketIntelReload, readMiFeedCache, writeMiFeedCache } from "@/lib/marketIntel";
 import { todayIST } from "@/lib/holidays";
 
 export default function MarketIntelPage({ compact = false, isAdmin = false, demoMode = false }) {
@@ -18,6 +18,8 @@ export default function MarketIntelPage({ compact = false, isAdmin = false, demo
   const [maxDate, setMaxDate] = useState(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [performance, setPerformance] = useState(null);
+  const [performanceError, setPerformanceError] = useState(null);
   const feedGen = useRef(0);
 
   const loadPrefs = useCallback(() => {
@@ -98,6 +100,25 @@ export default function MarketIntelPage({ compact = false, isAdmin = false, demo
     window.addEventListener(MI_RELOAD_EVENT, onReload);
     return () => window.removeEventListener(MI_RELOAD_EVENT, onReload);
   }, [loadFeed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPerformance = () => api.get("/market-intel/performance", { timeout: 15000 })
+      .then((r) => {
+        if (cancelled) return;
+        setPerformance(r.data || null);
+        setPerformanceError(null);
+      })
+      .catch(() => {
+        if (!cancelled) setPerformanceError("Market outcome measurements are currently unavailable.");
+      });
+    loadPerformance();
+    const id = setInterval(loadPerformance, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   useEffect(() => {
     if (!configLoaded) return undefined;
@@ -210,6 +231,9 @@ export default function MarketIntelPage({ compact = false, isAdmin = false, demo
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+        <p className="text-[11px] text-slate-500" data-testid="mi-score-guide">
+          Importance ranks story significance. Direction and volatility are estimates, not a price forecast or live IV readings.
+        </p>
       </div>
       {loading && items.length > 0 ? (
         <div className="text-[10px] text-slate-400" data-testid="mi-loading-inline">Updating…</div>
@@ -242,11 +266,42 @@ export default function MarketIntelPage({ compact = false, isAdmin = false, demo
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{it.impact_band || "—"}</span>
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm border ${bandClass(it.impact_band)}`}>{impactScoreLabel(it.impact_score)}</span>
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-sm border ${directionalImpactClass(it.market_direction)}`}
+                      title={`${directionalBasisLabel(it.direction_basis)} ${it.direction_reason || ""}`}
+                      data-testid="mi-direction"
+                    >
+                      {it.market_direction === "SUPPORTIVE" ? <ArrowUp aria-hidden="true" className="h-3 w-3" /> : null}
+                      {it.market_direction === "NEGATIVE" ? <ArrowDown aria-hidden="true" className="h-3 w-3" /> : null}
+                      {directionalImpactLabel(it.market_direction)}
+                    </span>
                     <span className="text-[10px] font-bold uppercase tracking-wide text-slate-800">{formatEventTypeLabel(it.event_type)}</span>
-                    <span className="text-[10px] text-slate-400 ml-auto">{it.source_name}{it.source_count > 1 ? ` · ${it.source_count} sources` : ""}</span>
+                    <span className="text-[10px] text-slate-400 ml-auto">
+                      {(it.independent_source_names || []).slice(0, 3).join(" · ") || it.source_name}
+                      {" · "}{it.independent_source_count ?? it.source_count ?? 1} independent source{(it.independent_source_count ?? it.source_count ?? 1) === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-slate-500">
+                    <span>{sourceAgreementLabel(it.source_direction_agreement)}</span>
+                    <span>{marketTimingLabel(it.market_timing)}</span>
+                    <span>{newsFreshnessLabel(it.news_freshness)}</span>
+                    <span>Published: {it.published_at_known ? marketIntelPublicationLabel(it.published_at, it.published_at_precision) : "time not supplied"}</span>
+                    <span>Received: {marketIntelTimeLabel(it.discovered_at)}</span>
                   </div>
                   <h3 className="text-sm font-semibold text-slate-900 leading-snug">{it.title}</h3>
-                  <div className="text-[11px] text-slate-600">{indiaImpactLabel(it.india_relevance_score)} · {String(it.published_at || "").slice(0, 16)}</div>
+                  {it.direction_reason ? <p className="text-[11px] text-slate-600" data-testid="mi-direction-reason">{it.direction_reason}</p> : null}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
+                    <span>{indiaImpactLabel(it.india_relevance_score)}</span>
+                    <span className={`rounded-sm border px-1.5 py-0.5 font-semibold ${volatilityRiskClass(it.volatility_risk)}`} title={it.volatility_risk_reason || "Text-based catalyst assessment, not live implied volatility."}>
+                      Volatility {it.volatility_risk || "unavailable"}
+                    </span>
+                  </div>
+                  {volatilitySellerNote(it.volatility_risk) ? (
+                    <p className="text-[10px] text-amber-800" data-testid="mi-seller-note">
+                      {volatilitySellerNote(it.volatility_risk)}
+                    </p>
+                  ) : null}
+                  {it.india_link_reason ? <p className={`text-[11px] ${it.india_link_status === "UNCLEAR" ? "text-slate-500" : "text-slate-600"}`} data-testid="mi-india-link">{it.india_link_reason}</p> : null}
                   {it.summary ? <p className="text-xs text-slate-600 line-clamp-3">{it.summary}</p> : null}
                   {Array.isArray(it.potential) && it.potential.length > 0 && (
                     <ul className="text-[11px] text-slate-700 list-disc pl-4">
@@ -260,7 +315,159 @@ export default function MarketIntelPage({ compact = false, isAdmin = false, demo
           )}
         </div>
       ) : null}
+      {/* Keep retrospective analytics after the ranked news so the feed stays first. */}
+      <MarketIntelOutcomePanels performance={performance} error={performanceError} />
       <MarketIntelUserPrefs prefs={prefs} onChange={patchPrefs} />
     </div>
+  );
+}
+
+function MarketIntelOutcomePanels({ performance, error }) {
+  return (
+    <>
+      <details className="rounded border border-slate-200 bg-slate-50 px-2.5 py-2 text-[10px]" data-testid="mi-performance">
+        <summary className="cursor-pointer font-semibold text-slate-700">How have direction reads lined up with real index moves?</summary>
+        {error ? (
+          <p className="pt-2 text-rose-700" role="status">{error}</p>
+        ) : performance ? (
+          <>
+            <p className="pt-2 text-slate-500">
+              Market-hours stories only; after-hours / pre-open stories are separate ({performance.after_hours_story_count || 0}), as are weekend / holiday stories ({performance.weekend_or_holiday_story_count || 0}) and unknown timing ({performance.unknown_timing_story_count || 0}).
+              Flat moves under 0.05% are excluded. Accuracy appears after {performance.minimum_sample_count} scored examples.
+            </p>
+            <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-3" data-testid="mi-performance-results">
+              {(performance.results || []).map((row) => (
+                <div key={`${row.index}-${row.horizon}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-2 py-1">
+                  <span className="font-medium text-slate-700">{row.index} · {row.horizon === "session_close" ? "close" : row.horizon}</span>
+                  <span className={row.accuracy_pct == null ? "text-slate-500" : "font-semibold text-slate-800"}>
+                    {row.accuracy_pct == null
+                      ? `Building sample ${row.sample_count}/${performance.minimum_sample_count}`
+                      : `${row.accuracy_pct}% (${row.sample_count})`}
+                    {` · ${row.unavailable_count || 0} unavailable`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : <p className="pt-2 text-slate-500">Loading measured outcomes…</p>}
+      </details>
+      <details className="rounded border border-slate-200 bg-white px-2.5 py-2 text-[10px]" data-testid="mi-confidence-calibration">
+        <summary className="cursor-pointer font-semibold text-slate-700">Do stronger direction reads perform better?</summary>
+        {error ? (
+          <p className="pt-2 text-rose-700" role="status">{error}</p>
+        ) : performance ? (
+          <>
+            <p className="pt-2 text-slate-500">
+              Weak (1–24), moderate (25–49), and strong (50–100) are bands of the direction engine’s heuristic score magnitude—not probabilities. Hit rates exclude flat moves and appear after {performance.minimum_sample_count} scored event outcomes per band, index, and horizon.
+            </p>
+            <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3" data-testid="mi-confidence-results">
+              {(performance.results || []).map((row) => (
+                <div key={`${row.index}-${row.horizon}`} className="rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                  <div className="font-semibold text-slate-700">{row.index} · {row.horizon === "session_close" ? "close" : row.horizon}</div>
+                  <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-slate-600">
+                    {(row.strength_bands || []).map((band) => (
+                      <span key={band.band}>
+                        {band.band?.toLowerCase()}: {band.accuracy_pct == null
+                          ? `building ${band.sample_count}/${performance.minimum_sample_count}`
+                          : `${band.accuracy_pct}% (${band.sample_count})`}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-slate-500">
+                    {row.strength_comparison
+                      ? row.strength_comparison.higher_strength_more_accurate
+                        ? `Strong reads lead weak reads by ${row.strength_comparison.strong_minus_weak_pct_points} percentage points.`
+                        : `Strong reads do not lead weak reads (${row.strength_comparison.strong_minus_weak_pct_points} percentage points).`
+                      : `Strong-vs-weak comparison builds after ${performance.minimum_sample_count} scored outcomes in each band.`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : <p className="pt-2 text-slate-500">Loading direction-strength outcomes…</p>}
+      </details>
+      <details className="rounded border border-slate-200 bg-white px-2.5 py-2 text-[10px]" data-testid="mi-volatility-performance">
+        <summary className="cursor-pointer font-semibold text-slate-700">Did volatility reads line up with later VIX rises or wider index ranges?</summary>
+        {error ? (
+          <p className="pt-2 text-rose-700" role="status">{error}</p>
+        ) : performance?.volatility ? (
+          <>
+            <p className="pt-2 text-slate-500">
+              Separate from direction. VIX rise means at least +0.5 points and +5%; a wider index range means at least +0.05 percentage points and 20% wider than the equally long pre-story window. Rates appear after {performance.minimum_sample_count} observations. This measures timing, not proof the story caused the move.
+            </p>
+            <h3 className="pt-2 pb-1 font-semibold text-slate-700">India VIX</h3>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-3" data-testid="mi-vix-performance-results">
+              {(performance.volatility.india_vix || []).map((row) => (
+                <div key={`${row.risk_level}-${row.horizon}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                  <span className="font-medium text-slate-700">{row.risk_level} · {row.horizon === "session_close" ? "close" : row.horizon}</span>
+                  <span className="text-right text-slate-600">
+                    {row.material_increase_pct == null
+                      ? `Building ${row.sample_count}/${performance.minimum_sample_count}`
+                      : `VIX up ${row.material_increase_pct}% (${row.sample_count})`}
+                    {row.average_change_points == null ? "" : ` · avg ${row.average_change_points >= 0 ? "+" : ""}${row.average_change_points} pts`}
+                    {` · ${row.unavailable_count || 0} unavailable`}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <h3 className="pt-2 pb-1 font-semibold text-slate-700">Index ranges versus the preceding equal-length window</h3>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3" data-testid="mi-range-performance-results">
+              {(performance.volatility.index_ranges || []).map((row) => (
+                <div key={`${row.risk_level}-${row.index}-${row.horizon}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                  <span className="font-medium text-slate-700">{row.risk_level} · {row.index} · {row.horizon === "session_close" ? "close" : row.horizon}</span>
+                  <span className="text-right text-slate-600">
+                    {row.range_increased_pct == null
+                      ? `Building ${row.sample_count}/${performance.minimum_sample_count}`
+                      : `Wider ${row.range_increased_pct}% (${row.sample_count})`}
+                    {row.average_pre_range_pct == null || row.average_post_range_pct == null
+                      ? ""
+                      : ` · ${row.average_pre_range_pct}% → ${row.average_post_range_pct}%`}
+                    {` · ${row.unavailable_count || 0} unavailable`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : <p className="pt-2 text-slate-500">Loading measured volatility outcomes…</p>}
+      </details>
+      <details className="rounded border border-slate-200 bg-white px-2.5 py-2 text-[10px]" data-testid="mi-catalyst-performance">
+        <summary className="cursor-pointer font-semibold text-slate-700">Which catalysts were followed by volatility?</summary>
+        {error ? (
+          <p className="pt-2 text-rose-700" role="status">{error}</p>
+        ) : performance?.volatility?.catalysts ? (
+          <>
+            <p className="pt-2 text-slate-500">
+              Event-cluster outcomes only. A catalyst metric is shown only after {performance.minimum_sample_count} usable observations for that horizon; categories are rule-classified and do not imply causation.
+            </p>
+            <h3 className="pt-2 pb-1 font-semibold text-slate-700">India VIX</h3>
+            {performance.volatility.catalysts.india_vix?.length ? (
+              <div className="grid grid-cols-1 gap-1 sm:grid-cols-2" data-testid="mi-catalyst-vix-results">
+                {performance.volatility.catalysts.india_vix.map((row) => (
+                  <div key={`${row.catalyst}-${row.horizon}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                    <span className="font-medium text-slate-700">{formatEventTypeLabel(row.catalyst)} · {row.horizon === "session_close" ? "close" : row.horizon}</span>
+                    <span className="text-right text-slate-600">
+                      VIX up {row.material_increase_pct}% ({row.sample_count}) · avg {row.average_change_points >= 0 ? "+" : ""}{row.average_change_points} pts
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-slate-500">No catalyst has enough observed VIX outcomes yet.</p>}
+            <h3 className="pt-2 pb-1 font-semibold text-slate-700">Index ranges</h3>
+            {performance.volatility.catalysts.index_ranges?.length ? (
+              <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3" data-testid="mi-catalyst-range-results">
+                {performance.volatility.catalysts.index_ranges.map((row) => (
+                  <div key={`${row.catalyst}-${row.index}-${row.horizon}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                    <span className="font-medium text-slate-700">{formatEventTypeLabel(row.catalyst)} · {row.index} · {row.horizon === "session_close" ? "close" : row.horizon}</span>
+                    <span className="text-right text-slate-600">
+                      Wider {row.range_increased_pct}% ({row.sample_count}) · {row.average_pre_range_pct}% → {row.average_post_range_pct}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-slate-500">No catalyst has enough observed index-range outcomes yet.</p>}
+          </>
+        ) : <p className="pt-2 text-slate-500">Loading catalyst outcomes…</p>}
+      </details>
+    </>
   );
 }

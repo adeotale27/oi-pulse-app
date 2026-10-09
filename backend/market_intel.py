@@ -101,6 +101,13 @@ RSS_TEMPLATES = [
         "note": "Public RSS. India markets plus geopolitical and oil-shock headlines.",
     },
     {
+        "id": "google-news-india-company-impact",
+        "name": "Google News (India-linked company impact)",
+        "source_type": "RSS",
+        "endpoint": "https://news.google.com/rss/search?q=%28H-1B+OR+visa+OR+Indian+IT+OR+Infosys+OR+TCS+OR+Wipro+OR+HCLTech+OR+%22Tech+Mahindra%22+OR+steel+OR+chemicals+OR+construction+OR+cement%29+%28India+OR+Indian+OR+earnings+OR+orders+OR+merger+OR+acquisition+OR+layoffs+OR+tariff%29+when:1d&hl=en-IN&gl=IN&ceid=IN:en",
+        "note": "Public RSS. India-linked global company developments, including visa, IT, steel, chemical, construction, and cement news.",
+    },
+    {
         "id": "et-markets",
         "name": "Economic Times markets",
         "source_type": "RSS",
@@ -269,6 +276,89 @@ def public_article(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not doc:
         return None
     out = {k: json_safe(v) for k, v in doc.items() if k != "_id"}
+    direction = directional_market_impact(
+        str(doc.get("title") or ""),
+        str(doc.get("summary") or ""),
+        str(doc.get("event_type") or ""),
+        _safe_int(doc.get("impact_score"), 0),
+        _safe_int(doc.get("india_relevance_score"), 0),
+    )
+    volatility = volatility_risk_read(str(doc.get("title") or ""), str(doc.get("summary") or ""))
+    india_link = india_link_read(
+        str(doc.get("title") or ""),
+        str(doc.get("summary") or ""),
+        _safe_int(doc.get("india_relevance_score"), 0),
+    )
+    source_rows = doc.get("independent_sources")
+    if not isinstance(source_rows, list) or not source_rows:
+        fallback_source = _article_source_evidence(doc)
+        source_rows = [fallback_source] if fallback_source else []
+    unique_sources: Dict[str, Dict[str, Any]] = {}
+    for source in source_rows:
+        if isinstance(source, dict) and source.get("source_key"):
+            unique_sources[str(source["source_key"])] = source
+    source_rows = list(unique_sources.values())
+    directional_sources = [
+        source for source in source_rows
+        if source.get("direction") in ("SUPPORTIVE", "NEGATIVE")
+    ]
+    source_directions = {
+        str(source.get("direction"))
+        for source in directional_sources
+    }
+    if len(source_directions) > 1:
+        direction["market_direction"] = "MIXED"
+        direction["directional_impact_score"] = 0
+        direction["direction_basis"] = "SOURCES"
+        direction["direction_reason"] = "Independent publishers disagree on direction; treat as mixed evidence."
+        agreement = "DISAGREE"
+    elif len(directional_sources) >= 2 and len(directional_sources) == len(source_rows):
+        if len(source_directions) == 1:
+            direction["market_direction"] = next(iter(source_directions))
+            source_scores = [
+                _safe_int(source.get("directional_score"), 0)
+                for source in source_rows
+                if source.get("direction") == direction["market_direction"]
+            ]
+            if source_scores:
+                direction["directional_impact_score"] = int(round(sum(source_scores) / len(source_scores)))
+            direction["direction_basis"] = "SOURCES"
+            direction["direction_reason"] = "Independent publishers' directional reads agree. " + direction["direction_reason"]
+            agreement = "AGREE"
+        else:
+            agreement = "INSUFFICIENT_DIRECTION"
+    elif len(source_rows) >= 2:
+        agreement = "INSUFFICIENT_DIRECTION"
+    elif source_rows:
+        agreement = "SINGLE"
+    else:
+        agreement = "UNKNOWN"
+    out.update(direction)
+    out.update(volatility)
+    out.update(india_link)
+    out["independent_source_count"] = len(source_rows)
+    out["independent_source_names"] = sorted({
+        str(source.get("source_name") or "").strip()
+        for source in source_rows
+        if str(source.get("source_name") or "").strip()
+    })
+    out["source_direction_agreement"] = agreement
+    out["market_timing"] = _market_timing(doc.get("discovered_at"))
+    pub_dt = parse_news_datetime(doc.get("published_at")) if doc.get("published_at_known", False) else None
+    received_dt = parse_news_datetime(doc.get("discovered_at"))
+    now_dt = datetime.now(timezone.utc)
+    out["published_age_minutes"] = max(0, int((now_dt - pub_dt).total_seconds() // 60)) if pub_dt else None
+    out["arrival_delay_minutes"] = max(0, int((received_dt - pub_dt).total_seconds() // 60)) if received_dt and pub_dt else None
+    if not pub_dt:
+        out["news_freshness"] = "PUBLISH_TIME_UNKNOWN"
+    elif (pub_dt - now_dt).total_seconds() > 300:
+        out["news_freshness"] = "FUTURE_TIMESTAMP"
+    elif received_dt and (received_dt - pub_dt).total_seconds() > 3600:
+        out["news_freshness"] = "RECEIVED_LATE"
+    elif (now_dt - pub_dt).total_seconds() > 6 * 3600:
+        out["news_freshness"] = "OLD"
+    else:
+        out["news_freshness"] = "CURRENT"
     return out
 
 
@@ -421,6 +511,368 @@ def impact_band(score: int, *, critical=90, high=75, moderate=55, low=35) -> str
     if score >= low:
         return "LOW"
     return "NOISE"
+
+
+def directional_market_impact(
+    title: str,
+    summary: str = "",
+    event_type: str = "",
+    impact: int = 0,
+    india_relevance: int = 0,
+) -> Dict[str, Any]:
+    """Estimate likely India-equity direction from explicit headline evidence.
+
+    This is a transparent rule read, separate from the existing salience score;
+    conflicting or absent evidence stays mixed/unclear rather than being forced
+    into a bullish/bearish label.
+    """
+    headline = _blob(title)
+    groups = (
+        (
+            "market",
+            3,
+            (
+                (1, r"\b(?:markets?|indices|equities|stocks?|nifty|sensex|bank nifty|banknifty)\b.{0,55}\b(?:rall(?:y|ies|ied)|surge[sd]?|gain(?:s|ed)?|advance[sd]?|ris(?:e|es|ing|en)|rose|climb(?:s|ed)?)\b", "Equity-market headlines report gains."),
+                (-1, r"\b(?:markets?|indices|equities|stocks?|nifty|sensex|bank nifty|banknifty)\b.{0,55}\b(?:sell[- ]?off|plunge[sd]?|slump[sed]?|drop(?:s|ped)?|fall(?:s|ing|en)?|fell|decline[sd]?|sink[ s]?)\b", "Equity-market headlines report losses."),
+                (1, r"\b(?:rall(?:y|ies|ied)|surge[sd]?|gain(?:s|ed)?|advance[sd]?|ris(?:e|es|ing|en)|rose)\b.{0,35}\b(?:markets?|indices|equities|stocks?|nifty|sensex|bank nifty|banknifty)\b", "Equity-market headlines report gains."),
+                (-1, r"\b(?:sell[- ]?off|plunge[sd]?|slump[sed]?|drop(?:s|ped)?|fall(?:s|ing|en)?|fell|decline[sd]?)\b.{0,35}\b(?:markets?|indices|equities|stocks?|nifty|sensex|bank nifty|banknifty)\b", "Equity-market headlines report losses."),
+            ),
+        ),
+        (
+            "rates",
+            3,
+            (
+                (1, r"\b(?:rate cuts?|cuts? (?:the )?(?:repo )?rates?|lowers? (?:the )?(?:repo )?rates?|eases? policy|dovish)\b", "Rate-cut or dovish policy language can support equities."),
+                (-1, r"\b(?:rate hikes?|hikes? (?:the )?(?:repo )?rates?|raises? (?:the )?(?:repo )?rates?|tightens? policy|hawkish)\b", "Rate-hike or hawkish policy language can pressure equities."),
+                (-1, r"\bholds? rates? higher\b", "Higher-for-longer policy can pressure equities."),
+            ),
+        ),
+        (
+            "inflation",
+            3,
+            (
+                (1, r"\b(?:inflation|cpi|wpi)\b.{0,45}\b(?:cools?|eases?|slows?|falls?|drops?|below expectations?|below forecast)\b|\b(?:cooler|softer|lower)\b.{0,25}\b(?:inflation|cpi|wpi)\b", "Cooling inflation can reduce expected rate pressure."),
+                (-1, r"\b(?:inflation|cpi|wpi)\b.{0,45}\b(?:heats? up|accelerates?|surges?|rises?|jumps?|above expectations?|above forecast|hotter|higher)\b|\b(?:hotter|higher)\b.{0,25}\b(?:inflation|cpi|wpi)\b", "Hotter inflation can increase expected rate pressure."),
+            ),
+        ),
+        (
+            "oil",
+            3,
+            (
+                (1, r"\b(?:crude|oil|brent|wti)\b.{0,40}\b(?:falls?|drops?|eases?|slides?|declines?|lower)\b|\b(?:falling|lower|softer)\b.{0,20}\b(?:crude|oil|brent|wti)\b", "Lower crude can ease India's import and inflation pressure."),
+                (-1, r"\b(?:crude|oil|brent|wti)\b.{0,45}\b(?:surges?|ris(?:e|es|ing|en)|rose|jumps?|spikes?|climbs?|higher|supply disruption|disruption|shortage)\b|\b(?:surging|higher|rising)\b.{0,20}\b(?:crude|oil|brent|wti)\b|\b(?:opec|production|output)\b.{0,25}\b(?:cut|cuts|curb|curbs)\b", "Higher or tighter crude supply can pressure India's import bill."),
+            ),
+        ),
+        (
+            "currency",
+            2,
+            (
+                (1, r"\b(?:rupee|inr)\b.{0,35}\b(?:strengthens?|gains?|appreciates?|ris(?:e|es|ing|en)|rose)\b", "A stronger rupee can ease imported-cost pressure."),
+                (-1, r"\b(?:rupee|inr)\b.{0,35}\b(?:weakens?|slumps?|depreciates?|falls?|fell)\b", "A weaker rupee can add imported-cost pressure."),
+                (1, r"\b(?:us )?dollar\b.{0,30}\b(?:weakens?|falls?|slips?|declines?|softens?)\b|\b(?:weaker|softer)\b.{0,15}\b(?:us )?dollar\b", "A weaker US dollar can ease pressure on emerging-market flows and imports."),
+                (-1, r"\b(?:us )?dollar\b.{0,30}\b(?:strengthens?|gains?|ris(?:e|es|ing|en)|rose|climbs?|surges?)\b|\b(?:stronger|rising)\b.{0,15}\b(?:us )?dollar\b", "A stronger US dollar can pressure emerging-market flows and the rupee."),
+            ),
+        ),
+        (
+            "flows",
+            3,
+            (
+                (1, r"\b(?:fii|fpi|foreign investors?)\b.{0,40}\b(?:net )?(?:buy|buying|inflow|inflows|buys)\b|\b(?:net )?(?:buying|inflows?)\b.{0,30}\b(?:fii|fpi|foreign investors?)\b", "Foreign-investor buying or inflows can support Indian equities."),
+                (-1, r"\b(?:fii|fpi|foreign investors?)\b.{0,40}\b(?:net )?(?:sell|selling|outflow|outflows|sells)\b|\b(?:net )?(?:selling|outflows?)\b.{0,30}\b(?:fii|fpi|foreign investors?)\b", "Foreign-investor selling or outflows can pressure Indian equities."),
+            ),
+        ),
+        (
+            "geopolitics",
+            2,
+            (
+                (1, r"\b(?:cease[- ]?fire|peace deal|de[- ]escalat\w*|tensions ease|conflict cools?)\b", "De-escalation can reduce risk-off and energy-supply concerns."),
+                (-1, r"\b(?:war escalat\w*|conflict escalat\w*|tensions escalat\w*|military strike|invasion|tariffs? imposed|sanctions? imposed|shipping disruption|blockade)\b", "Escalation or trade disruption can increase risk-off pressure."),
+            ),
+        ),
+        (
+            "growth",
+            2,
+            (
+                (1, r"\b(?:gdp|growth|manufacturing|services|pmi|jobs?)\b.{0,40}\b(?:accelerates?|expands?|grows?|beats? (?:estimates?|expectations?)|above expectations?|stronger|improves?|rises?)\b|\b(?:stronger|better|above expectations?)\b.{0,25}\b(?:gdp|growth|pmi|jobs?)\b|\bunemployment\b.{0,35}\b(?:falls?|drops?|declines?)\b|\b(?:recession|downturn) fears? (?:ease|fade|recede)\b", "Stronger activity data can support earnings expectations."),
+                (-1, r"\b(?:gdp|growth|manufacturing|services|pmi|jobs?)\b.{0,40}\b(?:contracts?|slows?|shrinks?|misses? (?:estimates?|expectations?)|below expectations?|weaker|falls?|recession(?:ary)?|downturn|contraction)\b|\b(?:weaker|below expectations?|recession(?:ary)?|downturn)\b.{0,25}\b(?:gdp|growth|pmi|jobs?)\b|\bunemployment\b.{0,35}\b(?:rises?|jumps?|climbs?)\b|\b(?:recession|downturn)(?:ary)?\b|\b(?:economic )?contraction\b", "Weaker activity data can pressure earnings expectations."),
+            ),
+        ),
+        (
+            "corporate",
+            1,
+            (
+                (1, r"\b(?:earnings|profits?|revenue)\b.{0,35}\b(?:beat(?:s)? (?:estimates?|expectations?)|surge[sd]?|rise[sd]?|grow[ s]?|record high)\b|\b(?:upgrade[sd]?|strong results?)\b", "Positive company results can support the named stock or sector."),
+                (-1, r"\b(?:earnings|profits?|revenue)\b.{0,35}\b(?:miss(?:es|ed)? (?:estimates?|expectations?)|loss(?:es)?|plunge[sd]?|fall[ s]?|decline[sd]?|weaken[sd]?)\b|\b(?:downgrade[sd]?|weak results?|default[sd]?)\b", "Weak company results can pressure the named stock or sector."),
+            ),
+        ),
+        (
+            "yields",
+            2,
+            (
+                (1, r"\b(?:bond )?yields?\b.{0,30}\b(?:fall(?:s|ing|en)?|fell|ease[sd]?|drop(?:s|ped|ping)?|decline[sd]?)\b|\b(?:lower|falling|easing)\b.{0,20}\b(?:bond )?yields?\b", "Easing bond yields can support equity valuations."),
+                (-1, r"\b(?:bond )?yields?\b.{0,30}\b(?:ris(?:e|es|ing|en)|rose|jump[sd]?|spike[sd]?|climb[sd]?|surge[sd]?)\b|\b(?:higher|rising|surging|jumping)\b.{0,20}\b(?:bond )?yields?\b", "Rising bond yields can pressure equity valuations."),
+            ),
+        ),
+    )
+
+    def collect_signals(text: str):
+        found = []
+        matched_rule = False
+        for group, weight, rules in groups:
+            matches = []
+            for sign, pattern, reason in rules:
+                match = re.search(pattern, text, re.I)
+                if match:
+                    matched_rule = True
+                    matches.append((sign, reason, match.group(0)))
+            if group == "rates":
+                ruled_out_cut = re.search(
+                    r"\b(?:no|not|rules? out|rejects?|delays?|unlikely to)\b.{0,24}\b(?:rate cut|cuts? (?:the )?(?:repo )?rates?)\b",
+                    text,
+                    re.I,
+                )
+                ruled_out_hike = re.search(
+                    r"\b(?:no|not|rules? out|rejects?)\b.{0,24}\b(?:rate hike|hikes? (?:the )?(?:repo )?rates?)\b",
+                    text,
+                    re.I,
+                )
+                if ruled_out_cut:
+                    matches = [(-1, "A ruled-out rate cut can pressure equities.", ruled_out_cut.group(0))]
+                    matched_rule = True
+                elif ruled_out_hike:
+                    matches = [(1, "A ruled-out rate hike can ease expected borrowing-cost pressure.", ruled_out_hike.group(0))]
+                    matched_rule = True
+            # A negated cue is not evidence for the opposite move (e.g. "oil
+            # did not rise" does not mean oil fell). Rate-cut/hike denials are
+            # handled above because those have a known policy implication.
+            eligible = [
+                entry for entry in matches
+                if group == "rates" or not re.search(
+                    r"\b(?:not(?!\s+(?:only|just)\b)|never|no|without|fails? to|failed to|did(?: not|n't)|does(?: not|n't)|is not|are not|unlikely to)\b"
+                    r"(?:\s+\w+){0,3}\s+\b(?:rall(?:y|ies|ied)|surge[sd]?|gain(?:s|ed)?|advance[sd]?|rise[sd]?|"
+                    r"ris(?:e|es|ing|en)|rose|climb(?:s|ed)?|sell[- ]?off|plunge[sd]?|slump[sed]?|drop(?:s|ped)?|fall(?:s|ing|en)?|fell|decline[sd]?|"
+                    r"sink[ s]?|cool(?:s|ed)?|ease[sd]?|slow(?:s|ed)?|heat(?:s|ed)? up|accelerate[sd]?|"
+                    r"jump[sd]?|spike[sd]?|surge[sd]?|strengthen[sd]?|weaken[sd]?|appreciate[sd]?|depreciate[sd]?|"
+                    r"buy(?:s|ing)?|sell(?:s|ing)?|inflows?|outflows?|expand[sd]?|contract[sd]?|shrink[sd]?|"
+                    r"improve[sd]?|grow(?:s|ing)?|beat(?:s)?|miss(?:es|ed)?|"
+                    r"tighten[sd]?|ease[sd]?|cut(?:s)?|hike(?:s)?)\b",
+                    entry[2],
+                    re.I,
+                )
+            ]
+            # Keep one vote per topic/direction so repeated words cannot inflate certainty.
+            for sign in {-1, 1}:
+                match = next((entry for entry in eligible if entry[0] == sign), None)
+                if match:
+                    found.append((group, sign * weight, match[1]))
+        return found, matched_rule
+
+    signals, headline_matched = collect_signals(headline)
+    if signals:
+        direction_basis = "HEADLINE"
+    elif headline_matched:
+        # The title contains a cue, but it was negated or otherwise not safe to
+        # interpret. Do not let a long summary silently override that ambiguity.
+        direction_basis = "HEADLINE"
+    else:
+        summary_signals, _ = collect_signals(str(summary or "")[:800])
+        signals = summary_signals
+        direction_basis = "SUMMARY" if signals else "NONE"
+
+    positive = sum(score for _, score, _ in signals if score > 0)
+    negative = -sum(score for _, score, _ in signals if score < 0)
+    net = positive - negative
+    if not signals:
+        direction = "UNCLEAR"
+        reason = "No clear directional cue in the headline or summary; check the source and live market response."
+    elif positive and negative and max(positive, negative) < 1.75 * min(positive, negative):
+        direction = "MIXED"
+        reason = "News contains opposing market cues: " + "; ".join(dict.fromkeys(reason for _, _, reason in signals)) + "."
+    else:
+        direction = "SUPPORTIVE" if net > 0 else "NEGATIVE"
+        lead_reasons = [
+            reason for _, score, reason in signals
+            if (score > 0) == (net > 0)
+        ][:2]
+        reason = " ".join(lead_reasons)
+
+    if event_type == "corporate" and _safe_int(india_relevance, 0) < 40:
+        direction = "UNCLEAR"
+        direction_basis = "NONE"
+        reason = "Company-specific news lacks a clear Indian-market link; check the source and live market response."
+    elif direction_basis == "SUMMARY" and direction != "UNCLEAR":
+        reason = "Summary-based cue (less direct than the headline): " + reason
+
+    salience = max(0, min(100, int(impact or 0)))
+    india_link = max(0, min(100, _safe_int(india_relevance, 0)))
+    cue_balance = net / max(positive + negative, 1)
+    source_weight = 0.5 if direction_basis == "SUMMARY" else 1.0
+    direction_score = 0 if direction == "UNCLEAR" else int(
+        round(cue_balance * salience * india_link / 100 * source_weight)
+    )
+    return {
+        "market_direction": direction,
+        "directional_impact_score": direction_score,
+        "direction_basis": direction_basis,
+        "direction_reason": reason,
+    }
+
+
+def volatility_risk_read(title: str, summary: str = "") -> Dict[str, Any]:
+    """Assess volatility catalysts separately from whether the market may rise or fall."""
+    headline = _blob(title)
+    levels = (
+        (
+            85,
+            (
+                r"\bemergency\b", r"\bdefault\b", r"\bbankruptcy\b", r"\bmarket crash\b",
+                r"\bmarket halt\b", r"\bcircuit[- ]?breaker\b", r"\bmilitary strike\b",
+                r"\binvasion\b", r"\bmissile attack\b", r"\bblockade\b",
+                r"\bsupply disruption\b", r"\bshipping disruption\b", r"\bwar escalat",
+                r"\bunexpected (?:rate|policy|inflation|jobs?)",
+            ),
+            "Major shock or disruption language could increase gap and volatility risk.",
+        ),
+        (
+            65,
+            (
+                r"\b(?:rbi|fed|fomc|federal reserve)\b.{0,45}\b(?:decision|policy|rate|cuts?|hikes?|holds?)",
+                r"\b(?:cpi|inflation|jobs report|nonfarm|gdp)\b.{0,45}\b(?:data|report|rises?|falls?|above|below|surprise)",
+                r"\b(?:budget|election result|opec decision|tariffs? imposed|sanctions? imposed)\b",
+                r"\b(?:earnings surprise|guidance (?:cut|raise|slash))\b",
+            ),
+            "A major policy, data, or event catalyst may cause repricing; the article does not prove volatility will rise.",
+        ),
+        (
+            50,
+            (
+                r"\b(?:crude|oil|brent|wti)\b.{0,40}\b(?:surges?|spikes?|supply disruption|shortage)\b",
+                r"\b(?:bond )?yields?\b.{0,30}\b(?:surge[sd]?|spike[sd]?|jump[sd]?)\b",
+                r"\b(?:fii|fpi|foreign investors?)\b.{0,40}\b(?:heavy|sharp|record|massive)\b.{0,12}\b(?:selling|outflows?)\b",
+                r"\b(?:volatility|vix)\b.{0,25}\b(?:surge|spike|jump)\b",
+            ),
+            "A sharp market-driver move may increase repricing risk.",
+        ),
+    )
+
+    def find_level(text: str) -> Tuple[int, str]:
+        for score, patterns, reason in levels:
+            if _hits(text, patterns):
+                return score, reason
+        return 0, ""
+
+    score, reason = find_level(headline)
+    basis = "HEADLINE" if score else "NONE"
+    if not score:
+        score, reason = find_level(str(summary or "")[:800].lower())
+        if score:
+            basis = "SUMMARY"
+            score = int(round(score * 0.5))
+            reason = "Summary-only volatility cue (less direct): " + reason
+    level = "HIGH" if score >= 75 else "ELEVATED" if score >= 45 else "LOW"
+    if not reason:
+        reason = "No major volatility catalyst found in the headline; this is not a live IV or VIX reading."
+    return {
+        "volatility_risk": level,
+        "volatility_risk_score": score,
+        "volatility_risk_basis": basis,
+        "volatility_risk_reason": reason,
+    }
+
+
+def india_link_read(title: str, summary: str, india_score: int) -> Dict[str, Any]:
+    """Explain the likely India transmission channel without inventing one."""
+    text = _blob(title, summary)
+    channels = (
+        (r"\b(?:crude|oil|brent|wti|opec|hormuz|shipping lane)\b",
+         "Crude and shipping costs can affect India's import bill, inflation, and the rupee."),
+        (r"\b(?:us treasury|treasury yields?|bond yields?|us dollar|usd|federal reserve|fed|fomc)\b",
+         "US yields and the dollar can affect foreign flows, the rupee, and Indian equity valuations."),
+        (r"\b(?:fii|fpi|foreign investors?|foreign flows?)\b",
+         "Foreign-investor flows can directly add buying or selling pressure to Indian equities."),
+        (r"\b(?:rupee|inr|rbi|repo rate|india cpi|indian inflation)\b",
+         "This is a direct domestic rates, currency, or inflation channel."),
+        (r"\b(?:china|tariff|trade war|sanction|geopolitics|war|conflict|invasion|blockade)\b",
+         "Global risk appetite, trade links, or energy supply can spill over to Indian markets."),
+        (r"\b(?:gdp|growth|pmi|jobs report|nonfarm|cpi|inflation)\b",
+         "Global growth or inflation can shift risk appetite, interest-rate expectations, and foreign flows."),
+    )
+    reason = next((why for pattern, why in channels if re.search(pattern, text, re.I)), "")
+    score = max(0, min(100, _safe_int(india_score, 0)))
+    if score < 10 or not reason:
+        return {
+            "india_link_status": "UNCLEAR",
+            "india_link_reason": "India link unclear from the headline and available article text.",
+        }
+    return {
+        "india_link_status": "DIRECT" if score >= 60 else "INDIRECT",
+        "india_link_reason": reason,
+    }
+
+
+def _source_identity(article: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    name = re.sub(r"\s+", " ", str(article.get("source_name") or "").strip())
+    host = (urlparse(str(article.get("article_url") or "")).hostname or "").lower()
+    host = host.removeprefix("www.")
+    aggregator_hosts = {"news.google.com", "news.yahoo.com", "www.msn.com", "msn.com"}
+    wire_names = (
+        ("reuters", r"\breuters\b"),
+        ("associated-press", r"\b(?:associated press|ap news)\b"),
+        ("pti", r"\bpress trust of india\b|\bpti\b"),
+        ("afp", r"\b(?:afp|agence france presse)\b"),
+        ("bloomberg", r"\bbloomberg\b"),
+        ("ani", r"\bani\b"),
+    )
+    for key, pattern in wire_names:
+        if re.search(pattern, name, re.I):
+            return {"source_key": f"wire:{key}", "source_name": name or key}
+    if host and host not in aggregator_hosts:
+        parts = host.split(".")
+        suffix = ".".join(parts[-2:]) if len(parts) >= 2 else host
+        multi_label_suffixes = {
+            "co.uk", "org.uk", "com.au", "net.au", "com.in", "co.in",
+            "co.nz", "com.sg", "com.hk", "co.za", "com.br", "com.mx",
+        }
+        domain = ".".join(parts[-3:]) if suffix in multi_label_suffixes and len(parts) >= 3 else suffix
+        return {"source_key": f"domain:{domain}", "source_name": name or domain}
+    if name and not re.search(r"\b(?:google news|yahoo news|msn)\b", name, re.I):
+        normalized = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        return {"source_key": f"publisher:{normalized}", "source_name": name}
+    return None
+
+
+def _article_source_evidence(article: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    identity = _source_identity(article)
+    if not identity:
+        return None
+    direction = directional_market_impact(
+        str(article.get("title") or ""),
+        str(article.get("summary") or ""),
+        str(article.get("event_type") or ""),
+        _safe_int(article.get("impact_score"), 0),
+        _safe_int(article.get("india_relevance_score"), 0),
+    )
+    return {
+        **identity,
+        "direction": str(direction["market_direction"]),
+        "directional_score": _safe_int(direction["directional_impact_score"], 0),
+    }
+
+
+def _market_timing(received_at: Any) -> str:
+    dt = parse_news_datetime(received_at)
+    if not dt:
+        return "UNKNOWN"
+    from market_hours import is_nse_cash_trading_day, session_display_bounds
+    local = dt.astimezone(IST)
+    if not is_nse_cash_trading_day(local):
+        return "WEEKEND_OR_HOLIDAY"
+    start, end = session_display_bounds(datetime.combine(local.date(), datetime.min.time(), IST))
+    if local.time() < start:
+        return "PRE_OPEN"
+    if local.time() > end:
+        return "AFTER_CLOSE"
+    return "IN_SESSION"
 
 
 def normalize_title(title: str) -> str:
@@ -626,6 +1078,8 @@ async def ensure_indexes(db) -> None:
     await db[SRC_COL].create_index("enabled")
     await db[SEEN_COL].create_index([("user_id", 1), ("event_cluster_id", 1)], unique=True)
     await db[PREF_COL].create_index("user_id", unique=True)
+    from market_intel_validation import ensure_indexes as ensure_evaluation_indexes
+    await ensure_evaluation_indexes(db)
 
 
 def popup_feed_dates(dt=None):
@@ -933,19 +1387,37 @@ def enrich_item(raw: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
     et = classify_event_type(_blob(title, summary))
     now_dt = datetime.now(timezone.utc)
     now = now_dt.isoformat()
-    pub_dt = parse_news_datetime(raw.get("published_at")) or now_dt
+    raw_pub_dt = raw.get("published_at")
+    parsed_pub_dt = parse_news_datetime(raw_pub_dt)
+    if isinstance(raw_pub_dt, datetime):
+        published_precision = "TIME" if any((
+            raw_pub_dt.hour, raw_pub_dt.minute, raw_pub_dt.second, raw_pub_dt.microsecond
+        )) else "DATE"
+    elif isinstance(raw_pub_dt, (int, float)):
+        published_precision = "TIME"
+    elif parsed_pub_dt:
+        raw_pub_text = str(raw_pub_dt)
+        has_clock = bool(re.search(r"(?:T\d{2}|\b\d{1,2}:\d{2}\b)", raw_pub_text))
+        if raw_pub_text.isdigit() and len(raw_pub_text) >= 10:
+            has_clock = True
+        published_precision = "TIME" if has_clock else "DATE"
+    else:
+        published_precision = "UNKNOWN"
+    pub_dt = parsed_pub_dt or now_dt
     dhash = duplicate_hash(title, url)
     status = "noise" if impact < STORE_MIN_IMPACT else "ok"
-    return {
+    row = {
         "id": uuid.uuid4().hex,
         "source_id": src.get("id"),
-        "source_name": src.get("name") or raw.get("source_name") or "",
+        "source_name": raw.get("source_name") or src.get("name") or "",
         "source_type": src.get("source_type"),
         "source_url": src.get("endpoint") or src.get("url") or "",
         "article_url": url,
         "title": title[:400],
         "summary": summary[:2000],
         "published_at": pub_dt.isoformat(),
+        "published_at_known": parsed_pub_dt is not None,
+        "published_at_precision": published_precision,
         "discovered_at": now,
         "author": raw.get("author") or "",
         "event_type": et,
@@ -958,6 +1430,9 @@ def enrich_item(raw: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
         "source_priority": int(src.get("priority") or 50),
         "potential": potential_impact_lines(et, india),
     }
+    source_evidence = _article_source_evidence(row)
+    row["independent_sources"] = [source_evidence] if source_evidence else []
+    return row
 
 
 async def load_constituent_terms(db) -> List[Tuple[str, float]]:
@@ -974,8 +1449,6 @@ async def load_constituent_terms(db) -> List[Tuple[str, float]]:
                     w = float(row.get("weightage") or 0)
                 except (TypeError, ValueError):
                     w = 0.0
-                if w < 1.0:
-                    continue
                 for k in ("symbol", "company", "company_name", "name"):
                     s = str(row.get(k) or "").strip().lower()
                     if len(s) >= 3:
@@ -998,11 +1471,59 @@ def constituent_boost(text: str, terms: List[Tuple[str, float]]) -> Tuple[bool, 
                 best = w
     if not hit:
         return False, 0
+    # Only material business, policy, or market developments lift a constituent
+    # story over the storage threshold; a passing company mention stays low-ranked.
+    if _hits(t, (
+        r"\b(?:earnings?|profits?|revenue|sales|results?|guidance|forecast)\b",
+        r"\b(?:orders?|contracts?|projects?|tenders?|capacity|production|plant)\b",
+        r"\b(?:merger|acquisition|acquires?|stake|investment|expansion|divest(?:s|ment)?)\b",
+        r"\b(?:layoffs?|hiring|workers?|h[- ]?1b|visa|immigration|tariffs?|sanctions?)\b",
+        r"\b(?:regulator|regulatory|approval|ban|recall|lawsuit|investigation|probe)\b",
+        r"\b(?:default|bankruptcy|fraud|downgrade|strike|shutdown|suspension)\b",
+        r"\b(?:shares?|stock|market cap)\b.{0,30}\b(?:surge|soar|plunge|slump|rally|crash|fall|rise|drop)\b",
+    )):
+        return True, 45
     return True, 22 if best >= 3 else 14
 
 
 def should_store_article(score: int) -> bool:
     return int(score or 0) >= STORE_MIN_IMPACT
+
+
+async def _add_cluster_source(db, row: Dict[str, Any], cluster_id: str) -> bool:
+    evidence = (row.get("independent_sources") or [None])[0]
+    if not evidence:
+        return False
+    existing = await db[ART_COL].find_one(
+        {"event_cluster_id": cluster_id},
+        {
+            "_id": 0, "independent_sources": 1, "event_cluster_id": 1,
+            "title": 1, "summary": 1, "event_type": 1, "impact_score": 1,
+            "india_relevance_score": 1, "discovered_at": 1,
+        },
+    )
+    if not existing:
+        return False
+    known = {
+        str(source.get("source_key"))
+        for source in existing.get("independent_sources", [])
+        if isinstance(source, dict) and source.get("source_key")
+    }
+    if evidence["source_key"] not in known:
+        await db[ART_COL].update_one(
+            {"event_cluster_id": cluster_id},
+            {"$addToSet": {"independent_sources": evidence}},
+        )
+    try:
+        from market_intel_validation import EVAL_COL, register_article_evaluation
+        if not await db[EVAL_COL].find_one(
+            {"event_cluster_id": cluster_id},
+            {"_id": 1},
+        ):
+            await register_article_evaluation(db, existing)
+    except Exception as exc:
+        logger.warning("mi duplicate outcome registration failed: %s", redact(exc))
+    return True
 
 
 async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str, Any]:
@@ -1027,12 +1548,18 @@ async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str
         row = enrich_item(raw, src)
         hit, extra = constituent_boost(_blob(row.get("title"), row.get("summary")), terms)
         if hit:
+            # Keep material constituent stories in the default-visible HIGH
+            # band, including on later score refreshes.
+            extra = max(extra, 75 - _safe_int(row.get("impact_score"), 0))
             # Persist this so later score-calibration refreshes retain the
             # index-constituent relevance that was present at ingest time.
             row["constituent_boost"] = extra
             row["impact_score"] = min(100, _safe_int(row.get("impact_score"), 0) + extra)
             row["impact_band"] = impact_band(row["impact_score"])
-            row["india_relevance_score"] = min(100, _safe_int(row.get("india_relevance_score"), 0) + 18)
+            row["india_relevance_score"] = min(
+                100,
+                _safe_int(row.get("india_relevance_score"), 0) + (55 if extra >= 45 else 18),
+            )
             if row.get("event_type") == "other":
                 row["event_type"] = "corporate"
             row["status"] = "ok" if should_store_article(row["impact_score"]) else "noise"
@@ -1048,10 +1575,13 @@ async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str
         if db is None:
             stats["accepted"] += 1
             continue
-        if any(
-            r.get("duplicate_hash") == row["duplicate_hash"] or similar_titles(row["title"], r.get("title") or "")
-            for r in recent
-        ):
+        duplicate = next((
+            r for r in recent
+            if r.get("duplicate_hash") == row["duplicate_hash"]
+            or similar_titles(row["title"], r.get("title") or "")
+        ), None)
+        if duplicate:
+            await _add_cluster_source(db, row, str(duplicate.get("event_cluster_id") or cid))
             stats["duplicates"] += 1
             continue
         exists = await db[ART_COL].find_one({"$or": [
@@ -1059,9 +1589,16 @@ async def ingest_one(db, src: Dict[str, Any], *, test: bool = False) -> Dict[str
             {"event_cluster_id": cid},
         ]})
         if exists:
+            await _add_cluster_source(db, row, str(exists.get("event_cluster_id") or cid))
             stats["duplicates"] += 1
             continue
         await db[ART_COL].insert_one(row)
+        try:
+            from market_intel_validation import register_article_evaluation
+            await register_article_evaluation(db, row)
+        except Exception as exc:
+            # Keep ingesting headlines if the separate outcome record fails.
+            logger.warning("mi outcome registration failed: %s", redact(exc))
         recent.insert(0, row)
         stats["accepted"] += 1
     return stats
@@ -1130,14 +1667,16 @@ async def run_all_sources(
     settings: Optional[Dict[str, Any]] = None,
     *,
     respect_source_cadence: bool = False,
+    rescore: bool = True,
 ) -> Dict[str, Any]:
     summary = {"ran": 0, "ok": 0, "failed": 0, "fetched": 0, "accepted": 0, "duplicates": 0, "rescored": 0}
     if db is None:
         return summary
-    try:
-        summary["rescored"] = await rescore_stored_articles(db)
-    except Exception as e:
-        logger.warning("mi rescore: %s", redact(e))
+    if rescore:
+        try:
+            summary["rescored"] = await rescore_stored_articles(db)
+        except Exception as e:
+            logger.warning("mi rescore: %s", redact(e))
     config = settings or {}
     ingest_seconds = max(
         60,
@@ -1251,8 +1790,23 @@ def cluster_rows(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         rows.sort(key=lambda x: -_safe_int(x.get("impact_score"), 0))
         primary = dict(rows[0])
         primary["event_cluster_id"] = cid
-        primary["source_count"] = len(rows)
-        primary["sources"] = list({r.get("source_name") for r in rows if r.get("source_name")})
+        source_evidence = {
+            str(source.get("source_key")): source
+            for row in rows
+            for source in row.get("independent_sources", [])
+            if isinstance(source, dict) and source.get("source_key")
+        }
+        if source_evidence:
+            primary["independent_sources"] = list(source_evidence.values())
+            primary["source_count"] = len(source_evidence)
+            primary["sources"] = list({
+                str(source.get("source_name") or "")
+                for source in source_evidence.values()
+                if source.get("source_name")
+            })
+        else:
+            primary["source_count"] = len(rows)
+            primary["sources"] = list({r.get("source_name") for r in rows if r.get("source_name")})
         out.append(primary)
     out.sort(key=rank_key)
     return out
@@ -1390,6 +1944,7 @@ async def ingest_loop(get_db, get_settings, stop_event) -> None:
     """Pull and store news on the admin interval. Page/popup ticks never stop this."""
     import asyncio
     await asyncio.sleep(BOOT_DELAY_S)
+    last_rescore = 0.0
     while not stop_event.is_set():
         started = time.monotonic()
         db = get_db()
@@ -1399,11 +1954,27 @@ async def ingest_loop(get_db, get_settings, stop_event) -> None:
         try:
             if db is not None:
                 await ensure_default_sources(db)
-                await run_all_sources(db, settings, respect_source_cadence=True)
+                rescore_due = time.monotonic() - last_rescore >= interval
+                await run_all_sources(
+                    db,
+                    settings,
+                    respect_source_cadence=True,
+                    rescore=rescore_due,
+                )
+                if rescore_due:
+                    last_rescore = time.monotonic()
+                try:
+                    from market_intel_validation import resolve_pending_evaluations
+                    await resolve_pending_evaluations(db)
+                except Exception as exc:
+                    logger.warning("mi outcome evaluation failed: %s", redact(exc))
         except Exception as e:
             logger.warning("mi loop: %s", redact(e))
         try:
-            remaining = max(0.0, interval - (time.monotonic() - started))
+            # Resolve stored-snapshot outcomes frequently; source_is_due keeps
+            # news requests at the admin-configured cadence.
+            worker_interval = min(interval, 60)
+            remaining = max(0.0, worker_interval - (time.monotonic() - started))
             await asyncio.wait_for(stop_event.wait(), timeout=remaining)
             break
         except asyncio.TimeoutError:

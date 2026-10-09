@@ -81,10 +81,11 @@ turns it back on.
 | GET/POST | `/desk-guide` | Seller coach over that outside tape; optional GPT (see [AI.md](./AI.md)) |
 | POST | `/desk-ai` | Desk user: one `desk_ai_show` flag for the whole desk |
 | GET/POST/DELETE | `/desk-ai/providers` | Admin: vaulted OpenAI-compatible Desk AI keys |
-| GET | `/market-intel` | Ranked clustered events (desk user). Query `filter=` |
+| GET | `/market-intel` | Ranked clustered events (desk user). Query `filter=`. Articles include `market_direction`, `direction_basis` (`HEADLINE`, `SUMMARY`, `SOURCES`, `NONE`), signed heuristic `directional_impact_score`, separate textual volatility risk, India transmission explanation, publisher/receipt freshness, independent-source consensus, and market-session classification; `impact_score` remains importance only. |
+| GET | `/market-intel/performance` | Separate direction alignment and textual-volatility validation against existing OI snapshots. Direction hit rates include weak / moderate / strong heuristic-score bands and a strong-vs-weak comparison; volatility outcomes are also grouped by RBI, crude, global-rates, and earnings catalysts. Rates and catalyst breakdowns require at least 30 usable event-cluster outcomes in their group. |
 | GET | `/market-memory/{index}` | Recent price-level interaction summary derived from stored OI snapshots (desk user) |
 | GET/POST | `/market-intel/prefs` | Per-user page/popup prefs; public feeds and the page default to 60-second refresh, with default popup thresholds of 75 impact / 30 India relevance |
-| GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app high-impact popup (up to 12 unseen clusters). The default includes high-impact India-relevant events plus a critical global-event override. Desk-wide popup tick off → empty for everyone; ingest is independent. Admin always receives items when the desk tick is on. |
+| GET | `/market-intel/popup` POST `/market-intel/popup/ack` | In-app high-impact popup (up to 12 unseen clusters), including direction, volatility, India-link, source-agreement, and timing evidence. The default includes high-impact India-relevant events plus a critical global-event override. Desk-wide popup tick off → empty for everyone; ingest is independent. Admin always receives items when the desk tick is on. |
 | GET/POST/DELETE | `/market-intel/sources` | Admin sources; `.../test` and `.../fetch` |
 | POST | `/market-intel/cleanup` | Admin retention cleanup now |
 | GET | `/market-intel/templates` | public-apis News/Finance catalog + RSS templates |

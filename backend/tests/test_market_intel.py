@@ -9,6 +9,7 @@ from market_intel import (
     cluster_rows,
     constituent_boost,
     duplicate_hash,
+    directional_market_impact,
     impact_band,
     impact_score,
     india_relevance_score,
@@ -57,6 +58,38 @@ def test_should_store_skips_low_impact():
     assert hit and extra >= 14
 
 
+def test_material_global_news_about_index_constituents_is_kept_and_india_relevant():
+    headlines = (
+        "US visa rules may affect Infosys and TCS hiring",
+        "European steel import tariffs hit Tata Steel orders",
+        "European chemical rules trigger investigation into Tata Chemicals",
+        "Government order delay hits Larsen & Toubro construction projects",
+    )
+    constituents = [
+        ("infosys", 4.0),
+        ("tcs", 4.5),
+        ("tata steel", 2.0),
+        ("tata chemicals", 2.0),
+        ("larsen & toubro", 3.0),
+    ]
+    for headline in headlines:
+        matched, boost = constituent_boost(headline, constituents)
+        assert matched
+        assert boost == 45
+        base_impact = impact_score(headline)
+        applied_boost = max(boost, 75 - base_impact)
+        assert should_store_article(base_impact + applied_boost)
+        assert min(100, india_relevance_score(headline) + 55) >= 55
+        assert base_impact + applied_boost >= 75
+
+    matched, boost = constituent_boost(
+        "European steel prices fall after routine industry survey",
+        constituents,
+    )
+    assert not matched
+    assert boost == 0
+
+
 def test_geopolitics_and_india_event():
     geo = "Tariffs and sanctions escalate in the Middle East shipping lanes"
     ind = "RBI holds repo rate; SEBI issues market circular"
@@ -81,6 +114,253 @@ def test_india_desk_impact_grades_prioritise_policy_over_generic_commentary():
     assert impact_score("SEBI issues margin circular for equity derivatives") >= 55
     assert impact_score("Analyst says Nifty may rally this week") < STORE_MIN_IMPACT
     assert impact_score("Apple previews its next phone") < STORE_MIN_IMPACT
+
+
+def test_directional_news_read_separates_market_polarity_from_importance():
+    supportive = directional_market_impact(
+        "RBI cuts repo rates to support growth",
+        impact=80,
+        event_type="india_macro",
+        india_relevance=80,
+    )
+    assert supportive["market_direction"] == "SUPPORTIVE"
+    assert supportive["directional_impact_score"] == 64
+    assert "Rate-cut" in supportive["direction_reason"]
+    low_india_link = directional_market_impact(
+        "RBI cuts repo rates to support growth",
+        impact=80,
+        event_type="india_macro",
+        india_relevance=20,
+    )
+    assert low_india_link["market_direction"] == "SUPPORTIVE"
+    assert low_india_link["directional_impact_score"] == 16
+
+    inflation_shock = directional_market_impact(
+        "US CPI comes in above expectations",
+        impact=75,
+        event_type="macro",
+        india_relevance=70,
+    )
+    assert inflation_shock["market_direction"] == "NEGATIVE"
+    assert inflation_shock["directional_impact_score"] < 0
+    assert "Hotter inflation" in inflation_shock["direction_reason"]
+
+    oil_relief = directional_market_impact("Crude oil falls sharply", impact=70, event_type="oil", india_relevance=70)
+    oil_shock = directional_market_impact("Crude oil surges on supply disruption", impact=90, event_type="oil", india_relevance=70)
+    assert oil_relief["market_direction"] == "SUPPORTIVE"
+    assert oil_shock["market_direction"] == "NEGATIVE"
+
+
+def test_directional_news_read_preserves_mixed_and_unclear_cases():
+    mixed = directional_market_impact(
+        "Fed cuts rates while inflation surges",
+        impact=90,
+        event_type="macro",
+        india_relevance=70,
+    )
+    assert mixed["market_direction"] == "MIXED"
+    assert mixed["directional_impact_score"] == 0
+    assert "opposing market cues" in mixed["direction_reason"]
+
+    unclear = directional_market_impact(
+        "RBI holds repo rate unchanged",
+        impact=65,
+        event_type="india_macro",
+    )
+    assert unclear["market_direction"] == "UNCLEAR"
+    assert unclear["directional_impact_score"] == 0
+
+    no_cut = directional_market_impact("Fed rules out a rate cut", impact=80, event_type="macro")
+    assert no_cut["market_direction"] == "NEGATIVE"
+
+
+def test_directional_news_read_covers_india_relevant_market_drivers():
+    cases = (
+        ("Nifty falls after a sharp sell-off", "NEGATIVE"),
+        ("FII net buying supports Indian equities", "SUPPORTIVE"),
+        ("Rupee weakens against the dollar", "NEGATIVE"),
+        ("GDP growth beats expectations", "SUPPORTIVE"),
+        ("Unemployment rises sharply", "NEGATIVE"),
+        ("Bond yields jump to a new high", "NEGATIVE"),
+        ("US dollar strengthens as investors seek safety", "NEGATIVE"),
+        ("Recession fears grow after output contracts", "NEGATIVE"),
+        ("Ceasefire eases geopolitical tensions", "SUPPORTIVE"),
+        ("Nifty not only rises but closes at a record high", "SUPPORTIVE"),
+    )
+    for headline, expected in cases:
+        result = directional_market_impact(headline, impact=80, event_type="macro")
+        assert result["market_direction"] == expected, headline
+
+
+def test_directional_read_prioritizes_headline_and_does_not_promote_negated_cues():
+    headline_first = directional_market_impact(
+        "Oil prices rise",
+        "Crude did not rise this week, while the RBI cut rates.",
+        event_type="oil",
+        impact=80,
+    )
+    assert headline_first["market_direction"] == "NEGATIVE"
+    assert headline_first["direction_basis"] == "HEADLINE"
+    assert "Higher or tighter crude" in headline_first["direction_reason"]
+    assert "Rate-cut" not in headline_first["direction_reason"]
+
+    negated = directional_market_impact(
+        "Nifty did not fall",
+        "RBI cuts rates and crude falls.",
+        event_type="india_macro",
+        impact=80,
+    )
+    assert negated["market_direction"] == "UNCLEAR"
+    assert negated["direction_basis"] == "HEADLINE"
+
+    summary_fallback = directional_market_impact(
+        "Gold prices drop over 2%",
+        "Rising Treasury yields and a strong US dollar weighed on markets.",
+        event_type="macro",
+        impact=80,
+        india_relevance=70,
+    )
+    assert summary_fallback["market_direction"] == "NEGATIVE"
+    assert summary_fallback["direction_basis"] == "SUMMARY"
+    assert summary_fallback["directional_impact_score"] == -28
+    assert "Summary-based cue" in summary_fallback["direction_reason"]
+
+
+def test_directional_read_requires_india_link_for_company_specific_news():
+    global_company = directional_market_impact(
+        "Company earnings beat estimates",
+        event_type="corporate",
+        impact=80,
+        india_relevance=10,
+    )
+    indian_company = directional_market_impact(
+        "Company earnings beat estimates",
+        event_type="corporate",
+        impact=80,
+        india_relevance=60,
+    )
+    assert global_company["market_direction"] == "UNCLEAR"
+    assert "Indian-market link" in global_company["direction_reason"]
+    assert indian_company["market_direction"] == "SUPPORTIVE"
+
+
+def test_public_market_intel_item_computes_direction_for_existing_articles():
+    from market_intel import public_article
+
+    result = public_article({
+        "title": "Rupee weakens as crude rises",
+        "summary": "",
+        "impact_score": 80,
+        "india_relevance_score": 70,
+        "event_type": "oil",
+    })
+    assert result["market_direction"] == "NEGATIVE"
+    assert result["directional_impact_score"] < 0
+    assert result["direction_basis"] == "HEADLINE"
+    assert result["direction_reason"]
+
+
+def test_market_intel_explains_volatility_and_india_transmission_separately():
+    from market_intel import india_link_read, volatility_risk_read
+
+    volatility = volatility_risk_read("RBI announces an emergency rate decision")
+    india_link = india_link_read("US Treasury yields jump", "", 30)
+    unclear_link = india_link_read("Local company launches a new product", "", 0)
+
+    assert volatility["volatility_risk"] == "HIGH"
+    assert volatility["volatility_risk_basis"] == "HEADLINE"
+    assert "gap and volatility risk" in volatility["volatility_risk_reason"]
+    assert india_link["india_link_status"] == "INDIRECT"
+    assert "foreign flows" in india_link["india_link_reason"]
+    assert unclear_link["india_link_status"] == "UNCLEAR"
+    assert unclear_link["india_link_reason"].startswith("India link unclear")
+
+
+def test_market_intel_source_identity_avoids_aggregator_and_collapses_wire_copies():
+    from market_intel import _source_identity, enrich_item
+
+    reuters = _source_identity({
+        "source_name": "Reuters",
+        "article_url": "https://www.reuters.com/world/markets/story",
+    })
+    reuters_syndicated = _source_identity({
+        "source_name": "Reuters",
+        "article_url": "https://finance.example.com/news/story",
+    })
+    aggregator = _source_identity({
+        "source_name": "Google News",
+        "article_url": "https://news.google.com/rss/articles/123",
+    })
+    uk_publisher = _source_identity({
+        "source_name": "Publisher",
+        "article_url": "https://markets.publisher.co.uk/story",
+    })
+
+    assert reuters["source_key"] == reuters_syndicated["source_key"] == "wire:reuters"
+    assert aggregator is None
+    assert uk_publisher["source_key"] == "domain:publisher.co.uk"
+    enriched = enrich_item({
+        "title": "RBI cuts repo rate",
+        "source_name": "Reuters",
+        "url": "https://news.google.com/rss/articles/123",
+        "published_at": "2026-10-09",
+    }, {"id": "google-news", "name": "Google News", "source_type": "RSS"})
+    assert enriched["source_name"] == "Reuters"
+    assert enriched["independent_sources"][0]["source_key"] == "wire:reuters"
+    assert enriched["published_at_known"] is True
+    assert enriched["published_at_precision"] == "DATE"
+
+
+def test_market_timing_uses_shared_market_session_bounds(monkeypatch):
+    from datetime import time
+    import market_hours
+    from market_intel import _market_timing
+
+    monkeypatch.setattr(market_hours, "is_nse_cash_trading_day", lambda _dt: True)
+    monkeypatch.setattr(
+        market_hours,
+        "session_display_bounds",
+        lambda _dt: (time(9, 15), time(15, 40)),
+    )
+
+    assert _market_timing("2026-10-09T03:30:00+00:00") == "PRE_OPEN"
+    assert _market_timing("2026-10-09T04:00:00+00:00") == "IN_SESSION"
+    assert _market_timing("2026-10-09T10:11:00+00:00") == "AFTER_CLOSE"
+
+
+def test_public_article_reports_independent_direction_agreement_and_unknown_publish_time():
+    from market_intel import public_article
+
+    base = {
+        "title": "RBI cuts repo rate to support growth",
+        "impact_score": 80,
+        "india_relevance_score": 80,
+        "event_type": "india_macro",
+        "published_at": "2026-10-09T04:00:00+00:00",
+        "published_at_known": False,
+        "discovered_at": "2026-10-09T04:02:00+00:00",
+        "independent_sources": [
+            {"source_key": "domain:one.in", "source_name": "One", "direction": "SUPPORTIVE", "directional_score": 60},
+            {"source_key": "domain:two.in", "source_name": "Two", "direction": "SUPPORTIVE", "directional_score": 50},
+        ],
+    }
+
+    agreed = public_article(base)
+    disagreed = public_article({
+        **base,
+        "independent_sources": [
+            base["independent_sources"][0],
+            {**base["independent_sources"][1], "direction": "NEGATIVE"},
+        ],
+    })
+
+    assert agreed["market_direction"] == "SUPPORTIVE"
+    assert agreed["source_direction_agreement"] == "AGREE"
+    assert agreed["independent_source_count"] == 2
+    assert agreed["news_freshness"] == "PUBLISH_TIME_UNKNOWN"
+    assert agreed["published_age_minutes"] is None
+    assert disagreed["market_direction"] == "MIXED"
+    assert disagreed["source_direction_agreement"] == "DISAGREE"
 
 
 def test_dedup_and_cluster():
@@ -249,6 +529,8 @@ def test_ensure_default_sources_seeds_rss_without_overwrite():
     db = Db()
     asyncio.run(ensure_default_sources(db))
     assert db.c.docs["google-news-in"]["enabled"] is True
+    assert db.c.docs["google-news-india-company-impact"]["enabled"] is True
+    assert "H-1B" in db.c.docs["google-news-india-company-impact"]["endpoint"]
     db.c.docs["google-news-in"]["enabled"] = False
     asyncio.run(ensure_default_sources(db))
     assert db.c.docs["google-news-in"]["enabled"] is False
