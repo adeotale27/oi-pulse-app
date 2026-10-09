@@ -180,6 +180,17 @@ The maintenance page should remain vertically scrollable on short phone
 viewports; desktop can retain its fixed-screen composition. Validate the
 maintenance shell at a narrow phone width and short viewport height.
 
+Market Intel's `impact_score` is event importance and must not be presented as
+direction. `directional_market_impact` reads the headline first and uses the
+summary only when the headline has no directional cue; summary-derived reads
+must remain identified as less direct and capped in strength. Negated price
+cues must not be treated as evidence of the opposite move, mixed cues must
+stay mixed, and company-only news without an Indian-market link must remain
+unclear. Preserve the distinction in page and popup labels, use a green up
+arrow for likely market-up news and a red down arrow for likely market-down
+news. Do not describe rule scores as probabilities: that requires timestamped
+market outcomes plus out-of-sample backtesting.
+
 ## Prerequisites
 
 Python 3.11+, Node 18+ / Yarn 1.x, MongoDB 6+, optional Kite API key + daily token.

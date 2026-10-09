@@ -21,6 +21,7 @@ Primary database name comes from `DB_NAME` (env). Key collections:
 | `desk_ai_providers` | Vaulted OpenAI-compatible Desk AI keys (`key_enc`); `_id`/`id` plus `_active` pointer |
 | `mi_sources` | Admin Market Intelligence sources (RSS/API/Firecrawl); secrets encrypted |
 | `mi_articles` | Normalized scored news; rolling calendar-day retention |
+| `mi_direction_evaluations` | One news-direction / volatility evaluation per `event_cluster_id`, with first-receipt direction strength and catalyst labels, per-index OI snapshot baselines, and observed 15m / 1h / session-close outcomes; 180-day TTL |
 | `mi_user_prefs` | Per-user MI page/popup preferences |
 | `mi_popup_seen` | Popup ack by `user_id` + `event_cluster_id` |
 | `admin_sessions` | Short-lived admin bearer tokens |
@@ -57,6 +58,42 @@ compaction and deletion.
 | Constituents / events / holidays | Uploaded calendars & index members (`index_constituents`, `nse_events`, `nse_holidays`) — see [UPLOAD.md](./UPLOAD.md) for CSV columns and replace rules |
 
 Retention: OI / straddle samples default to **96 hours** so Friday’s session survives the weekend and Monday pre-open (`SNAPSHOT_RETENTION_HOURS` / `STRADDLE_RETENTION_HOURS`). Prune also floors at the previous trading day’s open. Weekend / holiday / pre-open APIs resolve `session_anchor_date` (last trading day) for history, straddle, and banners. After configured market close, OI polling stops; **GIFT Nifty** continues on its own schedule.
+
+Market Intel outcome measurement reads the already-persisted `oi_snapshots`
+collection only; it does not request quotes or change poll timing. A direction
+event is benchmarked using the latest snapshot at or before first app receipt,
+no more than five minutes old. Each NIFTY / SENSEX / BANKNIFTY target price must
+be within five minutes of 15 minutes, one hour, or the session poll-close.
+Missing baselines and target snapshots remain unavailable rather than being
+filled or interpolated. Flat moves under 0.05% do not count as correct or
+incorrect. The separate `mi_direction_evaluations` collection retains these
+measurements for 180 days, independent of the shorter article-feed retention.
+After-hours and pre-open stories are excluded from same-session scoring.
+Volatility outcomes are stored independently in the same evaluation document:
+India VIX change uses the NIFTY snapshot stream, while each index's realized
+high-low range after the story is compared with an equally long preceding
+window. A VIX increase is material only when both +0.5 points and +5% are met;
+a wider index range needs both +0.05 percentage points and 20% expansion.
+Each range window needs at least three snapshots and quotes within five
+minutes of both edges. Incomplete windows remain unavailable. These outcome
+reads do not fetch data or alter the OI poll.
+
+Market Intel also has a dedicated India-linked global-company RSS search.
+During ingestion, material developments that name a company in the uploaded
+`index_constituents` data receive an India-relevance and impact boost, so they
+can pass the normal feed storage threshold. This uses the configured constituent
+names/symbols; keep those uploads current for reliable company matching.
+
+Similar headlines are assigned the same `event_cluster_id` during ingestion;
+the evaluation collection's unique index and upsert key ensure that multiple
+publishers do not create extra outcome samples for one event. Direction
+strength is the absolute magnitude of the existing signed heuristic score,
+bucketed as weak (1–24), moderate (25–49), or strong (50–100); it is not a
+probability. Strong-vs-weak direction hit-rate comparisons and volatility
+breakdowns by RBI, crude, global rates, and earnings are shown only after 30
+usable event outcomes in the relevant group. These new breakdowns apply to
+evaluations recorded with the new fields; old records are not reclassified or
+backfilled.
 
 ## Instrument universe
 
